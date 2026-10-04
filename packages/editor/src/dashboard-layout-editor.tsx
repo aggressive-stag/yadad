@@ -178,7 +178,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
   return (
     <div data-yadad-dashboard-editor={dashboard.id}>
       <p id={helpId}>Drag a card to move it, or its corner to resize it. With the keyboard: arrow keys move the focused card, Shift and arrow keys resize it.</p>
-      <div data-yadad-editor-toolbar="">
+      <div data-yadad-editor-toolbar="" style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockEnd: "var(--yadad-toolbar-gap, 0.5rem)" }}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
         <Button label="Save layout" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />

@@ -48,7 +48,7 @@ describe("DashboardLayoutEditor", () => {
   test("an overlapping move is refused and announced", () => {
     const { card, status } = setup();
     fireEvent.keyDown(card(), { key: "ArrowLeft" });
-    expect(status()).toBe("Not moved: Grid item 1 overlaps item 0.");
+    expect(status()).toBe('Not moved: "count" would overlap "form".');
     expect(card().getAttribute("aria-label")).toContain("column 9, row 1");
   });
 

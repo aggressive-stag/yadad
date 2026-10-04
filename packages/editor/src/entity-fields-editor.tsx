@@ -108,7 +108,7 @@ export function EntityFieldsEditor({ entity, views, registry, onSave, onCancel }
       field.id,
       FIELD_TYPE_LABELS[field.type],
       field.required === true ? "Yes" : "No",
-      <span key="actions">
+      <span key="actions" style={{ display: "inline-flex", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
         <Button label={`Edit ${field.label}`} type="button" variant="secondary" disabled={false} onPress={() => setPanel({ editing: field.id, type: field.type, values: propertiesFromField(field) })} />
         <Button label={`Remove ${field.label}`} type="button" variant="secondary" disabled={false} onPress={() => remove(field)} />
       </span>,
@@ -117,7 +117,7 @@ export function EntityFieldsEditor({ entity, views, registry, onSave, onCancel }
 
   return (
     <div data-yadad-entity-editor={entity.id}>
-      <div data-yadad-editor-toolbar="">
+      <div data-yadad-editor-toolbar="" style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockEnd: "var(--yadad-toolbar-gap, 0.5rem)" }}>
         <Button label="New field" type="button" variant="secondary" disabled={false} onPress={() => setPanel({ type: "text", values: {} })} />
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />

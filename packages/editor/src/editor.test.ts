@@ -38,7 +38,7 @@ describe("edit sessions", () => {
   test("an edit that breaks the document is rejected with the reason", () => {
     const s = edit(startSession(dashboard), moveItem(dashboard, "log", "count", 4, 0));
     expect(s.current).toBe(dashboard);
-    expect(s.rejected.map((e) => e.message)).toEqual(["Grid item 1 overlaps item 0."]);
+    expect(s.rejected.map((e) => e.message)).toEqual(['"count" would overlap "form".']);
     expect(isDirty(s)).toBe(false);
     expect(finish(s)).toBe(dashboard);
   });
