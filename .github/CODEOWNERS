@@ -1,0 +1,5 @@
+# The contract is human-owned (AGENTS.md hard rule 2). Changes here need the
+# maintainer's review; see ARCHITECTURE.md §11.
+/packages/core/ @aggressive-stag
+/fixtures/      @aggressive-stag
+/rfcs/          @aggressive-stag
