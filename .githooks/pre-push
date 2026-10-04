@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Refuse to push while tracked files have uncommitted changes: local checks
+# ran against the working tree, so they would not reflect what is pushed.
+# Bypass with `git push --no-verify` if you really mean it.
+set -euo pipefail
+
+if ! git diff --quiet HEAD --; then
+  echo "pre-push: tracked files have uncommitted changes; commit or discard them first:" >&2
+  git status --short --untracked-files=no >&2
+  exit 1
+fi
