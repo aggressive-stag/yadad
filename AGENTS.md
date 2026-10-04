@@ -15,7 +15,7 @@ Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md`
 3. **Documents are the contract.** Change behavior through entity/view document types and their JSON Schema, then the runtime/renderer. Never special-case behavior inside a component.
 4. **No component names or file paths** in `core`, `runtime`, `renderer` or `editor`. Only registry keys.
 5. **No escape hatches.** No string expressions, no free-form props bags, no index signatures, no `custom` field types, no `any` in `core` exports.
-6. **One package per PR**, plus a changeset. Generated files are the only exception. Cross-package PRs need the `cross-package` label, which only the maintainer applies.
+6. **Small, focused commits.** One logical step per commit; add a changeset when a published package's behavior changes.
 7. **No new packages or new runtime dependencies** without an RFC. Test-only dev dependencies (DOM environments, testing libraries, axe) may be added directly; name them in the PR (DECISIONS.md D16).
 8. **Versioning:** any change to `core` schema files bumps `specVersion` and adds a `migrate()` step plus a before/after fixture pair. User document `revision`s are data, not code.
 9. **New field type** = JSON Schema entry + registry contract entry + valid and invalid fixtures + render test against the mock registry.
@@ -23,11 +23,9 @@ Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md`
 
 ## Working conventions
 
-- Work in your own git worktree on branch `agent/<task-id>`, branched from `main`: `git worktree add .worktrees/<task-id> -b agent/<task-id> main`. Worktrees live only under `.worktrees/` (gitignored); never create folders outside the repo. Do not use `git stash` across worktrees.
-- Tools that scan the tree (ESLint, Vitest, dependency-cruiser) must exclude `.worktrees/`.
+- **Solo mode (default):** commit straight to `main` and push; CI runs on every push. Run `pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test` before pushing. No PRs needed.
+- **Parallel agents (only when several run at once):** each works on its own branch in a worktree under `.worktrees/` (gitignored): `git worktree add .worktrees/<name> -b agent/<name> main`. Never create folders outside the repo. Tools that scan the tree must exclude `.worktrees/`.
 - Use the memory data adapter and a random dev-server port. Never point at a shared Supabase instance.
-- Rebase onto `main` before requesting review.
-- Keep PRs small. If a task grows past its card, stop and propose a split.
 - **Personal and work-specific notes go in `*.private.md` files** (gitignored, never committed), e.g. `docs/OPEN_QUESTIONS.private.md`. This covers employer or work-app names, clients, sign-off questions, and anything personal. Tracked files describe these generically (e.g. "intake form") and must not quote or summarize `*.private.md` content.
 
 ## Commit messages
