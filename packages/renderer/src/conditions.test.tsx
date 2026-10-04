@@ -75,7 +75,7 @@ describe("table filters", () => {
     const db = createMemoryAdapter();
     for (const values of [
       { exercise: "Squat", felt: "Easy", warmup: true, notes: "light" },
-      { exercise: "Squat", felt: "Easy", warmup: false, notes: "top set" },
+      { exercise: "Squat", felt: "Easy", notes: "top set" }, // checkbox never touched: no warmup value
       { exercise: "Bench", felt: "Easy", warmup: false, notes: "Top set, paused" },
       { exercise: "Bench", felt: "Hard", warmup: false, notes: "grindy" },
     ]) {
@@ -98,6 +98,11 @@ describe("table filters", () => {
     await waitFor(() => expect(notes()).toEqual(["light", "top set"]));
     fireEvent.change(within(filterBar()).getByLabelText("Warm-up"), { target: { value: "No" } });
     await waitFor(() => expect(notes()).toEqual(["top set"]));
+    fireEvent.change(within(filterBar()).getByLabelText("Exercise"), { target: { value: "Bench" } });
+    fireEvent.change(within(filterBar()).getByLabelText("Notes"), { target: { value: "nothing like this" } });
+    await waitFor(() => expect(screen.getByText("No records match the filters.")).toBeTruthy());
+    fireEvent.change(within(filterBar()).getByLabelText("Notes"), { target: { value: "" } });
+    fireEvent.change(within(filterBar()).getByLabelText("Warm-up"), { target: { value: "" } });
     fireEvent.change(within(filterBar()).getByLabelText("Exercise"), { target: { value: "" } });
     fireEvent.change(within(filterBar()).getByLabelText("Notes"), { target: { value: "TOP SET" } });
     await waitFor(() => expect(notes()).toEqual(["top set", "Top set, paused"]));

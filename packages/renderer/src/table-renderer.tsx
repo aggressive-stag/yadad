@@ -176,7 +176,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
         columns={headers}
         rows={tableRows}
         onSort={onSort}
-        empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? `Could not load records: ${rows.message}` : "No records yet."}
+        empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? `Could not load records: ${rows.message}` : filter ? "No records match the filters." : "No records yet."}
       />
       {editErrors.length > 0 && <ErrorSummary id={editErrorsId} errors={editErrors} />}
       {pages > 1 && (
@@ -207,7 +207,9 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
     const field = entity.fields.find((f) => f.id === id);
     const value = quick[id];
     if (!field || value === undefined || value === null || value === "") continue;
-    if (field.type === "boolean") parts.push({ op: "eq", field: id, value: value === "Yes" });
+    // An untouched checkbox is never saved, so "No" also matches a missing value.
+    if (field.type === "boolean")
+      parts.push(value === "Yes" ? { op: "eq", field: id, value: true } : { op: "or", conditions: [{ op: "eq", field: id, value: false }, { op: "empty", field: id }] });
     else if (field.type === "text" && typeof value === "string") parts.push({ op: "contains", field: id, value });
     else if (typeof value === "string") parts.push({ op: "eq", field: id, value });
   }
