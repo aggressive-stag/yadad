@@ -4,7 +4,7 @@
 // P1-05. Collects every error instead of stopping at the first.
 
 import { CONDITION_OPS } from "./condition";
-import { FIELD_TYPES, SPEC_VERSION } from "./document";
+import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document";
 import type { Document, FieldType } from "./document";
 import { jsonPointer } from "./errors";
 import type { DocumentError, ErrorCode } from "./errors";
@@ -13,7 +13,7 @@ export type ValidationResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly errors: readonly DocumentError[] };
 
-const KINDS = ["entity", "form", "table"] as const;
+const KINDS = ["entity", "form", "table", "dashboard"] as const;
 const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
 const ID_HINT = 'Use lowercase letters, digits and underscores, starting with a letter (e.g. "workout_set").';
 
@@ -39,6 +39,8 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
     validateForm(errors, input);
   } else if (input["kind"] === "table") {
     validateTable(errors, input);
+  } else if (input["kind"] === "dashboard") {
+    validateDashboard(errors, input);
   } else if (input["kind"] === undefined) {
     errors.add(["kind"], "required", 'Missing required property "kind".', `Add "kind": one of ${KINDS.join(", ")}.`);
   } else {
@@ -231,6 +233,94 @@ function validateTable(errors: Errors, doc: JsonObject): void {
   if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000)) {
     errors.add(["pageSize"], "invalid-value", '"pageSize" must be a whole number from 1 to 1000.', "Use e.g. 25.");
   }
+}
+
+const MAX_GRID_COLUMNS = 24;
+
+function validateDashboard(errors: Errors, doc: JsonObject): void {
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "revision", "tabs"], ["title"]);
+  checkSpecVersion(errors, doc);
+  checkId(errors, doc, [], "id");
+  checkRevision(errors, doc);
+  checkNonEmptyString(errors, doc, [], "title");
+
+  const tabs = checkArray(errors, doc, [], "tabs");
+  if (tabs?.length === 0) errors.add(["tabs"], "invalid-value", "A dashboard needs at least one tab.", 'Add { "id", "title", "items" }.');
+  const tabIds: { id: string; path: Path }[] = [];
+  tabs?.forEach((tab, i) => {
+    const path = ["tabs", i];
+    if (!isObject(tab)) {
+      errors.add(path, "type", "A tab must be a JSON object.", 'Use { "id", "title", "items" }.');
+      return;
+    }
+    checkKeys(errors, tab, path, ["id", "title", "items"], ["columns"]);
+    checkId(errors, tab, path, "id");
+    checkNonEmptyString(errors, tab, path, "title");
+    if (typeof tab["id"] === "string") tabIds.push({ id: tab["id"], path: [...path, "id"] });
+    const columns = tab["columns"] === undefined ? 12 : tab["columns"];
+    if (!isWhole(columns, 1, MAX_GRID_COLUMNS)) {
+      errors.add([...path, "columns"], "invalid-value", `"columns" must be a whole number from 1 to ${MAX_GRID_COLUMNS}.`, "Use e.g. 12.");
+    }
+    const items = checkArray(errors, tab, path, "items");
+    const itemIds: { id: string; path: Path }[] = [];
+    const placed: { x: number; y: number; w: number; h: number; index: number }[] = [];
+    items?.forEach((item, j) => {
+      const itemPath = [...path, "items", j];
+      if (!isObject(item)) {
+        errors.add(itemPath, "type", "A grid item must be a JSON object.", 'Use { "id", "x", "y", "w", "h", "widget": "view", "view": "<view id>" }.');
+        return;
+      }
+      if (validateGridItem(errors, item, itemPath, typeof columns === "number" ? columns : 12)) {
+        placed.push({ x: item["x"] as number, y: item["y"] as number, w: item["w"] as number, h: item["h"] as number, index: j });
+      }
+      if (typeof item["id"] === "string") itemIds.push({ id: item["id"], path: [...itemPath, "id"] });
+    });
+    reportDuplicates(errors, itemIds, "grid item", "a tab");
+    for (const [a, b] of overlaps(placed)) {
+      errors.add([...path, "items", b.index], "invalid-value", `Grid item ${b.index} overlaps item ${a.index}.`, "Move or resize one of them.");
+    }
+  });
+  reportDuplicates(errors, tabIds, "tab", "a dashboard");
+}
+
+const isWhole = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
+
+/** Validates one grid item; true when its position is usable for the overlap check. */
+function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns: number): boolean {
+  const widget = item["widget"];
+  const keys = widget === "count" ? { required: ["label", "view"], optional: ["filter"] } : { required: ["view"], optional: [] };
+  checkKeys(errors, item, path, ["id", "x", "y", "w", "h", "widget", ...keys.required], keys.optional);
+  checkId(errors, item, path, "id");
+  let usable = true;
+  for (const [key, min] of [["x", 0], ["y", 0], ["w", 1], ["h", 1]] as const) {
+    if (item[key] !== undefined && !isWhole(item[key], min, 1000)) {
+      errors.add([...path, key], "invalid-value", `"${key}" must be a whole number of at least ${min}.`, "Grid positions count columns and rows from 0.");
+      usable = false;
+    } else if (item[key] === undefined) usable = false;
+  }
+  if (usable && (item["x"] as number) + (item["w"] as number) > columns) {
+    errors.add([...path, "w"], "invalid-value", `The item runs past the tab's ${columns} columns.`, "Reduce x or w.");
+  }
+  if (widget !== undefined && widget !== "view" && widget !== "count") {
+    errors.add([...path, "widget"], "invalid-value", `Unknown widget ${JSON.stringify(widget)}.`, `Use one of: ${WIDGET_TYPES.join(", ")}.`);
+  }
+  checkId(errors, item, path, "view");
+  if (widget === "count") {
+    checkNonEmptyString(errors, item, path, "label");
+    checkCondition(errors, item["filter"], [...path, "filter"]);
+  }
+  return usable;
+}
+
+type Rect = { x: number; y: number; w: number; h: number; index: number };
+
+function overlaps(rects: readonly Rect[]): [Rect, Rect][] {
+  const found: [Rect, Rect][] = [];
+  rects.forEach((b, j) => {
+    const a = rects.slice(0, j).find((a) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h);
+    if (a) found.push([a, b]);
+  });
+  return found;
 }
 
 // ---- conditions -----------------------------------------------------------

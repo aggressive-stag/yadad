@@ -1,5 +1,5 @@
 // PRE-CONTRACT registry shape: one entry per field type plus layout chrome
-// (FieldFrame, Section, Button, Table, ErrorSummary). CellEditor, widgets and optionsSchema come later.
+// (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets. CellEditor, widgets and optionsSchema come later.
 
 import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document";
 import type { DocumentError } from "./errors";
@@ -116,6 +116,33 @@ export interface ErrorSummaryProps {
   readonly errors: readonly DocumentError[];
 }
 
+export interface TabsProps<N> {
+  /** Accessible name for the tab list. */
+  readonly label: string;
+  readonly tabs: readonly { readonly id: string; readonly title: string }[];
+  readonly selected: string;
+  readonly onSelect: (tabId: string) => void;
+  /** The selected tab's content. */
+  readonly panel: N;
+}
+
+/** A card holding one dashboard widget. */
+export interface PanelProps<N> {
+  readonly title?: string;
+  readonly children: N;
+}
+
+export interface CountWidgetProps {
+  readonly label: string;
+  /** undefined while loading. */
+  readonly value: number | undefined;
+}
+
+/** Widget components by widget type; "view" widgets render through the renderer itself. */
+export interface WidgetComponents<N> {
+  readonly count: Component<CountWidgetProps, N>;
+}
+
 /**
  * Exact-key lookup: one entry per field type, enforced by the type system
  * (a mapped type over FieldType, not an index signature), plus layout chrome.
@@ -128,5 +155,8 @@ export interface Registry<N> {
     readonly Button: Component<ButtonProps, N>;
     readonly Table: Component<TableProps<N>, N>;
     readonly ErrorSummary: Component<ErrorSummaryProps, N>;
+    readonly Tabs: Component<TabsProps<N>, N>;
+    readonly Panel: Component<PanelProps<N>, N>;
   };
+  readonly widgets: WidgetComponents<N>;
 }

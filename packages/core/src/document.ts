@@ -133,7 +133,49 @@ export interface TableFilter {
   readonly field: string;
 }
 
-/** Discriminated on `kind`. Dashboards arrive later. */
-export type ViewDocument = FormView | TableView;
+/** Widget types a dashboard grid item can hold, discriminated on `widget`. */
+export const WIDGET_TYPES = ["view", "count"] as const;
+export type WidgetType = (typeof WIDGET_TYPES)[number];
+
+/** Embeds a form or table view, by id. */
+export interface ViewWidget {
+  readonly widget: "view";
+  readonly view: string;
+}
+
+/** Counts the records a table view shows (its fixed filter applies), optionally narrowed further. */
+export interface CountWidget {
+  readonly widget: "count";
+  readonly label: string;
+  /** Id of a table view: its entity, data source and fixed filter are used. */
+  readonly view: string;
+  readonly filter?: Condition;
+}
+
+export type Widget = ViewWidget | CountWidget;
+
+/** A widget placed on the tab's grid: column x, row y (from 0), w columns wide, h rows tall. */
+export type GridItem = { readonly id: string; readonly x: number; readonly y: number; readonly w: number; readonly h: number } & Widget;
+
+export interface DashboardTab {
+  readonly id: string;
+  readonly title: string;
+  /** Grid columns. Defaults to 12. */
+  readonly columns?: number;
+  readonly items: readonly GridItem[];
+}
+
+/** Tabs of widgets laid out on a grid. Refers to other views by id, so it has no entity of its own. */
+export interface DashboardView {
+  readonly kind: "dashboard";
+  readonly specVersion: SpecVersion;
+  readonly id: string;
+  readonly title?: string;
+  readonly revision: number;
+  readonly tabs: readonly DashboardTab[];
+}
+
+/** Discriminated on `kind`. */
+export type ViewDocument = FormView | TableView | DashboardView;
 export type Document = EntityDocument | ViewDocument;
 export type DocumentKind = Document["kind"];

@@ -49,7 +49,7 @@ describe("document level", () => {
 
   test("missing and unknown kind", () => {
     expect(problems({})).toEqual([["/kind", "required"]]);
-    expect(problems({ ...entity, kind: "dashboard" })).toEqual([["/kind", "unknown-kind"]]);
+    expect(problems({ ...entity, kind: "chart" })).toEqual([["/kind", "unknown-kind"]]);
   });
 
   test("unsupported spec version", () => {
@@ -185,6 +185,61 @@ describe("table views", () => {
     ]);
     expect(problems({ ...table, sort: [{ field: "day", dir: "up" }] })).toEqual([["/sort/0/dir", "invalid-value"]]);
     expect(problems({ ...table, pageSize: 0 })).toEqual([["/pageSize", "invalid-value"]]);
+  });
+});
+
+describe("dashboards", () => {
+  const dashboard = {
+    kind: "dashboard",
+    specVersion: 0,
+    id: "fitnotes",
+    title: "Training",
+    revision: 1,
+    tabs: [
+      {
+        id: "log",
+        title: "Log",
+        items: [
+          { id: "form", x: 0, y: 0, w: 8, h: 2, widget: "view", view: "log_set" },
+          { id: "total", x: 8, y: 0, w: 4, h: 1, widget: "count", label: "Sets", view: "sets", filter: { op: "eq", field: "warmup", value: false } },
+        ],
+      },
+      { id: "history", title: "History", columns: 6, items: [{ id: "table", x: 0, y: 0, w: 6, h: 3, widget: "view", view: "sets" }] },
+    ],
+  };
+  const withItems = (items: unknown[]) => ({ ...dashboard, tabs: [{ id: "t", title: "T", items }] });
+
+  test("a full dashboard validates", () => {
+    expect(problems(dashboard)).toEqual([]);
+  });
+
+  test("grid bounds and overlaps", () => {
+    expect(
+      problems(
+        withItems([
+          { id: "a", x: 0, y: 0, w: 6, h: 2, widget: "view", view: "v" },
+          { id: "b", x: 4, y: 1, w: 4, h: 1, widget: "view", view: "v" },
+          { id: "c", x: 10, y: 0, w: 4, h: 1, widget: "view", view: "v" },
+          { id: "d", x: -1, y: 0, w: 0, h: 1, widget: "view", view: "v" },
+        ]),
+      ),
+    ).toEqual([
+      ["/tabs/0/items/2/w", "invalid-value"],
+      ["/tabs/0/items/3/x", "invalid-value"],
+      ["/tabs/0/items/3/w", "invalid-value"],
+      ["/tabs/0/items/1", "invalid-value"],
+    ]);
+  });
+
+  test("widgets are discriminated on widget", () => {
+    expect(problems(withItems([{ id: "a", x: 0, y: 0, w: 1, h: 1, widget: "chart", view: "v" }]))).toEqual([["/tabs/0/items/0/widget", "invalid-value"]]);
+    expect(problems(withItems([{ id: "a", x: 0, y: 0, w: 1, h: 1, widget: "count", view: "v" }]))).toEqual([["/tabs/0/items/0/label", "required"]]);
+    expect(problems(withItems([{ id: "a", x: 0, y: 0, w: 1, h: 1, widget: "view", view: "v", label: "x" }]))).toEqual([["/tabs/0/items/0/label", "unknown-property"]]);
+  });
+
+  test("tabs", () => {
+    expect(problems({ ...dashboard, tabs: [] })).toEqual([["/tabs", "invalid-value"]]);
+    expect(problems({ ...dashboard, tabs: [dashboard.tabs[1], dashboard.tabs[1]] })).toEqual([["/tabs/1/id", "duplicate-id"]]);
   });
 });
 
