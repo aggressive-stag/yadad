@@ -1,0 +1,7 @@
+{
+  "kind": "entity",
+  "specVersion": 0,
+  "id": "hello",
+  "revision": 1,
+  "fields": [{ "id": "name", "type": "text", "label": "Name", "required": true }]
+}

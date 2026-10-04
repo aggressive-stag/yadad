@@ -1,0 +1,9 @@
+{
+  "kind": "form",
+  "specVersion": 0,
+  "id": "hello_form",
+  "entity": "hello",
+  "revision": 1,
+  "dataSource": "default",
+  "sections": [{ "id": "main", "title": "Hello", "items": [{ "field": "name" }] }]
+}
