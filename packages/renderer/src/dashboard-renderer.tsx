@@ -11,8 +11,8 @@ import type {
   ViewDocument,
 } from "@yadad/core";
 import { conditionFields, jsonPointer } from "@yadad/core";
-import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
 import { FormRenderer } from "./form-renderer";
 import { TableRenderer } from "./table-renderer";
 
@@ -28,19 +28,41 @@ export interface DashboardRendererProps {
   readonly registry: Registry<ReactNode>;
   /** Host-provided adapters, looked up by each view's `dataSource` key. */
   readonly dataSources: ReadonlyMap<string, DataAdapter>;
+  /** Below this width in pixels the grid stacks into one full-width column. Defaults to 640. */
+  readonly stackBelow?: number;
 }
 
 const DEFAULT_COLUMNS = 12;
+const DEFAULT_STACK_BELOW = 640;
+
+/** Reading order: top to bottom, then left to right. DOM order follows it, so screen readers and Tab do too. */
+const readingOrder = (a: GridItem, b: GridItem) => a.y - b.y || a.x - b.x;
+
+/** The element's width, tracked with ResizeObserver; undefined where that is unavailable (e.g. jsdom without a stub). */
+function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => entry && setWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
 
 /**
  * Renders a dashboard: tabs from the registry, each a CSS grid of widgets
  * placed by x, y, w, h. Rows have a fixed height (--yadad-grid-row-height,
  * default 4rem), so h is a real number of rows as in react-grid-layout; a
  * widget taller than its area scrolls inside its Panel. The gap is
- * --yadad-grid-gap. Saving a form anywhere on the dashboard reloads its
- * tables and counts.
+ * --yadad-grid-gap. Narrower than `stackBelow`, the items stack into one
+ * full-width column in reading order. Saving a form anywhere on the
+ * dashboard reloads its tables and counts.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW }: DashboardRendererProps): ReactNode {
+  const [rootRef, width] = useWidth();
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
   const [reloadKey, setReloadKey] = useState(0);
   const { Tabs, Panel, ErrorSummary } = registry.layout;
@@ -50,7 +72,8 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources 
 
   const tab = dashboard.tabs.find((t) => t.id === selected) ?? dashboard.tabs[0];
   if (!tab) return null;
-  const columns = tab.columns ?? DEFAULT_COLUMNS;
+  const stacked = width !== undefined && width < stackBelow;
+  const columns = stacked ? 1 : (tab.columns ?? DEFAULT_COLUMNS);
 
   const renderWidget = (item: GridItem): ReactNode => {
     const view = documents.views.get(item.view);
@@ -71,15 +94,25 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources 
   const grid = (
     <div
       data-yadad-grid={tab.id}
+      data-yadad-grid-stacked={stacked ? "" : undefined}
       style={{
         display: "grid",
         gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-        gridAutoRows: "var(--yadad-grid-row-height, 4rem)",
+        // Stacked cards size to their content; fixed rows only matter side by side.
+        gridAutoRows: stacked ? "auto" : "var(--yadad-grid-row-height, 4rem)",
         gap: "var(--yadad-grid-gap, 1rem)",
       }}
     >
-      {tab.items.map((item) => (
-        <div key={item.id} data-yadad-grid-item={item.id} style={{ gridColumn: `${item.x + 1} / span ${item.w}`, gridRow: `${item.y + 1} / span ${item.h}`, minWidth: 0 }}>
+      {[...tab.items].sort(readingOrder).map((item) => (
+        <div
+          key={item.id}
+          data-yadad-grid-item={item.id}
+          style={
+            stacked
+              ? { gridColumn: "1 / -1", minWidth: 0 }
+              : { gridColumn: `${item.x + 1} / span ${item.w}`, gridRow: `${item.y + 1} / span ${item.h}`, minWidth: 0 }
+          }
+        >
           <Panel>{renderWidget(item)}</Panel>
         </div>
       ))}
@@ -87,7 +120,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources 
   );
 
   return (
-    <div data-yadad-dashboard={dashboard.id}>
+    <div ref={rootRef} data-yadad-dashboard={dashboard.id}>
       <Tabs label={dashboard.title ?? dashboard.id} tabs={dashboard.tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={setSelected} panel={grid} />
     </div>
   );

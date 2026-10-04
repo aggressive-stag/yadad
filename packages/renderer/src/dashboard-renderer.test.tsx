@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { DashboardView, EntityDocument, FormView, TableView, ViewDocument } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { DashboardRenderer } from "./dashboard-renderer";
 
 afterEach(cleanup);
@@ -80,6 +80,39 @@ describe("DashboardRenderer", () => {
     const sets = await screen.findByRole("table", { name: "Sets" });
     await waitFor(() => expect(within(sets).getAllByRole("row")).toHaveLength(3));
     expect(document.querySelector<HTMLElement>('[data-yadad-grid="history"]')!.style.gridTemplateColumns).toBe("repeat(4, minmax(0, 1fr))");
+  });
+
+  test("narrow screens stack the widgets full width, in reading order", () => {
+    // jsdom has no layout: report a phone-sized width to every observer.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly callback: ResizeObserverCallback) {}
+        observe() {
+          this.callback([{ contentRect: { width: 390 } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+        }
+        disconnect() {}
+      },
+    );
+    try {
+      renderDashboard();
+      const grid = document.querySelector<HTMLElement>('[data-yadad-grid="log"]')!;
+      expect(grid.hasAttribute("data-yadad-grid-stacked")).toBe(true);
+      expect(grid.style.gridTemplateColumns).toBe("repeat(1, minmax(0, 1fr))");
+      const items = [...grid.querySelectorAll<HTMLElement>("[data-yadad-grid-item]")];
+      expect(items.map((el) => el.dataset["yadadGridItem"])).toEqual(["form", "total"]);
+      expect(items.map((el) => el.style.gridColumn)).toEqual(["1 / -1", "1 / -1"]);
+      expect(grid.style.gridAutoRows).toBe("auto");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("DOM order follows reading order, not document order", () => {
+    const swapped: DashboardView = { ...dashboard, tabs: [{ ...dashboard.tabs[0]!, items: [...dashboard.tabs[0]!.items].reverse() }] };
+    renderDashboard(undefined, swapped);
+    const ids = [...document.querySelectorAll<HTMLElement>("[data-yadad-grid-item]")].map((el) => el.dataset["yadadGridItem"]);
+    expect(ids).toEqual(["form", "total"]);
   });
 
   test("reports widgets that point at missing or unsuitable views", () => {
