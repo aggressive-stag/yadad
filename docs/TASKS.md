@@ -84,4 +84,4 @@ Each card lists the package, the files an agent may change, what must pass, and 
 
 ### P1-09 Freeze
 - **Owner:** human
-- **Done when:** RFC-0001 merged, `contract-v0` tagged, `@engine/core` and `@engine/testing` prerelease published for the components repo.
+- **Done when:** RFC-0001 merged, `contract-v0` tagged, `@yadad/core` and `@yadad/testing` prerelease published for the components repo.

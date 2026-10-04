@@ -19,7 +19,7 @@ Positioning: Puck is a visual page builder for content. This engine is for data-
 | Repo | Contains | Depends on | Role |
 | --- | --- | --- | --- |
 | `engine` | Schema format, runtime, renderer, editor, theme, fixtures, test kit, showcase, examples | React (renderer/editor only), a JSON Schema validator | The open-source project. Gets the README, docs and polish. |
-| `components` | Styled field and widget components, registry definitions | `@engine/core` and `@engine/testing` pinned to a contract tag; Radix / React Aria / TanStack as accepted deps | Reference component set. Users can bring their own instead. |
+| `components` | Styled field and widget components, registry definitions | `@yadad/core` and `@yadad/testing` pinned to a contract tag; Radix / React Aria / TanStack as accepted deps | Reference component set. Users can bring their own instead. |
 
 The engine never imports from the components repo. Components implement the engine's contract and are handed to the engine through an injected registry. Separate repos make that boundary physical.
 
@@ -85,7 +85,7 @@ Arrows mean "imports from".
 - `renderer` and `editor` import `core` and `runtime` only. They never import a component; they look up registry keys.
 - `theme` imports nothing.
 - Nothing in `packages/` imports the components repo.
-- No deep imports (`@engine/core/src/...`); public entry points only.
+- No deep imports (`@yadad/core/src/...`); public entry points only.
 - The host app (showcase, an intake-form app, a home app) builds a `Registry` and a `DataAdapter` and passes them in via props or React context. This is the only place dependency injection is used.
 
 CI enforces these with dependency-cruiser. A forbidden import fails the build.

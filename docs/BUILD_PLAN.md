@@ -72,7 +72,7 @@ After `contract-v0`: C, D, E, F, G and K run together. H and I start once D's vi
 3. **One package per PR** plus a changeset. CI rejects multi-package PRs without the maintainer-only `cross-package` label.
 4. **CODEOWNERS:** `packages/core`, `fixtures/` and `rfcs/` require the maintainer's review. Agents that need a contract change open an issue or draft RFC and stop.
 5. **Task cards** (`docs/TASKS.md` or issues): package, allowed files, fixtures that must pass, "done when".
-6. **Cross-repo pinning:** the components repo depends on `@engine/core` and `@engine/testing` at a `contract-vN` prerelease, not a workspace link. A contract bump arrives as one PR in the components repo that runs the contract kit.
+6. **Cross-repo pinning:** the components repo depends on `@yadad/core` and `@yadad/testing` at a `contract-vN` prerelease, not a workspace link. A contract bump arrives as one PR in the components repo that runs the contract kit.
 7. **Merge one PR at a time** and run the full suite after each. A clean merge can still hide a semantic conflict (for example, a renamed field).
 
 ## CI gates
