@@ -1,3 +1,4 @@
+/* global module */
 // Dependency direction from ARCHITECTURE.md §4. Paths are relative to the
 // repo root. Declared workspace deps resolve through pnpm symlinks to their
 // real paths (packages/<name>/...). Undeclared ones and subpath imports do not
