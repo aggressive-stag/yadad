@@ -1,10 +1,10 @@
-# Handoff: Schema-Driven UI Engine
+# yadad
 
-Planning docs for a runtime, schema-driven React engine (forms, record tables, dashboards from JSON documents) plus a separate reference component set. Status as of October 4, 2026: architecture planned, nothing built yet. Next step is Phase 0.
+Yet another drag and drop: a runtime, schema-driven React engine (forms, record tables, dashboards from JSON documents). Status as of October 4, 2026: architecture planned, Phase 0 in progress.
 
-## How to use this pack
+## Repo layout
 
-Copy the files into the new `engine` repo at the same paths. The components repo lives in `yadad-components` (sibling folder), with its own `AGENTS.md`.
+This is the engine repo. The reference component set lives in [yadad-components](https://github.com/aggressive-stag/yadad-components), with its own `AGENTS.md`.
 
 ```
 README.md                      this file (replace with the project README later)
