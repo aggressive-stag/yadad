@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/runtime" },
+    { "path": "packages/renderer" },
+    { "path": "packages/editor" },
+    { "path": "packages/theme" },
+    { "path": "testing" },
+    { "path": "apps/showcase" }
+  ]
+}
