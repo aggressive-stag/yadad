@@ -1,6 +1,7 @@
 import type {
   BooleanField,
   ButtonProps,
+  CountWidgetProps,
   DateField,
   DisplayProps,
   ErrorSummaryProps,
@@ -8,13 +9,16 @@ import type {
   FieldFrameProps,
   InputProps,
   NumberField,
+  PanelProps,
   Registry,
   SectionProps,
   SelectField,
   TableProps,
+  TabsProps,
   TextField,
 } from "@yadad/core";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
+import { useId } from "react";
 
 /**
  * Unstyled stub components with data-testid hooks, one per field type.
@@ -29,7 +33,8 @@ export const mockRegistry: Registry<ReactNode> = {
     select: { type: "select", Input: MockSelectInput, Display: MockDisplay },
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
   },
-  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary },
+  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel },
+  widgets: { count: MockCount },
 };
 
 /** Attributes every mock control shares. */
@@ -183,6 +188,63 @@ function MockErrorSummary({ id, errors }: ErrorSummaryProps): ReactNode {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function MockTabs({ label, tabs, selected, onSelect, panel }: TabsProps<ReactNode>): ReactNode {
+  const base = useId();
+  const tabId = (id: string) => `${base}-tab-${id}`;
+  /** Arrow keys, Home and End move selection and focus together (WAI-ARIA tabs, automatic activation). */
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = tabs.length - 1;
+    const next = { ArrowRight: index === last ? 0 : index + 1, ArrowLeft: index === 0 ? last : index - 1, Home: 0, End: last }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    const target = tabs[next];
+    if (!target) return;
+    onSelect(target.id);
+    document.getElementById(tabId(target.id))?.focus();
+  };
+  return (
+    <div data-testid="tabs">
+      <div role="tablist" aria-label={label}>
+        {tabs.map((t, i) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={tabId(t.id)}
+            aria-selected={t.id === selected}
+            aria-controls={`${base}-panel`}
+            tabIndex={t.id === selected ? 0 : -1}
+            onClick={() => onSelect(t.id)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+          >
+            {t.title}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`${base}-panel`} aria-labelledby={tabId(selected)} tabIndex={0}>
+        {panel}
+      </div>
+    </div>
+  );
+}
+
+function MockPanel({ title, children }: PanelProps<ReactNode>): ReactNode {
+  return (
+    <div data-testid="panel">
+      {title !== undefined && <h3>{title}</h3>}
+      {children}
+    </div>
+  );
+}
+
+function MockCount({ label, value }: CountWidgetProps): ReactNode {
+  return (
+    <div data-testid="count">
+      <span>{label}</span> <strong>{value ?? "…"}</strong>
     </div>
   );
 }

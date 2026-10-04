@@ -23,6 +23,32 @@ const withInput = (Input: (props: InputProps<TextField, string>) => ReactNode): 
 });
 
 describe("the kit catches broken components", () => {
+  test("tabs that only work with a mouse", async () => {
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      layout: {
+        ...mockRegistry.layout,
+        Tabs: ({ label, tabs, selected, onSelect, panel }) => (
+          <div>
+            <div role="tablist" aria-label={label}>
+              {tabs.map((t) => (
+                <button key={t.id} type="button" role="tab" id={`t-${t.id}`} aria-selected={t.id === selected} onClick={() => onSelect(t.id)}>
+                  {t.title}
+                </button>
+              ))}
+            </div>
+            <div role="tabpanel" aria-labelledby={`t-${selected}`}>
+              {panel}
+            </div>
+          </div>
+        ),
+      },
+    };
+    expect(await failing(registry)).toEqual(["layout: Tabs follow the WAI-ARIA tabs pattern"]);
+    const check = registryContractChecks(registry).find((c) => c.name.startsWith("layout: Tabs"))!;
+    expect(await check.run()).toEqual(expect.arrayContaining(["ArrowRight must select the next tab.", "Only the selected tab may be in the tab order (roving tabindex)."]));
+  });
+
   test("a table without sortable header buttons or header ids", async () => {
     const registry: Registry<ReactNode> = {
       ...mockRegistry,

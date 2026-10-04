@@ -9,6 +9,7 @@ import { FIELD_TYPES } from "@yadad/core";
 import type { DocumentError, FieldDefinitions, FieldType, FieldValueTypes, Registry } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { describe, expect, test } from "vitest";
 
 /** A field definition and a value to drive it with, per field type. */
@@ -299,7 +300,8 @@ async function axeProblems(container: Element, what: string): Promise<string[]> 
 }
 
 function layoutChecks(registry: Registry<ReactNode>): ContractCheck[] {
-  const { Section, Button, Table, ErrorSummary } = registry.layout;
+  const { Section, Button, Table, ErrorSummary, Tabs, Panel } = registry.layout;
+  const Count = registry.widgets.count;
 
   const columns = [
     { id: "day", headerId: "kit-col-day", label: "Day", sortable: true, sort: "desc" as const },
@@ -316,7 +318,65 @@ function layoutChecks(registry: Registry<ReactNode>): ContractCheck[] {
     { path: "/day", code: "required" as const, message: "Day is required.", hint: "Pick a day." },
   ];
 
+  const kitTabs = [
+    { id: "log", title: "Log" },
+    { id: "history", title: "History" },
+    { id: "stats", title: "Stats" },
+  ];
+  function TabsHarness() {
+    const [selected, setSelected] = useState("log");
+    return <Tabs label="Training" tabs={kitTabs} selected={selected} onSelect={setSelected} panel={<p>{`panel ${selected}`}</p>} />;
+  }
+  const selectedTab = () => screen.queryAllByRole("tab").find((t) => t.getAttribute("aria-selected") === "true");
+
   return [
+    layoutCheck("Tabs follow the WAI-ARIA tabs pattern", async (problems) => {
+      const { container } = render(<TabsHarness />);
+      if (!screen.queryByRole("tablist", { name: "Training" })) problems.push('Tabs must render role="tablist" named by its label.');
+      const tabs = screen.queryAllByRole("tab");
+      if (tabs.length !== kitTabs.length) problems.push(`Tabs must render one role="tab" per tab (expected ${kitTabs.length}).`);
+      if (selectedTab()?.textContent !== "Log") problems.push('The selected tab must set aria-selected="true".');
+      const panel = screen.queryByRole("tabpanel", { name: "Log" });
+      if (!panel) problems.push('The panel must be role="tabpanel", labelled by the selected tab (aria-labelledby).');
+      else if (!panel.textContent.includes("panel log")) problems.push("The tabpanel must show the panel content.");
+      const history = tabs.find((t) => t.textContent === "History");
+      if (history) fireEvent.click(history);
+      if (!screen.queryByText("panel history")) problems.push("Clicking a tab must call onSelect with its id.");
+      const current = selectedTab();
+      if (current) {
+        current.focus();
+        fireEvent.keyDown(current, { key: "ArrowRight" });
+        if (selectedTab()?.textContent !== "Stats") problems.push("ArrowRight must select the next tab.");
+        else if (document.activeElement !== selectedTab()) problems.push("Keyboard selection must move focus to the new tab.");
+        fireEvent.keyDown(selectedTab()!, { key: "ArrowRight" });
+        if (selectedTab()?.textContent !== "Log") problems.push("ArrowRight on the last tab must wrap to the first.");
+        fireEvent.keyDown(selectedTab()!, { key: "End" });
+        if (selectedTab()?.textContent !== "Stats") problems.push("End must select the last tab.");
+      }
+      if (tabs.filter((t) => t.tabIndex === 0).length > 1) problems.push("Only the selected tab may be in the tab order (roving tabindex).");
+      problems.push(...(await axeProblems(container, "tabs")));
+    }),
+
+    layoutCheck("Panel shows its title and content", async (problems) => {
+      const { container } = render(
+        <Panel title="Total sets">
+          <span>widget body</span>
+        </Panel>,
+      );
+      if (!screen.queryByText("Total sets")) problems.push("Panel must show its title.");
+      if (!screen.queryByText("widget body")) problems.push("Panel must show its children.");
+      problems.push(...(await axeProblems(container, "panel")));
+    }),
+
+    layoutCheck("count widget shows its label and value", async (problems) => {
+      const { container } = render(<Count label="Squat sets" value={42} />);
+      if (!container.textContent.includes("Squat sets") || !container.textContent.includes("42")) problems.push("The count widget must show its label and value.");
+      problems.push(...(await axeProblems(container, "count")));
+      cleanup();
+      render(<Count label="Squat sets" value={undefined} />);
+      if (!screen.queryByText(/Squat sets/)) problems.push("While loading (value undefined) the count widget must still show its label.");
+    }),
+
     layoutCheck("ErrorSummary announces every message and hint", async (problems) => {
       const { container } = render(<ErrorSummary id="kit-errors" errors={problemsToShow} />);
       const alert = screen.queryByRole("alert");
