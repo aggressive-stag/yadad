@@ -1,4 +1,4 @@
-import type { DataAdapter, DataRecord, FieldValue, SortSpec } from "@yadad/core";
+import type { DataAdapter, DataRecord, FieldValue, Page, Query, SortSpec } from "@yadad/core";
 import { evaluateCondition } from "./condition";
 
 /** In-memory DataAdapter for tests, the showcase and local dev. Nothing persists. */
@@ -17,11 +17,7 @@ export function createMemoryAdapter(): DataAdapter {
 
   return {
     async find(entity, query) {
-      const { filter } = query;
-      const matching = [...table(entity).values()].filter((r) => !filter || evaluateCondition(filter, r.values));
-      const all = sortRecords(matching, query.sort ?? []);
-      const items = query.page ? all.slice(query.page.offset, query.page.offset + query.page.limit) : all;
-      return { items, total: all.length };
+      return runQuery([...table(entity).values()], query);
     },
     async findOne(entity, id) {
       return table(entity).get(id) ?? null;
@@ -51,6 +47,15 @@ export function createMemoryAdapter(): DataAdapter {
       table(entity).delete(id);
     },
   };
+}
+
+/** Filter, then sort, then page: the query semantics every in-process adapter shares. */
+export function runQuery(records: readonly DataRecord[], query: Query): Page<DataRecord> {
+  const { filter } = query;
+  const matching = records.filter((r) => !filter || evaluateCondition(filter, r.values));
+  const all = sortRecords(matching, query.sort ?? []);
+  const items = query.page ? all.slice(query.page.offset, query.page.offset + query.page.limit) : all;
+  return { items, total: all.length };
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
