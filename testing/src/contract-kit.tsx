@@ -299,7 +299,7 @@ async function axeProblems(container: Element, what: string): Promise<string[]> 
 }
 
 function layoutChecks(registry: Registry<ReactNode>): ContractCheck[] {
-  const { Section, Button, Table } = registry.layout;
+  const { Section, Button, Table, ErrorSummary } = registry.layout;
 
   const columns = [
     { id: "day", headerId: "kit-col-day", label: "Day", sortable: true, sort: "desc" as const },
@@ -311,7 +311,28 @@ function layoutChecks(registry: Registry<ReactNode>): ContractCheck[] {
     { id: "2", cells: ["2026-10-03", "95 kg", "—"] },
   ];
 
+  const problemsToShow = [
+    { path: "/weight", code: "invalid-value" as const, message: "Weight must be a multiple of 2.5.", hint: "Use 100 or 102.5." },
+    { path: "/day", code: "required" as const, message: "Day is required.", hint: "Pick a day." },
+  ];
+
   return [
+    layoutCheck("ErrorSummary announces every message and hint", async (problems) => {
+      const { container } = render(<ErrorSummary id="kit-errors" errors={problemsToShow} />);
+      const alert = screen.queryByRole("alert");
+      if (!alert) problems.push('ErrorSummary must render role="alert" so screen readers announce it.');
+      else {
+        if (alert.id !== "kit-errors" && !alert.querySelector("#kit-errors") && document.getElementById("kit-errors")?.contains(alert) !== true) {
+          problems.push('ErrorSummary must put its id ("kit-errors") on the alert, so inputs can be described by it.');
+        }
+        for (const e of problemsToShow) {
+          if (!alert.textContent.includes(e.message)) problems.push(`ErrorSummary must show "${e.message}".`);
+          if (!alert.textContent.includes(e.hint)) problems.push(`ErrorSummary must show the hint "${e.hint}".`);
+        }
+      }
+      problems.push(...(await axeProblems(container, "error summary")));
+    }),
+
     layoutCheck("Section is a group named by its title", async (problems) => {
       const { container } = render(
         <Section id="details" title="Details">

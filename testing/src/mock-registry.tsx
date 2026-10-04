@@ -3,6 +3,7 @@ import type {
   ButtonProps,
   DateField,
   DisplayProps,
+  ErrorSummaryProps,
   Field,
   FieldFrameProps,
   InputProps,
@@ -28,7 +29,7 @@ export const mockRegistry: Registry<ReactNode> = {
     select: { type: "select", Input: MockSelectInput, Display: MockDisplay },
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
   },
-  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable },
+  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary },
 };
 
 /** Attributes every mock control shares. */
@@ -169,5 +170,19 @@ function MockTable({ caption, columns, rows, onSort, empty }: TableProps<ReactNo
         )}
       </tbody>
     </table>
+  );
+}
+
+function MockErrorSummary({ id, errors }: ErrorSummaryProps): ReactNode {
+  return (
+    <div id={id} role="alert" data-testid="error-summary">
+      <ul>
+        {errors.map((e) => (
+          <li key={`${e.path} ${e.code}`} data-path={e.path} data-code={e.code}>
+            {e.message} {e.hint}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

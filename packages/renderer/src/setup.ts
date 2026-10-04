@@ -1,6 +1,5 @@
 import { jsonPointer } from "@yadad/core";
 import type { DataAdapter, DocumentError, EntityDocument, FormView, TableView } from "@yadad/core";
-import type { ReactNode } from "react";
 
 /** A field id a view refers to, and where in the view document it does. */
 export interface FieldRef {
@@ -46,16 +45,4 @@ export function checkViewSetup(
     }
   }
   return errors;
-}
-
-export function ErrorList({ errors, id }: { readonly errors: readonly DocumentError[]; readonly id?: string }): ReactNode {
-  return (
-    <ul id={id} role="alert" data-yadad-errors="">
-      {errors.map((e) => (
-        <li key={`${e.path} ${e.code}`} data-path={e.path} data-code={e.code}>
-          {e.message} {e.hint}
-        </li>
-      ))}
-    </ul>
-  );
 }

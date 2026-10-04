@@ -4,7 +4,7 @@ import { emptyFormState, setFieldValue, submitForm } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { checkViewSetup, ErrorList } from "./errors";
+import { checkViewSetup } from "./setup";
 import { renderInput } from "./fields";
 import type { CommonInputProps } from "./fields";
 
@@ -32,9 +32,9 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved }: F
     section.items.map((item, j) => ({ field: item.field, path: ["sections", i, "items", j, "field"] })),
   );
   const setupErrors = checkViewSetup(entity, view, adapter, refs);
-  if (setupErrors.length > 0) return <ErrorList errors={setupErrors} />;
+  const { FieldFrame, Section, Button, ErrorSummary } = registry.layout;
+  if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const { FieldFrame, Section, Button } = registry.layout;
   const fieldPaths = new Set(entity.fields.map((f) => jsonPointer([f.id])));
   const formErrors = state.errors.filter((e) => !fieldPaths.has(e.path));
 
@@ -82,7 +82,7 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved }: F
           {section.items.map(renderItem)}
         </Section>
       ))}
-      {formErrors.length > 0 && <ErrorList errors={formErrors} />}
+      {formErrors.length > 0 && <ErrorSummary errors={formErrors} />}
       <Button label="Save" type="submit" variant="primary" disabled={saving} />
     </form>
   );

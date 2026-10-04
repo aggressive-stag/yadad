@@ -1,5 +1,5 @@
 // PRE-CONTRACT registry shape: one entry per field type plus layout chrome
-// (FieldFrame, Section, Button, Table). CellEditor, widgets and optionsSchema come later.
+// (FieldFrame, Section, Button, Table, ErrorSummary). CellEditor, widgets and optionsSchema come later.
 
 import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document";
 import type { DocumentError } from "./errors";
@@ -109,6 +109,13 @@ export interface TableProps<N> {
   readonly empty: N;
 }
 
+/** A list of problems, e.g. a failed save or a view that cannot render. Announced to screen readers. */
+export interface ErrorSummaryProps {
+  /** DOM id, so inputs can point aria-describedby at it. */
+  readonly id?: string;
+  readonly errors: readonly DocumentError[];
+}
+
 /**
  * Exact-key lookup: one entry per field type, enforced by the type system
  * (a mapped type over FieldType, not an index signature), plus layout chrome.
@@ -120,5 +127,6 @@ export interface Registry<N> {
     readonly Section: Component<SectionProps<N>, N>;
     readonly Button: Component<ButtonProps, N>;
     readonly Table: Component<TableProps<N>, N>;
+    readonly ErrorSummary: Component<ErrorSummaryProps, N>;
   };
 }

@@ -4,7 +4,7 @@ import { emptyFormState, setFieldValue, submitEdit } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useEffect, useId, useState } from "react";
 import type { ReactNode } from "react";
-import { checkViewSetup, ErrorList } from "./errors";
+import { checkViewSetup } from "./setup";
 import { renderDisplay, renderInput } from "./fields";
 
 export interface TableRendererProps {
@@ -62,9 +62,9 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),
   ];
   const setupErrors = checkViewSetup(entity, view, adapter, refs);
-  if (setupErrors.length > 0) return <ErrorList errors={setupErrors} />;
+  const { Table, Button, ErrorSummary } = registry.layout;
+  if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const { Table, Button } = registry.layout;
   const columns = view.columns.flatMap((c) => {
     const field = entity.fields.find((f) => f.id === c.field);
     return field ? [{ field, editable: c.editable === true }] : [];
@@ -153,7 +153,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
         onSort={onSort}
         empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? `Could not load records: ${rows.message}` : "No records yet."}
       />
-      {editErrors.length > 0 && <ErrorList id={editErrorsId} errors={editErrors} />}
+      {editErrors.length > 0 && <ErrorSummary id={editErrorsId} errors={editErrors} />}
       {pages > 1 && (
         <nav aria-label={`${view.title ?? entity.id} pages`} data-yadad-pager="">
           <Button label="Previous" type="button" variant="secondary" disabled={page === 0} onPress={() => setPage((p) => p - 1)} />
