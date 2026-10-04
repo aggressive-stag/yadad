@@ -1,4 +1,5 @@
 import type { DataAdapter, DataRecord, FieldValue, SortSpec } from "@yadad/core";
+import { evaluateCondition } from "./condition";
 
 /** In-memory DataAdapter for tests, the showcase and local dev. Nothing persists. */
 export function createMemoryAdapter(): DataAdapter {
@@ -16,7 +17,9 @@ export function createMemoryAdapter(): DataAdapter {
 
   return {
     async find(entity, query) {
-      const all = sortRecords([...table(entity).values()], query.sort ?? []);
+      const { filter } = query;
+      const matching = [...table(entity).values()].filter((r) => !filter || evaluateCondition(filter, r.values));
+      const all = sortRecords(matching, query.sort ?? []);
       const items = query.page ? all.slice(query.page.offset, query.page.offset + query.page.limit) : all;
       return { items, total: all.length };
     },
