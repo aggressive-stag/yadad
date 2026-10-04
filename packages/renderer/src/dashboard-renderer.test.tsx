@@ -60,7 +60,9 @@ describe("DashboardRenderer", () => {
     const formItem = document.querySelector<HTMLElement>('[data-yadad-grid-item="form"]')!;
     expect(formItem.style.gridColumn).toBe("1 / span 8");
     expect(document.querySelector<HTMLElement>('[data-yadad-grid-item="total"]')!.style.gridColumn).toBe("9 / span 4");
-    expect(document.querySelector<HTMLElement>('[data-yadad-grid="log"]')!.style.gridTemplateColumns).toBe("repeat(12, minmax(0, 1fr))");
+    const grid = document.querySelector<HTMLElement>('[data-yadad-grid="log"]')!;
+    expect(grid.style.gridTemplateColumns).toBe("repeat(12, minmax(0, 1fr))");
+    expect(grid.style.gridAutoRows).toBe("var(--yadad-grid-row-height, 4rem)");
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("0"));
   });
 

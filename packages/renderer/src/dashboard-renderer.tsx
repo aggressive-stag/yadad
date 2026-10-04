@@ -34,8 +34,11 @@ const DEFAULT_COLUMNS = 12;
 
 /**
  * Renders a dashboard: tabs from the registry, each a CSS grid of widgets
- * placed by x, y, w, h. Saving a form anywhere on the dashboard reloads its
- * tables and counts. The gap between items is the --yadad-grid-gap variable.
+ * placed by x, y, w, h. Rows have a fixed height (--yadad-grid-row-height,
+ * default 4rem), so h is a real number of rows as in react-grid-layout; a
+ * widget taller than its area scrolls inside its Panel. The gap is
+ * --yadad-grid-gap. Saving a form anywhere on the dashboard reloads its
+ * tables and counts.
  */
 export function DashboardRenderer({ dashboard, documents, registry, dataSources }: DashboardRendererProps): ReactNode {
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
@@ -68,7 +71,12 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources 
   const grid = (
     <div
       data-yadad-grid={tab.id}
-      style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: "var(--yadad-grid-gap, 1rem)", alignItems: "start" }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        gridAutoRows: "var(--yadad-grid-row-height, 4rem)",
+        gap: "var(--yadad-grid-gap, 1rem)",
+      }}
     >
       {tab.items.map((item) => (
         <div key={item.id} data-yadad-grid-item={item.id} style={{ gridColumn: `${item.x + 1} / span ${item.w}`, gridRow: `${item.y + 1} / span ${item.h}`, minWidth: 0 }}>
