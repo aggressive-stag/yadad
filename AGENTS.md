@@ -23,7 +23,8 @@ Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md`
 
 ## Working conventions
 
-- Work in your own git worktree on branch `agent/<task-id>`, branched from `main`. Do not use `git stash` across worktrees.
+- Work in your own git worktree on branch `agent/<task-id>`, branched from `main`: `git worktree add .worktrees/<task-id> -b agent/<task-id> main`. Worktrees live only under `.worktrees/` (gitignored); never create folders outside the repo. Do not use `git stash` across worktrees.
+- Tools that scan the tree (ESLint, Vitest, dependency-cruiser) must exclude `.worktrees/`.
 - Use the memory data adapter and a random dev-server port. Never point at a shared Supabase instance.
 - Rebase onto `main` before requesting review.
 - Keep PRs small. If a task grows past its card, stop and propose a split.

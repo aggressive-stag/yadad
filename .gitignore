@@ -1,2 +1,5 @@
 # Local-only notes (never committed)
 *.private.md
+
+# Agent worktrees (see AGENTS.md)
+.worktrees/

@@ -67,7 +67,7 @@ After `contract-v0`: C, D, E, F, G and K run together. H and I start once D's vi
 
 ## Coordination rules for parallel agents
 
-1. **Worktree per task**, branched from `main`: `git worktree add ../engine-<task> -b agent/<task> main`. Remove after merge. No shared stash.
+1. **Worktree per task**, branched from `main`: `git worktree add .worktrees/<task> -b agent/<task> main`. Worktrees stay inside the repo under the gitignored `.worktrees/`, never next to it. Remove after merge. No shared stash.
 2. **Isolated state:** memory adapter and a random port per worktree. No shared Supabase or dev server.
 3. **One package per PR** plus a changeset. CI rejects multi-package PRs without the maintainer-only `cross-package` label.
 4. **CODEOWNERS:** `packages/core`, `fixtures/` and `rfcs/` require the maintainer's review. Agents that need a contract change open an issue or draft RFC and stop.
