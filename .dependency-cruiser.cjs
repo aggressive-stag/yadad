@@ -70,9 +70,9 @@ module.exports = {
     },
     {
       name: "no-components-repo",
-      comment: "Nothing in the engine imports the components repo; components arrive through the injected registry.",
+      comment: "Engine packages never import the components repo; host apps (apps/*) inject it as a registry.",
       severity: "error",
-      from: {},
+      from: { path: "^(packages/[^/]+|testing)/" },
       to: { path: "(^|/)(yadad-components|@yadad/components)(/|$)" },
     },
     {

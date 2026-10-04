@@ -1,2 +1,2 @@
-// no-components-repo: components arrive through the injected registry only.
-import "@yadad/components";
+// Allowed: host apps inject the components repo as a registry (no violation expected).
+import "../../../yadad-components/registry";

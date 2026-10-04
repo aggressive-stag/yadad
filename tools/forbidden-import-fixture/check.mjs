@@ -19,15 +19,14 @@ const EXPECTED = [
   ["editor-imports-core-runtime-only", "packages/editor/src/index.ts", "packages/theme/src/index.ts"],
   ["no-deep-imports", "packages/editor/src/index.ts", "packages/core/src/internal.ts"],
   ["theme-imports-nothing", "packages/theme/src/index.ts", "@yadad/core"],
-  ["no-components-repo", "apps/showcase/src/index.ts", "@yadad/components"],
+  ["no-components-repo", "testing/src/index.ts", "yadad-components/registry.ts"],
   ["not-to-unresolvable", "packages/runtime/src/index.ts", "react"],
   ["not-to-unresolvable", "packages/theme/src/index.ts", "@yadad/core"],
-  ["not-to-unresolvable", "apps/showcase/src/index.ts", "@yadad/components"],
 ].map((v) => v.join(" | "));
 
 const { enhancedResolveOptions, ...options } = config.options;
 const { output } = await cruise(
-  ["packages", "apps"],
+  ["packages", "testing", "apps"],
   { ...options, baseDir, validate: true, ruleSet: { forbidden: config.forbidden } },
   enhancedResolveOptions,
 );
