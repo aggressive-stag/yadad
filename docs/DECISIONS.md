@@ -18,5 +18,7 @@ Settled decisions and what they replaced. Agents: do not reopen a settled decisi
 | D12 | Real apps are exit criteria: intake form (Phase 2), to-do (Phase 3), Fitnotes clone (Phases 4–5) | Settled | Feature-checklist phases |
 | D13 | Freeze `contract-v0` (all view shapes) before any parallel agent work | Settled | — |
 | D14 | 2–4 concurrent agents, worktree per task, one package per PR, CODEOWNERS on `core` | Settled | — |
+| D15 | Components are styled through a public, host-configurable CSS surface: theme tokens (`--yadad-*`), per-component CSS variables that default to tokens, stable `data-part` hooks, and all CSS in `@layer yadad` so host styles win. Authored in plain CSS and shipped as pre-built CSS that hosts may import or skip. | Settled | Open question "Tailwind or plain CSS variables"; chosen for maximum host configurability with no build-tool lock-in |
+| D16 | Test-only dev dependencies (DOM environments, testing libraries, axe) may be added without an RFC | Settled | AGENTS.md rule 7 now covers runtime and published dependencies only |
 
 Rows marked **Confirm** change something from the original spec. The maintainer confirms them before Phase 1 starts.
