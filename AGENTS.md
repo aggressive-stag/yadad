@@ -29,6 +29,16 @@ Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md`
 - Keep PRs small. If a task grows past its card, stop and propose a split.
 - **Personal and work-specific notes go in `*.private.md` files** (gitignored, never committed), e.g. `docs/OPEN_QUESTIONS.private.md`. This covers employer or work-app names, clients, sign-off questions, and anything personal. Tracked files describe these generically (e.g. "intake form") and must not quote or summarize `*.private.md` content.
 
+## Commit messages
+
+[Angular format](https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md), enforced by `.githooks/commit-msg` (enabled by `git config core.hooksPath .githooks`; the root `prepare` script sets it).
+
+- Header: `<type>(<scope>): <summary>`, max 100 chars. Summary is imperative, lowercase, no trailing period.
+- Types: `build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `test`. Reverts: `revert: <reverted header>` with `This reverts commit <SHA>` in the body.
+- Scopes (optional): the package name (`core`, `runtime`, `renderer`, `editor`, `theme`, `testing`), or `fixtures`, `showcase`, `examples`, `rfcs`, `dev-infra`, `deps`. Omit the scope for repo-wide changes.
+- Body: required except for `docs`, at least 20 characters, explains *why*. Trailers such as `Co-Authored-By:` do not count as body.
+- Commit early and often: one logical step per commit.
+
 ## CI gates (all must pass)
 
 typecheck → dependency-cruiser → unit tests + fixture validation → size-limit → API report diff → changeset present.
