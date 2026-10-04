@@ -1,0 +1,20 @@
+{
+  "kind": "entity",
+  "specVersion": 0,
+  "id": "workout_set",
+  "revision": 1,
+  "fields": [
+    { "id": "day", "type": "date", "label": "Day", "required": true },
+    {
+      "id": "exercise",
+      "type": "select",
+      "label": "Exercise",
+      "required": true,
+      "options": { "source": "static", "values": ["Squat", "Bench press", "Deadlift", "Overhead press"] }
+    },
+    { "id": "weight", "type": "number", "label": "Weight", "min": 0, "max": 500, "step": 2.5, "unit": "kg" },
+    { "id": "reps", "type": "number", "label": "Reps", "required": true, "min": 1, "max": 100, "step": 1 },
+    { "id": "warmup", "type": "boolean", "label": "Warm-up set" },
+    { "id": "notes", "type": "text", "label": "Notes" }
+  ]
+}

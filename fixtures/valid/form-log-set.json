@@ -1,0 +1,12 @@
+{
+  "kind": "form",
+  "specVersion": 0,
+  "id": "log_set",
+  "entity": "workout_set",
+  "revision": 1,
+  "dataSource": "default",
+  "sections": [
+    { "id": "set", "title": "Log a set", "items": [{ "field": "day" }, { "field": "exercise" }, { "field": "weight" }, { "field": "reps" }] },
+    { "id": "extra", "title": "Details", "items": [{ "field": "warmup" }, { "field": "notes" }] }
+  ]
+}
