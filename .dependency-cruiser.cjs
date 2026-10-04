@@ -13,44 +13,50 @@ const workspaceExcept = (...allowed) => {
   return `^(packages/(?!(${ok})/)|testing/|apps/|@yadad/(?!(${ok})(/|$)))`;
 };
 
+/** Test files (*.test.ts, *.test.tsx). */
+const TEST = "\\.test\\.tsx?$";
+const TESTING = "^(testing/|@yadad/testing(/|$))";
+
+/**
+ * A package's allowed imports, as two rules: production files get exactly
+ * `allowed`; test files may also import @yadad/testing (DECISIONS.md: the mock
+ * registry and contract kit are test-only dependencies).
+ */
+const direction = (name, pkg, allowed, comment) => [
+  {
+    name,
+    comment,
+    severity: "error",
+    from: { path: `^packages/${pkg}/`, pathNot: TEST },
+    to: { path: workspaceExcept(...allowed) },
+  },
+  {
+    name: `${name}-in-tests`,
+    comment: `${comment} Its tests may also import @yadad/testing.`,
+    severity: "error",
+    from: { path: `^packages/${pkg}/.*${TEST}` },
+    to: { path: workspaceExcept(...allowed), pathNot: TESTING },
+  },
+];
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
   forbidden: [
-    {
-      name: "core-imports-nothing",
-      comment: "core imports nothing from the workspace (ARCHITECTURE.md §4).",
-      severity: "error",
-      from: { path: "^packages/core/" },
-      to: { path: workspaceExcept("core") },
-    },
-    {
-      name: "runtime-imports-core-only",
-      comment: "runtime imports core only.",
-      severity: "error",
-      from: { path: "^packages/runtime/" },
-      to: { path: workspaceExcept("core", "runtime") },
-    },
-    {
-      name: "renderer-imports-core-runtime-only",
-      comment: "renderer imports core and runtime only; it looks up components by registry key.",
-      severity: "error",
-      from: { path: "^packages/renderer/" },
-      to: { path: workspaceExcept("core", "runtime", "renderer") },
-    },
-    {
-      name: "editor-imports-core-runtime-only",
-      comment: "editor imports core and runtime only; it asks the registry about components.",
-      severity: "error",
-      from: { path: "^packages/editor/" },
-      to: { path: workspaceExcept("core", "runtime", "editor") },
-    },
-    {
-      name: "theme-imports-nothing",
-      comment: "theme imports nothing from the workspace.",
-      severity: "error",
-      from: { path: "^packages/theme/" },
-      to: { path: workspaceExcept("theme") },
-    },
+    ...direction("core-imports-nothing", "core", ["core"], "core imports nothing from the workspace (ARCHITECTURE.md §4)."),
+    ...direction("runtime-imports-core-only", "runtime", ["core", "runtime"], "runtime imports core only."),
+    ...direction(
+      "renderer-imports-core-runtime-only",
+      "renderer",
+      ["core", "runtime", "renderer"],
+      "renderer imports core and runtime only; it looks up components by registry key.",
+    ),
+    ...direction(
+      "editor-imports-core-runtime-only",
+      "editor",
+      ["core", "runtime", "editor"],
+      "editor imports core and runtime only; it asks the registry about components.",
+    ),
+    ...direction("theme-imports-nothing", "theme", ["theme"], "theme imports nothing from the workspace."),
     {
       name: "no-react-in-core-or-runtime",
       comment: "core and runtime are headless: no react or react-dom, not even types.",

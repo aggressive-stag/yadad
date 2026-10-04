@@ -22,6 +22,12 @@ const EXPECTED = [
   ["no-components-repo", "testing/src/index.ts", "yadad-components/registry.ts"],
   ["not-to-unresolvable", "packages/runtime/src/index.ts", "react"],
   ["not-to-unresolvable", "packages/theme/src/index.ts", "@yadad/core"],
+  ["core-imports-nothing-in-tests", "packages/core/src/index.test.ts", "packages/runtime/src/index.ts"],
+  ["runtime-imports-core-only-in-tests", "packages/runtime/src/index.test.ts", "packages/editor/src/index.ts"],
+  ["renderer-imports-core-runtime-only-in-tests", "packages/renderer/src/index.test.ts", "packages/theme/src/index.ts"],
+  ["editor-imports-core-runtime-only-in-tests", "packages/editor/src/index.test.ts", "packages/theme/src/index.ts"],
+  ["theme-imports-nothing-in-tests", "packages/theme/src/index.test.ts", "packages/core/src/index.ts"],
+  ["runtime-imports-core-only", "packages/runtime/src/uses-testing.ts", "testing/src/index.ts"],
 ].map((v) => v.join(" | "));
 
 const { enhancedResolveOptions, ...options } = config.options;
