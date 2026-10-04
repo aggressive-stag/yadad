@@ -83,7 +83,7 @@ describe("entity fields", () => {
   const withFields = (...fields: unknown[]) => ({ ...entity, fields });
 
   test("unknown field type stops checking that field", () => {
-    expect(problems(withFields({ id: "age", type: "number", label: "Age", min: 0 }))).toEqual([
+    expect(problems(withFields({ id: "mood", type: "rating", label: "Mood", stars: 5 }))).toEqual([
       ["/fields/0/type", "unknown-field-type"],
     ]);
   });
@@ -99,6 +99,61 @@ describe("entity fields", () => {
   test("duplicate field ids", () => {
     const field = { id: "name", type: "text", label: "Name" };
     expect(problems(withFields(field, field))).toEqual([["/fields/1/id", "duplicate-id"]]);
+  });
+});
+
+describe("field types", () => {
+  const withFields = (...fields: unknown[]) => ({ ...entity, fields });
+
+  test("every field type validates in its full form", () => {
+    expect(
+      problems(
+        withFields(
+          { id: "notes", type: "text", label: "Notes" },
+          { id: "weight", type: "number", label: "Weight", min: 0, max: 500, step: 2.5, unit: "kg", required: true },
+          { id: "warmup", type: "boolean", label: "Warm-up set" },
+          { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat", "Bench"] } },
+          { id: "day", type: "date", label: "Day", min: "2020-01-01", max: "2030-12-31" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  test("number bounds and step", () => {
+    expect(problems(withFields({ id: "w", type: "number", label: "W", min: 10, max: 5, step: 0, unit: "" }))).toEqual([
+      ["/fields/0/step", "invalid-value"],
+      ["/fields/0/unit", "invalid-value"],
+      ["/fields/0/min", "invalid-value"],
+    ]);
+    expect(problems(withFields({ id: "w", type: "number", label: "W", min: "0" }))).toEqual([["/fields/0/min", "type"]]);
+  });
+
+  test("properties are per type", () => {
+    expect(problems(withFields({ id: "t", type: "text", label: "T", min: 1 }))).toEqual([["/fields/0/min", "unknown-property"]]);
+  });
+
+  test("select options", () => {
+    const select = (options: unknown) => withFields({ id: "s", type: "select", label: "S", options });
+    expect(problems(withFields({ id: "s", type: "select", label: "S" }))).toEqual([["/fields/0/options", "required"]]);
+    expect(problems(select({ source: "entity", values: [] }))).toEqual([
+      ["/fields/0/options/source", "invalid-value"],
+      ["/fields/0/options/values", "invalid-value"],
+    ]);
+    expect(problems(select({ source: "static", values: ["A", "", "A", 3] }))).toEqual([
+      ["/fields/0/options/values/1", "invalid-value"],
+      ["/fields/0/options/values/2", "duplicate-id"],
+      ["/fields/0/options/values/3", "invalid-value"],
+    ]);
+  });
+
+  test("date bounds must be real YYYY-MM-DD days, min before max", () => {
+    expect(problems(withFields({ id: "d", type: "date", label: "D", min: "2026-02-30", max: "10/04/2026" }))).toEqual([
+      ["/fields/0/min", "invalid-value"],
+      ["/fields/0/max", "invalid-value"],
+    ]);
+    expect(problems(withFields({ id: "d", type: "date", label: "D", min: "2027-01-01", max: "2026-01-01" }))).toEqual([
+      ["/fields/0/min", "invalid-value"],
+    ]);
   });
 });
 

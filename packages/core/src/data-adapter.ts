@@ -1,8 +1,8 @@
 // PRE-CONTRACT (P0-04). DataAdapter from ARCHITECTURE.md §10. Query filter
 // and sort arrive with the condition AST (P1-04).
 
-/** A single field value. Pre-contract: text only, so string or empty. */
-export type FieldValue = string | null;
+/** A single field value: text, select and date are strings, then numbers and booleans. null is empty. */
+export type FieldValue = string | number | boolean | null;
 
 /**
  * Field values keyed by field id. Records are user data, not documents, so

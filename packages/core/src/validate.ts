@@ -4,7 +4,7 @@
 // P1-05. Collects every error instead of stopping at the first.
 
 import { FIELD_TYPES, SPEC_VERSION } from "./document";
-import type { Document } from "./document";
+import type { Document, FieldType } from "./document";
 import { jsonPointer } from "./errors";
 import type { DocumentError, ErrorCode } from "./errors";
 
@@ -80,21 +80,51 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
     errors.add([...path, "type"], "required", 'Missing required property "type".', `Add "type": one of ${FIELD_TYPES.join(", ")}.`);
     return;
   }
-  if (!FIELD_TYPES.some((t) => t === type)) {
+  if (!isFieldType(type)) {
     errors.add(
       [...path, "type"],
       "unknown-field-type",
       `Unknown field type ${JSON.stringify(type)}.`,
-      `Pre-contract field types: ${FIELD_TYPES.join(", ")}.`,
+      `Field types: ${FIELD_TYPES.join(", ")}.`,
     );
     return;
   }
-  // type === "text"
-  checkKeys(errors, field, path, ["id", "type", "label"], ["required"]);
+  const keys = FIELD_KEYS[type];
+  checkKeys(errors, field, path, ["id", "type", "label", ...keys.required], ["required", ...keys.optional]);
   checkId(errors, field, path, "id");
   checkNonEmptyString(errors, field, path, "label");
   checkBoolean(errors, field, path, "required");
+
+  switch (type) {
+    case "number":
+      checkFiniteNumber(errors, field, path, "min");
+      checkFiniteNumber(errors, field, path, "max");
+      checkFiniteNumber(errors, field, path, "step");
+      if (typeof field["step"] === "number" && field["step"] <= 0) {
+        errors.add([...path, "step"], "invalid-value", '"step" must be greater than 0.', "Use a positive number, e.g. 0.5.");
+      }
+      checkNonEmptyString(errors, field, path, "unit");
+      checkRange(errors, field, path, (v): v is number => typeof v === "number");
+      return;
+    case "select":
+      checkStaticOptions(errors, field, [...path, "options"]);
+      return;
+    case "date":
+      checkIsoDate(errors, field, path, "min");
+      checkIsoDate(errors, field, path, "max");
+      checkRange(errors, field, path, (v): v is string => typeof v === "string" && isIsoDate(v));
+      return;
+  }
 }
+
+/** Properties each field type allows beyond id, type, label and required. */
+const FIELD_KEYS: { readonly [K in FieldType]: { readonly required: readonly string[]; readonly optional: readonly string[] } } = {
+  text: { required: [], optional: [] },
+  number: { required: [], optional: ["min", "max", "step", "unit"] },
+  boolean: { required: [], optional: [] },
+  select: { required: ["options"], optional: [] },
+  date: { required: [], optional: ["min", "max"] },
+};
 
 function validateForm(errors: Errors, doc: JsonObject): void {
   checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "sections"], []);
@@ -136,6 +166,10 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 // ---- checks ---------------------------------------------------------------
+
+function isFieldType(value: unknown): value is FieldType {
+  return FIELD_TYPES.some((t) => t === value);
+}
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -214,6 +248,64 @@ function checkArray(errors: Errors, obj: JsonObject, path: Path, key: string): r
     return undefined;
   }
   return v;
+}
+
+function checkFiniteNumber(errors: Errors, obj: JsonObject, path: Path, key: string): void {
+  const v = obj[key];
+  if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v))) {
+    errors.add([...path, key], "type", `"${key}" must be a number.`, "Use a plain number, e.g. 10.");
+  }
+}
+
+/** "YYYY-MM-DD" that names a real calendar day. */
+export function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(value);
+}
+
+function checkIsoDate(errors: Errors, obj: JsonObject, path: Path, key: string): void {
+  const v = obj[key];
+  if (v !== undefined && (typeof v !== "string" || !isIsoDate(v))) {
+    errors.add([...path, key], "invalid-value", `"${key}" must be a date like "2026-10-04".`, "Use YYYY-MM-DD.");
+  }
+}
+
+/** Reports min above max, when both are valid values of the same kind. */
+function checkRange(errors: Errors, obj: JsonObject, path: Path, valid: (v: unknown) => v is number | string): void {
+  const min = obj["min"];
+  const max = obj["max"];
+  if (valid(min) && valid(max) && min > max) {
+    errors.add([...path, "min"], "invalid-value", `"min" (${String(min)}) is above "max" (${String(max)}).`, "Swap them or fix one.");
+  }
+}
+
+function checkStaticOptions(errors: Errors, field: JsonObject, path: Path): void {
+  const options = field["options"];
+  if (options === undefined) return;
+  if (!isObject(options)) {
+    errors.add(path, "type", '"options" must be an object.', 'Use { "source": "static", "values": ["A", "B"] }.');
+    return;
+  }
+  checkKeys(errors, options, path, ["source", "values"], []);
+  if (options["source"] !== undefined && options["source"] !== "static") {
+    errors.add([...path, "source"], "invalid-value", `Unknown options source ${JSON.stringify(options["source"])}.`, 'Use "static".');
+  }
+  const values = checkArray(errors, options, path, "values");
+  if (!values) return;
+  if (values.length === 0) {
+    errors.add([...path, "values"], "invalid-value", "A select needs at least one choice.", 'Add choices, e.g. ["Squat", "Bench"].');
+  }
+  const seen = new Set<string>();
+  values.forEach((v, i) => {
+    if (typeof v !== "string" || v.trim() === "") {
+      errors.add([...path, "values", i], "invalid-value", "Each choice must be non-empty text.", "Remove it or give it a name.");
+    } else if (seen.has(v)) {
+      errors.add([...path, "values", i], "duplicate-id", `Choice "${v}" is listed twice.`, "Remove the duplicate.");
+    } else {
+      seen.add(v);
+    }
+  });
 }
 
 function reportDuplicates(errors: Errors, entries: readonly { id: string; path: Path }[], what: string, scope: string): void {

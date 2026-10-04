@@ -1,8 +1,7 @@
-// PRE-CONTRACT (P0-04). Registry shape for the walking skeleton: text field
-// and FieldFrame only. Section, Tabs, GridItem, CellEditor, widgets and
-// optionsSchema arrive with contract-v0.
+// PRE-CONTRACT registry shape: one entry per field type plus FieldFrame.
+// Section, Tabs, GridItem, CellEditor, widgets and optionsSchema come later.
 
-import type { Field, FieldType, TextField } from "./document";
+import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document";
 import type { DocumentError } from "./errors";
 
 /**
@@ -15,11 +14,20 @@ export type Component<P, N> = (props: P) => N;
 /** Field value types by field type. */
 export interface FieldValueTypes {
   readonly text: string;
+  readonly number: number;
+  readonly boolean: boolean;
+  readonly select: string;
+  /** "YYYY-MM-DD" */
+  readonly date: string;
 }
 
 /** The field definition type for each field type. */
 export interface FieldDefinitions {
   readonly text: TextField;
+  readonly number: NumberField;
+  readonly boolean: BooleanField;
+  readonly select: SelectField;
+  readonly date: DateField;
 }
 
 export interface InputProps<F extends Field, V> {
@@ -30,6 +38,8 @@ export interface InputProps<F extends Field, V> {
   readonly value: V | undefined;
   readonly onChange: (value: V | undefined) => void;
   readonly invalid: boolean;
+  /** Id of the element holding this field's errors, for aria-describedby. Set only while there are errors. */
+  readonly describedBy?: string;
 }
 
 export interface DisplayProps<F extends Field, V> {
@@ -46,6 +56,8 @@ export interface FieldTypeEntry<K extends FieldType, N> {
 /** Label, help and error chrome around every Input. */
 export interface FieldFrameProps<N> {
   readonly inputId: string;
+  /** Id to put on the errors element; the Input points aria-describedby at it. */
+  readonly errorId: string;
   readonly label: string;
   readonly required: boolean;
   readonly errors: readonly DocumentError[];

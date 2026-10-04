@@ -1,24 +1,59 @@
-// PRE-CONTRACT (P0-04). Just enough document shape for the Phase 0 walking
-// skeleton: one entity, one form view, one field type. Phase 1 replaces this
-// with contract-v0 (RFC-0001); do not build on it beyond Phase 0.
+// PRE-CONTRACT document shapes: entities with the five v0 field types and
+// form views. Table and dashboard views, and the frozen contract, come later.
 
 /** Engine document format version. Pre-contract documents are version 0. */
 export const SPEC_VERSION = 0;
 export type SpecVersion = typeof SPEC_VERSION;
 
-/** Field types known to the pre-contract skeleton. */
-export const FIELD_TYPES = ["text"] as const;
+/** Field types known to the engine. */
+export const FIELD_TYPES = ["text", "number", "boolean", "select", "date"] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
-export interface TextField {
+interface FieldBase {
   readonly id: string;
-  readonly type: "text";
   readonly label: string;
   readonly required?: boolean;
 }
 
+export interface TextField extends FieldBase {
+  readonly type: "text";
+}
+
+export interface NumberField extends FieldBase {
+  readonly type: "number";
+  readonly min?: number;
+  readonly max?: number;
+  /** Allowed increment, e.g. 0.5. Defaults to any number. */
+  readonly step?: number;
+  /** Shown next to the value, e.g. "kg". */
+  readonly unit?: string;
+}
+
+/** A yes/no value. `required: true` means it must be checked (e.g. a consent box). */
+export interface BooleanField extends FieldBase {
+  readonly type: "boolean";
+}
+
+/** A fixed list of choices. Dynamic sources (another entity) come later. */
+export interface StaticOptions {
+  readonly source: "static";
+  readonly values: readonly string[];
+}
+
+export interface SelectField extends FieldBase {
+  readonly type: "select";
+  readonly options: StaticOptions;
+}
+
+/** A calendar date, stored as "YYYY-MM-DD". */
+export interface DateField extends FieldBase {
+  readonly type: "date";
+  readonly min?: string;
+  readonly max?: string;
+}
+
 /** Discriminated on `type`. */
-export type Field = TextField;
+export type Field = TextField | NumberField | BooleanField | SelectField | DateField;
 
 /** Data model: owns fields, types and validation. */
 export interface EntityDocument {
