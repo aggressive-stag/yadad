@@ -3,10 +3,55 @@
   "specVersion": 0,
   "id": "log_set",
   "entity": "workout_set",
-  "revision": 1,
+  "revision": 2,
   "dataSource": "default",
   "sections": [
-    { "id": "set", "title": "Log a set", "items": [{ "field": "day" }, { "field": "exercise" }, { "field": "weight" }, { "field": "reps" }] },
-    { "id": "extra", "title": "Details", "items": [{ "field": "warmup" }, { "field": "notes" }] }
+    {
+      "id": "set",
+      "title": "Log a set",
+      "items": [
+        {
+          "field": "day"
+        },
+        {
+          "field": "exercise"
+        },
+        {
+          "field": "weight"
+        },
+        {
+          "field": "reps"
+        }
+      ]
+    },
+    {
+      "id": "extra",
+      "title": "Details",
+      "items": [
+        {
+          "field": "warmup"
+        },
+        {
+          "field": "felt"
+        },
+        {
+          "field": "hard_because",
+          "visibleWhen": {
+            "op": "eq",
+            "field": "felt",
+            "value": "Hard"
+          },
+          "requiredWhen": {
+            "op": "eq",
+            "field": "felt",
+            "value": "Hard"
+          },
+          "clearWhenHidden": true
+        },
+        {
+          "field": "notes"
+        }
+      ]
+    }
   ]
 }

@@ -4,16 +4,51 @@
   "id": "sets",
   "title": "Logged sets",
   "entity": "workout_set",
-  "revision": 1,
+  "revision": 2,
   "dataSource": "default",
   "columns": [
-    { "field": "day" },
-    { "field": "exercise" },
-    { "field": "weight", "editable": true },
-    { "field": "reps", "editable": true },
-    { "field": "warmup", "editable": true },
-    { "field": "notes", "editable": true }
+    {
+      "field": "day"
+    },
+    {
+      "field": "exercise"
+    },
+    {
+      "field": "weight",
+      "editable": true
+    },
+    {
+      "field": "reps",
+      "editable": true
+    },
+    {
+      "field": "warmup",
+      "editable": true
+    },
+    {
+      "field": "felt"
+    },
+    {
+      "field": "notes",
+      "editable": true
+    }
   ],
-  "sort": [{ "field": "day", "dir": "desc" }],
-  "pageSize": 10
+  "sort": [
+    {
+      "field": "day",
+      "dir": "desc"
+    }
+  ],
+  "pageSize": 10,
+  "filters": [
+    {
+      "field": "exercise"
+    },
+    {
+      "field": "warmup"
+    },
+    {
+      "field": "notes"
+    }
+  ]
 }
