@@ -23,6 +23,41 @@ const withInput = (Input: (props: InputProps<TextField, string>) => ReactNode): 
 });
 
 describe("the kit catches broken components", () => {
+  test("a table without sortable header buttons or header ids", async () => {
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      layout: {
+        ...mockRegistry.layout,
+        Table: ({ caption, columns, rows }) => (
+          <table>
+            <caption>{caption}</caption>
+            <thead>
+              <tr>
+                {columns.map((c) => (
+                  <th key={c.id}>{c.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  {r.cells.map((cell, i) => (
+                    <td key={i}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ),
+      },
+    };
+    expect(await failing(registry)).toEqual(["layout: Table is named by its caption, with sortable headers and rows"]);
+    const problems = await registryContractChecks(registry).at(-1)!.run();
+    expect(problems).toEqual(
+      expect.arrayContaining([expect.stringContaining('id="kit-col-day"'), expect.stringContaining("button to sort"), expect.stringContaining("empty content")]),
+    );
+  });
+
   test("an input that ignores inputId", async () => {
     const registry = withInput(({ value, onChange }) => (
       <input value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} />
@@ -33,22 +68,22 @@ describe("the kit catches broken components", () => {
   });
 
   test("an input that emits an empty string instead of undefined", async () => {
-    const registry = withInput(({ inputId, value, onChange, invalid, describedBy }) => (
-      <input id={inputId} value={value ?? ""} onChange={(e) => onChange(e.target.value)} aria-invalid={invalid} aria-describedby={describedBy} />
+    const registry = withInput(({ inputId, value, onChange, invalid, describedBy, labelledBy }) => (
+      <input id={inputId} value={value ?? ""} onChange={(e) => onChange(e.target.value)} aria-invalid={invalid} aria-describedby={describedBy} aria-labelledby={labelledBy} />
     ));
     expect(await failing(registry)).toEqual(["text: emits undefined when cleared"]);
   });
 
   test("an input that ignores invalid", async () => {
-    const registry = withInput(({ inputId, value, onChange, describedBy }) => (
-      <input id={inputId} value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} aria-describedby={describedBy} />
+    const registry = withInput(({ inputId, value, onChange, describedBy, labelledBy }) => (
+      <input id={inputId} value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} aria-describedby={describedBy} aria-labelledby={labelledBy} />
     ));
     expect(await failing(registry)).toEqual(['text: sets aria-invalid="true" when invalid']);
   });
 
   test("an input that does not link its errors", async () => {
-    const registry = withInput(({ inputId, value, onChange, invalid }) => (
-      <input id={inputId} value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} aria-invalid={invalid} />
+    const registry = withInput(({ inputId, value, onChange, invalid, labelledBy }) => (
+      <input id={inputId} value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} aria-invalid={invalid} aria-labelledby={labelledBy} />
     ));
     expect(await failing(registry)).toEqual(["text: links its errors with aria-describedby"]);
   });
@@ -60,8 +95,8 @@ describe("the kit catches broken components", () => {
         ...mockRegistry.fields,
         boolean: {
           ...mockRegistry.fields.boolean,
-          Input: ({ inputId, value, onChange, invalid, describedBy }) => (
-            <input id={inputId} type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked || undefined)} aria-invalid={invalid} aria-describedby={describedBy} />
+          Input: ({ inputId, value, onChange, invalid, describedBy, labelledBy }) => (
+            <input id={inputId} type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked || undefined)} aria-invalid={invalid} aria-describedby={describedBy} aria-labelledby={labelledBy} />
           ),
         },
       },
@@ -70,7 +105,7 @@ describe("the kit catches broken components", () => {
   });
 
   test("a field frame without a label or errors", async () => {
-    const registry: Registry<ReactNode> = { ...mockRegistry, layout: { FieldFrame: ({ children }) => <div>{children}</div> } };
+    const registry: Registry<ReactNode> = { ...mockRegistry, layout: { ...mockRegistry.layout, FieldFrame: ({ children }) => <div>{children}</div> } };
     expect(await failing(registry)).toEqual(
       expect.arrayContaining([
         "text: renders a control labelled by FieldFrame",

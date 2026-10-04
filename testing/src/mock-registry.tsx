@@ -1,5 +1,6 @@
 import type {
   BooleanField,
+  ButtonProps,
   DateField,
   DisplayProps,
   Field,
@@ -7,7 +8,9 @@ import type {
   InputProps,
   NumberField,
   Registry,
+  SectionProps,
   SelectField,
+  TableProps,
   TextField,
 } from "@yadad/core";
 import type { ReactNode } from "react";
@@ -25,16 +28,17 @@ export const mockRegistry: Registry<ReactNode> = {
     select: { type: "select", Input: MockSelectInput, Display: MockDisplay },
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
   },
-  layout: { FieldFrame: MockFieldFrame },
+  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable },
 };
 
 /** Attributes every mock control shares. */
-function controlProps<F extends Field, V>({ inputId, field, invalid, describedBy }: InputProps<F, V>) {
+function controlProps<F extends Field, V>({ inputId, field, invalid, describedBy, labelledBy }: InputProps<F, V>) {
   return {
     id: inputId,
     "data-testid": `input-${field.id}`,
     "aria-invalid": invalid,
     "aria-describedby": describedBy,
+    "aria-labelledby": labelledBy,
     "aria-required": field.required === true,
   };
 }
@@ -108,5 +112,62 @@ function MockFieldFrame({ inputId, errorId, label, required, errors, children }:
         </div>
       )}
     </div>
+  );
+}
+
+function MockSection({ id, title, children }: SectionProps<ReactNode>): ReactNode {
+  return (
+    <fieldset data-testid={`section-${id}`}>
+      {title !== undefined && <legend>{title}</legend>}
+      {children}
+    </fieldset>
+  );
+}
+
+function MockButton({ label, type, variant, disabled, onPress }: ButtonProps): ReactNode {
+  return (
+    <button type={type} data-variant={variant} disabled={disabled} onClick={onPress}>
+      {label}
+    </button>
+  );
+}
+
+const ariaSort = (sort: "asc" | "desc" | undefined) => (sort === "asc" ? "ascending" : sort === "desc" ? "descending" : undefined);
+
+function MockTable({ caption, columns, rows, onSort, empty }: TableProps<ReactNode>): ReactNode {
+  return (
+    <table>
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          {columns.map((c) => (
+            <th key={c.id} id={c.headerId} scope="col" aria-sort={ariaSort(c.sort)}>
+              {c.sortable ? (
+                <button type="button" onClick={() => onSort(c.id)}>
+                  {c.label}
+                </button>
+              ) : (
+                c.label
+              )}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={columns.length}>{empty}</td>
+          </tr>
+        ) : (
+          rows.map((row) => (
+            <tr key={row.id} data-testid={`row-${row.id}`}>
+              {row.cells.map((cell, i) => (
+                <td key={columns[i]?.id ?? i}>{cell}</td>
+              ))}
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
   );
 }

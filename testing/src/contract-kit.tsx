@@ -108,7 +108,7 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * one at a time (await each), never concurrently.
  */
 export function registryContractChecks(registry: Registry<ReactNode>, samples: FieldSamples = defaultSamples): readonly ContractCheck[] {
-  return FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples));
+  return [...FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry)];
 }
 
 function checksFor<K extends FieldType>(type: K, registry: Registry<ReactNode>, samples: FieldSamples): ContractCheck[] {
@@ -245,6 +245,20 @@ function fieldChecks<K extends FieldType>(
       else if (!errorsEl.textContent.includes(sampleError.message)) problems.push(`The element with id="${errorId}" must contain the error message.`);
     }),
 
+    check("is named by labelledBy when given (e.g. a table column header)", (problems) => {
+      const labelId = `${inputId}-external-label`;
+      render(
+        <div>
+          <span id={labelId}>{sample.field.label}</span>
+          <Input inputId={inputId} field={sample.field} value={undefined} onChange={() => {}} invalid={false} labelledBy={labelId} />
+        </div>,
+      );
+      const el = control(problems);
+      if (el && !(el.getAttribute("aria-labelledby") ?? "").split(/\s+/).includes(labelId)) {
+        problems.push(`Input must set aria-labelledby to its labelledBy prop ("${labelId}").`);
+      }
+    }),
+
     check("Display shows the value", (problems) => {
       const { container } = render(<Display field={sample.field} value={sample.value} />);
       if (!driver.shows(container.textContent, sample.value)) problems.push(`Display did not show ${JSON.stringify(sample.value)}.`);
@@ -257,6 +271,111 @@ function fieldChecks<K extends FieldType>(
         for (const v of results.violations) problems.push(`axe ${v.id} (${invalid ? "invalid" : "valid"}): ${v.help}`);
         cleanup();
       }
+    }),
+  ];
+}
+
+/** Renders, runs `inspect`, and always cleans up the DOM. */
+function layoutCheck(name: string, inspect: (problems: string[]) => void | Promise<void>): ContractCheck {
+  return {
+    name: `layout: ${name}`,
+    async run() {
+      const problems: string[] = [];
+      try {
+        await inspect(problems);
+      } catch (e) {
+        problems.push(e instanceof Error ? e.message : String(e));
+      } finally {
+        cleanup();
+      }
+      return problems;
+    },
+  };
+}
+
+async function axeProblems(container: Element, what: string): Promise<string[]> {
+  const results = await axe.run(container, { runOnly: { type: "tag", values: AXE_TAGS } });
+  return results.violations.map((v) => `axe ${v.id} (${what}): ${v.help}`);
+}
+
+function layoutChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const { Section, Button, Table } = registry.layout;
+
+  const columns = [
+    { id: "day", headerId: "kit-col-day", label: "Day", sortable: true, sort: "desc" as const },
+    { id: "weight", headerId: "kit-col-weight", label: "Weight", sortable: true },
+    { id: "actions", headerId: "kit-col-actions", label: "Actions", sortable: false },
+  ];
+  const rows = [
+    { id: "1", cells: ["2026-10-04", "100 kg", "—"] },
+    { id: "2", cells: ["2026-10-03", "95 kg", "—"] },
+  ];
+
+  return [
+    layoutCheck("Section is a group named by its title", async (problems) => {
+      const { container } = render(
+        <Section id="details" title="Details">
+          <span>inside</span>
+        </Section>,
+      );
+      const group = screen.queryByRole("group", { name: "Details" });
+      if (!group) problems.push('Section with title "Details" must render a group (e.g. fieldset/legend) named "Details".');
+      else if (!group.textContent.includes("inside")) problems.push("Section must render its children inside the group.");
+      problems.push(...(await axeProblems(container, "section")));
+      cleanup();
+      render(
+        <Section id="plain">
+          <span>untitled</span>
+        </Section>,
+      );
+      if (!screen.queryByText("untitled")) problems.push("Section without a title must still render its children.");
+    }),
+
+    layoutCheck("Button renders a button with its label, type and state", async (problems) => {
+      let pressed = 0;
+      const { container } = render(
+        <>
+          <Button label="Save" type="submit" variant="primary" disabled={false} />
+          <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={() => pressed++} />
+          <Button label="Busy" type="button" variant="secondary" disabled onPress={() => pressed++} />
+        </>,
+      );
+      const save = screen.queryByRole("button", { name: "Save" });
+      if (!save) problems.push('Button must render role="button" named by its label.');
+      else if (save.getAttribute("type") !== "submit") problems.push('Button with type="submit" must submit its form (type="submit").');
+      const cancel = screen.queryByRole("button", { name: "Cancel" });
+      if (cancel) fireEvent.click(cancel);
+      if (pressed !== 1) problems.push("Clicking a button must call onPress once.");
+      const busy = screen.queryByRole("button", { name: "Busy" });
+      if (busy) fireEvent.click(busy);
+      if (busy && !(busy as HTMLButtonElement).disabled && busy.getAttribute("aria-disabled") !== "true") problems.push("A disabled Button must be disabled.");
+      if (pressed !== 1) problems.push("A disabled Button must not call onPress.");
+      problems.push(...(await axeProblems(container, "buttons")));
+    }),
+
+    layoutCheck("Table is named by its caption, with sortable headers and rows", async (problems) => {
+      const sorted: string[] = [];
+      const { container } = render(<Table caption="Sets" columns={columns} rows={rows} onSort={(id) => sorted.push(id)} empty="No sets" />);
+      if (!screen.queryByRole("table", { name: "Sets" })) problems.push('Table must render role="table" named by its caption.');
+      for (const c of columns) {
+        const th = document.getElementById(c.headerId);
+        if (!th) problems.push(`The "${c.label}" header must have id="${c.headerId}" (its headerId) so editors can be labelled by it.`);
+        else if (!th.textContent.includes(c.label)) problems.push(`Header ${c.headerId} must show "${c.label}".`);
+      }
+      const day = document.getElementById("kit-col-day");
+      if (day && day.getAttribute("aria-sort") !== "descending") problems.push('The sorted column header must set aria-sort="descending".');
+      const sortButton = day ? Array.from(day.querySelectorAll("button")).at(0) : undefined;
+      if (!sortButton) problems.push("Sortable headers must contain a button to sort by them.");
+      else fireEvent.click(sortButton);
+      if (sorted.join() !== "day") problems.push(`Activating the Day header must call onSort("day"), got [${sorted.join(", ")}].`);
+      const actions = document.getElementById("kit-col-actions");
+      if (actions?.querySelector("button")) problems.push("Headers that are not sortable must not offer a sort button.");
+      if (screen.queryAllByRole("row").length !== rows.length + 1) problems.push("Table must render one row per entry plus the header row.");
+      if (!screen.queryByText("95 kg")) problems.push("Table must render every cell.");
+      problems.push(...(await axeProblems(container, "table")));
+      cleanup();
+      render(<Table caption="Sets" columns={columns} rows={[]} onSort={() => {}} empty="No sets" />);
+      if (!screen.queryByText("No sets")) problems.push("An empty Table must show its empty content.");
     }),
   ];
 }
