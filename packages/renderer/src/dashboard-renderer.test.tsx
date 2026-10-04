@@ -4,7 +4,7 @@ import type { DashboardView, EntityDocument, FormView, TableView, ViewDocument }
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { DashboardRenderer } from "./dashboard-renderer";
+import { DashboardRenderer } from "./dashboard-renderer.js";
 
 afterEach(cleanup);
 

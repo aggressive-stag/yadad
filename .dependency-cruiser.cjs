@@ -95,7 +95,7 @@ module.exports = {
     tsPreCompilationDeps: true,
     enhancedResolveOptions: {
       exportsFields: ["exports"],
-      conditionNames: ["import", "require", "node", "types", "default"],
+      conditionNames: ["@yadad/source", "import", "require", "node", "types", "default"],
       extensions: [".ts", ".tsx", ".js", ".mjs", ".cjs", ".json"],
       mainFields: ["module", "main", "types", "typings"],
     },

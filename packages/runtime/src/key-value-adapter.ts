@@ -1,5 +1,5 @@
 import type { DataAdapter, DataRecord } from "@yadad/core";
-import { runQuery } from "./memory-adapter";
+import { runQuery } from "./memory-adapter.js";
 
 /**
  * The part of the Web Storage API the adapter needs. window.localStorage and

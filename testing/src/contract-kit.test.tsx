@@ -2,8 +2,8 @@
 import type { InputProps, Registry, TextField } from "@yadad/core";
 import type { ReactNode } from "react";
 import { describe, expect, test } from "vitest";
-import { describeRegistryContract, registryContractChecks } from "./contract-kit";
-import { mockRegistry } from "./mock-registry";
+import { describeRegistryContract, registryContractChecks } from "./contract-kit.js";
+import { mockRegistry } from "./mock-registry.js";
 
 // The mock registry must pass its own kit.
 describeRegistryContract(mockRegistry);

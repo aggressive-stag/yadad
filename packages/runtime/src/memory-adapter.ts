@@ -1,5 +1,5 @@
 import type { DataAdapter, DataRecord, FieldValue, Page, Query, SortSpec } from "@yadad/core";
-import { evaluateCondition } from "./condition";
+import { evaluateCondition } from "./condition.js";
 
 /** In-memory DataAdapter for tests, the showcase and local dev. Nothing persists. */
 export function createMemoryAdapter(): DataAdapter {

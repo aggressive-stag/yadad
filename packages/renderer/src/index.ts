@@ -1,3 +1,3 @@
-export * from "./dashboard-renderer";
-export * from "./form-renderer";
-export * from "./table-renderer";
+export * from "./dashboard-renderer.js";
+export * from "./form-renderer.js";
+export * from "./table-renderer.js";

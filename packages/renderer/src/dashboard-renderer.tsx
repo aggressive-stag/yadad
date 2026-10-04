@@ -13,8 +13,8 @@ import type {
 import { conditionFields, jsonPointer } from "@yadad/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
-import { FormRenderer } from "./form-renderer";
-import { TableRenderer } from "./table-renderer";
+import { FormRenderer } from "./form-renderer.js";
+import { TableRenderer } from "./table-renderer.js";
 
 /** The documents a dashboard can refer to, by id. */
 export interface DocumentSet {

@@ -1,7 +1,7 @@
 // PRE-CONTRACT document shapes: entities with the five v0 field types and
 // form views. Table and dashboard views, and the frozen contract, come later.
 
-import type { Condition } from "./condition";
+import type { Condition } from "./condition.js";
 
 /** Engine document format version. Pre-contract documents are version 0. */
 export const SPEC_VERSION = 0;

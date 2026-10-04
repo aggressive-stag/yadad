@@ -4,7 +4,7 @@ import type { DataAdapter, EntityDocument, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
-import { TableRenderer } from "./table-renderer";
+import { TableRenderer } from "./table-renderer.js";
 
 afterEach(cleanup);
 

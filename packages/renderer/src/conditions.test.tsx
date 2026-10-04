@@ -4,8 +4,8 @@ import type { Condition, DataRecord, EntityDocument, FormView, TableView } from 
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
-import { FormRenderer } from "./form-renderer";
-import { TableRenderer } from "./table-renderer";
+import { FormRenderer } from "./form-renderer.js";
+import { TableRenderer } from "./table-renderer.js";
 
 afterEach(cleanup);
 

@@ -1,8 +1,8 @@
 import type { EntityDocument } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { emptyFormState, setFieldValue, submitEdit, submitForm } from "./form";
-import { createMemoryAdapter } from "./memory-adapter";
-import { validateRecord } from "./record";
+import { emptyFormState, setFieldValue, submitEdit, submitForm } from "./form.js";
+import { createMemoryAdapter } from "./memory-adapter.js";
+import { validateRecord } from "./record.js";
 
 const entity: EntityDocument = {
   kind: "entity",

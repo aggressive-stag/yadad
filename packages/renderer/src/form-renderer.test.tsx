@@ -3,7 +3,7 @@ import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry as registry } from "@yadad/testing";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
-import { FormRenderer } from "./form-renderer";
+import { FormRenderer } from "./form-renderer.js";
 
 const entity: EntityDocument = {
   kind: "entity",

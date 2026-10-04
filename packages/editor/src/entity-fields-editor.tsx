@@ -2,11 +2,11 @@ import { FIELD_TYPES } from "@yadad/core";
 import type { DocumentError, EntityDocument, Field, FieldType, FieldValue, RecordValues, Registry, SelectField, ViewDocument } from "@yadad/core";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
-import { COMMON_PROPERTIES, FIELD_PROPERTIES, FIELD_TYPE_LABELS, fieldFromProperties, propertiesFromField } from "./field-options";
-import { addField, removeField, updateField } from "./fields";
-import { renderInput } from "./inputs";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session";
-import type { EditSession } from "./session";
+import { COMMON_PROPERTIES, FIELD_PROPERTIES, FIELD_TYPE_LABELS, fieldFromProperties, propertiesFromField } from "./field-options.js";
+import { addField, removeField, updateField } from "./fields.js";
+import { renderInput } from "./inputs.js";
+import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
+import type { EditSession } from "./session.js";
 
 export interface EntityFieldsEditorProps {
   readonly entity: EntityDocument;

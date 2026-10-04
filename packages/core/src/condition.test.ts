@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { conditionFields } from "./condition";
-import { validateDocument } from "./validate";
+import { conditionFields } from "./condition.js";
+import { validateDocument } from "./validate.js";
 
 const form = (visibleWhen: unknown) => ({
   kind: "form",

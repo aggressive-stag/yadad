@@ -1,13 +1,33 @@
 {
   "name": "@yadad/editor",
   "version": "0.0.0",
+  "description": "yadad editor: patch-based editing of documents, dashboard layout and entity fields.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "@yadad/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "!**/*.test.*",
+    "!**/*.tsbuildinfo"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aggressive-stag/yadad.git",
+    "directory": "packages/editor"
   },
   "dependencies": {
     "@yadad/core": "workspace:*",
     "@yadad/runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
@@ -18,8 +38,5 @@
     "jsdom": "~30.1.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
-  },
-  "peerDependencies": {
-    "react": "^19.3.0"
   }
 }

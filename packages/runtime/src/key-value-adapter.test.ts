@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { createKeyValueAdapter } from "./key-value-adapter";
-import type { KeyValueStore } from "./key-value-adapter";
+import { createKeyValueAdapter } from "./key-value-adapter.js";
+import type { KeyValueStore } from "./key-value-adapter.js";
 
 const mapStore = (): KeyValueStore & { data: Map<string, string> } => {
   const data = new Map<string, string>();

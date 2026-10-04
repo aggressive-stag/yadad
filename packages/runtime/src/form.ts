@@ -1,6 +1,6 @@
 import { jsonPointer } from "@yadad/core";
 import type { DataAdapter, DataRecord, DocumentError, EntityDocument, FieldValue, RecordValues } from "@yadad/core";
-import { validateRecord } from "./record";
+import { validateRecord } from "./record.js";
 
 /** Headless form state. The renderer holds it; these functions update it. */
 export interface FormState {

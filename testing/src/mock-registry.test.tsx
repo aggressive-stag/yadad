@@ -1,7 +1,7 @@
 import type { TextField } from "@yadad/core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
-import { mockRegistry } from "./mock-registry";
+import { mockRegistry } from "./mock-registry.js";
 
 const field: TextField = { id: "name", type: "text", label: "Name", required: true };
 const { Input, Display } = mockRegistry.fields.text;

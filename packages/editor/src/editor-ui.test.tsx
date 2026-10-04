@@ -3,8 +3,8 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import type { DashboardView, EntityDocument, TableView } from "@yadad/core";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
-import { DashboardLayoutEditor } from "./dashboard-layout-editor";
-import { EntityFieldsEditor } from "./entity-fields-editor";
+import { DashboardLayoutEditor } from "./dashboard-layout-editor.js";
+import { EntityFieldsEditor } from "./entity-fields-editor.js";
 
 afterEach(cleanup);
 

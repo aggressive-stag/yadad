@@ -1,8 +1,25 @@
 {
   "name": "@yadad/core",
   "version": "0.0.0",
+  "description": "yadad contract: document types, validation and the registry and data adapter interfaces.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "@yadad/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "!**/*.test.*",
+    "!**/*.tsbuildinfo"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aggressive-stag/yadad.git",
+    "directory": "packages/core"
   }
 }

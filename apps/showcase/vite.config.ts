@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Plugin } from "vite";
-import { defineConfig, searchForWorkspaceRoot } from "vite";
+import { defaultClientConditions, defineConfig, searchForWorkspaceRoot } from "vite";
 
 // Which registry the showcase injects (DECISIONS.md D15: hosts choose).
 // Default: the mock registry from @yadad/testing. To use another one:
@@ -38,7 +38,8 @@ function registryPlugin(): Plugin {
 export default defineConfig({
   plugins: [registryPlugin()],
   // A registry from another repo brings its own React; use the showcase's.
-  resolve: { dedupe: ["react", "react-dom"] },
+  // Workspace packages build from source; a registry from another repo shares the showcase's React.
+  resolve: { conditions: ["@yadad/source", ...defaultClientConditions], dedupe: ["react", "react-dom"] },
   server: {
     // AGENTS.md: a random dev-server port, so parallel worktrees never collide.
     port: 20000 + Math.floor(Math.random() * 20000),

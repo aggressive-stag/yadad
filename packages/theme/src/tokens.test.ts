@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { TOKEN_NAMES, cssVar, darkTheme, lightTheme, themeToCss } from "./tokens";
+import { TOKEN_NAMES, cssVar, darkTheme, lightTheme, themeToCss } from "./tokens.js";
 
 describe("themes", () => {
   test.each([

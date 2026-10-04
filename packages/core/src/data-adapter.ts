@@ -18,8 +18,8 @@ export interface DataRecord {
   readonly values: RecordValues;
 }
 
-import type { Condition } from "./condition";
-import type { SortSpec } from "./document";
+import type { Condition } from "./condition.js";
+import type { SortSpec } from "./document.js";
 
 export interface Query {
   /** Only records matching this. */

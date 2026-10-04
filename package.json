@@ -8,6 +8,7 @@
   },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
+    "build": "tsc -b",
     "typecheck": "tsc -b",
     "depcruise": "depcruise packages testing apps",
     "depcruise:fixture": "node tools/forbidden-import-fixture/check.mjs",

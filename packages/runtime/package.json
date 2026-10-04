@@ -1,9 +1,26 @@
 {
   "name": "@yadad/runtime",
   "version": "0.0.0",
+  "description": "yadad headless runtime: form state, conditions, record validation, JSON Patch and data adapters.",
   "type": "module",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "@yadad/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "!**/*.test.*",
+    "!**/*.tsbuildinfo"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aggressive-stag/yadad.git",
+    "directory": "packages/runtime"
   },
   "dependencies": {
     "@yadad/core": "workspace:*"

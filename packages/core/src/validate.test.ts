@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { jsonPointer } from "./errors";
-import { validateDocument } from "./validate";
+import { jsonPointer } from "./errors.js";
+import { validateDocument } from "./validate.js";
 
 const entity = {
   kind: "entity",

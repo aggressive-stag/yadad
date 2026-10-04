@@ -1,8 +1,8 @@
 import type { DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { addField, fieldReferences, removeField, updateField } from "./fields";
-import { moveItem, resizeItem } from "./layout";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session";
+import { addField, fieldReferences, removeField, updateField } from "./fields.js";
+import { moveItem, resizeItem } from "./layout.js";
+import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 
 const dashboard: DashboardView = {
   kind: "dashboard",

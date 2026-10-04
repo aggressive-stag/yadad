@@ -1,7 +1,7 @@
 import type { Condition, EntityDocument, FormView } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { applyFormRules, evaluateCondition, evaluateFormRules } from "./condition";
-import { createMemoryAdapter } from "./memory-adapter";
+import { applyFormRules, evaluateCondition, evaluateFormRules } from "./condition.js";
+import { createMemoryAdapter } from "./memory-adapter.js";
 
 const values = { exercise: "Squat", weight: 100, day: "2026-10-04", warmup: false, notes: "Left Knee pain", empty: "  " };
 const is = (c: Condition) => evaluateCondition(c, values);

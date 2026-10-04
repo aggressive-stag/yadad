@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { applyPatch, parsePointer } from "./patch";
-import type { PatchOperation } from "./patch";
+import { applyPatch, parsePointer } from "./patch.js";
+import type { PatchOperation } from "./patch.js";
 
 const doc = { a: 1, list: [{ id: "x" }, { id: "y" }], "a/b": { "c~d": true } };
 const run = (...ops: PatchOperation[]) => applyPatch(doc, ops);

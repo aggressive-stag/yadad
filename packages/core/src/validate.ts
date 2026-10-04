@@ -3,11 +3,11 @@
 // decision (P1-01); referential checks (view fields exist on the entity) are
 // P1-05. Collects every error instead of stopping at the first.
 
-import { CONDITION_OPS } from "./condition";
-import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document";
-import type { Document, FieldType } from "./document";
-import { jsonPointer } from "./errors";
-import type { DocumentError, ErrorCode } from "./errors";
+import { CONDITION_OPS } from "./condition.js";
+import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
+import type { Document, FieldType } from "./document.js";
+import { jsonPointer } from "./errors.js";
+import type { DocumentError, ErrorCode } from "./errors.js";
 
 export type ValidationResult<T> =
   | { readonly ok: true; readonly value: T }

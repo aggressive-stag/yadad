@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { compareFieldValues, createMemoryAdapter } from "./memory-adapter";
+import { compareFieldValues, createMemoryAdapter } from "./memory-adapter.js";
 
 describe("memory adapter", () => {
   test("create stores the record with its entity revision", async () => {

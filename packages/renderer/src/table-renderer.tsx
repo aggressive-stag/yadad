@@ -4,8 +4,8 @@ import { emptyFormState, setFieldValue, submitEdit } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { checkViewSetup } from "./setup";
-import { renderDisplay, renderInput } from "./fields";
+import { checkViewSetup } from "./setup.js";
+import { renderDisplay, renderInput } from "./fields.js";
 
 export interface TableRendererProps {
   readonly entity: EntityDocument;

@@ -1,9 +1,9 @@
 import type { DashboardView, GridItem, Registry } from "@yadad/core";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
-import { moveItem, resizeItem } from "./layout";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session";
-import type { EditSession } from "./session";
+import { moveItem, resizeItem } from "./layout.js";
+import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
+import type { EditSession } from "./session.js";
 
 export interface DashboardLayoutEditorProps {
   readonly dashboard: DashboardView;

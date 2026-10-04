@@ -1,1 +1,1 @@
-export * from "./mock-registry";
+export * from "./mock-registry.js";

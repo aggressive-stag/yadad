@@ -4,9 +4,9 @@ import { applyFormRules, emptyFormState, evaluateFormRules, setFieldValue, submi
 import type { FormState } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { checkViewSetup } from "./setup";
-import { renderInput } from "./fields";
-import type { CommonInputProps } from "./fields";
+import { checkViewSetup } from "./setup.js";
+import { renderInput } from "./fields.js";
+import type { CommonInputProps } from "./fields.js";
 
 export interface FormRendererProps {
   readonly entity: EntityDocument;

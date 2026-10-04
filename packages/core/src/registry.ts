@@ -1,8 +1,8 @@
 // PRE-CONTRACT registry shape: one entry per field type plus layout chrome
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets. CellEditor, widgets and optionsSchema come later.
 
-import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document";
-import type { DocumentError } from "./errors";
+import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document.js";
+import type { DocumentError } from "./errors.js";
 
 /**
  * A UI component, kept structural so core needs no React. `N` is the UI
