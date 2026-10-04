@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Enforces the Angular commit message format:
+# https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md
+#
+#   <type>(<scope>): <short summary>
+#
+#   <body: why, imperative, >= 20 chars; optional for docs>
+#
+#   <footer: BREAKING CHANGE: / DEPRECATED: / Fixes # / trailers>
+#
+# Enabled by `git config core.hooksPath .githooks` (the root `prepare` script does this).
+
+set -euo pipefail
+
+TYPES="build|ci|docs|feat|fix|perf|refactor|test"
+# Package names, plus repo-wide infra. Keep in sync with ARCHITECTURE.md §3.
+SCOPES="core|runtime|renderer|editor|theme|testing|fixtures|showcase|examples|rfcs|dev-infra|deps"
+MAX_HEADER=100
+MIN_BODY=20
+
+msg_file="$1"
+comment_char="$(git config --get core.commentChar || echo '#')"
+
+# Drop everything from the scissors line down, and comment lines, like git's default cleanup.
+msg="$(sed -e "/^${comment_char} -\{8,\} >8 -\{8,\}$/,\$d" -e "/^${comment_char}/d" "$msg_file")"
+header="$(printf '%s\n' "$msg" | sed -n '1p')"
+
+# Let git's own generated messages through; they are rewritten or squashed later.
+case "$header" in
+  "Merge "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+errors=()
+fail() { errors+=("$1"); }
+
+if [[ ${#header} -gt $MAX_HEADER ]]; then
+  fail "header is ${#header} chars; max is $MAX_HEADER"
+fi
+
+if [[ "$header" =~ ^revert:\ (.+)$ ]]; then
+  type="revert"
+  if ! printf '%s\n' "$msg" | grep -qE '^This reverts commit [0-9a-f]{7,40}'; then
+    fail "revert body must contain 'This reverts commit <SHA>'"
+  fi
+elif [[ "$header" =~ ^([a-z]+)(\(([a-z0-9.-]+)\))?:\ (.*)$ ]]; then
+  type="${BASH_REMATCH[1]}"
+  scope="${BASH_REMATCH[3]}"
+  summary="${BASH_REMATCH[4]}"
+  if ! [[ "$type" =~ ^($TYPES)$ ]]; then
+    fail "unknown type '$type'; use one of: ${TYPES//|/, }"
+  fi
+  if [[ -n "$scope" ]] && ! [[ "$scope" =~ ^($SCOPES)$ ]]; then
+    fail "unknown scope '$scope'; use one of: ${SCOPES//|/, } (or omit it)"
+  fi
+  if [[ -z "$summary" ]]; then
+    fail "summary is empty"
+  elif [[ "$summary" =~ ^[A-Z] ]]; then
+    fail "summary must not start with a capital letter"
+  elif [[ "$summary" == *. ]]; then
+    fail "summary must not end with a period"
+  fi
+else
+  fail "header must look like '<type>(<scope>): <summary>' or '<type>: <summary>'"
+fi
+
+if printf '%s\n' "$msg" | sed -n '2p' | grep -q '[^[:space:]]'; then
+  fail "second line must be blank"
+fi
+
+# Body = everything after the header, minus a trailing block of git trailers
+# (Co-Authored-By:, Signed-off-by:, ...), which are footer, not body.
+body="$(printf '%s\n' "$msg" | sed '1,2d' | awk '
+  { lines[NR] = $0 }
+  END {
+    n = NR
+    while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+    end = n
+    while (end > 0 && lines[end] ~ /^[A-Za-z][A-Za-z-]*: /) end--
+    if (end < n && (end == 0 || lines[end] ~ /^[[:space:]]*$/)) n = end
+    for (i = 1; i <= n; i++) print lines[i]
+  }')"
+body_len="$(printf '%s' "$body" | tr -d '[:space:]' | wc -c)"
+
+if [[ "${type:-}" != "docs" ]]; then
+  if [[ $body_len -eq 0 ]]; then
+    fail "body is required (explain why); only docs commits may omit it"
+  elif [[ $body_len -lt $MIN_BODY ]]; then
+    fail "body must be at least $MIN_BODY characters"
+  fi
+fi
+
+if [[ ${#errors[@]} -gt 0 ]]; then
+  {
+    echo "commit-msg: rejected (Angular format)"
+    for e in "${errors[@]}"; do echo "  - $e"; done
+    echo
+    echo "  header: $header"
+    echo "  guide:  https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md"
+  } >&2
+  exit 1
+fi
