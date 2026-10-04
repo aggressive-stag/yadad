@@ -16,7 +16,7 @@ Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md`
 4. **No component names or file paths** in `core`, `runtime`, `renderer` or `editor`. Only registry keys.
 5. **No escape hatches.** No string expressions, no free-form props bags, no index signatures, no `custom` field types, no `any` in `core` exports.
 6. **One package per PR**, plus a changeset. Generated files are the only exception. Cross-package PRs need the `cross-package` label, which only the maintainer applies.
-7. **No new packages or new dependencies** without an RFC.
+7. **No new packages or new runtime dependencies** without an RFC. Test-only dev dependencies (DOM environments, testing libraries, axe) may be added directly; name them in the PR (DECISIONS.md D16).
 8. **Versioning:** any change to `core` schema files bumps `specVersion` and adds a `migrate()` step plus a before/after fixture pair. User document `revision`s are data, not code.
 9. **New field type** = JSON Schema entry + registry contract entry + valid and invalid fixtures + render test against the mock registry.
 10. **Copied third-party code never lives in this repo.** It belongs in the components repo.
