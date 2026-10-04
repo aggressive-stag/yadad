@@ -1,0 +1,12 @@
+{
+  "name": "@yadad/showcase",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@yadad/renderer": "workspace:*",
+    "@yadad/editor": "workspace:*",
+    "@yadad/theme": "workspace:*",
+    "@yadad/testing": "workspace:*"
+  }
+}

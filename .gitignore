@@ -3,3 +3,9 @@
 
 # Agent worktrees (see AGENTS.md)
 .worktrees/
+
+# Build and tooling output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo

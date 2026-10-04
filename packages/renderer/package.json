@@ -1,0 +1,12 @@
+{
+  "name": "@yadad/renderer",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@yadad/core": "workspace:*",
+    "@yadad/runtime": "workspace:*"
+  }
+}
