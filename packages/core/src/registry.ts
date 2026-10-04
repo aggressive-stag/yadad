@@ -6,10 +6,11 @@ import type { Field, FieldType, TextField } from "./document";
 import type { DocumentError } from "./errors";
 
 /**
- * A UI component, kept structural so core needs no React. React function
- * components satisfy it; the renderer binds it to React.
+ * A UI component, kept structural so core needs no React. `N` is the UI
+ * library's node type: the renderer uses Registry<ReactNode>, which makes
+ * every entry a React function component with no casts.
  */
-export type Component<P> = (props: P) => unknown;
+export type Component<P, N> = (props: P) => N;
 
 /** Field value types by field type. */
 export interface FieldValueTypes {
@@ -36,28 +37,28 @@ export interface DisplayProps<F extends Field, V> {
   readonly value: V | undefined;
 }
 
-export interface FieldTypeEntry<K extends FieldType> {
+export interface FieldTypeEntry<K extends FieldType, N> {
   readonly type: K;
-  readonly Input: Component<InputProps<FieldDefinitions[K], FieldValueTypes[K]>>;
-  readonly Display: Component<DisplayProps<FieldDefinitions[K], FieldValueTypes[K]>>;
+  readonly Input: Component<InputProps<FieldDefinitions[K], FieldValueTypes[K]>, N>;
+  readonly Display: Component<DisplayProps<FieldDefinitions[K], FieldValueTypes[K]>, N>;
 }
 
 /** Label, help and error chrome around every Input. */
-export interface FieldFrameProps {
+export interface FieldFrameProps<N> {
   readonly inputId: string;
   readonly label: string;
   readonly required: boolean;
   readonly errors: readonly DocumentError[];
-  readonly children: unknown;
+  readonly children: N;
 }
 
 /**
  * Exact-key lookup: one entry per field type, enforced by the type system
  * (a mapped type over FieldType, not an index signature).
  */
-export interface Registry {
-  readonly fields: { readonly [K in FieldType]: FieldTypeEntry<K> };
+export interface Registry<N> {
+  readonly fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> };
   readonly layout: {
-    readonly FieldFrame: Component<FieldFrameProps>;
+    readonly FieldFrame: Component<FieldFrameProps<N>, N>;
   };
 }
