@@ -1,5 +1,5 @@
 import { jsonPointer } from "@yadad/core";
-import type { DataAdapter, DataRecord, DocumentError, EntityDocument, FormItem, FormView, Registry } from "@yadad/core";
+import type { DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, FormItem, FormView, Registry } from "@yadad/core";
 import { emptyFormState, setFieldValue, submitForm } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useId, useState } from "react";
@@ -53,19 +53,26 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved }: F
   const renderItem = (item: FormItem): ReactNode => {
     const field = entity.fields.find((f) => f.id === item.field);
     if (!field) return null; // reported by checkSetup
-    const { Input } = registry.fields[field.type];
     const { FieldFrame } = registry.layout;
     const inputId = `${formId}-${field.id}`;
+    const errorId = `${inputId}-errors`;
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
+    const common: CommonInputProps = {
+      inputId,
+      invalid: errors.length > 0,
+      ...(errors.length > 0 ? { describedBy: errorId } : {}),
+    };
+    const onChange = (value: FieldValue | undefined) => setState((s) => setFieldValue(s, field.id, value));
     return (
-      <FieldFrame key={field.id} inputId={inputId} label={field.label} required={field.required === true} errors={errors}>
-        <Input
-          inputId={inputId}
-          field={field}
-          value={state.values[field.id] ?? undefined}
-          onChange={(value) => setState((s) => setFieldValue(s, field.id, value))}
-          invalid={errors.length > 0}
-        />
+      <FieldFrame
+        key={field.id}
+        inputId={inputId}
+        errorId={errorId}
+        label={field.label}
+        required={field.required === true}
+        errors={errors}
+      >
+        {renderInput(registry, field, state.values[field.id], common, onChange)}
       </FieldFrame>
     );
   };
@@ -84,6 +91,49 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved }: F
       </button>
     </form>
   );
+}
+
+interface CommonInputProps {
+  readonly inputId: string;
+  readonly invalid: boolean;
+  readonly describedBy?: string;
+}
+
+const asString = (v: FieldValue | undefined): string | undefined => (typeof v === "string" ? v : undefined);
+
+/**
+ * Looks up the field's registry entry by type. The switch narrows the field
+ * and its stored value together, so every entry gets exactly its own props.
+ */
+function renderInput(
+  registry: Registry<ReactNode>,
+  field: Field,
+  value: FieldValue | undefined,
+  common: CommonInputProps,
+  onChange: (value: FieldValue | undefined) => void,
+): ReactNode {
+  switch (field.type) {
+    case "text": {
+      const { Input } = registry.fields.text;
+      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+    }
+    case "number": {
+      const { Input } = registry.fields.number;
+      return <Input {...common} field={field} value={typeof value === "number" ? value : undefined} onChange={onChange} />;
+    }
+    case "boolean": {
+      const { Input } = registry.fields.boolean;
+      return <Input {...common} field={field} value={typeof value === "boolean" ? value : undefined} onChange={onChange} />;
+    }
+    case "select": {
+      const { Input } = registry.fields.select;
+      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+    }
+    case "date": {
+      const { Input } = registry.fields.date;
+      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+    }
+  }
 }
 
 /** Problems that stop the view from rendering at all, in the core error format. */

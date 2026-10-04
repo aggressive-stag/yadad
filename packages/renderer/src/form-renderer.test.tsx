@@ -6,17 +6,24 @@ import { describe, expect, test } from "vitest";
 import { FormRenderer } from "./form-renderer";
 
 // Inline stub: renderer may not import @yadad/testing (dependency rules).
+const stubInput =
+  (kind: string) =>
+  ({ inputId, invalid, describedBy }: { inputId: string; invalid: boolean; describedBy?: string }) => (
+    <input id={inputId} data-stub={kind} aria-invalid={invalid} aria-describedby={describedBy} />
+  );
+const stubDisplay = ({ value }: { value?: unknown }) => <span>{String(value ?? "")}</span>;
+
 const registry: Registry<ReactNode> = {
   fields: {
-    text: {
-      type: "text",
-      Input: ({ inputId, value, invalid }) => <input id={inputId} data-stub="text" defaultValue={value} aria-invalid={invalid} />,
-      Display: ({ value }) => <span>{value}</span>,
-    },
+    text: { type: "text", Input: stubInput("text"), Display: stubDisplay },
+    number: { type: "number", Input: stubInput("number"), Display: stubDisplay },
+    boolean: { type: "boolean", Input: stubInput("boolean"), Display: stubDisplay },
+    select: { type: "select", Input: stubInput("select"), Display: stubDisplay },
+    date: { type: "date", Input: stubInput("date"), Display: stubDisplay },
   },
   layout: {
-    FieldFrame: ({ inputId, label, required, children }) => (
-      <div data-stub="frame">
+    FieldFrame: ({ inputId, errorId, label, required, children }) => (
+      <div data-stub="frame" data-error-id={errorId}>
         <label htmlFor={inputId}>
           {label}
           {required ? " *" : ""}
@@ -63,7 +70,24 @@ describe("FormRenderer", () => {
     const html = render();
     expect(html).toContain("<legend>Hello</legend>");
     expect(html).toMatch(/<label for="([^"]+)">Name \*<\/label><input id="\1" data-stub="text"/);
+    expect(html).toMatch(/data-error-id="[^"]+-name-errors"/);
     expect(html).toContain('<button type="submit">Save</button>');
+  });
+
+  test("each field type goes to its own registry entry", () => {
+    const all: EntityDocument = {
+      ...entity,
+      fields: [
+        { id: "name", type: "text", label: "Name" },
+        { id: "weight", type: "number", label: "Weight" },
+        { id: "warmup", type: "boolean", label: "Warm-up" },
+        { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat"] } },
+        { id: "day", type: "date", label: "Day" },
+      ],
+    };
+    const form: FormView = { ...view, sections: [{ id: "main", items: all.fields.map((f) => ({ field: f.id })) }] };
+    const html = render({ entity: all, view: form });
+    for (const kind of ["text", "number", "boolean", "select", "date"]) expect(html).toContain(`data-stub="${kind}"`);
   });
 
   test("changing the label in the document changes the page", () => {
