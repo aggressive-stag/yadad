@@ -168,7 +168,8 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["sort", "pageSize"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize"]);
+  checkNonEmptyString(errors, doc, [], "title");
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");

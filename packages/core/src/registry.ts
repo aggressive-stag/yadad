@@ -40,6 +40,8 @@ export interface InputProps<F extends Field, V> {
   readonly invalid: boolean;
   /** Id of the element holding this field's errors, for aria-describedby. Set only while there are errors. */
   readonly describedBy?: string;
+  /** Id(s) of the element naming this control (aria-labelledby), when it has no label of its own, e.g. a table column header. */
+  readonly labelledBy?: string;
 }
 
 export interface DisplayProps<F extends Field, V> {
@@ -82,6 +84,8 @@ export interface ButtonProps {
 
 export interface TableColumnHeader {
   readonly id: string;
+  /** DOM id for the header cell, so inline editors can be labelled by it. */
+  readonly headerId: string;
   readonly label: string;
   readonly sortable: boolean;
   /** Set on the column currently sorting the table. */

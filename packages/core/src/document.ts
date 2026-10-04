@@ -104,6 +104,8 @@ export interface TableView {
   readonly kind: "table";
   readonly specVersion: SpecVersion;
   readonly id: string;
+  /** Caption shown with the table. */
+  readonly title?: string;
   readonly entity: string;
   readonly revision: number;
   /** Key the host maps to a DataAdapter. Never a URL. */

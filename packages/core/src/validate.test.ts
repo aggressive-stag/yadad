@@ -162,6 +162,7 @@ describe("table views", () => {
     kind: "table",
     specVersion: 0,
     id: "sets",
+    title: "Sets",
     entity: "workout_set",
     revision: 1,
     dataSource: "default",
