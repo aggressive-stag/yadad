@@ -263,7 +263,7 @@ function validateDashboard(errors: Errors, doc: JsonObject): void {
     }
     const items = checkArray(errors, tab, path, "items");
     const itemIds: { id: string; path: Path }[] = [];
-    const placed: { x: number; y: number; w: number; h: number; index: number }[] = [];
+    const placed: Rect[] = [];
     items?.forEach((item, j) => {
       const itemPath = [...path, "items", j];
       if (!isObject(item)) {
@@ -271,13 +271,13 @@ function validateDashboard(errors: Errors, doc: JsonObject): void {
         return;
       }
       if (validateGridItem(errors, item, itemPath, typeof columns === "number" ? columns : 12)) {
-        placed.push({ x: item["x"] as number, y: item["y"] as number, w: item["w"] as number, h: item["h"] as number, index: j });
+        placed.push({ x: item["x"] as number, y: item["y"] as number, w: item["w"] as number, h: item["h"] as number, index: j, name: typeof item["id"] === "string" ? `"${item["id"]}"` : `item ${j}` });
       }
       if (typeof item["id"] === "string") itemIds.push({ id: item["id"], path: [...itemPath, "id"] });
     });
     reportDuplicates(errors, itemIds, "grid item", "a tab");
     for (const [a, b] of overlaps(placed)) {
-      errors.add([...path, "items", b.index], "invalid-value", `Grid item ${b.index} overlaps item ${a.index}.`, "Move or resize one of them.");
+      errors.add([...path, "items", b.index], "invalid-value", `${b.name} would overlap ${a.name}.`, "Move or resize one of them.");
     }
   });
   reportDuplicates(errors, tabIds, "tab", "a dashboard");
@@ -312,7 +312,7 @@ function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns:
   return usable;
 }
 
-type Rect = { x: number; y: number; w: number; h: number; index: number };
+type Rect = { x: number; y: number; w: number; h: number; index: number; name: string };
 
 function overlaps(rects: readonly Rect[]): [Rect, Rect][] {
   const found: [Rect, Rect][] = [];
