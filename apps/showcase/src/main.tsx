@@ -6,7 +6,10 @@ import { App } from "./App";
 
 // Theme tokens (--yadad-*) that component stylesheets read.
 const tokens = document.createElement("style");
-tokens.textContent = themeToCss(lightTheme);
+// The host's own page styles read the same tokens; unlayered, so they win.
+tokens.textContent = `${themeToCss(lightTheme)}
+body { margin: 0 auto; max-width: 75rem; padding: var(--yadad-space-4); font-family: var(--yadad-font-family); color: var(--yadad-color-text); background: var(--yadad-color-background); }
+main > section + section { margin-block-start: var(--yadad-space-4); }`;
 document.head.prepend(tokens);
 
 const root = document.getElementById("root");

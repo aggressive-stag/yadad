@@ -9,45 +9,127 @@
       "id": "log",
       "title": "Log",
       "items": [
-        { "id": "log_form", "x": 0, "y": 0, "w": 8, "h": 2, "widget": "view", "view": "log_set" },
+        {
+          "id": "log_form",
+          "x": 0,
+          "y": 0,
+          "w": 8,
+          "h": 10,
+          "widget": "view",
+          "view": "log_set"
+        },
         {
           "id": "working",
           "x": 8,
           "y": 0,
           "w": 4,
-          "h": 1,
+          "h": 2,
           "widget": "count",
           "label": "Working sets",
           "view": "sets",
-          "filter": { "op": "neq", "field": "warmup", "value": true }
+          "filter": {
+            "op": "neq",
+            "field": "warmup",
+            "value": true
+          }
         },
         {
           "id": "hard",
           "x": 8,
-          "y": 1,
+          "y": 2,
           "w": 4,
-          "h": 1,
+          "h": 2,
           "widget": "count",
           "label": "Hard sets",
           "view": "sets",
-          "filter": { "op": "eq", "field": "felt", "value": "Hard" }
+          "filter": {
+            "op": "eq",
+            "field": "felt",
+            "value": "Hard"
+          }
         }
       ]
     },
     {
       "id": "history",
       "title": "History",
-      "items": [{ "id": "all_sets", "x": 0, "y": 0, "w": 12, "h": 1, "widget": "view", "view": "sets" }]
+      "items": [
+        {
+          "id": "all_sets",
+          "x": 0,
+          "y": 0,
+          "w": 12,
+          "h": 12,
+          "widget": "view",
+          "view": "sets"
+        }
+      ]
     },
     {
       "id": "stats",
       "title": "Stats",
       "columns": 4,
       "items": [
-        { "id": "squat", "x": 0, "y": 0, "w": 1, "h": 1, "widget": "count", "label": "Squat", "view": "sets", "filter": { "op": "eq", "field": "exercise", "value": "Squat" } },
-        { "id": "bench", "x": 1, "y": 0, "w": 1, "h": 1, "widget": "count", "label": "Bench press", "view": "sets", "filter": { "op": "eq", "field": "exercise", "value": "Bench press" } },
-        { "id": "deadlift", "x": 2, "y": 0, "w": 1, "h": 1, "widget": "count", "label": "Deadlift", "view": "sets", "filter": { "op": "eq", "field": "exercise", "value": "Deadlift" } },
-        { "id": "ohp", "x": 3, "y": 0, "w": 1, "h": 1, "widget": "count", "label": "Overhead press", "view": "sets", "filter": { "op": "eq", "field": "exercise", "value": "Overhead press" } }
+        {
+          "id": "squat",
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 2,
+          "widget": "count",
+          "label": "Squat",
+          "view": "sets",
+          "filter": {
+            "op": "eq",
+            "field": "exercise",
+            "value": "Squat"
+          }
+        },
+        {
+          "id": "bench",
+          "x": 1,
+          "y": 0,
+          "w": 1,
+          "h": 2,
+          "widget": "count",
+          "label": "Bench press",
+          "view": "sets",
+          "filter": {
+            "op": "eq",
+            "field": "exercise",
+            "value": "Bench press"
+          }
+        },
+        {
+          "id": "deadlift",
+          "x": 2,
+          "y": 0,
+          "w": 1,
+          "h": 2,
+          "widget": "count",
+          "label": "Deadlift",
+          "view": "sets",
+          "filter": {
+            "op": "eq",
+            "field": "exercise",
+            "value": "Deadlift"
+          }
+        },
+        {
+          "id": "ohp",
+          "x": 3,
+          "y": 0,
+          "w": 1,
+          "h": 2,
+          "widget": "count",
+          "label": "Overhead press",
+          "view": "sets",
+          "filter": {
+            "op": "eq",
+            "field": "exercise",
+            "value": "Overhead press"
+          }
+        }
       ]
     }
   ]
