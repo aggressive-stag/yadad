@@ -1,0 +1,19 @@
+{
+  "kind": "table",
+  "specVersion": 0,
+  "id": "sets",
+  "title": "Logged sets",
+  "entity": "workout_set",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [
+    { "field": "day" },
+    { "field": "exercise" },
+    { "field": "weight", "editable": true },
+    { "field": "reps", "editable": true },
+    { "field": "warmup", "editable": true },
+    { "field": "notes", "editable": true }
+  ],
+  "sort": [{ "field": "day", "dir": "desc" }],
+  "pageSize": 10
+}

@@ -1,9 +1,9 @@
 import { mockRegistry } from "@yadad/testing";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
-import { App, defaultForms } from "./App";
+import { App, defaultViews } from "./App";
 
-const hello = defaultForms[1]!;
+const hello = defaultViews[2]!;
 
 test("renders the fixture forms", () => {
   const html = renderToStaticMarkup(<App registry={mockRegistry} />);
@@ -13,6 +13,7 @@ test("renders the fixture forms", () => {
   expect(html).toContain('type="checkbox"');
   expect(html).toContain("<legend>Hello</legend>");
   expect(html).toContain('data-testid="input-name"');
+  expect(html).toContain("<caption>Logged sets</caption>");
 });
 
 test("a label edited in the JSON shows up with no code changes", () => {
@@ -23,13 +24,13 @@ test("a label edited in the JSON shows up with no code changes", () => {
     revision: 2,
     fields: [{ id: "name", type: "text", label: "Full name", required: true }],
   });
-  expect(renderToStaticMarkup(<App registry={mockRegistry} forms={[{ ...hello, entity }]} />)).toContain("Full name");
+  expect(renderToStaticMarkup(<App registry={mockRegistry} views={[{ ...hello, entity }]} />)).toContain("Full name");
 });
 
 test("invalid documents show their errors instead of a form", () => {
-  const html = renderToStaticMarkup(<App registry={mockRegistry} forms={[{ entity: "{ not json", form: '{"kind":"form"}' }]} />);
+  const html = renderToStaticMarkup(<App registry={mockRegistry} views={[{ entity: "{ not json", view: '{"kind":"form"}' }]} />);
   expect(html).toContain('data-testid="document-errors"');
   expect(html).toContain("Not valid JSON");
-  expect(html).toContain("form/specVersion");
+  expect(html).toContain("view/specVersion");
   expect(html).not.toContain("<form");
 });
