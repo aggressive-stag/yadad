@@ -24,3 +24,15 @@ test("invalid documents are reported", () => {
   expect(html).toContain("Not valid JSON");
   expect(html).toContain("broken/specVersion");
 });
+
+test("saved edits are restored, and edits that no longer validate are reported", () => {
+  const saved = [
+    { kind: "entity", specVersion: 0, id: "hello", revision: 3, fields: [{ id: "name", type: "text", label: "Restored name" }] },
+    { kind: "form", id: "broken" },
+  ];
+  const storage = { getItem: (k: string) => (k === "yadad-showcase:documents" ? JSON.stringify(saved) : null), setItem: () => {} };
+  const html = renderToStaticMarkup(<App registry={mockRegistry} storage={storage} onReset={() => {}} />);
+  expect(html).toContain("Restored name");
+  expect(html).toContain("no longer validate and were ignored: broken");
+  expect(html).toContain(">Reset saved data</button>");
+});

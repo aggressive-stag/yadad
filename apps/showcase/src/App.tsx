@@ -1,8 +1,10 @@
+import { validateDocument } from "@yadad/core";
 import type { DataAdapter, Document, Registry } from "@yadad/core";
 import { DashboardLayoutEditor, EntityFieldsEditor } from "@yadad/editor";
 import { DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
-import { createMemoryAdapter } from "@yadad/runtime";
+import { createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
+import type { KeyValueStore } from "@yadad/runtime";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import dashboardTraining from "../../../fixtures/valid/dashboard-training.json?raw";
@@ -12,9 +14,6 @@ import formHello from "../../../fixtures/valid/form-hello.json?raw";
 import formLogSet from "../../../fixtures/valid/form-log-set.json?raw";
 import tableSets from "../../../fixtures/valid/table-sets.json?raw";
 import { loadDocumentSet } from "./documents";
-
-// The host decides which adapter backs each dataSource key.
-const dataSources: ReadonlyMap<string, DataAdapter> = new Map([["default", createMemoryAdapter()]]);
 
 /** The fixture documents, as raw JSON. Edit those files and the page follows. */
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, dashboardTraining, entityHello, formHello];
@@ -27,18 +26,48 @@ export interface AppProps {
   readonly registry: Registry<ReactNode>;
   readonly sources?: readonly string[];
   readonly roots?: readonly string[];
+  /** Where records and edited documents persist (e.g. localStorage). Without it everything lives in memory. */
+  readonly storage?: KeyValueStore;
+  /** Shown as a "Reset saved data" button when given. */
+  readonly onReset?: () => void;
+}
+
+const PREFIX = "yadad-showcase";
+const DOCUMENTS_KEY = `${PREFIX}:documents`;
+
+/** Edited documents saved earlier, re-validated: anything that no longer validates is dropped and reported. */
+function loadEdited(storage: KeyValueStore | undefined): { docs: ReadonlyMap<string, Document>; dropped: string[] } {
+  const docs = new Map<string, Document>();
+  const dropped: string[] = [];
+  let raw: unknown = [];
+  try {
+    raw = JSON.parse(storage?.getItem(DOCUMENTS_KEY) ?? "[]");
+  } catch {
+    dropped.push("saved documents (not valid JSON)");
+  }
+  for (const item of Array.isArray(raw) ? raw : []) {
+    const result = validateDocument(item);
+    if (result.ok) docs.set(result.value.id, result.value);
+    else dropped.push(typeof item === "object" && item !== null && "id" in item ? String(item.id) : "a saved document");
+  }
+  return { docs, dropped };
 }
 
 type Mode = { readonly kind: "view" } | { readonly kind: "layout"; readonly id: string } | { readonly kind: "fields"; readonly id: string };
 
-export function App({ registry, sources = defaultSources, roots = defaultRoots }: AppProps): ReactNode {
-  // Documents saved from the editors replace the loaded ones (in memory for now).
-  const [edited, setEdited] = useState<ReadonlyMap<string, Document>>(new Map());
+export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset }: AppProps): ReactNode {
+  // The host decides which adapter backs each dataSource key.
+  const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => new Map([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]));
+  // Documents saved from the editors replace the loaded ones, and persist when storage is given.
+  const [initial] = useState(() => loadEdited(storage));
+  const [edited, setEdited] = useState<ReadonlyMap<string, Document>>(initial.docs);
   const [mode, setMode] = useState<Mode>({ kind: "view" });
   const loaded = loadDocumentSet(sources);
   const documents = overlay(loaded.documents, edited);
   const save = (doc: Document) => {
-    setEdited((m) => new Map(m).set(doc.id, doc));
+    const next = new Map(edited).set(doc.id, doc);
+    setEdited(next);
+    storage?.setItem(DOCUMENTS_KEY, JSON.stringify([...next.values()]));
     setMode({ kind: "view" });
   };
   const close = () => setMode({ kind: "view" });
@@ -47,6 +76,8 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots }
   return (
     <main>
       <h1>yadad showcase</h1>
+      {onReset && <Button label="Reset saved data" type="button" variant="secondary" disabled={false} onPress={onReset} />}
+      {initial.dropped.length > 0 && <p role="status">Some saved edits no longer validate and were ignored: {initial.dropped.join(", ")}.</p>}
       {loaded.errors.length > 0 && (
         <ul role="alert" data-testid="document-errors">
           {loaded.errors.map((e) => (
@@ -75,7 +106,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots }
             ) : mode.kind === "fields" && entity && mode.id === entity.id ? (
               <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} onSave={save} onCancel={close} />
             ) : (
-              renderRoot(id, documents, registry)
+              renderRoot(id, documents, registry, dataSources)
             )}
           </section>
         );
@@ -114,7 +145,7 @@ function describe(viewId: string, documents: DocumentSet): string {
   return view.id;
 }
 
-function renderRoot(id: string, documents: DocumentSet, registry: Registry<ReactNode>): ReactNode {
+function renderRoot(id: string, documents: DocumentSet, registry: Registry<ReactNode>, dataSources: ReadonlyMap<string, DataAdapter>): ReactNode {
   const view = documents.views.get(id);
   if (!view) return null;
   if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} />;

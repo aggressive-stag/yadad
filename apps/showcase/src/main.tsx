@@ -17,6 +17,23 @@ const root = document.getElementById("root");
 if (!root) throw new Error('index.html is missing <div id="root">.');
 createRoot(root).render(
   <StrictMode>
-    <App registry={registry} />
+    <App registry={registry} {...persistence()} />
   </StrictMode>,
 );
+
+/** localStorage when the browser allows it (it can throw in some private modes); memory otherwise. */
+function persistence() {
+  try {
+    const storage = window.localStorage;
+    storage.getItem("yadad-showcase:probe");
+    return {
+      storage,
+      onReset: () => {
+        for (const key of Object.keys(storage)) if (key.startsWith("yadad-showcase:")) storage.removeItem(key);
+        window.location.reload();
+      },
+    };
+  } catch {
+    return {};
+  }
+}
