@@ -1,4 +1,5 @@
-// Contract test kit (ARCHITECTURE.md §12). The components repo runs it
+// Contract test kit (ARCHITECTURE.md §12), imported as "@yadad/testing/contract-kit"
+// so the main entry (the mock registry) stays free of test-runner code. The components repo runs it
 // against every registry; engine CI runs it against the mock registry.
 // Needs a DOM: call it from a test file with `// @vitest-environment jsdom`.
 // Pre-contract: covers the text field and FieldFrame.

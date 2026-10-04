@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./contract-kit": "./src/contract-kit.tsx"
   },
   "dependencies": {
     "@testing-library/dom": "^10.4.2",
