@@ -80,7 +80,7 @@ module.exports = {
       comment: "Every import must resolve. Catches undeclared dependencies and typos.",
       severity: "error",
       from: {},
-      to: { couldNotResolve: true },
+      to: { couldNotResolve: true, pathNot: "^virtual:" },
     },
   ],
   options: {
