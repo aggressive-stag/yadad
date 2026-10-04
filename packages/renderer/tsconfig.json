@@ -7,5 +7,5 @@
     "jsx": "react-jsx"
   },
   "include": ["src"],
-  "references": [{ "path": "../core" }, { "path": "../runtime" }]
+  "references": [{ "path": "../core" }, { "path": "../runtime" }, { "path": "../../testing" }]
 }
