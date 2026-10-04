@@ -3,3 +3,5 @@
 
 export * from "./document";
 export * from "./errors";
+export * from "./registry";
+export * from "./data-adapter";
