@@ -1,6 +1,6 @@
-import { jsonPointer } from "@yadad/core";
+import { conditionFields, jsonPointer } from "@yadad/core";
 import type { DataAdapter, DataRecord, EntityDocument, FieldValue, FormItem, FormView, Registry } from "@yadad/core";
-import { emptyFormState, setFieldValue, submitForm } from "@yadad/runtime";
+import { applyFormRules, emptyFormState, evaluateFormRules, setFieldValue, submitForm } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -29,19 +29,29 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved }: F
 
   const adapter = dataSources.get(view.dataSource);
   const refs = view.sections.flatMap((section, i) =>
-    section.items.map((item, j) => ({ field: item.field, path: ["sections", i, "items", j, "field"] })),
+    section.items.flatMap((item, j) => {
+      const path = ["sections", i, "items", j];
+      return [
+        { field: item.field, path: [...path, "field"] },
+        ...(item.visibleWhen ? conditionFields(item.visibleWhen).map((field) => ({ field, path: [...path, "visibleWhen"] })) : []),
+        ...(item.requiredWhen ? conditionFields(item.requiredWhen).map((field) => ({ field, path: [...path, "requiredWhen"] })) : []),
+      ];
+    }),
   );
   const setupErrors = checkViewSetup(entity, view, adapter, refs);
   const { FieldFrame, Section, Button, ErrorSummary } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const fieldPaths = new Set(entity.fields.map((f) => jsonPointer([f.id])));
-  const formErrors = state.errors.filter((e) => !fieldPaths.has(e.path));
+  const rules = evaluateFormRules(view, state.values);
+  // Errors for fields not on screen (hidden or not in this view) go in the summary.
+  const shown = new Set(view.sections.flatMap((s) => s.items.map((i) => i.field)).filter((id) => !rules.hidden.has(id)));
+  const formErrors = state.errors.filter((e) => !entity.fields.some((f) => shown.has(f.id) && e.path === jsonPointer([f.id])));
 
   async function save(): Promise<void> {
     if (!adapter || saving) return;
     setSaving(true);
-    const result = await submitForm(entity, state.values, adapter);
+    const effective = applyFormRules(entity, view, state.values);
+    const result = await submitForm(effective.entity, effective.values, adapter);
     setSaving(false);
     if (result.ok) {
       setState(emptyFormState);
@@ -58,7 +68,7 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved }: F
 
   const renderItem = (item: FormItem): ReactNode => {
     const field = entity.fields.find((f) => f.id === item.field);
-    if (!field) return null; // reported by checkViewSetup
+    if (!field || rules.hidden.has(field.id)) return null; // unknown fields are reported by checkViewSetup
     const inputId = `${formId}-${field.id}`;
     const errorId = `${inputId}-errors`;
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
@@ -69,7 +79,7 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved }: F
     };
     const onChange = (value: FieldValue | undefined) => setState((s) => setFieldValue(s, field.id, value));
     return (
-      <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={field.label} required={field.required === true} errors={errors}>
+      <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={field.label} required={field.required === true || rules.required.has(field.id)} errors={errors}>
         {renderInput(registry, field, state.values[field.id], common, onChange)}
       </FieldFrame>
     );

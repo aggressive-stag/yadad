@@ -1,8 +1,8 @@
-import { jsonPointer } from "@yadad/core";
-import type { DataAdapter, DataRecord, EntityDocument, Field, FieldValue, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
+import { conditionFields, jsonPointer } from "@yadad/core";
+import type { Condition, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, RecordValues, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
 import { emptyFormState, setFieldValue, submitEdit } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { checkViewSetup } from "./setup";
 import { renderDisplay, renderInput } from "./fields";
@@ -41,28 +41,32 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [reloads, setReloads] = useState(0);
+  const [quick, setQuick] = useState<RecordValues>({});
 
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
+  const filter = useMemo(() => combineFilters(view, entity, quick), [view, entity, quick]);
 
   useEffect(() => {
     if (!adapter) return;
     let current = true;
-    adapter.find(entity.id, { sort, page: { offset: page * pageSize, limit: pageSize } }).then(
+    adapter.find(entity.id, { sort, page: { offset: page * pageSize, limit: pageSize }, ...(filter ? { filter } : {}) }).then(
       (result) => current && setRows({ status: "loaded", items: result.items, total: result.total }),
       (error: unknown) => current && setRows({ status: "failed", message: error instanceof Error ? error.message : String(error) }),
     );
     return () => {
       current = false;
     };
-  }, [adapter, entity.id, sort, page, pageSize, reloadKey, reloads]);
+  }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloads]);
 
   const refs = [
     ...view.columns.map((c, i) => ({ field: c.field, path: ["columns", i, "field"] })),
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),
+    ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
+    ...(view.filters ?? []).map((f, i) => ({ field: f.field, path: ["filters", i, "field"] })),
   ];
-  const setupErrors = checkViewSetup(entity, view, adapter, refs);
-  const { Table, Button, ErrorSummary } = registry.layout;
+  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...checkQuickFilters(entity, view)];
+  const { Table, Button, ErrorSummary, Section, FieldFrame } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
   const columns = view.columns.flatMap((c) => {
@@ -144,8 +148,29 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const editErrors = editing?.state.errors ?? [];
 
+  const quickFields = (view.filters ?? []).flatMap((f) => {
+    const field = entity.fields.find((x) => x.id === f.field);
+    return field ? [field] : [];
+  });
+
   return (
     <div data-yadad-table-view={view.id}>
+      {quickFields.length > 0 && (
+        <Section id={`${view.id}-filters`} title="Filter">
+          {quickFields.map((field) => {
+            const control = filterControl(field);
+            const inputId = `${tableId}-filter-${field.id}`;
+            return (
+              <FieldFrame key={field.id} inputId={inputId} errorId={`${inputId}-errors`} label={field.label} required={false} errors={[]}>
+                {renderInput(registry, control, quick[field.id], { inputId, invalid: false }, (v) => {
+                  setQuick((q) => ({ ...q, [field.id]: v ?? null }));
+                  setPage(0);
+                })}
+              </FieldFrame>
+            );
+          })}
+        </Section>
+      )}
       <Table
         caption={view.title ?? entity.id}
         columns={headers}
@@ -165,4 +190,43 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
       )}
     </div>
   );
+}
+
+const BOOLEAN_CHOICES = ["Yes", "No"];
+
+/** The control a quick filter shows: the field itself (never required), or Yes/No for a checkbox. */
+function filterControl(field: Field): Field {
+  if (field.type === "boolean") return { id: field.id, type: "select", label: field.label, options: { source: "static", values: BOOLEAN_CHOICES } };
+  return { ...field, required: false };
+}
+
+/** The view's fixed filter and every quick filter the viewer has set, combined with "and". */
+function combineFilters(view: TableView, entity: EntityDocument, quick: RecordValues): Condition | undefined {
+  const parts: Condition[] = view.filter ? [view.filter] : [];
+  for (const { field: id } of view.filters ?? []) {
+    const field = entity.fields.find((f) => f.id === id);
+    const value = quick[id];
+    if (!field || value === undefined || value === null || value === "") continue;
+    if (field.type === "boolean") parts.push({ op: "eq", field: id, value: value === "Yes" });
+    else if (field.type === "text" && typeof value === "string") parts.push({ op: "contains", field: id, value });
+    else if (typeof value === "string") parts.push({ op: "eq", field: id, value });
+  }
+  return parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { op: "and", conditions: parts };
+}
+
+/** Quick filters work for select, boolean and text fields only (for now). */
+function checkQuickFilters(entity: EntityDocument, view: TableView) {
+  return (view.filters ?? []).flatMap((f, i) => {
+    const field = entity.fields.find((x) => x.id === f.field);
+    return field && !["select", "boolean", "text"].includes(field.type)
+      ? [
+          {
+            path: jsonPointer(["filters", i, "field"]),
+            code: "invalid-value" as const,
+            message: `Quick filters do not support ${field.type} fields yet ("${field.id}").`,
+            hint: "Use a select, boolean or text field, or a fixed filter on the view.",
+          },
+        ]
+      : [];
+  });
 }
