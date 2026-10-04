@@ -165,3 +165,52 @@ settings:
 importers:
 
   .: {}
+
+  apps/showcase:
+    dependencies:
+      '@yadad/editor':
+        specifier: workspace:*
+        version: link:../../packages/editor
+      '@yadad/renderer':
+        specifier: workspace:*
+        version: link:../../packages/renderer
+      '@yadad/testing':
+        specifier: workspace:*
+        version: link:../../testing
+      '@yadad/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
+
+  packages/core: {}
+
+  packages/editor:
+    dependencies:
+      '@yadad/core':
+        specifier: workspace:*
+        version: link:../core
+      '@yadad/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
+  packages/renderer:
+    dependencies:
+      '@yadad/core':
+        specifier: workspace:*
+        version: link:../core
+      '@yadad/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+
+  packages/runtime:
+    dependencies:
+      '@yadad/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/theme: {}
+
+  testing:
+    dependencies:
+      '@yadad/core':
+        specifier: workspace:*
+        version: link:../packages/core
