@@ -1,6 +1,8 @@
 // PRE-CONTRACT document shapes: entities with the five v0 field types and
 // form views. Table and dashboard views, and the frozen contract, come later.
 
+import type { Condition } from "./condition";
+
 /** Engine document format version. Pre-contract documents are version 0. */
 export const SPEC_VERSION = 0;
 export type SpecVersion = typeof SPEC_VERSION;
@@ -67,6 +69,12 @@ export interface EntityDocument {
 export interface FormItem {
   /** Id of a field on the view's entity. */
   readonly field: string;
+  /** Show the field only while this holds. */
+  readonly visibleWhen?: Condition;
+  /** Require the field while this holds (views can only tighten the entity's rules). */
+  readonly requiredWhen?: Condition;
+  /** Drop the field's value while it is hidden. Defaults to false: hidden values are kept. */
+  readonly clearWhenHidden?: boolean;
 }
 
 export interface FormSection {
@@ -115,6 +123,14 @@ export interface TableView {
   readonly sort?: readonly SortSpec[];
   /** Rows per page. Defaults to 25. */
   readonly pageSize?: number;
+  /** Rows must always match this. */
+  readonly filter?: Condition;
+  /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring. */
+  readonly filters?: readonly TableFilter[];
+}
+
+export interface TableFilter {
+  readonly field: string;
 }
 
 /** Discriminated on `kind`. Dashboards arrive later. */

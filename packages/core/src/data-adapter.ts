@@ -18,9 +18,12 @@ export interface DataRecord {
   readonly values: RecordValues;
 }
 
+import type { Condition } from "./condition";
 import type { SortSpec } from "./document";
 
 export interface Query {
+  /** Only records matching this. */
+  readonly filter?: Condition;
   /** Sort keys in priority order. Empty values sort last in both directions. */
   readonly sort?: readonly SortSpec[];
   readonly page?: { readonly offset: number; readonly limit: number };

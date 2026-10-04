@@ -3,6 +3,7 @@
 // decision (P1-01); referential checks (view fields exist on the entity) are
 // P1-05. Collects every error instead of stopping at the first.
 
+import { CONDITION_OPS } from "./condition";
 import { FIELD_TYPES, SPEC_VERSION } from "./document";
 import type { Document, FieldType } from "./document";
 import { jsonPointer } from "./errors";
@@ -158,8 +159,11 @@ function validateForm(errors: Errors, doc: JsonObject): void {
         errors.add(itemPath, "type", "A form item must be a JSON object.", 'Use { "field": "<field id>" }.');
         return;
       }
-      checkKeys(errors, item, itemPath, ["field"], []);
+      checkKeys(errors, item, itemPath, ["field"], ["visibleWhen", "requiredWhen", "clearWhenHidden"]);
       checkId(errors, item, itemPath, "field");
+      checkCondition(errors, item["visibleWhen"], [...itemPath, "visibleWhen"]);
+      checkCondition(errors, item["requiredWhen"], [...itemPath, "requiredWhen"]);
+      checkBoolean(errors, item, itemPath, "clearWhenHidden");
       if (typeof item["field"] === "string") placed.push({ id: item["field"], path: [...itemPath, "field"] });
     });
   });
@@ -168,7 +172,21 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "filters"]);
+  checkCondition(errors, doc["filter"], ["filter"]);
+  const filters = checkArray(errors, doc, [], "filters");
+  const filtered: { id: string; path: Path }[] = [];
+  filters?.forEach((f, i) => {
+    const path = ["filters", i];
+    if (!isObject(f)) {
+      errors.add(path, "type", "A filter must be a JSON object.", 'Use { "field": "<field id>" }.');
+      return;
+    }
+    checkKeys(errors, f, path, ["field"], []);
+    checkId(errors, f, path, "field");
+    if (typeof f["field"] === "string") filtered.push({ id: f["field"], path: [...path, "field"] });
+  });
+  reportDuplicates(errors, filtered, "filter", "a table's filters");
   checkNonEmptyString(errors, doc, [], "title");
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
@@ -212,6 +230,71 @@ function validateTable(errors: Errors, doc: JsonObject): void {
   const pageSize = doc["pageSize"];
   if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000)) {
     errors.add(["pageSize"], "invalid-value", '"pageSize" must be a whole number from 1 to 1000.', "Use e.g. 25.");
+  }
+}
+
+// ---- conditions -----------------------------------------------------------
+
+const MAX_CONDITION_DEPTH = 16;
+const isScalar = (v: unknown): boolean => typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean";
+const CONDITION_HINT = 'Use e.g. { "op": "eq", "field": "exercise", "value": "Squat" }.';
+
+/** Validates an optional condition (undefined is fine). */
+function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): void {
+  if (value === undefined) return;
+  if (!isObject(value)) {
+    errors.add(path, "type", "A condition must be a JSON object.", CONDITION_HINT);
+    return;
+  }
+  if (depth >= MAX_CONDITION_DEPTH) {
+    errors.add(path, "invalid-value", `Conditions may nest at most ${MAX_CONDITION_DEPTH} levels.`, "Flatten it with and/or.");
+    return;
+  }
+  const op = value["op"];
+  switch (op) {
+    case "eq":
+    case "neq":
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte":
+    case "contains":
+      checkKeys(errors, value, path, ["op", "field", "value"], []);
+      checkId(errors, value, path, "field");
+      if (value["value"] !== undefined && !(op === "contains" ? typeof value["value"] === "string" : isScalar(value["value"]))) {
+        errors.add([...path, "value"], "type", `"value" must be ${op === "contains" ? "text" : "text, a number or true/false"}.`, CONDITION_HINT);
+      }
+      return;
+    case "in": {
+      checkKeys(errors, value, path, ["op", "field", "values"], []);
+      checkId(errors, value, path, "field");
+      const values = checkArray(errors, value, path, "values");
+      values?.forEach((v, i) => {
+        if (!isScalar(v)) errors.add([...path, "values", i], "type", "Each value must be text, a number or true/false.", CONDITION_HINT);
+      });
+      return;
+    }
+    case "empty":
+    case "notEmpty":
+      checkKeys(errors, value, path, ["op", "field"], []);
+      checkId(errors, value, path, "field");
+      return;
+    case "and":
+    case "or": {
+      checkKeys(errors, value, path, ["op", "conditions"], []);
+      const list = checkArray(errors, value, path, "conditions");
+      list?.forEach((c, i) => checkCondition(errors, c, [...path, "conditions", i], depth + 1));
+      return;
+    }
+    case "not":
+      checkKeys(errors, value, path, ["op", "condition"], []);
+      checkCondition(errors, value["condition"], [...path, "condition"], depth + 1);
+      return;
+    case undefined:
+      errors.add([...path, "op"], "required", 'Missing required property "op".', `Add "op": one of ${CONDITION_OPS.join(", ")}.`);
+      return;
+    default:
+      errors.add([...path, "op"], "invalid-value", `Unknown condition op ${JSON.stringify(op)}.`, `Use one of: ${CONDITION_OPS.join(", ")}.`);
   }
 }
 
