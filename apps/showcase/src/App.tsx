@@ -1,7 +1,6 @@
-import type { DataAdapter, DataRecord } from "@yadad/core";
+import type { DataAdapter, DataRecord, Registry } from "@yadad/core";
 import { FormRenderer } from "@yadad/renderer";
 import { createMemoryAdapter } from "@yadad/runtime";
-import { mockRegistry } from "@yadad/testing";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import entityHello from "../../../fixtures/valid/entity-hello.json?raw";
@@ -12,12 +11,14 @@ import { loadDocuments } from "./documents";
 const dataSources: ReadonlyMap<string, DataAdapter> = new Map([["default", createMemoryAdapter()]]);
 
 export interface AppProps {
+  /** Injected by the host: the mock registry, or a real component set. */
+  readonly registry: Registry<ReactNode>;
   /** Raw JSON documents. Defaults to the hello fixtures; edit those files and the page follows. */
   readonly entitySource?: string;
   readonly formSource?: string;
 }
 
-export function App({ entitySource = entityHello, formSource = formHello }: AppProps): ReactNode {
+export function App({ registry, entitySource = entityHello, formSource = formHello }: AppProps): ReactNode {
   const [records, setRecords] = useState<readonly DataRecord[]>([]);
   const docs = loadDocuments(entitySource, formSource);
 
@@ -28,7 +29,7 @@ export function App({ entitySource = entityHello, formSource = formHello }: AppP
         <FormRenderer
           entity={docs.entity}
           view={docs.view}
-          registry={mockRegistry}
+          registry={registry}
           dataSources={dataSources}
           onSaved={(record) => setRecords((rs) => [...rs, record])}
         />
