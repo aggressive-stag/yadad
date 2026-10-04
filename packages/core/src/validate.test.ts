@@ -49,7 +49,7 @@ describe("document level", () => {
 
   test("missing and unknown kind", () => {
     expect(problems({})).toEqual([["/kind", "required"]]);
-    expect(problems({ ...entity, kind: "table" })).toEqual([["/kind", "unknown-kind"]]);
+    expect(problems({ ...entity, kind: "dashboard" })).toEqual([["/kind", "unknown-kind"]]);
   });
 
   test("unsupported spec version", () => {
@@ -154,6 +154,36 @@ describe("field types", () => {
     expect(problems(withFields({ id: "d", type: "date", label: "D", min: "2027-01-01", max: "2026-01-01" }))).toEqual([
       ["/fields/0/min", "invalid-value"],
     ]);
+  });
+});
+
+describe("table views", () => {
+  const table = {
+    kind: "table",
+    specVersion: 0,
+    id: "sets",
+    entity: "workout_set",
+    revision: 1,
+    dataSource: "default",
+    columns: [{ field: "day" }, { field: "weight", editable: true }],
+    sort: [{ field: "day", dir: "desc" }],
+    pageSize: 25,
+  };
+
+  test("a full table view validates", () => {
+    expect(problems(table)).toEqual([]);
+    const { sort: _sort, pageSize: _pageSize, ...minimal } = table;
+    expect(problems(minimal)).toEqual([]);
+  });
+
+  test("columns, sort and page size", () => {
+    expect(problems({ ...table, columns: [] })).toEqual([["/columns", "invalid-value"]]);
+    expect(problems({ ...table, columns: [{ field: "day" }, { field: "day", editable: "yes" }] })).toEqual([
+      ["/columns/1/editable", "type"],
+      ["/columns/1/field", "duplicate-id"],
+    ]);
+    expect(problems({ ...table, sort: [{ field: "day", dir: "up" }] })).toEqual([["/sort/0/dir", "invalid-value"]]);
+    expect(problems({ ...table, pageSize: 0 })).toEqual([["/pageSize", "invalid-value"]]);
   });
 });
 

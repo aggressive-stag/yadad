@@ -87,7 +87,35 @@ export interface FormView {
   readonly sections: readonly FormSection[];
 }
 
-/** Discriminated on `kind`. Table and dashboard views arrive with contract-v0. */
-export type ViewDocument = FormView;
+export interface TableColumn {
+  /** Id of a field on the view's entity. */
+  readonly field: string;
+  /** Whether rows can edit this column in place. Defaults to false. */
+  readonly editable?: boolean;
+}
+
+export interface SortSpec {
+  readonly field: string;
+  readonly dir: "asc" | "desc";
+}
+
+/** Records of one entity as rows; columns reference entity fields by id. */
+export interface TableView {
+  readonly kind: "table";
+  readonly specVersion: SpecVersion;
+  readonly id: string;
+  readonly entity: string;
+  readonly revision: number;
+  /** Key the host maps to a DataAdapter. Never a URL. */
+  readonly dataSource: string;
+  readonly columns: readonly TableColumn[];
+  /** Initial sort; viewers can change it. First entry sorts first. */
+  readonly sort?: readonly SortSpec[];
+  /** Rows per page. Defaults to 25. */
+  readonly pageSize?: number;
+}
+
+/** Discriminated on `kind`. Dashboards arrive later. */
+export type ViewDocument = FormView | TableView;
 export type Document = EntityDocument | ViewDocument;
 export type DocumentKind = Document["kind"];

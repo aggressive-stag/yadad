@@ -12,7 +12,7 @@ export type ValidationResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly errors: readonly DocumentError[] };
 
-const KINDS = ["entity", "form"] as const;
+const KINDS = ["entity", "form", "table"] as const;
 const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
 const ID_HINT = 'Use lowercase letters, digits and underscores, starting with a letter (e.g. "workout_set").';
 
@@ -36,6 +36,8 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
     validateEntity(errors, input);
   } else if (input["kind"] === "form") {
     validateForm(errors, input);
+  } else if (input["kind"] === "table") {
+    validateTable(errors, input);
   } else if (input["kind"] === undefined) {
     errors.add(["kind"], "required", 'Missing required property "kind".', `Add "kind": one of ${KINDS.join(", ")}.`);
   } else {
@@ -163,6 +165,53 @@ function validateForm(errors: Errors, doc: JsonObject): void {
   });
   reportDuplicates(errors, sectionIds, "section", "a form");
   reportDuplicates(errors, placed, "placed field", "a form (each field appears once)");
+}
+
+function validateTable(errors: Errors, doc: JsonObject): void {
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["sort", "pageSize"]);
+  checkSpecVersion(errors, doc);
+  checkId(errors, doc, [], "id");
+  checkId(errors, doc, [], "entity");
+  checkRevision(errors, doc);
+  checkNonEmptyString(errors, doc, [], "dataSource");
+
+  const columns = checkArray(errors, doc, [], "columns");
+  if (columns?.length === 0) errors.add(["columns"], "invalid-value", "A table needs at least one column.", 'Add { "field": "<field id>" }.');
+  const shown: { id: string; path: Path }[] = [];
+  columns?.forEach((column, i) => {
+    const path = ["columns", i];
+    if (!isObject(column)) {
+      errors.add(path, "type", "A column must be a JSON object.", 'Use { "field": "<field id>" }.');
+      return;
+    }
+    checkKeys(errors, column, path, ["field"], ["editable"]);
+    checkId(errors, column, path, "field");
+    checkBoolean(errors, column, path, "editable");
+    if (typeof column["field"] === "string") shown.push({ id: column["field"], path: [...path, "field"] });
+  });
+  reportDuplicates(errors, shown, "column", "a table (each field appears once)");
+
+  const sort = checkArray(errors, doc, [], "sort");
+  const sorted: { id: string; path: Path }[] = [];
+  sort?.forEach((key, i) => {
+    const path = ["sort", i];
+    if (!isObject(key)) {
+      errors.add(path, "type", "A sort key must be a JSON object.", 'Use { "field": "<field id>", "dir": "asc" }.');
+      return;
+    }
+    checkKeys(errors, key, path, ["field", "dir"], []);
+    checkId(errors, key, path, "field");
+    if (key["dir"] !== undefined && key["dir"] !== "asc" && key["dir"] !== "desc") {
+      errors.add([...path, "dir"], "invalid-value", `Unknown sort direction ${JSON.stringify(key["dir"])}.`, 'Use "asc" or "desc".');
+    }
+    if (typeof key["field"] === "string") sorted.push({ id: key["field"], path: [...path, "field"] });
+  });
+  reportDuplicates(errors, sorted, "sort", "a table's sort");
+
+  const pageSize = doc["pageSize"];
+  if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000)) {
+    errors.add(["pageSize"], "invalid-value", '"pageSize" must be a whole number from 1 to 1000.', "Use e.g. 25.");
+  }
 }
 
 // ---- checks ---------------------------------------------------------------

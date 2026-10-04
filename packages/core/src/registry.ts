@@ -1,5 +1,5 @@
-// PRE-CONTRACT registry shape: one entry per field type plus FieldFrame.
-// Section, Tabs, GridItem, CellEditor, widgets and optionsSchema come later.
+// PRE-CONTRACT registry shape: one entry per field type plus layout chrome
+// (FieldFrame, Section, Button, Table). CellEditor, widgets and optionsSchema come later.
 
 import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document";
 import type { DocumentError } from "./errors";
@@ -64,13 +64,57 @@ export interface FieldFrameProps<N> {
   readonly children: N;
 }
 
+/** A titled group of fields, e.g. a form section. */
+export interface SectionProps<N> {
+  readonly id: string;
+  readonly title?: string;
+  readonly children: N;
+}
+
+export interface ButtonProps {
+  readonly label: string;
+  /** "submit" submits the surrounding form; "button" only calls onPress. */
+  readonly type: "submit" | "button";
+  readonly variant: "primary" | "secondary";
+  readonly disabled: boolean;
+  readonly onPress?: () => void;
+}
+
+export interface TableColumnHeader {
+  readonly id: string;
+  readonly label: string;
+  readonly sortable: boolean;
+  /** Set on the column currently sorting the table. */
+  readonly sort?: "asc" | "desc";
+}
+
+export interface TableRow<N> {
+  readonly id: string;
+  /** One cell per column, in column order. */
+  readonly cells: readonly N[];
+}
+
+export interface TableProps<N> {
+  /** Accessible name for the table. */
+  readonly caption: string;
+  readonly columns: readonly TableColumnHeader[];
+  readonly rows: readonly TableRow<N>[];
+  /** Called with a sortable column's id when the viewer asks to sort by it. */
+  readonly onSort: (columnId: string) => void;
+  /** Shown instead of rows when there are none. */
+  readonly empty: N;
+}
+
 /**
  * Exact-key lookup: one entry per field type, enforced by the type system
- * (a mapped type over FieldType, not an index signature).
+ * (a mapped type over FieldType, not an index signature), plus layout chrome.
  */
 export interface Registry<N> {
   readonly fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> };
   readonly layout: {
     readonly FieldFrame: Component<FieldFrameProps<N>, N>;
+    readonly Section: Component<SectionProps<N>, N>;
+    readonly Button: Component<ButtonProps, N>;
+    readonly Table: Component<TableProps<N>, N>;
   };
 }

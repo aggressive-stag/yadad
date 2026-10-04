@@ -1,4 +1,4 @@
-// PRE-CONTRACT (P0-04). DataAdapter from ARCHITECTURE.md §10. Query filter
+// PRE-CONTRACT. DataAdapter from ARCHITECTURE.md §10. Query filter
 // and sort arrive with the condition AST (P1-04).
 
 /** A single field value: text, select and date are strings, then numbers and booleans. null is empty. */
@@ -18,7 +18,11 @@ export interface DataRecord {
   readonly values: RecordValues;
 }
 
+import type { SortSpec } from "./document";
+
 export interface Query {
+  /** Sort keys in priority order. Empty values sort last in both directions. */
+  readonly sort?: readonly SortSpec[];
   readonly page?: { readonly offset: number; readonly limit: number };
 }
 
