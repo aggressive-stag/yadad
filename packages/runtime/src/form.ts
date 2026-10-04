@@ -24,6 +24,17 @@ export type SubmitResult =
   | { readonly ok: true; readonly record: DataRecord }
   | { readonly ok: false; readonly errors: readonly DocumentError[] };
 
+/**
+ * Validates an edit to an existing record (merged over its current values),
+ * then saves only the changed values under the entity's current revision.
+ */
+export async function submitEdit(entity: EntityDocument, record: DataRecord, patch: RecordValues, adapter: DataAdapter): Promise<SubmitResult> {
+  const errors = validateRecord(entity, { ...record.values, ...patch });
+  if (errors.length > 0) return { ok: false, errors };
+  const saved = await adapter.update(entity.id, record.id, patch, { entityRevision: entity.revision });
+  return { ok: true, record: saved };
+}
+
 /** Validates against the entity, then creates the record under the entity's current revision. */
 export async function submitForm(entity: EntityDocument, values: RecordValues, adapter: DataAdapter): Promise<SubmitResult> {
   const errors = validateRecord(entity, values);

@@ -1,6 +1,6 @@
 import type { EntityDocument } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { emptyFormState, setFieldValue, submitForm } from "./form";
+import { emptyFormState, setFieldValue, submitEdit, submitForm } from "./form";
 import { createMemoryAdapter } from "./memory-adapter";
 import { validateRecord } from "./record";
 
@@ -91,6 +91,15 @@ describe("form state", () => {
       ok: true,
       record: { id: "1", entityId: "hello", entityRevision: 4, values: { name: "Ada" } },
     });
+  });
+
+  test("submitEdit validates the merged record and saves the patch", async () => {
+    const db = createMemoryAdapter();
+    const created = await submitForm(entity, { name: "Ada", note: "x" }, db);
+    if (!created.ok) throw new Error("setup");
+    expect((await submitEdit(entity, created.record, { name: " " }, db)).ok).toBe(false);
+    const edited = await submitEdit({ ...entity, revision: 5 }, created.record, { name: "Grace" }, db);
+    expect(edited).toEqual({ ok: true, record: { ...created.record, entityRevision: 5, values: { name: "Grace", note: "x" } } });
   });
 
   test("invalid submit returns errors and writes nothing", async () => {

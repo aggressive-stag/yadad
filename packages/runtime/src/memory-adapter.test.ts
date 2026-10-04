@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMemoryAdapter } from "./memory-adapter";
+import { compareFieldValues, createMemoryAdapter } from "./memory-adapter";
 
 describe("memory adapter", () => {
   test("create stores the record with its entity revision", async () => {
@@ -33,5 +33,22 @@ describe("memory adapter", () => {
     const { id } = await db.create("hello", { name: "Ada" }, { entityRevision: 1 });
     await db.delete("hello", id);
     expect(await db.findOne("hello", id)).toBeNull();
+  });
+});
+
+describe("sorting", () => {
+  test("sorts by several keys, empty values last in both directions", async () => {
+    const db = createMemoryAdapter();
+    const rows: [string | null, number | null][] = [["b", 2], ["a", 10], [null, 1], ["a", 2], ["c", null]];
+    for (const [name, n] of rows) await db.create("t", { name, n }, { entityRevision: 1 });
+    const order = async (sort: { field: string; dir: "asc" | "desc" }[]) =>
+      (await db.find("t", { sort })).items.map((r) => [r.values["name"], r.values["n"]]);
+    expect(await order([{ field: "name", dir: "asc" }, { field: "n", dir: "asc" }])).toEqual([["a", 2], ["a", 10], ["b", 2], ["c", null], [null, 1]]);
+    expect(await order([{ field: "n", dir: "desc" }])).toEqual([["a", 10], ["b", 2], ["a", 2], [null, 1], ["c", null]]);
+  });
+
+  test("text sorts naturally and case-insensitively; booleans false first", () => {
+    expect(["item 10", "Item 9", "item 1"].sort((a, b) => compareFieldValues(a, b, "asc"))).toEqual(["item 1", "Item 9", "item 10"]);
+    expect(compareFieldValues(false, true, "asc")).toBeLessThan(0);
   });
 });
