@@ -54,7 +54,11 @@ const sampleError: DocumentError = {
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
-/** Every contract check for a registry, without registering tests. */
+/**
+ * Every contract check for a registry, without registering tests. Checks
+ * render into the shared document and clean up after themselves, so run them
+ * one at a time (await each), never concurrently.
+ */
 export function registryContractChecks(registry: Registry<ReactNode>, samples: FieldSamples = defaultSamples): readonly ContractCheck[] {
   return FIELD_TYPES.flatMap((type) => fieldChecks(type, registry, samples[type], drivers[type]));
 }
