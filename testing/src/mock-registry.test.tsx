@@ -22,6 +22,7 @@ test("field frame shows label, required marker and errors", () => {
   const html = renderToStaticMarkup(
     <FieldFrame
       inputId="f-name"
+      errorId="f-name-errors"
       label="Name"
       required
       errors={[{ path: "/name", code: "required", message: '"Name" is required.', hint: "Enter a value." }]}
