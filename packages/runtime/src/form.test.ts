@@ -30,6 +30,51 @@ describe("validateRecord", () => {
   });
 });
 
+describe("validateRecord by field type", () => {
+  const log: EntityDocument = {
+    kind: "entity",
+    specVersion: 0,
+    id: "workout_set",
+    revision: 1,
+    fields: [
+      { id: "exercise", type: "select", label: "Exercise", required: true, options: { source: "static", values: ["Squat", "Bench"] } },
+      { id: "weight", type: "number", label: "Weight", min: 0, max: 500, step: 2.5, unit: "kg" },
+      { id: "day", type: "date", label: "Day", min: "2020-01-01" },
+      { id: "warmup", type: "boolean", label: "Warm-up" },
+      { id: "consent", type: "boolean", label: "Consent", required: true },
+    ],
+  };
+  const check = (values: Record<string, string | number | boolean | null>) =>
+    validateRecord(log, { exercise: "Squat", consent: true, ...values }).map((e) => [e.path, e.code]);
+
+  test("a valid record has no errors", () => {
+    expect(check({ weight: 102.5, day: "2026-10-04", warmup: false })).toEqual([]);
+    expect(check({ weight: 0.1 + 0.2 - 0.3 })).toEqual([]);
+  });
+
+  test("numbers: type, bounds and step", () => {
+    expect(check({ weight: "100" })).toEqual([["/weight", "type"]]);
+    expect(check({ weight: -5 })).toEqual([["/weight", "invalid-value"]]);
+    expect(check({ weight: 501 })).toEqual([["/weight", "invalid-value"]]);
+    expect(check({ weight: 101 })).toEqual([["/weight", "invalid-value"]]);
+  });
+
+  test("select must be one of the choices", () => {
+    expect(check({ exercise: "Deadlift" })).toEqual([["/exercise", "invalid-value"]]);
+    expect(check({ exercise: null })).toEqual([["/exercise", "required"]]);
+  });
+
+  test("dates must be real days within bounds", () => {
+    expect(check({ day: "2026-02-30" })).toEqual([["/day", "type"]]);
+    expect(check({ day: "2019-12-31" })).toEqual([["/day", "invalid-value"]]);
+  });
+
+  test("a required boolean must be true", () => {
+    expect(check({ consent: false })).toEqual([["/consent", "required"]]);
+    expect(check({ warmup: "yes" })).toEqual([["/warmup", "type"]]);
+  });
+});
+
 describe("form state", () => {
   test("setFieldValue sets, clears and drops that field's errors", () => {
     const withError = { values: {}, errors: validateRecord(entity, {}) };
