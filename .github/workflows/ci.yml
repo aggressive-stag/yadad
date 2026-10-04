@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # changeset status compares against the base branch
+
+      - uses: pnpm/action-setup@v6 # version comes from packageManager in package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Gate order from AGENTS.md. size-limit and API reports join once packages export something.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Dependency rules
+        run: pnpm depcruise
+
+      - name: Dependency rules fire on the forbidden-import fixture
+        run: pnpm depcruise:fixture
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Changeset present
+        if: github.event_name == 'pull_request'
+        run: pnpm changeset status --since=origin/${{ github.base_ref }}
