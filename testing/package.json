@@ -3,9 +3,27 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./contract-kit": "./src/contract-kit.tsx"
   },
   "dependencies": {
-    "@yadad/core": "workspace:*"
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@yadad/core": "workspace:*",
+    "axe-core": "^4.13.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "~30.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^5.0.3"
+  },
+  "peerDependencies": {
+    "jsdom": "~30.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vitest": "^5.0.3"
   }
 }
