@@ -113,14 +113,14 @@ An **entity** owns fields, types and validation. A **view** owns layout and refe
 
 ```jsonc
 // Entity: data model
-{ "kind": "entity", "specVersion": 1, "id": "workout_set", "revision": 7,
+{ "kind": "entity", "specVersion": 0, "id": "workout_set", "revision": 7,
   "fields": [
     { "id": "exercise", "type": "select", "label": "Exercise", "required": true,
       "options": { "source": "static", "values": ["Squat", "Bench"] } },
     { "id": "weight", "type": "number", "label": "Weight", "min": 0, "unit": "kg" } ] }
 
 // Form view: layout only
-{ "kind": "form", "specVersion": 1, "id": "log_set", "entity": "workout_set", "revision": 3,
+{ "kind": "form", "specVersion": 0, "id": "log_set", "entity": "workout_set", "revision": 3,
   "dataSource": "default",
   "sections": [ { "id": "main", "title": "Set", "items": [
     { "field": "exercise" },
@@ -156,6 +156,8 @@ Error format everywhere: `{ path, code, message, hint }`, where `path` is a JSON
 | Changes when | The engine's document language changes (an engine PR) | Someone edits an entity or view |
 | Migration | Pure `migrate(doc, from, to)` in `core`, plus a before/after fixture pair | None for additive edits. Destructive edits (delete a field, change its type) go through an explicit editor transform. |
 | Records | n/a | Store `{ entityId, entityRevision }`. Old records are upcast lazily on read. If one fails validation, show "saved under revision N" instead of crashing. |
+
+Pre-contract documents use `specVersion: 0`; the validator rejects any other value until the contract freezes. Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
 
 ## 9. Registry contract and ownership
 
