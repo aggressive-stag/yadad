@@ -9,7 +9,8 @@ export type ErrorCode =
   | "unknown-kind"
   | "unknown-field-type"
   | "unsupported-spec-version"
-  | "duplicate-id";
+  | "duplicate-id"
+  | "unknown-reference"; // a document references an id that does not exist in the set
 
 /** One problem with a document. Readable by a person, actionable by an agent. */
 export interface DocumentError {
@@ -19,6 +20,17 @@ export interface DocumentError {
   readonly message: string;
   /** What to change to fix it. */
   readonly hint: string;
+  /**
+   * When validating a set of documents together, the id of the document this
+   * error belongs to (see `validateDocuments`). Absent for single-document errors.
+   */
+  readonly document?: string;
+  /**
+   * Machine-readable list of the values that would have been accepted, when the
+   * problem is "not one of a known set" (unknown reference, unknown kind, ...).
+   * The human-facing `hint` is unchanged.
+   */
+  readonly allowed?: readonly string[];
 }
 
 /** Builds a JSON Pointer from path segments, escaping "~" and "/". */

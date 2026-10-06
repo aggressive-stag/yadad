@@ -1,11 +1,14 @@
 // PRE-CONTRACT (P0-04). Hand-written structural validation for the skeleton
 // documents. The validator library and generated JSON Schemas are a Phase 1
-// decision (P1-01); referential checks (view fields exist on the entity) are
-// P1-05. Collects every error instead of stopping at the first.
+// decision (P1-01). Collects every error instead of stopping at the first.
+// `validateDocument` checks one document's shape; `validateDocuments` adds the
+// cross-document referential checks (entity exists, field ids exist on it,
+// widgets point at existing views) that only hold across a whole set.
 
 import { CONDITION_OPS } from "./condition.js";
+import type { Condition } from "./condition.js";
 import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
-import type { Document, FieldType } from "./document.js";
+import type { Document, DashboardView, EntityDocument, FieldType, FormView, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -22,8 +25,8 @@ type JsonObject = { readonly [key: string]: unknown };
 
 class Errors {
   readonly list: DocumentError[] = [];
-  add(path: Path, code: ErrorCode, message: string, hint: string): void {
-    this.list.push({ path: jsonPointer(path), code, message, hint });
+  add(path: Path, code: ErrorCode, message: string, hint: string, allowed?: readonly string[]): void {
+    this.list.push(allowed ? { path: jsonPointer(path), code, message, hint, allowed } : { path: jsonPointer(path), code, message, hint });
   }
 }
 
@@ -49,6 +52,7 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
       "unknown-kind",
       `Unknown document kind ${JSON.stringify(input["kind"])}.`,
       `Use one of: ${KINDS.join(", ")}.`,
+      KINDS,
     );
   }
 
@@ -91,6 +95,7 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
       "unknown-field-type",
       `Unknown field type ${JSON.stringify(type)}.`,
       `Field types: ${FIELD_TYPES.join(", ")}.`,
+      FIELD_TYPES,
     );
     return;
   }
@@ -384,7 +389,13 @@ function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): 
       errors.add([...path, "op"], "required", 'Missing required property "op".', `Add "op": one of ${CONDITION_OPS.join(", ")}.`);
       return;
     default:
-      errors.add([...path, "op"], "invalid-value", `Unknown condition op ${JSON.stringify(op)}.`, `Use one of: ${CONDITION_OPS.join(", ")}.`);
+      errors.add(
+        [...path, "op"],
+        "invalid-value",
+        `Unknown condition op ${JSON.stringify(op)}.`,
+        `Use one of: ${CONDITION_OPS.join(", ")}.`,
+        CONDITION_OPS,
+      );
   }
 }
 
@@ -539,4 +550,179 @@ function reportDuplicates(errors: Errors, entries: readonly { id: string; path: 
     }
     seen.add(id);
   }
+}
+
+// ---- set of documents: cross-reference validation -------------------------
+
+/**
+ * Validates a set of documents together, in addition to checking each one on
+ * its own (as `validateDocument` does). Cross-document references that only
+ * hold across the whole set are checked here:
+ *
+ * - every form/table view's `entity` exists and is an entity document;
+ * - every field id a form (items and conditions), table (columns, sort, quick
+ *   filters, fixed filter) or a dashboard `count` widget's filter uses exists
+ *   on that view's entity;
+ * - a dashboard `view` widget points at an existing form or table, and a
+ *   `count` widget points at an existing table;
+ * - document ids are unique per kind across the set.
+ *
+ * Errors that belong to a single document carry that document's id in
+ * `DocumentError.document`; `path` is still a JSON Pointer into that one
+ * document. Returns `ok` only when every document is structurally valid and
+ * every reference resolves.
+ */
+export function validateDocuments(inputs: readonly unknown[]): ValidationResult<readonly Document[]> {
+  const results = inputs.map(validateDocument);
+  const errors: DocumentError[] = [];
+  const okDocs: Document[] = [];
+  results.forEach((result, i) => {
+    if (result.ok) {
+      okDocs.push(result.value);
+      return;
+    }
+    const label = documentLabel(inputs[i]);
+    for (const error of result.errors) errors.push(label === undefined ? error : { ...error, document: label });
+  });
+  checkSetReferences(errors, okDocs);
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, value: okDocs };
+}
+
+/** The id of a document when it is a plain object with a string "id". */
+function documentLabel(input: unknown): string | undefined {
+  return isObject(input) && typeof input["id"] === "string" ? input["id"] : undefined;
+}
+
+interface SetIndex {
+  readonly entities: Map<string, EntityDocument>;
+  readonly forms: Map<string, FormView>;
+  readonly tables: Map<string, TableView>;
+  readonly dashboards: Map<string, DashboardView>;
+}
+
+function checkSetReferences(errors: DocumentError[], docs: readonly Document[]): void {
+  const idx: SetIndex = { entities: new Map(), forms: new Map(), tables: new Map(), dashboards: new Map() };
+  for (const doc of docs) {
+    switch (doc.kind) {
+      case "entity":
+        putUnique(idx.entities, doc, "entity", errors);
+        break;
+      case "form":
+        putUnique(idx.forms, doc, "form", errors);
+        break;
+      case "table":
+        putUnique(idx.tables, doc, "table", errors);
+        break;
+      case "dashboard":
+        putUnique(idx.dashboards, doc, "dashboard", errors);
+        break;
+    }
+  }
+  const embeddable = [...idx.forms.keys(), ...idx.tables.keys()];
+  for (const doc of docs) {
+    switch (doc.kind) {
+      case "form":
+      case "table":
+        checkViewFields(errors, doc, idx);
+        break;
+      case "dashboard":
+        checkDashboard(errors, doc, idx, embeddable);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+/** Reports a document whose id collides with another of the same kind. */
+function putUnique<T extends { readonly id: string }>(map: Map<string, T>, doc: T, kind: string, errors: DocumentError[]): void {
+  if (map.has(doc.id)) {
+    errors.push({
+      path: "/id",
+      code: "duplicate-id",
+      message: `A ${kind} with id "${doc.id}" is defined more than once.`,
+      hint: "Document ids must be unique within a kind; rename one of them.",
+      document: doc.id,
+    });
+    return;
+  }
+  map.set(doc.id, doc);
+}
+
+/** Builds a cross-reference error pointing at one document. */
+function refError(document: string, path: Path, message: string, hint: string, allowed: readonly string[]): DocumentError {
+  return { path: jsonPointer(path), code: "unknown-reference", message, hint, document, allowed };
+}
+
+/** Checks that a form or table view's entity and every field it uses exist. */
+function checkViewFields(errors: DocumentError[], view: FormView | TableView, idx: SetIndex): void {
+  const entity = idx.entities.get(view.entity);
+  if (!entity) {
+    errors.push(refError(view.id, ["entity"], `View references unknown entity "${view.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
+    return;
+  }
+  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const checkField = (fieldId: string, path: Path): void => {
+    if (fieldIds.includes(fieldId)) return;
+    errors.push(refError(view.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+  };
+  if (view.kind === "form") {
+    view.sections.forEach((section, i) => {
+      section.items.forEach((item, j) => {
+        const itemPath: Path = ["sections", i, "items", j];
+        checkField(item.field, [...itemPath, "field"]);
+        checkConditionFields(item.visibleWhen, [...itemPath, "visibleWhen"], checkField);
+        checkConditionFields(item.requiredWhen, [...itemPath, "requiredWhen"], checkField);
+      });
+    });
+    return;
+  }
+  view.columns.forEach((column, i) => checkField(column.field, ["columns", i, "field"]));
+  view.sort?.forEach((key, i) => checkField(key.field, ["sort", i, "field"]));
+  view.filters?.forEach((filter, i) => checkField(filter.field, ["filters", i, "field"]));
+  checkConditionFields(view.filter, ["filter"], checkField);
+}
+
+/** Calls `check` for every field a condition references, with its JSON Pointer. */
+function checkConditionFields(condition: Condition | undefined, base: Path, check: (fieldId: string, path: Path) => void): void {
+  if (!condition) return;
+  switch (condition.op) {
+    case "and":
+    case "or":
+      condition.conditions.forEach((c, i) => checkConditionFields(c, [...base, "conditions", i], check));
+      break;
+    case "not":
+      checkConditionFields(condition.condition, [...base, "condition"], check);
+      break;
+    default:
+      check(condition.field, [...base, "field"]);
+  }
+}
+
+/** Checks that a dashboard's widgets point at existing views (and, for counts, valid fields). */
+function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetIndex, embeddable: readonly string[]): void {
+  doc.tabs.forEach((tab, i) => {
+    tab.items.forEach((item, j) => {
+      const itemPath: Path = ["tabs", i, "items", j];
+      if (item.widget === "view") {
+        if (!idx.forms.has(item.view) && !idx.tables.has(item.view)) {
+          errors.push(refError(doc.id, [...itemPath, "view"], `Widget references unknown view "${item.view}".`, "Point at a form or table view.", embeddable));
+        }
+        return;
+      }
+      const table = idx.tables.get(item.view);
+      if (!table) {
+        errors.push(refError(doc.id, [...itemPath, "view"], `Count widget references unknown table view "${item.view}".`, "Point at a table view.", [...idx.tables.keys()]));
+        return;
+      }
+      const entity = idx.entities.get(table.entity);
+      if (!entity) return; // the table's own missing entity is reported on the table
+      const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+      checkConditionFields(item.filter, [...itemPath, "filter"], (fieldId, path) => {
+        if (!fieldIds.includes(fieldId)) {
+          errors.push(refError(doc.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+        }
+      });
+    });
+  });
 }
