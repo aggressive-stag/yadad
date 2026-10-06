@@ -199,16 +199,19 @@ What we own vs depend on:
 
 ```ts
 interface DataAdapter {
-  find(entity: string, query: Query): Promise<Page<Record>>;
-  findOne(entity: string, id: string): Promise<Record | null>;
-  create(entity: string, record: Record, meta: { entityRevision: number }): Promise<Record>;
-  update(entity: string, id: string, patch: Partial<Record>, meta: { entityRevision: number }): Promise<Record>;
-  delete(entity: string, id: string): Promise<void>;
+  find(entity: string, query: Query): Promise<Page<DataRecord>>;
+  findOne(entity: string, id: string): Promise<DataRecord | null>;
+  create(entity: string, values: RecordValues, meta: WriteMeta): Promise<DataRecord>;
+  update(entity: string, id: string, patch: RecordValues, meta: WriteMeta): Promise<DataRecord>;
+  delete(entity: string, id: string, meta?: WriteMeta): Promise<void>;
+  batch(entity: string, ops: BatchOperations, meta: WriteMeta): Promise<BatchResult>;
 }
-// Query = { filter?: ConditionAST, sort?: {field, dir}[], page?: {offset, limit} }
+// WriteMeta = { entityRevision: number; baseVersion?: string }
+// Records carry an opaque `version`; writes send it back as `baseVersion`, and a stale one is a conflict.
+// Query = { filter?: Condition, sort?: {field, dir}[], page?: {offset, limit} }
 ```
 
-Interface and `Query` in `core`. Memory adapter in `runtime`. Supabase adapter in `adapters/supabase` (depends on `core` only), or in the host app.
+Interface, `Query` and the typed adapter errors in `core`. Memory and key-value adapters in `runtime`. An HTTP adapter (`createHttpAdapter`) speaks the records protocol in `docs/records-protocol.md` to a same-origin backend. A Supabase adapter can live in `adapters/supabase` (depends on `core` only) or in the host app.
 
 ## 11. Stability policy
 
