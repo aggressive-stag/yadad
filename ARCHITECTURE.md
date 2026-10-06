@@ -144,10 +144,12 @@ Rules:
 | --- | --- | --- |
 | Question | Is this entity/view well-formed? | Is this record valid for its entity? |
 | Lives in | `core` | `runtime` |
-| How | Meta JSON Schema + referential checks (view fields exist, condition fields exist, entity exists) | Entity compiled to standard JSON Schema, then validated |
+| How | Shape per document (meta JSON Schema). Across a set, `validateDocuments`: referential checks (the view's entity exists, field ids exist on that entity, widgets point at existing views) | Entity compiled to standard JSON Schema, then validated |
 | Constraints | n/a | `required`, `min`, `max`, `pattern` live on the entity. Views may only make rules stricter, never looser. |
 
-Error format everywhere: `{ path, code, message, hint }`, where `path` is a JSON Pointer. Messages must be readable by a person and actionable by an agent.
+Error format everywhere: `{ path, code, message, hint }`, where `path` is a JSON Pointer. Messages must be readable by a person and actionable by an agent. A set's errors also name the document they belong to (`DocumentError.document`) and, where a value must be one of a known set, the accepted alternatives (`DocumentError.allowed`).
+
+Referential checks span documents, so they run only when a set of documents is validated together (`validateDocuments`); a single document is checked for shape alone.
 
 ## 8. Versioning: two different versions
 
