@@ -1,6 +1,6 @@
 {
   "name": "@yadad/testing",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "yadad mock registry and component contract test kit.",
   "type": "module",
   "sideEffects": false,
