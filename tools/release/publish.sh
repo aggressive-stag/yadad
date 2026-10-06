@@ -53,6 +53,9 @@ if [ -z "${unpublished}" ]; then
 fi
 echo "release: publishing${unpublished}"
 
+# The runner's helper container owns the checkout; this container runs as
+# root, so git (run by `prepare`) would refuse it as "dubious ownership".
+git config --global --add safe.directory "${CI_PROJECT_DIR}"
 corepack enable
 pnpm install --frozen-lockfile
 pnpm typecheck

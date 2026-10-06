@@ -13,7 +13,8 @@ workflow:
 release:
   stage: deploy
   tags: [k8s]
-  image: docker.io/library/node:24.21.0-bookworm-slim
+  # Not -slim: the root `prepare` script runs git during `pnpm install`.
+  image: docker.io/library/node:24.21.0-bookworm
   timeout: 20m
   variables:
     COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
