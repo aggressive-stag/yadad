@@ -108,6 +108,23 @@ describe("TableRenderer", () => {
     expect(saved).toMatchObject({ entityRevision: 3, values: { weight: 82.5, done: true, exercise: "Bench" } });
   });
 
+  test("surfaces a conflict when the record changed elsewhere and does not overwrite", async () => {
+    const { db } = await setup();
+    const firstRow = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+
+    // While it is open for editing, another writer changes the same record.
+    const target = (await db.find("workout_set", { filter: { op: "eq", field: "day", value: "2026-10-03" } })).items[0]!;
+    await db.update("workout_set", target.id, { weight: 999 }, { entityRevision: 3, baseVersion: target.version });
+
+    // The row still holds the stale version; saving must show a conflict, not overwrite.
+    fireEvent.change(within(firstRow()).getByRole("spinbutton", { name: "Weight" }), { target: { value: "82.5" } });
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Save" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("changed elsewhere");
+    expect(within(firstRow()).queryByRole("spinbutton", { name: "Weight" })).toBeTruthy();
+  });
+
   test("Cancel discards an edit", async () => {
     await setup();
     const firstRow = () => screen.getAllByRole("row")[1]!;
