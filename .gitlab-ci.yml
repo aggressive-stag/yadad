@@ -13,8 +13,7 @@ workflow:
 release:
   stage: deploy
   tags: [k8s]
-  # Not -slim: `changeset publish` shells out to git.
-  image: docker.io/library/node:24.21.0-bookworm
+  image: docker.io/library/node:24.21.0-bookworm-slim
   timeout: 20m
   variables:
     COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"

@@ -53,14 +53,28 @@ if [ -z "${unpublished}" ]; then
 fi
 echo "release: publishing${unpublished}"
 
-# The runner's helper container owns the checkout; this container runs as
-# root, so git would refuse the repo as "dubious ownership" without this.
-git config --global --add safe.directory "${CI_PROJECT_DIR}"
 corepack enable
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm lint
 pnpm depcruise
 pnpm test
-# Tags would only live in this throwaway checkout, so do not create them.
-pnpm changeset publish --no-git-tag
+# One at a time: concurrent uploads that share dependencies have deadlocked
+# GitLab's package processing. Already-published versions are skipped. The
+# checkout is a detached HEAD, which pnpm's branch check would reject.
+pnpm -r --workspace-concurrency=1 publish --no-git-checks
+
+# GitLab processes uploads in the background, so a failure there still looks
+# like a successful publish to npm. Confirm every version is installable.
+for pkg in ${unpublished}; do
+  tries=0
+  until [ -n "$(npm view --prefer-online "${pkg}" version 2>/dev/null)" ]; do
+    tries=$((tries + 1))
+    if [ "${tries}" -ge 12 ]; then
+      echo "release: ${pkg} was uploaded but is not in the registry. Check the project's package registry for an errored entry." >&2
+      exit 1
+    fi
+    sleep 5
+  done
+  echo "release: ${pkg} is published"
+done
