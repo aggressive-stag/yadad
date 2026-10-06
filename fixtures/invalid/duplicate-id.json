@@ -1,0 +1,16 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [{ "id": "name", "type": "text", "label": "Name" }]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 2,
+    "fields": [{ "id": "name", "type": "text", "label": "Name" }]
+  }
+]

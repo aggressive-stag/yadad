@@ -1,0 +1,31 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      { "id": "name", "type": "text", "label": "Name" },
+      { "id": "mood", "type": "text", "label": "Mood" }
+    ]
+  },
+  {
+    "kind": "form",
+    "specVersion": 0,
+    "id": "thing_form",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "mood",
+            "visibleWhen": { "op": "eq", "field": "ghost", "value": "sad" }
+          }
+        ]
+      }
+    ]
+  }
+]

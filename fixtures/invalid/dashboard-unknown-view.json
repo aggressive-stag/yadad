@@ -1,0 +1,31 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "e",
+    "revision": 1,
+    "fields": [{ "id": "name", "type": "text", "label": "Name" }]
+  },
+  {
+    "kind": "form",
+    "specVersion": 0,
+    "id": "the_form",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [{ "id": "main", "items": [{ "field": "name" }] }]
+  },
+  {
+    "kind": "dashboard",
+    "specVersion": 0,
+    "id": "board",
+    "revision": 1,
+    "tabs": [
+      {
+        "id": "t",
+        "title": "T",
+        "items": [{ "id": "a", "x": 0, "y": 0, "w": 6, "h": 2, "widget": "view", "view": "ghost" }]
+      }
+    ]
+  }
+]

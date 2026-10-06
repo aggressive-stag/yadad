@@ -1,0 +1,43 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "e",
+    "revision": 1,
+    "fields": [{ "id": "name", "type": "text", "label": "Name" }]
+  },
+  {
+    "kind": "table",
+    "specVersion": 0,
+    "id": "the_table",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [{ "field": "name" }]
+  },
+  {
+    "kind": "dashboard",
+    "specVersion": 0,
+    "id": "board",
+    "revision": 1,
+    "tabs": [
+      {
+        "id": "t",
+        "title": "T",
+        "items": [
+          {
+            "id": "c",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 2,
+            "widget": "count",
+            "label": "C",
+            "view": "the_table",
+            "filter": { "op": "eq", "field": "ghost", "value": 1 }
+          }
+        ]
+      }
+    ]
+  }
+]

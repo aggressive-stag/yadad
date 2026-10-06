@@ -1,0 +1,21 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [{ "id": "name", "type": "text", "label": "Name" }]
+  },
+  {
+    "kind": "table",
+    "specVersion": 0,
+    "id": "thing_table",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [{ "field": "name" }, { "field": "ghost" }],
+    "sort": [{ "field": "no_sort", "dir": "asc" }],
+    "filters": [{ "field": "no_filter" }],
+    "filter": { "op": "eq", "field": "no_filter", "value": 1 }
+  }
+]
