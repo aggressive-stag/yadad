@@ -1,0 +1,21 @@
+# GitLab CI for yadad: publish only.
+#
+# GitHub (the source repo) runs the full gate on every push; GitLab is a push
+# mirror that hosts the npm registry. This job publishes any @yadad/* version
+# that the registry does not have yet. It never versions or commits: versions
+# come from `pnpm changeset version`, run locally, committed and pushed, so the
+# mirror never diverges from GitHub. See tools/release/publish.sh.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+release:
+  stage: deploy
+  tags: [k8s]
+  image: docker.io/library/node:24.21.0-bookworm-slim
+  timeout: 20m
+  variables:
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  script:
+    - sh tools/release/publish.sh
