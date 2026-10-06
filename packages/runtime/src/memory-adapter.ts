@@ -1,10 +1,32 @@
-import type { DataAdapter, DataRecord, FieldValue, Page, Query, SortSpec } from "@yadad/core";
+import type {
+  BatchOperations,
+  BatchResult,
+  DataAdapter,
+  DataRecord,
+  DocumentError,
+  FieldValue,
+  Page,
+  Query,
+  RecordValues,
+  SortSpec,
+} from "@yadad/core";
+import { jsonPointer, RecordConflictError, RecordNotFoundError, RecordValidationError } from "@yadad/core";
 import { evaluateCondition } from "./condition.js";
 
+/**
+ * Options for the in-process adapters. `fields` maps an entity id to the list of
+ * field ids it may hold; when present, a write that names an unknown field id
+ * is a validation error. Omit it (or leave an entity out) to accept any field id.
+ */
+export interface AdapterOptions {
+  readonly fields?: Record<string, readonly string[]>;
+}
+
 /** In-memory DataAdapter for tests, the showcase and local dev. Nothing persists. */
-export function createMemoryAdapter(): DataAdapter {
+export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
   const tables = new Map<string, Map<string, DataRecord>>();
   let nextId = 1;
+  let nextVersion = 1;
 
   const table = (entity: string): Map<string, DataRecord> => {
     let t = tables.get(entity);
@@ -14,6 +36,7 @@ export function createMemoryAdapter(): DataAdapter {
     }
     return t;
   };
+  const newVersion = (): string => String(nextVersion++);
 
   return {
     async find(entity, query) {
@@ -23,10 +46,13 @@ export function createMemoryAdapter(): DataAdapter {
       return table(entity).get(id) ?? null;
     },
     async create(entity, values, meta) {
+      const issues = validateFieldIds(options?.fields, entity, values, ["values"]);
+      if (issues.length > 0) throw new RecordValidationError("Some values were rejected.", issues);
       const record: DataRecord = {
         id: String(nextId++),
         entityId: entity,
         entityRevision: meta.entityRevision,
+        version: newVersion(),
         values: { ...values },
       };
       table(entity).set(record.id, record);
@@ -34,17 +60,64 @@ export function createMemoryAdapter(): DataAdapter {
     },
     async update(entity, id, patch, meta) {
       const existing = table(entity).get(id);
-      if (!existing) throw new Error(`No "${entity}" record with id "${id}".`);
+      if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${id}".`);
+      const issues = validateFieldIds(options?.fields, entity, patch, ["values"]);
+      if (issues.length > 0) throw new RecordValidationError("Some values were rejected.", issues);
+      if (meta.baseVersion !== undefined && existing.version !== meta.baseVersion) {
+        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+      }
       const record: DataRecord = {
         ...existing,
         entityRevision: meta.entityRevision,
+        version: newVersion(),
         values: { ...existing.values, ...patch },
       };
       table(entity).set(id, record);
       return record;
     },
-    async delete(entity, id) {
+    async delete(entity, id, meta) {
+      const existing = table(entity).get(id);
+      if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${id}".`);
+      if (meta?.baseVersion !== undefined && existing.version !== meta.baseVersion) {
+        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+      }
       table(entity).delete(id);
+    },
+    async batch(entity, ops: BatchOperations, meta): Promise<BatchResult> {
+      const t = table(entity);
+      const creates = ops.create ?? [];
+      const deletes = ops.delete ?? [];
+      // Validate everything before writing anything: atomic all-or-nothing.
+      const issues: DocumentError[] = [];
+      creates.forEach((values, i) => {
+        issues.push(...validateFieldIds(options?.fields, entity, values, ["create", i, "values"]));
+      });
+      if (issues.length > 0) throw new RecordValidationError("Some values were rejected.", issues);
+      for (const del of deletes) {
+        const existing = t.get(del.id);
+        if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${del.id}".`);
+        if (del.baseVersion !== undefined && existing.version !== del.baseVersion) {
+          throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+        }
+      }
+      const deleted: string[] = [];
+      for (const del of deletes) {
+        t.delete(del.id);
+        deleted.push(del.id);
+      }
+      const created: DataRecord[] = [];
+      for (const values of creates) {
+        const record: DataRecord = {
+          id: String(nextId++),
+          entityId: entity,
+          entityRevision: meta.entityRevision,
+          version: newVersion(),
+          values: { ...values },
+        };
+        t.set(record.id, record);
+        created.push(record);
+      }
+      return { created, deleted };
     },
   };
 }
@@ -83,4 +156,30 @@ export function sortRecords(records: readonly DataRecord[], sort: readonly SortS
     }
     return 0;
   });
+}
+
+/**
+ * Validation errors for field ids that are not in the entity's known set.
+ * `fields` maps entity id → allowed field ids; an absent entry (or absent map)
+ * means the entity is open and any field id is accepted. `valuesPath` points at
+ * the `values` object inside the request body (e.g. `["values"]`, or
+ * `["create", i, "values"]` for a batch item), so the resulting JSON Pointers
+ * name the offending field within the body.
+ */
+export function validateFieldIds(
+  fields: Record<string, readonly string[]> | undefined,
+  entity: string,
+  values: RecordValues,
+  valuesPath: readonly (string | number)[],
+): readonly DocumentError[] {
+  const allowed = fields?.[entity];
+  if (!allowed) return [];
+  return Object.keys(values)
+    .filter((fieldId) => !allowed.includes(fieldId))
+    .map((fieldId) => ({
+      path: jsonPointer([...valuesPath, fieldId]),
+      code: "unknown-property" as const,
+      message: `Unknown field "${fieldId}" on entity "${entity}".`,
+      hint: "Field ids are defined by the entity, not by the record.",
+    }));
 }
