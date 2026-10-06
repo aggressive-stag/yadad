@@ -87,10 +87,9 @@ describe("form state", () => {
   test("submit creates a record under the entity's current revision", async () => {
     const db = createMemoryAdapter();
     const result = await submitForm(entity, { name: "Ada" }, db);
-    expect(result).toEqual({
-      ok: true,
-      record: { id: "1", entityId: "hello", entityRevision: 4, values: { name: "Ada" } },
-    });
+    if (!result.ok) throw new Error("setup");
+    expect(result.record).toMatchObject({ id: "1", entityId: "hello", entityRevision: 4, values: { name: "Ada" } });
+    expect(result.record.version).not.toBe("");
   });
 
   test("submitEdit validates the merged record and saves the patch", async () => {
@@ -99,7 +98,9 @@ describe("form state", () => {
     if (!created.ok) throw new Error("setup");
     expect((await submitEdit(entity, created.record, { name: " " }, db)).ok).toBe(false);
     const edited = await submitEdit({ ...entity, revision: 5 }, created.record, { name: "Grace" }, db);
-    expect(edited).toEqual({ ok: true, record: { ...created.record, entityRevision: 5, values: { name: "Grace", note: "x" } } });
+    if (!edited.ok) throw new Error("edit failed");
+    expect(edited.record).toMatchObject({ id: created.record.id, entityId: "hello", entityRevision: 5, values: { name: "Grace", note: "x" } });
+    expect(edited.record.version).not.toBe(created.record.version);
   });
 
   test("invalid submit returns errors and writes nothing", async () => {

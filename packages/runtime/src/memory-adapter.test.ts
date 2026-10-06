@@ -5,7 +5,8 @@ describe("memory adapter", () => {
   test("create stores the record with its entity revision", async () => {
     const db = createMemoryAdapter();
     const record = await db.create("hello", { name: "Ada" }, { entityRevision: 3 });
-    expect(record).toEqual({ id: "1", entityId: "hello", entityRevision: 3, values: { name: "Ada" } });
+    expect(record.version).not.toBe("");
+    expect(record).toMatchObject({ id: "1", entityId: "hello", entityRevision: 3, values: { name: "Ada" } });
     expect(await db.findOne("hello", "1")).toEqual(record);
   });
 
