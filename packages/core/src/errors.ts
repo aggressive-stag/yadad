@@ -10,7 +10,13 @@ export type ErrorCode =
   | "unknown-field-type"
   | "unsupported-spec-version"
   | "duplicate-id"
-  | "unknown-reference"; // a document references an id that does not exist in the set
+  | "unknown-reference" // a document references an id that does not exist in the set
+  // The codes a data adapter reports when a record operation fails
+  // (docs/records-protocol.md); the error body has the same shape as a DocumentError.
+  | "not-found" // no such entity or record
+  | "conflict" // the record changed (or was deleted) since it was read
+  | "unauthorized" // not signed in
+  | "forbidden"; // signed in but not allowed
 
 /** One problem with a document. Readable by a person, actionable by an agent. */
 export interface DocumentError {
