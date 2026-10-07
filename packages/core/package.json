@@ -1,6 +1,6 @@
 {
   "name": "@yadad/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "yadad contract: document types, validation and the registry and data adapter interfaces.",
   "type": "module",
   "sideEffects": false,

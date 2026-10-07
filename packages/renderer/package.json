@@ -1,6 +1,6 @@
 {
   "name": "@yadad/renderer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "yadad React renderer: forms, tables and dashboards from JSON documents.",
   "type": "module",
   "sideEffects": false,

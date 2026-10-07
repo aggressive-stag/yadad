@@ -1,6 +1,6 @@
 {
   "name": "@yadad/runtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "yadad headless runtime: form state, conditions, record validation, JSON Patch and data adapters.",
   "type": "module",
   "sideEffects": false,
