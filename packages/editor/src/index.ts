@@ -6,4 +6,6 @@ export * from "./layout.js";
 export * from "./session.js";
 export * from "./blank.js";
 export * from "./views.js";
+export * from "./form-view-editor.js";
+export * from "./table-view-editor.js";
 export { idFromTitle } from "./ui.js";
