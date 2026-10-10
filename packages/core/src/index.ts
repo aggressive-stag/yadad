@@ -3,6 +3,7 @@
 // steps, no freeze is planned. See packages/core/AGENTS.md.
 
 export * from "./condition.js";
+export * from "./contract.js";
 export * from "./document.js";
 export * from "./errors.js";
 export * from "./registry.js";

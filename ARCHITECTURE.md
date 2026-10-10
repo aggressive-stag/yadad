@@ -155,6 +155,8 @@ Validation also returns `warnings` in the same shape (code `empty`): the documen
 
 Referential checks span documents, so they run only when a set of documents is validated together (`validateDocuments`); a single document is checked for shape alone.
 
+The contract itself is also machine-readable: `describeContract()` in `core` is a pure function that returns a plain JSON description of everything a document can contain (document kinds and their properties, field types and their type-specific properties, condition ops with their exact shapes, widget types, grid limits, the id pattern, the error codes). It is generated from the same constants the validator uses, so the description cannot drift from the validation. The root script `pnpm describe-registry` prints it (readable text by default, `--json` for machines) directly from the TypeScript source, so it works from a fresh clone without a build step.
+
 ## 8. Versioning: two different versions
 
 | | `specVersion` (engine format) | `revision` (user document) |

@@ -1,19 +1,15 @@
 // PRE-CONTRACT (P0-04). The error format is meant to survive into contract-v0;
 // the code list will grow.
 
-export type ErrorCode =
-  | "type" // wrong JSON type (object, string, number, ...)
-  | "required" // missing property
-  | "unknown-property" // property not in the schema (no additionalProperties)
-  | "invalid-value" // right type, disallowed value
-  | "unknown-kind"
-  | "unknown-field-type"
-  | "unsupported-spec-version"
-  | "duplicate-id"
-  | "unknown-reference" // a document references an id that does not exist in the set
-  | "empty" // a warning: valid but empty (a form with no fields, a tab with no widgets)
-  // The codes a data adapter reports when a record operation fails
-  // (docs/records-protocol.md); the error body has the same shape as a DocumentError.
+import type { ERROR_CODES } from "./contract.js";
+
+/**
+ * The error codes a validator or data adapter reports. Document validation
+ * (validateDocument, validateDocuments) uses the first ten; the data-adapter
+ * codes (docs/records-protocol.md) reuse the same shape, so an error body has
+ * the form of a DocumentError either way.
+ */
+export type ErrorCode = (typeof ERROR_CODES)[number]
   | "not-found" // no such entity or record
   | "conflict" // the record changed (or was deleted) since it was read
   | "unauthorized" // not signed in

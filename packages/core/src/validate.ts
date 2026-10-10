@@ -7,6 +7,7 @@
 
 import { CONDITION_OPS } from "./condition.js";
 import type { Condition, ConditionOp } from "./condition.js";
+import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, PAGE_SIZE_MAX } from "./contract.js";
 import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 import type { Document, DashboardView, EntityDocument, FieldType, FormView, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
@@ -20,9 +21,6 @@ export type ValidationResult<T> =
   | { readonly ok: true; readonly value: T; readonly warnings: readonly DocumentError[] }
   | { readonly ok: false; readonly errors: readonly DocumentError[]; readonly warnings: readonly DocumentError[] };
 
-const KINDS = ["entity", "form", "table", "dashboard"] as const;
-const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
-const ID_HINT = 'Use lowercase letters, digits and underscores, starting with a letter (e.g. "workout_set").';
 
 type Path = readonly (string | number)[];
 type JsonObject = { readonly [key: string]: unknown };
@@ -53,14 +51,14 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
   } else if (input["kind"] === "dashboard") {
     validateDashboard(errors, input);
   } else if (input["kind"] === undefined) {
-    errors.add(["kind"], "required", 'Missing required property "kind".', `Add "kind": one of ${KINDS.join(", ")}.`);
+    errors.add(["kind"], "required", 'Missing required property "kind".', `Add "kind": one of ${DOCUMENT_KINDS.join(", ")}.`);
   } else {
     errors.add(
       ["kind"],
       "unknown-kind",
       `Unknown document kind ${JSON.stringify(input["kind"])}.`,
-      `Use one of: ${KINDS.join(", ")}.`,
-      KINDS,
+      `Use one of: ${DOCUMENT_KINDS.join(", ")}.`,
+      DOCUMENT_KINDS,
     );
   }
 
@@ -252,12 +250,10 @@ function validateTable(errors: Errors, doc: JsonObject): void {
   reportDuplicates(errors, sorted, "sort", "a table's sort");
 
   const pageSize = doc["pageSize"];
-  if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000)) {
-    errors.add(["pageSize"], "invalid-value", '"pageSize" must be a whole number from 1 to 1000.', "Use e.g. 25.");
+  if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > PAGE_SIZE_MAX)) {
+    errors.add(["pageSize"], "invalid-value", `"pageSize" must be a whole number from 1 to ${PAGE_SIZE_MAX}.`, "Use e.g. 25.");
   }
 }
-
-const MAX_GRID_COLUMNS = 24;
 
 function validateDashboard(errors: Errors, doc: JsonObject): void {
   checkKeys(errors, doc, [], ["kind", "specVersion", "id", "revision", "tabs"], ["title"]);
@@ -279,7 +275,7 @@ function validateDashboard(errors: Errors, doc: JsonObject): void {
     checkId(errors, tab, path, "id");
     checkNonEmptyString(errors, tab, path, "title");
     if (typeof tab["id"] === "string") tabIds.push({ id: tab["id"], path: [...path, "id"] });
-    const columns = tab["columns"] === undefined ? 12 : tab["columns"];
+    const columns = tab["columns"] === undefined ? GRID_COLUMNS_DEFAULT : tab["columns"];
     if (!isWhole(columns, 1, MAX_GRID_COLUMNS)) {
       errors.add([...path, "columns"], "invalid-value", `"columns" must be a whole number from 1 to ${MAX_GRID_COLUMNS}.`, "Use e.g. 12.");
     }
@@ -292,7 +288,7 @@ function validateDashboard(errors: Errors, doc: JsonObject): void {
         errors.add(itemPath, "type", "A grid item must be a JSON object.", 'Use { "id", "x", "y", "w", "h", "widget": "view", "view": "<view id>" }.');
         return;
       }
-      if (validateGridItem(errors, item, itemPath, typeof columns === "number" ? columns : 12)) {
+      if (validateGridItem(errors, item, itemPath, typeof columns === "number" ? columns : GRID_COLUMNS_DEFAULT)) {
         placed.push({ x: item["x"] as number, y: item["y"] as number, w: item["w"] as number, h: item["h"] as number, index: j, name: typeof item["id"] === "string" ? `"${item["id"]}"` : `item ${j}` });
       }
       if (typeof item["id"] === "string") itemIds.push({ id: item["id"], path: [...itemPath, "id"] });
@@ -315,8 +311,8 @@ function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns:
   checkKeys(errors, item, path, ["id", "x", "y", "w", "h", "widget", ...keys.required], keys.optional);
   checkId(errors, item, path, "id");
   let usable = true;
-  for (const [key, min] of [["x", 0], ["y", 0], ["w", 1], ["h", 1]] as const) {
-    if (item[key] !== undefined && !isWhole(item[key], min, 1000)) {
+  for (const { key, min } of GRID_ITEM_KEYS) {
+    if (item[key] !== undefined && !isWhole(item[key], min, GRID_ITEM_MAX)) {
       errors.add([...path, key], "invalid-value", `"${key}" must be a whole number of at least ${min}.`, "Grid positions count columns and rows from 0.");
       usable = false;
     } else if (item[key] === undefined) usable = false;
@@ -348,7 +344,6 @@ function overlaps(rects: readonly Rect[]): [Rect, Rect][] {
 
 // ---- conditions -----------------------------------------------------------
 
-const MAX_CONDITION_DEPTH = 16;
 const isScalar = (v: unknown): boolean => typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean";
 const CONDITION_HINT = 'Use e.g. { "op": "eq", "field": "exercise", "value": "Squat" }.';
 
