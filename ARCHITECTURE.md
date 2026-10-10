@@ -128,7 +128,7 @@ An **entity** owns fields, types and validation. A **view** owns layout and refe
       "visibleWhen": { "op": "notEmpty", "field": "exercise" } } ] } ] }
 ```
 
-View kinds in v0: `form` (sections, items), `table` (columns, default sort/filter, inline-edit flags), `dashboard` (tabs, grid items `{x, y, w, h, widget}`, widget union). All three shapes are designed and frozen in Phase 1, even though tables and dashboards render later.
+View kinds in v0: `form` (sections, items), `table` (columns, default sort, a fixed `filter`, viewer `quickFilters`, inline-edit flags), `dashboard` (tabs, grid items `{x, y, w, h, widget}`, widget union). All three shapes are designed and frozen in Phase 1, even though tables and dashboards render later.
 
 Rules:
 
@@ -148,6 +148,8 @@ Rules:
 | Constraints | n/a | `required`, `min`, `max`, `pattern` live on the entity. Views may only make rules stricter, never looser. |
 
 Error format everywhere: `{ path, code, message, hint }`, where `path` is a JSON Pointer. Messages must be readable by a person and actionable by an agent. A set's errors also name the document they belong to (`DocumentError.document`) and, where a value must be one of a known set, the accepted alternatives (`DocumentError.allowed`).
+
+Validation also returns `warnings` in the same shape (code `empty`): the document is valid, but probably not what the author meant, such as a form with no fields or a tab with no widgets. Warnings never block a document, so editors can pass through those states.
 
 Referential checks span documents, so they run only when a set of documents is validated together (`validateDocuments`); a single document is checked for shape alone.
 
