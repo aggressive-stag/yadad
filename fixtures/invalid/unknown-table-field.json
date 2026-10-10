@@ -15,7 +15,7 @@
     "dataSource": "default",
     "columns": [{ "field": "name" }, { "field": "ghost" }],
     "sort": [{ "field": "no_sort", "dir": "asc" }],
-    "filters": [{ "field": "no_filter" }],
+    "quickFilters": [{ "field": "no_filter" }],
     "filter": { "op": "eq", "field": "no_filter", "value": 1 }
   }
 ]

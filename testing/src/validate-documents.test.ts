@@ -19,7 +19,7 @@ const expected: Record<string, Picked[]> = {
   "unknown-table-field.json": [
     { path: "/columns/1/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
     { path: "/sort/0/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
-    { path: "/filters/0/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
+    { path: "/quickFilters/0/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
     { path: "/filter/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
   ],
   "dashboard-unknown-view.json": [

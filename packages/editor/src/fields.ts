@@ -52,7 +52,7 @@ export function fieldReferences(views: Iterable<ViewDocument>, entityId: string,
     } else {
       view.columns.forEach((c, i) => c.field === fieldId && at("columns", i));
       view.sort?.forEach((s, i) => s.field === fieldId && at("sort", i));
-      view.filters?.forEach((f, i) => f.field === fieldId && at("filters", i));
+      view.quickFilters?.forEach((f, i) => f.field === fieldId && at("quickFilters", i));
       if (view.filter && conditionFields(view.filter).includes(fieldId)) at("filter");
     }
   }

@@ -60,9 +60,9 @@ describe("condition validation", () => {
       dataSource: "default",
       columns: [{ field: "a" }],
       filter: { op: "eq", field: "done", value: false },
-      filters: [{ field: "a" }, { field: "a" }],
+      quickFilters: [{ field: "a" }, { field: "a" }],
     };
-    expect(problems(table)).toEqual([["/filters/1/field", "duplicate-id"]]);
+    expect(problems(table)).toEqual([["/quickFilters/1/field", "duplicate-id"]]);
   });
 });
 

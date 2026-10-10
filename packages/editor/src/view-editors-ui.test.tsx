@@ -90,7 +90,7 @@ describe("TableViewEditor", () => {
     press("Filter by Done");
     expect(button("Remove Done filter")).toBeTruthy();
     press("Save table");
-    expect(saved[0]).toMatchObject({ revision: 2, columns: [{ field: "title" }, { field: "due", editable: true }, { field: "done" }], filters: [{ field: "done" }] });
+    expect(saved[0]).toMatchObject({ revision: 2, columns: [{ field: "title" }, { field: "due", editable: true }, { field: "done" }], quickFilters: [{ field: "done" }] });
   });
 
   test("applies title, page size and sort as one undoable edit", () => {

@@ -68,7 +68,7 @@ describe("table filters", () => {
     dataSource: "default",
     columns: [{ field: "exercise" }, { field: "notes" }],
     filter: { op: "neq", field: "felt", value: "Hard" },
-    filters: [{ field: "exercise" }, { field: "warmup" }, { field: "notes" }],
+    quickFilters: [{ field: "exercise" }, { field: "warmup" }, { field: "notes" }],
   };
 
   async function setup() {
@@ -118,7 +118,7 @@ test("quick filters on unsupported field types are reported", () => {
     revision: 1,
     dataSource: "default",
     columns: [{ field: "notes" }],
-    filters: [{ field: "notes" }],
+    quickFilters: [{ field: "notes" }],
   };
   const withNumber: EntityDocument = { ...entity, fields: [...entity.fields.filter((f) => f.id !== "notes"), { id: "notes", type: "number", label: "Notes" }] };
   render(<TableRenderer entity={withNumber} view={view} registry={mockRegistry} dataSources={new Map([["default", createMemoryAdapter()]])} />);

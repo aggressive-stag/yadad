@@ -126,10 +126,10 @@ export interface TableView {
   /** Rows must always match this. */
   readonly filter?: Condition;
   /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring. */
-  readonly filters?: readonly TableFilter[];
+  readonly quickFilters?: readonly QuickFilter[];
 }
 
-export interface TableFilter {
+export interface QuickFilter {
   readonly field: string;
 }
 

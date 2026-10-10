@@ -63,7 +63,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
     ...view.columns.map((c, i) => ({ field: c.field, path: ["columns", i, "field"] })),
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),
     ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
-    ...(view.filters ?? []).map((f, i) => ({ field: f.field, path: ["filters", i, "field"] })),
+    ...(view.quickFilters ?? []).map((f, i) => ({ field: f.field, path: ["quickFilters", i, "field"] })),
   ];
   const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...checkQuickFilters(entity, view)];
   const { Table, Button, ErrorSummary, Section, FieldFrame } = registry.layout;
@@ -148,7 +148,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const editErrors = editing?.state.errors ?? [];
 
-  const quickFields = (view.filters ?? []).flatMap((f) => {
+  const quickFields = (view.quickFilters ?? []).flatMap((f) => {
     const field = entity.fields.find((x) => x.id === f.field);
     return field ? [field] : [];
   });
@@ -203,7 +203,7 @@ function filterControl(field: Field): Field {
 /** The view's fixed filter and every quick filter the viewer has set, combined with "and". */
 function combineFilters(view: TableView, entity: EntityDocument, quick: RecordValues): Condition | undefined {
   const parts: Condition[] = view.filter ? [view.filter] : [];
-  for (const { field: id } of view.filters ?? []) {
+  for (const { field: id } of view.quickFilters ?? []) {
     const field = entity.fields.find((f) => f.id === id);
     const value = quick[id];
     if (!field || value === undefined || value === null || value === "") continue;
@@ -218,12 +218,12 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
 
 /** Quick filters work for select, boolean and text fields only (for now). */
 function checkQuickFilters(entity: EntityDocument, view: TableView) {
-  return (view.filters ?? []).flatMap((f, i) => {
+  return (view.quickFilters ?? []).flatMap((f, i) => {
     const field = entity.fields.find((x) => x.id === f.field);
     return field && !["select", "boolean", "text"].includes(field.type)
       ? [
           {
-            path: jsonPointer(["filters", i, "field"]),
+            path: jsonPointer(["quickFilters", i, "field"]),
             code: "invalid-value" as const,
             message: `Quick filters do not support ${field.type} fields yet ("${field.id}").`,
             hint: "Use a select, boolean or text field, or a fixed filter on the view.",

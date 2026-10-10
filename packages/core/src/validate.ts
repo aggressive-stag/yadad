@@ -196,12 +196,12 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "filters"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters"]);
   checkCondition(errors, doc["filter"], ["filter"]);
-  const filters = checkArray(errors, doc, [], "filters");
+  const filters = checkArray(errors, doc, [], "quickFilters");
   const filtered: { id: string; path: Path }[] = [];
   filters?.forEach((f, i) => {
-    const path = ["filters", i];
+    const path = ["quickFilters", i];
     if (!isObject(f)) {
       errors.add(path, "type", "A filter must be a JSON object.", 'Use { "field": "<field id>" }.');
       return;
@@ -210,7 +210,7 @@ function validateTable(errors: Errors, doc: JsonObject): void {
     checkId(errors, f, path, "field");
     if (typeof f["field"] === "string") filtered.push({ id: f["field"], path: [...path, "field"] });
   });
-  reportDuplicates(errors, filtered, "filter", "a table's filters");
+  reportDuplicates(errors, filtered, "filter", "a table's quick filters");
   checkNonEmptyString(errors, doc, [], "title");
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
@@ -733,7 +733,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   }
   view.columns.forEach((column, i) => checkField(column.field, ["columns", i, "field"]));
   view.sort?.forEach((key, i) => checkField(key.field, ["sort", i, "field"]));
-  view.filters?.forEach((filter, i) => checkField(filter.field, ["filters", i, "field"]));
+  view.quickFilters?.forEach((filter, i) => checkField(filter.field, ["quickFilters", i, "field"]));
   checkConditionFields(view.filter, ["filter"], checkField);
 }
 

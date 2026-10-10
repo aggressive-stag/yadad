@@ -124,7 +124,7 @@ describe("table view edits", () => {
     s = apply(s, setTableSort(s.current, { field: "due", dir: "asc" }));
     s = apply(s, setPageSize(s.current, 10));
     s = apply(s, setQuickFilter(s.current, "done", true));
-    expect(s.current).toMatchObject({ title: "Tasks", sort: [{ field: "due", dir: "asc" }], pageSize: 10, filters: [{ field: "done" }] });
+    expect(s.current).toMatchObject({ title: "Tasks", sort: [{ field: "due", dir: "asc" }], pageSize: 10, quickFilters: [{ field: "done" }] });
     s = apply(s, setTableTitle(s.current, ""));
     s = apply(s, setTableSort(s.current, undefined));
     s = apply(s, setPageSize(s.current, undefined));

@@ -40,7 +40,7 @@
     }
   ],
   "pageSize": 10,
-  "filters": [
+  "quickFilters": [
     {
       "field": "exercise"
     },

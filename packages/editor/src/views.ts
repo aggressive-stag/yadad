@@ -177,9 +177,9 @@ export function setPageSize(view: TableView, pageSize: number | undefined): Patc
 
 /** Turns a viewer quick filter on a field on or off. */
 export function setQuickFilter(view: TableView, fieldId: string, on: boolean): PatchOperation[] {
-  const filters = view.filters ?? [];
+  const filters = view.quickFilters ?? [];
   const has = filters.some((f) => f.field === fieldId);
   if (on === has) return [];
   const next = (on ? [...filters, { field: fieldId }] : filters.filter((f) => f.field !== fieldId)).map((f) => ({ field: f.field }));
-  return setOptional(view.filters !== undefined, "/filters", next.length > 0 ? next : undefined);
+  return setOptional(view.quickFilters !== undefined, "/quickFilters", next.length > 0 ? next : undefined);
 }

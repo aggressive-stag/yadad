@@ -75,7 +75,7 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
   const entityIds = entity.fields.map((f) => f.id);
   const missing = fieldsNotInTable(entity, current);
   const addChoice = adding && missing.includes(adding) ? adding : missing[0];
-  const filtered = new Set(current.filters?.map((f) => f.field));
+  const filtered = new Set(current.quickFilters?.map((f) => f.field));
   const fieldType = (id: string) => entity.fields.find((f) => f.id === id)?.type;
 
   const columns = ["Column", "Edit in place", "Quick filter", "Actions"].map((name) => ({ id: name.toLowerCase().replace(/ /g, "_"), headerId: `${base}-col-${name}`, label: name, sortable: false }));

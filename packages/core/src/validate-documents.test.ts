@@ -94,14 +94,14 @@ describe("validateDocuments", () => {
       table("thing_table", "thing", {
         columns: [{ field: "name" }, { field: "ghost" }],
         sort: [{ field: "no_sort", dir: "asc" }],
-        filters: [{ field: "no_filter" }],
+        quickFilters: [{ field: "no_filter" }],
         filter: { op: "eq", field: "no_filter", value: 1 },
       }),
     ];
     expect(problems(set)).toEqual([
       { path: "/columns/1/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
       { path: "/sort/0/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
-      { path: "/filters/0/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
+      { path: "/quickFilters/0/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
       { path: "/filter/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
     ]);
   });
