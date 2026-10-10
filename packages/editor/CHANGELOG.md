@@ -1,5 +1,11 @@
 # @yadad/editor
 
+## 0.2.0
+
+### Minor Changes
+
+- fcce1fc: Build a whole app in the editor: `FormViewEditor` and `TableViewEditor` lay out forms and set up tables; `DashboardLayoutEditor` takes `views` to add widgets, removes widgets and manages tabs; patch helpers for all of these plus `blankEntity`, `blankForm`, `blankTable`, `blankDashboard` and `idFromTitle`.
+
 ## 0.1.3
 
 ### Patch Changes
