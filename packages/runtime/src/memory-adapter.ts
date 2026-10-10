@@ -66,6 +66,7 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
       if (meta.baseVersion !== undefined && existing.version !== meta.baseVersion) {
         throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
       }
+      if (Object.keys(patch).length === 0) return existing;
       const record: DataRecord = {
         ...existing,
         entityRevision: meta.entityRevision,

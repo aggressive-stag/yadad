@@ -246,6 +246,17 @@ function runConformance(label: string, make: () => DataAdapter): void {
       expect(updated.values).toEqual({ exercise: "Squat", weight: 100, reps: null });
     });
 
+    test("an empty patch is a no-op that keeps the version, but a stale baseVersion still conflicts", async () => {
+      const db = make();
+      const created = await db.create(ENTITY, { exercise: "Squat", weight: 100 }, { entityRevision: REVISION });
+      const same = await db.update(ENTITY, created.id, {}, { entityRevision: REVISION, baseVersion: created.version });
+      expect(same.version).toBe(created.version);
+      expect(same.values).toEqual(created.values);
+      await db.update(ENTITY, created.id, { weight: 120 }, { entityRevision: REVISION, baseVersion: created.version });
+      const conflict = await expectError(db.update(ENTITY, created.id, {}, { entityRevision: REVISION, baseVersion: created.version }));
+      expect(conflict).toBeInstanceOf(RecordConflictError);
+    });
+
     test("an update against a stale baseVersion conflicts and carries the current record", async () => {
       const db = make();
       const created = await db.create(ENTITY, { exercise: "Squat", weight: 100 }, { entityRevision: REVISION });

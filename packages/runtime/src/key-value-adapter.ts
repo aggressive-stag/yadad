@@ -70,6 +70,7 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
       if (meta.baseVersion !== undefined && existing.version !== meta.baseVersion) {
         throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
       }
+      if (Object.keys(patch).length === 0) return existing;
       const record: DataRecord = { ...existing, entityRevision: meta.entityRevision, version: newToken(), values: { ...existing.values, ...patch } };
       save(entity, records.map((r) => (r.id === id ? record : r)));
       return record;
