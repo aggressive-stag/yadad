@@ -10,7 +10,7 @@ Three requirements drive every decision:
 
 - **Portable.** Nothing home-specific or work-specific in the engine. Only the component set, theme and data adapter change between contexts.
 - **AI-friendly.** Agents edit small, strictly validated JSON documents, not JSX. The schema is the contract.
-- **Owned where it matters.** We own the schema, runtime, renderer, editor logic, styled components and tokens. Hard behavior primitives (accessibility, drag/resize, table virtualization) are accepted dependencies, confined to the components repo and the editor (see §9).
+- **Owned where it matters.** We own the schema, runtime, renderer, editor logic, styled components and tokens. The editor's drag and resize is hand-written and keyboard accessible; table virtualization and accessible-widget libraries are accepted dependencies, confined to the components repo (see §9).
 
 Positioning: Puck is a visual page builder for content. This engine is for data-bound pages. Build-time use (JSON bundled with the app) is the degenerate case of runtime use.
 
@@ -18,43 +18,44 @@ Positioning: Puck is a visual page builder for content. This engine is for data-
 
 | Repo | Contains | Depends on | Role |
 | --- | --- | --- | --- |
-| `engine` | Schema format, runtime, renderer, editor, theme, fixtures, test kit, showcase, examples | React (renderer/editor only), a JSON Schema validator | The open-source project. Gets the README, docs and polish. |
-| `components` | Styled field and widget components, registry definitions | `@yadad/core` and `@yadad/testing` pinned to a contract tag; Radix / React Aria / TanStack as accepted deps | Reference component set. Users can bring their own instead. |
+| `yadad` (this repo) | Schema format, runtime, renderer, editor, theme, fixtures, test kit, showcase | React (renderer/editor only) | The open-source project. Gets the README, docs and polish. |
+| `yadad-components` | Styled field and widget components, registry definitions | `@yadad/core` as a peer dependency (a published version range); `@yadad/testing` as a dev dependency | Reference component set. Users can bring their own instead. |
 
-The engine never imports from the components repo. Components implement the engine's contract and are handed to the engine through an injected registry. Separate repos make that boundary physical.
+The engine never imports from the components repo. Components implement the engine's contract and are handed to the engine through an injected registry. Separate repos make that boundary physical. The components repo is mirrored on the same GitLab instance and publishes to the same npm registry (D17).
 
 ## 3. Engine packages
 
 The package list is fixed. Adding a package requires an RFC (`rfcs/NNNN-*.md`).
 
 ```
-engine/
+yadad/
   packages/
     core/       types, JSON Schemas, document validation, spec migrations,
-                contracts (Registry, DataAdapter, Query, theme token names, error format)
+                contracts (Registry, DataAdapter, Query, error format)
     runtime/    headless, no React: form state, condition evaluator,
-                record validation, query model, JSON Patch apply, memory adapter
+                record validation, query model, JSON Patch apply,
+                memory / key-value / HTTP adapters
     renderer/   React: walks view documents, resolves registry keys, wires runtime state
     editor/     authoring: emits JSON Patch against entity/view docs; property panels
-                generated from registry optionsSchema; drag/resize (editor-only deps)
-    theme/      token contract + CSS-variable emitter + 2 variants
-  testing/      contract test kit, mock registry, fixture loader (published for the components repo)
-  fixtures/     canonical valid/invalid docs, expected error snapshots, migration pairs
-  rfcs/         contract and package changes
+                from an exhaustive per-field-type map; hand-written drag/resize
+    theme/      token names + token values + CSS-variable emitter
+  testing/      contract test kit, mock registry (published)
+  fixtures/     canonical valid/invalid docs and expected-error lists
+  rfcs/         contract and package changes (reserved)
   apps/showcase/
-  examples/     spreadsheet-view, form-builder, dashboard (each = documents + theme choice)
+  examples/     (reserved, empty)
   ARCHITECTURE.md  AGENTS.md  (+ AGENTS.md per package)
 ```
 
 | Package | Owns | Must not know about |
 | --- | --- | --- |
 | core | Document shapes, validation, migrations, interfaces | React, components, themes, I/O |
-| runtime | State and logic: forms, conditions, record validation, queries, patches | React, DOM, components |
-| renderer | Turning documents + runtime state into React trees via registry keys | Specific components, the editor, drag libraries |
+| runtime | State and logic: forms, conditions, record validation, queries, patches, the data adapters | React, DOM, components |
+| renderer | Turning documents + runtime state into React trees via registry keys | Specific components, the editor, drag/resize |
 | editor | Producing JSON Patch operations against documents | Specific components (asks the registry) |
 | theme | Token names and values, CSS variables | Everything else |
 
-Why `runtime` is separate: TanStack Table, Formily, JSON Forms, RJSF (`@rjsf/utils`), react-grid-layout v2 (`src/core`) and React Stately all keep state and logic out of the view layer. It keeps `core` small and slow-moving, makes logic testable without a DOM, and lets the same record validation run server-side (FastAPI can validate against the same generated JSON Schema).
+Why `runtime` is separate: TanStack Table, Formily, JSON Forms, RJSF (`@rjsf/utils`) and React Stately all keep state and logic out of the view layer. It keeps `core` small and slow-moving, makes logic testable without a DOM, and lets the same record validation run server-side (a backend can validate against the same generated JSON Schema).
 
 ## 4. Dependency rules
 
@@ -80,13 +81,14 @@ flowchart BT
 
 Arrows mean "imports from".
 
-- `core` imports nothing except its validator library.
+- `core` imports nothing.
 - `runtime` imports `core` only. No `react`.
 - `renderer` and `editor` import `core` and `runtime` only. They never import a component; they look up registry keys.
 - `theme` imports nothing.
-- Nothing in `packages/` imports the components repo.
+- Nothing in `packages/` or `testing/` imports the components repo.
 - No deep imports (`@yadad/core/src/...`); public entry points only.
-- The host app (showcase, an intake-form app, a home app) builds a `Registry` and a `DataAdapter` and passes them in via props or React context. This is the only place dependency injection is used.
+- Test files in any package may also import `@yadad/testing` (the mock registry); production files may not (D20).
+- The host app (the showcase, or any host app) builds a `Registry` and a `DataAdapter` and passes them in via props or React context. This is the only place dependency injection is used.
 
 CI enforces these with dependency-cruiser. A forbidden import fails the build.
 
@@ -128,15 +130,15 @@ An **entity** owns fields, types and validation. A **view** owns layout and refe
       "visibleWhen": { "op": "notEmpty", "field": "exercise" } } ] } ] }
 ```
 
-View kinds in v0: `form` (sections, items), `table` (columns, default sort, a fixed `filter`, viewer `quickFilters`, inline-edit flags), `dashboard` (tabs, grid items `{x, y, w, h, widget}`, widget union). All three shapes are designed and frozen in Phase 1, even though tables and dashboards render later.
+View kinds: `form` (sections, items), `table` (columns, initial sort, `pageSize`, a fixed `filter`, viewer `quickFilters`, inline-edit flags), `dashboard` (tabs, grid items `{x, y, w, h, widget}`, widget union: `view` and `count`). All three shapes are designed and implemented at `specVersion: 0`, and the contract is still in flux (§11).
 
 Rules:
 
-- **Discriminated unions everywhere:** `kind` on documents, `type` on fields, `op` on conditions, `widget` on dashboard items. Each field type has its own typed `options` object.
-- **No escape hatches in v0:** no index signatures, no `additionalProperties: true`, no free-form props bag, no `custom` field type taking arbitrary JSON, no string expressions.
-- **Conditions are a JSON AST**, not strings. Ops: `eq, neq, in, gt, gte, lt, lte, empty, notEmpty, and, or, not`. Types and JSON Schema in `core`; evaluation in `runtime`. Used for `visibleWhen`, `enabledWhen`, `requiredWhen`.
+- **Discriminated unions everywhere:** `kind` on documents, `type` on fields, `op` on conditions, `widget` on dashboard items. Each field type has its own typed `options` object (`select` has `options: { source: "static", values: string[] }` today; dynamic sources come later).
+- **No escape hatches:** no index signatures, no `additionalProperties: true`, no free-form props bag, no `custom` field type taking arbitrary JSON, no string expressions.
+- **Conditions are a JSON AST**, not strings. Ops: `eq, neq, gt, gte, lt, lte, in, contains, empty, notEmpty, and, or, not`. Types and validation in `core`; evaluation in `runtime`. Used for `visibleWhen` and `requiredWhen` on form items.
 - **Hidden fields keep their values by default.** Opt in per item with `clearWhenHidden: true` (Form.io's `clearOnHide`).
-- **One source of truth** for TypeScript types and JSON Schema: author once (Zod- or TypeBox-style), generate the other, commit generated `*.schema.json` so Python and agents can read them. Tool choice is a Phase 1 decision. Never hand-edit both.
+- **One source of truth:** the TypeScript types in `core` are the source of truth, and document validation is written against them by hand (`validateDocument`, `validateDocuments`). Generated standard JSON Schemas for each document shape — so backends and agents can read the contract — are the next step; nothing is hand-maintained in parallel.
 
 ## 7. Validation: two kinds, one owner each
 
@@ -144,8 +146,8 @@ Rules:
 | --- | --- | --- |
 | Question | Is this entity/view well-formed? | Is this record valid for its entity? |
 | Lives in | `core` | `runtime` |
-| How | Shape per document (meta JSON Schema). Across a set, `validateDocuments`: referential checks (the view's entity exists, field ids exist on that entity, widgets point at existing views) | Entity compiled to standard JSON Schema, then validated |
-| Constraints | n/a | `required`, `min`, `max`, `pattern` live on the entity. Views may only make rules stricter, never looser. |
+| How | Shape per document, written in `core` against the TS types. Across a set, `validateDocuments`: referential checks (the view's entity exists, field ids exist on that entity, widgets point at existing views) | Hand-written per field type in `runtime` for now; the entity will compile to standard JSON Schema instead, so a backend can validate against the same schema |
+| Constraints | n/a | `required`, `min`, `max` (and `step` for numbers) live on the entity. Views may only make rules stricter, never looser. |
 
 Error format everywhere: `{ path, code, message, hint }`, where `path` is a JSON Pointer. Messages must be readable by a person and actionable by an agent. A set's errors also name the document they belong to (`DocumentError.document`) and, where a value must be one of a known set, the accepted alternatives (`DocumentError.allowed`).
 
@@ -157,45 +159,43 @@ Referential checks span documents, so they run only when a set of documents is v
 
 | | `specVersion` (engine format) | `revision` (user document) |
 | --- | --- | --- |
-| Changes when | The engine's document language changes (an engine PR) | Someone edits an entity or view |
+| Changes when | The engine's document language changes (an engine change) | Someone edits an entity or view |
 | Migration | Pure `migrate(doc, from, to)` in `core`, plus a before/after fixture pair | None for additive edits. Destructive edits (delete a field, change its type) go through an explicit editor transform. |
 | Records | n/a | Store `{ entityId, entityRevision }`. Old records are upcast lazily on read. If one fails validation, show "saved under revision N" instead of crashing. |
 
-Pre-contract documents use `specVersion: 0`; the validator rejects any other value until the contract freezes. Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
+Pre-contract documents use `specVersion: 0`; the validator rejects any other value for now (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
 
 ## 9. Registry contract and ownership
 
 Exact-key lookup, no ranked testers.
 
 ```ts
-interface FieldTypeEntry<T> {
-  type: string;                        // "number"
-  optionsSchema: JSONSchema;           // drives editor property panels and agent docs
-  Input: Component<InputProps<T>>;     // form control
-  Display: Component<DisplayProps<T>>; // table cell / read-only
-  CellEditor?: Component<InputProps<T>>; // inline edit; falls back to Input
+interface FieldTypeEntry<K extends FieldType, N> {
+  type: K;                        // "number"
+  Input: Component<InputProps<FieldDefinitions[K], FieldValueTypes[K]>, N>;     // form control
+  Display: Component<DisplayProps<FieldDefinitions[K], FieldValueTypes[K]>, N>; // table cell / read-only
 }
 
-interface Registry {
-  fields: Record<string, FieldTypeEntry<any>>;
-  layout: { Section; Tabs; GridItem; FieldFrame }; // FieldFrame = label, help, error chrome
-  widgets: Record<string, WidgetEntry>;
+interface Registry<N> {
+  fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> }; // mapped type, no index signature
+  layout: { FieldFrame; Section; Button; Table; ErrorSummary; Tabs; Panel };
+  widgets: { count: Component<CountWidgetProps, N> };         // "view" widgets render through the renderer itself
 }
 ```
 
-`describeRegistry()` emits a markdown/JSON catalog of field types, options and widgets. Use it in `AGENTS.md` and agent prompts so agents only use what exists.
+Table inline editing reuses `Input` (there is no separate `CellEditor`), and the editor's property panels come from an exhaustive per-field-type map in the `editor` package rendered with the registry's own inputs (there is no `optionsSchema` yet). A `describeRegistry()` catalog of the field types, options and widgets a document can use is the planned agent-facing surface (AGENTS.md).
 
 What we own vs depend on:
 
 | Layer | Decision | Where |
 | --- | --- | --- |
 | Schema, runtime, renderer, editor logic, tokens | Own | engine |
-| Styled components (shadcn "open code" model) | Own, versioned `v1/v2` side by side, `UPSTREAM.md` per component | components repo |
-| Accessible behavior primitives (Radix, React Aria or Base UI) | Accept as dependency | components repo only |
-| Table state and virtualization (TanStack Table / Virtual) | Accept as dependency; sort/filter semantics stay in documents + adapter | components repo only |
-| Dashboard drag/resize (react-grid-layout v2) | Accept as dependency, behind `editor/dnd` adapter | editor only |
-| List/section reordering (`@dnd-kit/react`, pre-1.0) | Accept as dependency, behind `editor/dnd` adapter | editor only |
-| Dashboard rendering in view mode | Own: plain CSS grid from `x, y, w, h` | renderer |
+| Styled components | Own; one `vN` folder per version side by side, `UPSTREAM.md` per component (the base set is written from scratch) | components repo |
+| Accessible behavior primitives (Radix, React Aria or Base UI) | Accept as dependency when needed; the current base set is hand-written | components repo only |
+| Table state and virtualization (TanStack Table / Virtual) | Accept as dependency when needed; not used yet — the base table renders all rows — and sort/filter semantics stay in documents + adapter | components repo only |
+| Dashboard drag/resize | Own: hand-written over CSS grid — pointer drag and corner resize, arrow keys, each change announced | editor only |
+| Field/section/column reordering | Own: hand-written buttons in the view editors | editor only |
+| Dashboard rendering in view mode | Own: plain CSS grid from `x, y, w, h` with a fixed row height (`--yadad-grid-row-height`, 4rem default; D18) | renderer |
 
 ## 10. Data adapter
 
@@ -213,23 +213,23 @@ interface DataAdapter {
 // Query = { filter?: Condition, sort?: {field, dir}[], page?: {offset, limit} }
 ```
 
-Interface, `Query` and the typed adapter errors in `core`. Memory and key-value adapters in `runtime`. An HTTP adapter (`createHttpAdapter`) speaks the records protocol in `docs/records-protocol.md` to a same-origin backend. A Supabase adapter can live in `adapters/supabase` (depends on `core` only) or in the host app.
+Interface, `Query` and the typed adapter errors in `core`. The memory, key-value and HTTP adapters in `runtime` all implement record versions and optimistic concurrency; the HTTP adapter (`createHttpAdapter`) speaks the records protocol in `docs/records-protocol.md` to a same-origin backend. A Supabase adapter can live here (depending on `core` only) or in the host app; none exists yet.
 
 ## 11. Stability policy
 
 - Fixed package list; new packages and new dependencies need an RFC.
-- Stay on `0.x` while there is one user, but tag `contract-vN` on `core`. Changes to `core` exports or schema files need an RFC, a `specVersion` bump, a migration and human review.
-- Changesets on every PR. Deprecations last at least one minor with a runtime warning. Breaking changes ship with a compatibility path.
-- Public API reports (API Extractor or similar) checked in, so export surfaces cannot widen silently.
-- Size budgets per package (size-limit).
-- `core` reaches 1.0 when two real apps (a home app and the intake form) have run on an unchanged contract for several weeks.
+- The contract is in flux: `specVersion` stays `0`, and no `contract-vN` freeze or tag is planned (D13). When the format does change, it ships with a `specVersion` bump, a `migrate()` step and a before/after fixture pair (AGENTS.md rule 8) — a future freeze is a separate decision, not a deadline.
+- Agents land and release their own work (D14): changes to a published package carry a changeset; breaking changes carry a `BREAKING CHANGE:` note that says exactly what consumers must change. Consumers adopt the new version, and the components repo widens its peer range when a release falls outside it.
+- Deprecations last at least one minor with a runtime warning.
+- Public API reports and size budgets (size-limit) are the next CI gates (see `.github/workflows/ci.yml`).
+- `core` reaches 1.0 when two real apps (the exit-criteria apps, D12) have run on an unchanged contract for several weeks.
 
 ## 12. Testing
 
-1. **Fixture corpus** (`fixtures/`): valid and invalid documents for every field type and view kind, each invalid one with an expected-error snapshot. This is also the spec.
+1. **Fixture corpus** (`fixtures/`): valid documents for the field types and view kinds in use, and invalid documents — each with the exact expected errors asserted in `testing/`. This is also the spec.
 2. **Contract test kit** (`testing/`): the components repo runs it against every registry entry. Checks: renders with fixture options, emits the right JSON type on change, shows a given error, passes axe.
 3. **Renderer tests against a mock registry** (stub components with `data-testid`). Engine CI never needs real components.
-4. **Migration tests:** every historical fixture migrates to the current `specVersion` and validates.
-5. **Runtime unit and property tests** for the condition evaluator and form state.
-6. **Cross-language check:** a small pytest job validates the record fixtures against the generated JSON Schemas.
-7. **Visual tests** (Playwright screenshots) in the components repo only, from Phase 4.
+4. **Migration tests:** once a `specVersion` bump ships a migration, every historical fixture migrates to the current `specVersion` and validates.
+5. **Runtime unit tests** for the condition evaluator and form state.
+6. **Cross-language check:** a small pytest job validates the record fixtures against the generated JSON Schemas — planned, once the schemas exist.
+7. **Visual checks:** the components repo has a vite gallery for manual browser checks; automated Playwright screenshot tests are the plan.

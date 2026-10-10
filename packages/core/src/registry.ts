@@ -1,5 +1,6 @@
 // PRE-CONTRACT registry shape: one entry per field type plus layout chrome
-// (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets. CellEditor, widgets and optionsSchema come later.
+// (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
+// CellEditor and optionsSchema come later.
 
 import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document.js";
 import type { DocumentError } from "./errors.js";
