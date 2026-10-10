@@ -4,27 +4,31 @@ Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md`
 
 ## Before you start a task
 
-1. Read your task card in `docs/TASKS.md` (or the linked issue). It names the package, the files you may change, the fixtures that must pass, and "done when".
+1. Read your task card (the owner tells you where it is). It names the package, the files you may change, the fixtures that must pass, and "done when". Ignore the PR, CODEOWNERS, task-code and review ceremony in `docs/BUILD_PLAN.md` and `docs/TASKS.md`: it is stale.
 2. Read the `AGENTS.md` in the package you are changing.
 3. Run `pnpm describe-registry` (once it exists) to see which field types, options and widgets exist. Use only those.
 
 ## Hard rules
 
-1. **Dependency direction.** `core` imports nothing. `runtime` imports `core`. `renderer` and `editor` import `core` and `runtime`. `theme` imports nothing. Nothing imports the components repo. No `react` in `core` or `runtime`. No deep imports. If your task seems to need an import against these rules, stop and say so in the PR or issue.
+1. **Dependency direction.** `core` imports nothing. `runtime` imports `core`. `renderer` and `editor` import `core` and `runtime`. `theme` imports nothing. Nothing imports the components repo. No `react` in `core` or `runtime`. No deep imports. If your task seems to need an import against these rules, stop that part and say so in your report.
 2. **The contract is human-owned.** Do not modify `packages/core`, `fixtures/` or `rfcs/` unless your task card explicitly says so. If you need a contract change, open an issue or a draft RFC describing it, and stop. Do not work around the contract with local types, casts or `any`.
 3. **Documents are the contract.** Change behavior through entity/view document types and their JSON Schema, then the runtime/renderer. Never special-case behavior inside a component.
 4. **No component names or file paths** in `core`, `runtime`, `renderer` or `editor`. Only registry keys.
 5. **No escape hatches.** No string expressions, no free-form props bags, no index signatures, no `custom` field types, no `any` in `core` exports.
 6. **Small, focused commits.** One logical step per commit; add a changeset when a published package's behavior changes.
-7. **No new packages or new runtime dependencies** without an RFC. Test-only dev dependencies (DOM environments, testing libraries, axe) may be added directly; name them in the PR (DECISIONS.md D16).
+7. **No new packages or new runtime dependencies** without an RFC. Test-only dev dependencies (DOM environments, testing libraries, axe) may be added directly; name them in the commit body (DECISIONS.md D16).
 8. **Versioning:** any change to `core` schema files bumps `specVersion` and adds a `migrate()` step plus a before/after fixture pair. User document `revision`s are data, not code.
 9. **New field type** = JSON Schema entry + registry contract entry + valid and invalid fixtures + render test against the mock registry.
 10. **Copied third-party code never lives in this repo.** It belongs in the components repo.
 
 ## Working conventions
 
-- **Solo mode (default):** commit straight to `main` and push; CI runs on every push. Run `pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test` before pushing. No PRs needed.
-- **Parallel agents (only when several run at once):** each works on its own branch in a worktree under `.worktrees/` (gitignored): `git worktree add .worktrees/<name> -b agent/<name> main`. Never create folders outside the repo. Tools that scan the tree must exclude `.worktrees/`.
+You land and release your own work. Nobody reviews or merges it for you, and finished work left on a branch or unreleased blocks every agent that depends on it.
+
+- **Solo mode (default):** commit straight to `main` and push; CI runs on every push. Run `pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test` before pushing. No PRs, no review requests.
+- **Parallel agents (only when several run at once):** each works on its own branch in a worktree under `.worktrees/` (gitignored): `git worktree add .worktrees/<name> -b agent/<name> origin/main`. Never create folders outside the repo. Tools that scan the tree must exclude `.worktrees/`.
+- **Landing:** when the gate passes, `git fetch origin && git rebase origin/main`, rerun the gate, then `git push origin HEAD:main` (fast-forward only, never force-push). If the push is rejected, another agent landed first: rebase and repeat. Then remove your worktree and delete your branch.
+- **Releasing:** if you landed changesets, release them: on an up-to-date `main`, run `pnpm changeset version`, rerun the gate, commit as `build: version packages from the pending changesets` and push. The GitLab mirror's CI publishes every version the registry does not have yet (`tools/release/publish.sh`); it publishes nothing while changesets are pending. Confirm the new versions are in the registry before telling a consumer to upgrade. If a release falls outside a consumer's peer range (for example `@yadad/components`), widen that range and release the consumer too, or say so in your report.
 - Use the memory data adapter and a random dev-server port. Never point at a shared Supabase instance.
 - **Personal and work-specific notes go in `*.private.md` files** (gitignored, never committed), e.g. `docs/OPEN_QUESTIONS.private.md`. This covers employer or work-app names, clients, sign-off questions, and anything personal. Tracked files describe these generically (e.g. "intake form") and must not quote or summarize `*.private.md` content.
 
@@ -44,4 +48,4 @@ typecheck → dependency-cruiser → unit tests + fixture validation → size-li
 
 ## When in doubt
 
-Stop and ask in the PR or issue. A paused task is cheaper than a contract that drifts.
+Make the technical call yourself, land it, and note it in the commit body or your report. Stop only for a contract change your task card does not cover (hard rule 2) or a decision that changes direction: stop that part, land the rest, and write it up in your report.

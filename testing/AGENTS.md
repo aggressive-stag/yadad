@@ -7,5 +7,5 @@ Package rules on top of the root `AGENTS.md`. Published as `@yadad/testing` for 
   - The mock registry: stub components with `data-testid`.
   - The fixture loader.
 - **Imports:** `@yadad/core`.
-- **Stability:** the components repo pins this package to a `contract-vN` tag, so changing what the kit checks is a contract change. Treat it like `core` and get maintainer review.
+- **Stability:** the components repo runs this kit against every component, so changing what the kit checks is a contract change. Treat it like `core`: change it only when your task card says so, then release it so the components repo can follow.
 - **Commit scope:** `testing`.
