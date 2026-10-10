@@ -30,7 +30,7 @@ test("saved edits are restored, and edits that no longer validate are reported",
     { kind: "entity", specVersion: 0, id: "hello", revision: 3, fields: [{ id: "name", type: "text", label: "Restored name" }] },
     { kind: "form", id: "broken" },
   ];
-  const storage = { getItem: (k: string) => (k === "yadad-showcase:documents" ? JSON.stringify(saved) : null), setItem: () => {} };
+  const storage = { getItem: (k: string) => (k === "yadad-showcase:documents" ? JSON.stringify(saved) : null), setItem: () => {}, removeItem: () => {} };
   const html = renderToStaticMarkup(<App registry={mockRegistry} storage={storage} onReset={() => {}} />);
   expect(html).toContain("Restored name");
   expect(html).toContain("no longer validate and were ignored: broken");

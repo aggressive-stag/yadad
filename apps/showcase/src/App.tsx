@@ -3,8 +3,8 @@ import type { DataAdapter, Document, Registry } from "@yadad/core";
 import { DashboardLayoutEditor, EntityFieldsEditor } from "@yadad/editor";
 import { DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
-import { createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
-import type { KeyValueStore } from "@yadad/runtime";
+import { createDraftStore, createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
+import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import dashboardTraining from "../../../fixtures/valid/dashboard-training.json?raw";
@@ -26,8 +26,8 @@ export interface AppProps {
   readonly registry: Registry<ReactNode>;
   readonly sources?: readonly string[];
   readonly roots?: readonly string[];
-  /** Where records and edited documents persist (e.g. localStorage). Without it everything lives in memory. */
-  readonly storage?: KeyValueStore;
+  /** Where records, edited documents and form drafts persist (e.g. localStorage). Without it everything lives in memory. */
+  readonly storage?: DraftStorage;
   /** Shown as a "Reset saved data" button when given. */
   readonly onReset?: () => void;
 }
@@ -60,6 +60,8 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => new Map([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]));
   // Documents saved from the editors replace the loaded ones, and persist when storage is given.
   const [initial] = useState(() => loadEdited(storage));
+  // Unsaved form input survives a reload when the page has storage.
+  const [draftStore] = useState(() => (storage ? createDraftStore(storage, PREFIX) : undefined));
   const [edited, setEdited] = useState<ReadonlyMap<string, Document>>(initial.docs);
   const [mode, setMode] = useState<Mode>({ kind: "view" });
   const loaded = loadDocumentSet(sources);
@@ -106,7 +108,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
             ) : mode.kind === "fields" && entity && mode.id === entity.id ? (
               <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} onSave={save} onCancel={close} />
             ) : (
-              renderRoot(id, documents, registry, dataSources)
+              renderRoot(id, documents, registry, dataSources, draftStore)
             )}
           </section>
         );
@@ -145,14 +147,15 @@ function describe(viewId: string, documents: DocumentSet): string {
   return view.id;
 }
 
-function renderRoot(id: string, documents: DocumentSet, registry: Registry<ReactNode>, dataSources: ReadonlyMap<string, DataAdapter>): ReactNode {
+function renderRoot(id: string, documents: DocumentSet, registry: Registry<ReactNode>, dataSources: ReadonlyMap<string, DataAdapter>, draftStore: DraftStore | undefined): ReactNode {
   const view = documents.views.get(id);
   if (!view) return null;
-  if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} />;
+  const drafts = draftStore ? { drafts: { store: draftStore } } : {};
+  if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} {...drafts} />;
   const entity = documents.entities.get(view.entity);
   if (!entity) return null;
   return view.kind === "form" ? (
-    <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} />
+    <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} {...drafts} />
   ) : (
     <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} />
   );
