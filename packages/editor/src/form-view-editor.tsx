@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
-import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle } from "./ui.js";
+import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import { addFormItem, addSection, fieldsNotOnForm, moveFormItem, moveSection, removeFormItem, removeSection, setSectionTitle } from "./views.js";
 
 export interface FormViewEditorProps {
@@ -104,6 +104,7 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}
+      {warningList(current)}
       <Section id={`${base}-add`} title="Add to the form">
         {missing.length === 0 ? (
           <p>Every field of {entity.id} is on this form.</p>

@@ -4,7 +4,7 @@ import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { addTab, addWidget, moveItem, removeTab, removeWidget, renameTab, resizeItem, uniqueItemId } from "./layout.js";
 import type { NewWidget } from "./layout.js";
-import { asText, choiceField, idFromTitle, propertyInput, toolbarStyle } from "./ui.js";
+import { asText, choiceField, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 
@@ -235,6 +235,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {session.rejected.length > 0 && <ErrorSummary errors={session.rejected} />}
+      {warningList(current)}
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         {entries.length > 0 && (
           <>

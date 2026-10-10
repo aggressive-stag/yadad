@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { COMMON_PROPERTIES, FIELD_PROPERTIES, FIELD_TYPE_LABELS, fieldFromProperties, propertiesFromField } from "./field-options.js";
 import { addField, removeField, updateField } from "./fields.js";
 import { renderInput } from "./inputs.js";
+import { warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 
@@ -125,6 +126,7 @@ export function EntityFieldsEditor({ entity, views, registry, onSave, onCancel }
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}
+      {warningList(current)}
       {panelView}
       <Table caption={`Fields of ${entity.id}`} columns={columns} rows={rows} onSort={() => {}} empty="No fields yet." />
     </div>

@@ -1,4 +1,5 @@
-import type { Condition, Field, FieldValue, Registry, Scalar } from "@yadad/core";
+import { validateDocument } from "@yadad/core";
+import type { Condition, Document, Field, FieldValue, Registry, Scalar } from "@yadad/core";
 import type { CSSProperties, ReactNode } from "react";
 import { renderInput } from "./inputs.js";
 
@@ -56,4 +57,19 @@ export function describeCondition(condition: Condition, label: (fieldId: string)
     default:
       return `${label(condition.field)} ${OP_WORDS[condition.op]} ${show(condition.value)}`;
   }
+}
+
+/** Validation warnings for the document being edited (valid, but probably unintended), as a short list. */
+export function warningList(doc: Document): ReactNode {
+  const warnings = validateDocument(doc).warnings;
+  if (warnings.length === 0) return null;
+  return (
+    <ul data-yadad-editor-warnings="" role="status">
+      {warnings.map((w) => (
+        <li key={`${w.path} ${w.code}`}>
+          {w.message} {w.hint}
+        </li>
+      ))}
+    </ul>
+  );
 }

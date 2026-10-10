@@ -146,3 +146,11 @@ describe("DashboardLayoutEditor widgets and tabs", () => {
     ]);
   });
 });
+
+test("an editor shows a warning while its document is empty", () => {
+  const form: FormView = { kind: "form", specVersion: 0, id: "f", entity: "task", revision: 1, dataSource: "default", sections: [{ id: "main", items: [{ field: "title" }] }] };
+  render(<FormViewEditor view={form} entity={entity} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+  expect(document.querySelector("[data-yadad-editor-warnings]")).toBeNull();
+  press("Remove Title");
+  expect(document.querySelector("[data-yadad-editor-warnings]")?.textContent).toContain("This form shows no fields.");
+});
