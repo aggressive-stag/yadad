@@ -14,6 +14,7 @@ import { conditionFields, jsonPointer } from "@yadad/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { FormRenderer } from "./form-renderer.js";
+import type { FormRendererProps } from "./form-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
 
 /** The documents a dashboard can refer to, by id. */
@@ -30,6 +31,8 @@ export interface DashboardRendererProps {
   readonly dataSources: ReadonlyMap<string, DataAdapter>;
   /** Below this width in pixels the grid stacks into one full-width column. Defaults to 640. */
   readonly stackBelow?: number;
+  /** Passed to every embedded form: opt-in drafts of unsaved input. */
+  readonly drafts?: FormRendererProps["drafts"];
 }
 
 const DEFAULT_COLUMNS = 12;
@@ -61,7 +64,7 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables and counts.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts }: DashboardRendererProps): ReactNode {
   const [rootRef, width] = useWidth();
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
   const [reloadKey, setReloadKey] = useState(0);
@@ -83,7 +86,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return view.kind === "table" ? <CountLoader widget={item} view={view} entity={entity} registry={registry} dataSources={dataSources} reloadKey={reloadKey} /> : null;
     }
     if (view.kind === "form") {
-      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} onSaved={() => setReloadKey((k) => k + 1)} />;
+      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} />;
     }
     if (view.kind === "table") {
       return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} reloadKey={reloadKey} />;
