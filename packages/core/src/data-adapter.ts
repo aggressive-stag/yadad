@@ -12,11 +12,15 @@ export type FieldValue = string | number | boolean | null;
 export type RecordValues = Readonly<Record<string, FieldValue>>;
 
 export interface DataRecord {
+  /** Opaque, chosen by the adapter. Never reused for a different record, even after a delete. */
   readonly id: string;
   readonly entityId: string;
   /** Entity revision the record was saved under; old records upcast on read. */
   readonly entityRevision: number;
-  /** Opaque; changes on every write. The client sends it back as `baseVersion` on writes. */
+  /**
+   * Opaque; changes on every write that changes the record (an empty patch
+   * leaves it as is). The client sends it back as `baseVersion` on writes.
+   */
   readonly version: string;
   readonly values: RecordValues;
 }
@@ -127,6 +131,11 @@ export interface DataAdapter {
   find(entity: string, query: Query): Promise<Page<DataRecord>>;
   findOne(entity: string, id: string): Promise<DataRecord | null>;
   create(entity: string, values: RecordValues, meta: WriteMeta): Promise<DataRecord>;
+  /**
+   * Merges `patch` over the record: an omitted field is unchanged, `null` clears
+   * it. An empty patch is a no-op that returns the current record, version
+   * unchanged; a stale `baseVersion` is still a conflict.
+   */
   update(entity: string, id: string, patch: RecordValues, meta: WriteMeta): Promise<DataRecord>;
   delete(entity: string, id: string, meta?: WriteMeta): Promise<void>;
   /** Create and delete many in one atomic step; if any item fails, nothing is written. */

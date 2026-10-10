@@ -9,7 +9,7 @@ It is pre-contract like the documents: it can still change before `contract-v0`,
 - **Base URL** is host configuration (e.g. `/api/records`), never part of a document. `{entity}` is an entity document's `id`.
 - **Same origin.** The adapter calls `fetch` with `credentials: "same-origin"` by default, so session cookies just work. No CORS is assumed.
 - **JSON** request and response bodies, `Content-Type: application/json`.
-- **Ids are opaque strings.** The server picks them; the client never parses or builds one.
+- **Ids are opaque strings.** The server picks them; the client never parses or builds one. An id is never reused for a different record, even after a delete. A server whose ids follow position (and so can shift when a record is removed) must instead require `baseVersion` on every update and delete, so a stale id conflicts rather than hitting another record.
 - **Field values** are `string | number | boolean | null`. Dates are `"YYYY-MM-DD"` strings. `null` means empty.
 
 ## Record
@@ -25,7 +25,7 @@ It is pre-contract like the documents: it can still change before `contract-v0`,
 ```
 
 - `entityRevision` is a schema stamp, not concurrency control: old records are upcast on read.
-- `version` is concurrency control. The client sends it back as `baseVersion` on writes; the server rejects the write if the record changed since. Its format is the server's business (a timestamp, a counter, a hash). Several records may share a version if the server stores them together; a write to any of them changes all of their versions.
+- `version` is concurrency control. The client sends it back as `baseVersion` on writes; the server rejects the write if the record changed since. It must change on every write that changes the record, so two writes close together never share one. Its format is the server's business (a counter, a hash, or a timestamp fine-grained enough for that). Several records may share a version if the server stores them together; a write to any of them changes all of their versions.
 
 ## Endpoints
 
@@ -52,7 +52,7 @@ The server must translate conditions by whitelist: every op and field id is chec
 ### Writes
 
 - **Create:** `values` holds the fields to set. Omitted fields are empty.
-- **Update:** `values` is a partial patch. An omitted field is unchanged, an explicit `null` clears it. `baseVersion` is required.
+- **Update:** `values` is a partial patch. An omitted field is unchanged, an explicit `null` clears it. `baseVersion` is required. An empty `values` is a no-op: `200` with the current record and its version unchanged (a stale `baseVersion` is still a `409`). The client skips the request when nothing changed, but servers must accept it.
 - **Delete:** `baseVersion` is optional. When present, the server rejects the delete with `409` if the record changed since. Clients send it whenever they have it.
 - An unknown field id in `values` is a `400`, never silently dropped.
 - The server validates values against its own rules and may be stricter than the entity document (for example, a date that must be near the server's today). The server is the authority on "today".
