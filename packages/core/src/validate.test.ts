@@ -29,7 +29,7 @@ function problems(doc: unknown): [string, string][] {
 describe("valid documents", () => {
   test("entity", () => {
     const result = validateDocument(entity);
-    expect(result).toEqual({ ok: true, value: entity });
+    expect(result).toEqual({ ok: true, value: entity, warnings: [] });
   });
 
   test("form view", () => {
@@ -273,4 +273,45 @@ test("every error has a message and a hint", () => {
 test("jsonPointer escapes ~ and /", () => {
   expect(jsonPointer([])).toBe("");
   expect(jsonPointer(["a/b", "c~d", 0])).toBe("/a~1b/c~0d/0");
+});
+
+describe("warnings", () => {
+  const warnings = (doc: unknown) => validateDocument(doc).warnings.map((w) => [w.path, w.code]);
+
+  test("empty content is valid but warned about", () => {
+    expect(validateDocument({ ...entity, fields: [] }).ok).toBe(true);
+    expect(warnings({ ...entity, fields: [] })).toEqual([["/fields", "empty"]]);
+    expect(warnings({ ...form, sections: [] })).toEqual([["/sections", "empty"]]);
+    expect(warnings({ ...form, sections: [{ id: "main", items: [] }] })).toEqual([["/sections", "empty"]]);
+    expect(warnings({ ...form, sections: [...form.sections, { id: "more", items: [] }] })).toEqual([["/sections/1/items", "empty"]]);
+    expect(warnings({ kind: "dashboard", specVersion: 0, id: "d", revision: 1, tabs: [{ id: "t", title: "T", items: [] }] })).toEqual([["/tabs/0/items", "empty"]]);
+  });
+
+  test("documents with content have none", () => {
+    expect(warnings(entity)).toEqual([]);
+    expect(warnings(form)).toEqual([]);
+  });
+});
+
+describe("condition hints", () => {
+  const conditionErrors = (condition: unknown) => {
+    const result = validateDocument({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: condition }] }] });
+    return result.ok ? [] : result.errors.map((e) => ({ path: e.path, message: e.message, hint: e.hint }));
+  };
+  const at = "/sections/0/items/0/visibleWhen";
+
+  test("a one-letter slip names the key the op takes and shows its shape", () => {
+    const [unknown, missing] = conditionErrors({ op: "in", field: "name", value: ["a"] });
+    expect(unknown).toMatchObject({ path: `${at}/value`, message: '"in" takes "values", not "value".' });
+    expect(unknown?.hint).toContain('"values": ["Squat", "Bench"]');
+    expect(missing).toMatchObject({ path: `${at}/values`, message: 'Missing required property "values" for "in".' });
+
+    expect(conditionErrors({ op: "not", conditions: [] })[0]?.message).toBe('"not" takes "condition", not "conditions".');
+    expect(conditionErrors({ op: "and", condition: { op: "empty", field: "name" } })[0]?.message).toBe('"and" takes "conditions", not "condition".');
+  });
+
+  test("other unknown keys still list what the op allows", () => {
+    const errors = validateDocument({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: { op: "empty", field: "name", value: 1 } }] }] });
+    expect(errors.ok ? [] : errors.errors.map((e) => [e.message, e.allowed])).toEqual([['Unknown property "value" for "empty".', ["op", "field"]]]);
+  });
 });

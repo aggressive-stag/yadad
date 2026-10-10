@@ -6,15 +6,19 @@
 // widgets point at existing views) that only hold across a whole set.
 
 import { CONDITION_OPS } from "./condition.js";
-import type { Condition } from "./condition.js";
+import type { Condition, ConditionOp } from "./condition.js";
 import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 import type { Document, DashboardView, EntityDocument, FieldType, FormView, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
+/**
+ * Errors make a document invalid. Warnings never do: they flag documents that
+ * are valid but probably not what the author meant, such as a form with no fields.
+ */
 export type ValidationResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly errors: readonly DocumentError[] };
+  | { readonly ok: true; readonly value: T; readonly warnings: readonly DocumentError[] }
+  | { readonly ok: false; readonly errors: readonly DocumentError[]; readonly warnings: readonly DocumentError[] };
 
 const KINDS = ["entity", "form", "table", "dashboard"] as const;
 const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
@@ -25,8 +29,12 @@ type JsonObject = { readonly [key: string]: unknown };
 
 class Errors {
   readonly list: DocumentError[] = [];
+  readonly warnings: DocumentError[] = [];
   add(path: Path, code: ErrorCode, message: string, hint: string, allowed?: readonly string[]): void {
     this.list.push(allowed ? { path: jsonPointer(path), code, message, hint, allowed } : { path: jsonPointer(path), code, message, hint });
+  }
+  warn(path: Path, message: string, hint: string): void {
+    this.warnings.push({ path: jsonPointer(path), code: "empty", message, hint });
   }
 }
 
@@ -57,9 +65,9 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
   }
 
   return errors.list.length > 0
-    ? { ok: false, errors: errors.list }
+    ? { ok: false, errors: errors.list, warnings: errors.warnings }
     : // Every property was checked above; the narrowing is this function's job.
-      { ok: true, value: input as Document };
+      { ok: true, value: input as Document, warnings: errors.warnings };
 }
 
 function validateEntity(errors: Errors, doc: JsonObject): void {
@@ -70,6 +78,7 @@ function validateEntity(errors: Errors, doc: JsonObject): void {
 
   const fields = checkArray(errors, doc, [], "fields");
   if (!fields) return;
+  if (fields.length === 0) errors.warn(["fields"], "This entity has no fields yet.", 'Add a field, e.g. { "id": "name", "type": "text", "label": "Name" }.');
   const ids: { id: string; path: Path }[] = [];
   fields.forEach((field, i) => {
     const path = ["fields", i];
@@ -176,6 +185,14 @@ function validateForm(errors: Errors, doc: JsonObject): void {
   });
   reportDuplicates(errors, sectionIds, "section", "a form");
   reportDuplicates(errors, placed, "placed field", "a form (each field appears once)");
+  // An empty form validates but renders only a Save button.
+  if (placed.length === 0) errors.warn(["sections"], "This form shows no fields.", 'Place a field in a section: { "field": "<field id>" }.');
+  else
+    sections.forEach((section, i) => {
+      if (isObject(section) && Array.isArray(section["items"]) && section["items"].length === 0) {
+        errors.warn(["sections", i, "items"], `Section ${JSON.stringify(section["id"])} has no fields.`, "Place a field in it or remove the section.");
+      }
+    });
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
@@ -281,6 +298,7 @@ function validateDashboard(errors: Errors, doc: JsonObject): void {
       if (typeof item["id"] === "string") itemIds.push({ id: item["id"], path: [...itemPath, "id"] });
     });
     reportDuplicates(errors, itemIds, "grid item", "a tab");
+    if (items?.length === 0) errors.warn([...path, "items"], `Tab ${JSON.stringify(tab["title"] ?? tab["id"])} has no widgets.`, "Add a widget or remove the tab.");
     for (const [a, b] of overlaps(placed)) {
       errors.add([...path, "items", b.index], "invalid-value", `${b.name} would overlap ${a.name}.`, "Move or resize one of them.");
     }
@@ -334,6 +352,42 @@ const MAX_CONDITION_DEPTH = 16;
 const isScalar = (v: unknown): boolean => typeof v === "string" || (typeof v === "number" && Number.isFinite(v)) || typeof v === "boolean";
 const CONDITION_HINT = 'Use e.g. { "op": "eq", "field": "exercise", "value": "Squat" }.';
 
+/** The exact shape each op takes, so a hint shows the one the author is writing. */
+const CONDITION_SHAPES: { readonly [K in ConditionOp]: string } = {
+  eq: '{ "op": "eq", "field": "<field id>", "value": "Squat" }',
+  neq: '{ "op": "neq", "field": "<field id>", "value": "Squat" }',
+  gt: '{ "op": "gt", "field": "<field id>", "value": 100 }',
+  gte: '{ "op": "gte", "field": "<field id>", "value": 100 }',
+  lt: '{ "op": "lt", "field": "<field id>", "value": 100 }',
+  lte: '{ "op": "lte", "field": "<field id>", "value": 100 }',
+  in: '{ "op": "in", "field": "<field id>", "values": ["Squat", "Bench"] } (a list under "values")',
+  contains: '{ "op": "contains", "field": "<field id>", "value": "text" }',
+  empty: '{ "op": "empty", "field": "<field id>" }',
+  notEmpty: '{ "op": "notEmpty", "field": "<field id>" }',
+  and: '{ "op": "and", "conditions": [ <condition>, ... ] } (a list under "conditions")',
+  or: '{ "op": "or", "conditions": [ <condition>, ... ] } (a list under "conditions")',
+  not: '{ "op": "not", "condition": <condition> } (one condition under "condition")',
+};
+
+/** Keys authors swap by one letter; an unknown one suggests its twin when that is what the op takes. */
+const NEAR_MISSES: Readonly<Record<string, string>> = { value: "values", values: "value", condition: "conditions", conditions: "condition" };
+
+/** Like checkKeys, with hints that show this op's exact shape and catch near misses. */
+function checkConditionKeys(errors: Errors, obj: JsonObject, path: Path, op: ConditionOp, required: readonly string[]): void {
+  const shape = `Use ${CONDITION_SHAPES[op]}.`;
+  const allowed = ["op", ...required];
+  // Unknown keys first: a near miss is usually why the required key is missing.
+  for (const key of Object.keys(obj)) {
+    if (allowed.includes(key)) continue;
+    const twin = NEAR_MISSES[key];
+    const message = twin !== undefined && allowed.includes(twin) ? `"${op}" takes "${twin}", not "${key}".` : `Unknown property "${key}" for "${op}".`;
+    errors.add([...path, key], "unknown-property", message, shape, allowed);
+  }
+  for (const key of allowed) {
+    if (!(key in obj)) errors.add([...path, key], "required", `Missing required property "${key}" for "${op}".`, shape);
+  }
+}
+
 /** Validates an optional condition (undefined is fine). */
 function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): void {
   if (value === undefined) return;
@@ -354,35 +408,35 @@ function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): 
     case "lt":
     case "lte":
     case "contains":
-      checkKeys(errors, value, path, ["op", "field", "value"], []);
+      checkConditionKeys(errors, value, path, op, ["field", "value"]);
       checkId(errors, value, path, "field");
       if (value["value"] !== undefined && !(op === "contains" ? typeof value["value"] === "string" : isScalar(value["value"]))) {
-        errors.add([...path, "value"], "type", `"value" must be ${op === "contains" ? "text" : "text, a number or true/false"}.`, CONDITION_HINT);
+        errors.add([...path, "value"], "type", `"value" must be ${op === "contains" ? "text" : "text, a number or true/false"}.`, `Use ${CONDITION_SHAPES[op]}.`);
       }
       return;
     case "in": {
-      checkKeys(errors, value, path, ["op", "field", "values"], []);
+      checkConditionKeys(errors, value, path, op, ["field", "values"]);
       checkId(errors, value, path, "field");
       const values = checkArray(errors, value, path, "values");
       values?.forEach((v, i) => {
-        if (!isScalar(v)) errors.add([...path, "values", i], "type", "Each value must be text, a number or true/false.", CONDITION_HINT);
+        if (!isScalar(v)) errors.add([...path, "values", i], "type", "Each value must be text, a number or true/false.", `Use ${CONDITION_SHAPES.in}.`);
       });
       return;
     }
     case "empty":
     case "notEmpty":
-      checkKeys(errors, value, path, ["op", "field"], []);
+      checkConditionKeys(errors, value, path, op, ["field"]);
       checkId(errors, value, path, "field");
       return;
     case "and":
     case "or": {
-      checkKeys(errors, value, path, ["op", "conditions"], []);
+      checkConditionKeys(errors, value, path, op, ["conditions"]);
       const list = checkArray(errors, value, path, "conditions");
       list?.forEach((c, i) => checkCondition(errors, c, [...path, "conditions", i], depth + 1));
       return;
     }
     case "not":
-      checkKeys(errors, value, path, ["op", "condition"], []);
+      checkConditionKeys(errors, value, path, op, ["condition"]);
       checkCondition(errors, value["condition"], [...path, "condition"], depth + 1);
       return;
     case undefined:
@@ -575,17 +629,17 @@ function reportDuplicates(errors: Errors, entries: readonly { id: string; path: 
 export function validateDocuments(inputs: readonly unknown[]): ValidationResult<readonly Document[]> {
   const results = inputs.map(validateDocument);
   const errors: DocumentError[] = [];
+  const warnings: DocumentError[] = [];
   const okDocs: Document[] = [];
   results.forEach((result, i) => {
-    if (result.ok) {
-      okDocs.push(result.value);
-      return;
-    }
     const label = documentLabel(inputs[i]);
-    for (const error of result.errors) errors.push(label === undefined ? error : { ...error, document: label });
+    const tag = (e: DocumentError) => (label === undefined ? e : { ...e, document: label });
+    warnings.push(...result.warnings.map(tag));
+    if (result.ok) okDocs.push(result.value);
+    else errors.push(...result.errors.map(tag));
   });
   checkSetReferences(errors, okDocs);
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, value: okDocs };
+  return errors.length > 0 ? { ok: false, errors, warnings } : { ok: true, value: okDocs, warnings };
 }
 
 /** The id of a document when it is a plain object with a string "id". */

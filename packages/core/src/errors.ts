@@ -11,6 +11,7 @@ export type ErrorCode =
   | "unsupported-spec-version"
   | "duplicate-id"
   | "unknown-reference" // a document references an id that does not exist in the set
+  | "empty" // a warning: valid but empty (a form with no fields, a tab with no widgets)
   // The codes a data adapter reports when a record operation fails
   // (docs/records-protocol.md); the error body has the same shape as a DocumentError.
   | "not-found" // no such entity or record
