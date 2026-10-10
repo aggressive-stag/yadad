@@ -1,5 +1,14 @@
 # @yadad/editor
 
+## 0.3.1
+
+### Patch Changes
+
+- 12bb9fa: Each package now ships a short README describing what it is and linking to the repo README and ARCHITECTURE.md, so the published packages say what they are without opening the repo.
+- Updated dependencies [12bb9fa]
+  - @yadad/core@0.3.1
+  - @yadad/runtime@0.3.2
+
 ## 0.3.0
 
 ### Minor Changes

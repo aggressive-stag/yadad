@@ -1,5 +1,11 @@
 # @yadad/core
 
+## 0.3.1
+
+### Patch Changes
+
+- 12bb9fa: Each package now ships a short README describing what it is and linking to the repo README and ARCHITECTURE.md, so the published packages say what they are without opening the repo.
+
 ## 0.3.0
 
 ### Minor Changes
