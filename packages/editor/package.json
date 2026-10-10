@@ -1,6 +1,6 @@
 {
   "name": "@yadad/editor",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "yadad editor: patch-based editing of documents, dashboard layout and entity fields.",
   "type": "module",
   "sideEffects": false,
