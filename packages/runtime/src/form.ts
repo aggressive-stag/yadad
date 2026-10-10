@@ -29,13 +29,17 @@ export type SubmitResult =
  * Validates an edit to an existing record (merged over its current values),
  * then saves only the changed values under the entity's current revision. The
  * loaded record's version is sent as `baseVersion`, so a change made elsewhere
- * surfaces as a conflict instead of silently overwriting it.
+ * surfaces as a conflict instead of silently overwriting it. When nothing
+ * changed, nothing is sent and the record comes back as it was.
  */
 export async function submitEdit(entity: EntityDocument, record: DataRecord, patch: RecordValues, adapter: DataAdapter): Promise<SubmitResult> {
   const errors = validateRecord(entity, { ...record.values, ...patch });
   if (errors.length > 0) return { ok: false, errors };
+  // A missing value and null both mean empty, so clearing an empty field is no change.
+  const changed = Object.fromEntries(Object.entries(patch).filter(([key, value]) => (record.values[key] ?? null) !== value));
+  if (Object.keys(changed).length === 0) return { ok: true, record };
   try {
-    const saved = await adapter.update(entity.id, record.id, patch, { entityRevision: entity.revision, baseVersion: record.version });
+    const saved = await adapter.update(entity.id, record.id, changed, { entityRevision: entity.revision, baseVersion: record.version });
     return { ok: true, record: saved };
   } catch (error) {
     return { ok: false, errors: adapterFailure(error) };

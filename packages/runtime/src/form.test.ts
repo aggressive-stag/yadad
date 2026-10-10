@@ -103,6 +103,20 @@ describe("form state", () => {
     expect(edited.record.version).not.toBe(created.record.version);
   });
 
+  test("submitEdit sends only changed values and skips the save when nothing changed", async () => {
+    const db = createMemoryAdapter();
+    const created = await submitForm(entity, { name: "Ada" }, db);
+    if (!created.ok) throw new Error("setup");
+    const patches: object[] = [];
+    const spy = { ...db, update: (...args: Parameters<typeof db.update>) => (patches.push(args[2]), db.update(...args)) };
+    const unchanged = await submitEdit(entity, created.record, { name: "Ada", note: null }, spy);
+    expect(unchanged).toEqual({ ok: true, record: created.record });
+    expect(patches).toEqual([]);
+    const edited = await submitEdit(entity, created.record, { name: "Ada", note: "hi" }, spy);
+    expect(edited.ok).toBe(true);
+    expect(patches).toEqual([{ note: "hi" }]);
+  });
+
   test("invalid submit returns errors and writes nothing", async () => {
     const db = createMemoryAdapter();
     const result = await submitForm(entity, {}, db);
