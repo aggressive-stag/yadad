@@ -1,7 +1,10 @@
-import type { DashboardView, GridItem, Registry } from "@yadad/core";
+import type { DashboardView, GridItem, Registry, ViewDocument } from "@yadad/core";
+import type { PatchOperation } from "@yadad/runtime";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
-import { moveItem, resizeItem } from "./layout.js";
+import { addTab, addWidget, moveItem, removeTab, removeWidget, renameTab, resizeItem, uniqueItemId } from "./layout.js";
+import type { NewWidget } from "./layout.js";
+import { asText, choiceField, idFromTitle, propertyInput, toolbarStyle } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 
@@ -13,6 +16,30 @@ export interface DashboardLayoutEditorProps {
   readonly onCancel: () => void;
   /** A readable name for a view widget's view, e.g. its title. Defaults to the view id. */
   readonly describeView?: (viewId: string) => string;
+  /** Views that can be added as widgets: forms and tables embed, tables can also be counted. */
+  readonly views?: readonly ViewDocument[];
+}
+
+/** One entry of the add-widget list, with the size it starts at. */
+interface PaletteEntry {
+  readonly label: string;
+  readonly base: string;
+  readonly widget: NewWidget;
+  readonly w: number;
+  readonly h: number;
+}
+
+function palette(views: readonly ViewDocument[], describeView: (viewId: string) => string): PaletteEntry[] {
+  return views.flatMap((v): PaletteEntry[] => {
+    if (v.kind === "form") return [{ label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 }];
+    if (v.kind === "table") {
+      return [
+        { label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 },
+        { label: `Count of ${describeView(v.id)}`, base: `${v.id}_count`, widget: { widget: "count", label: v.title ?? v.id, view: v.id }, w: 3, h: 2 },
+      ];
+    }
+    return [];
+  });
 }
 
 type Box = Pick<GridItem, "x" | "y" | "w" | "h">;
@@ -38,12 +65,15 @@ const KEY_STEPS: Readonly<Record<string, readonly [number, number]>> = { ArrowLe
  * with arrow keys resizes it. Overlapping or out-of-bounds layouts are
  * rejected by document validation, with the reason announced.
  */
-export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, describeView = (id) => id }: DashboardLayoutEditorProps): ReactNode {
+export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, describeView = (id) => id, views = [] }: DashboardLayoutEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<DashboardView>>(() => startSession(dashboard));
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
   const [drag, setDrag] = useState<Drag | undefined>(undefined);
   const [status, setStatus] = useState("");
+  const [choice, setChoice] = useState<string | undefined>(undefined);
+  const [tabTitle, setTabTitle] = useState("");
+  const [newTab, setNewTab] = useState("");
   const gridRef = useRef<HTMLDivElement>(null);
   const { Tabs, Panel, Button, ErrorSummary } = registry.layout;
 
@@ -51,6 +81,8 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
   const tab = current.tabs.find((t) => t.id === selected) ?? current.tabs[0];
   if (!tab) return null;
   const columns = tab.columns ?? DEFAULT_COLUMNS;
+  const entries = palette(views, describeView);
+  const entry = entries.find((e) => e.label === choice) ?? entries[0];
 
   const name = (item: GridItem) => (item.widget === "count" ? `Count: ${item.label}` : describeView(item.view));
   const where = (b: Box) => `column ${b.x + 1}, row ${b.y + 1}, ${b.w} wide, ${b.h} tall`;
@@ -64,7 +96,21 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
     setStatus(next.rejected.length > 0 ? `Not moved: ${next.rejected[0]?.message ?? "invalid layout"}` : `${name(item)} is now at ${where(to)}.`);
   };
 
+  /** Applies a tab or widget change and announces it, or why it was refused. */
+  const change = (patch: PatchOperation[], done: string, onOk?: () => void) => {
+    const next = edit(session, patch);
+    setSession(next);
+    setStatus(next.rejected.length > 0 ? `Not changed: ${next.rejected[0]?.message ?? "invalid dashboard"}` : done);
+    if (next.rejected.length === 0) onOk?.();
+  };
+
+  const remove = (item: GridItem) => change(removeWidget(current, tab.id, item.id), `Removed ${name(item)}.`);
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, item: GridItem) => {
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      return remove(item);
+    }
     const step = KEY_STEPS[event.key];
     if (!step) return;
     event.preventDefault();
@@ -160,6 +206,10 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
           >
             <Panel title={name(item)}>
               <span data-yadad-editor-position="">{where(box)}</span>
+              {/* Keep the button's press from starting a drag of the card. */}
+              <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                <Button label={`Remove ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => remove(item)} />
+              </span>
             </Panel>
             <span
               data-yadad-editor-resize=""
@@ -177,7 +227,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
 
   return (
     <div data-yadad-dashboard-editor={dashboard.id}>
-      <p id={helpId}>Drag a card to move it, or its corner to resize it. With the keyboard: arrow keys move the focused card, Shift and arrow keys resize it.</p>
+      <p id={helpId}>Drag a card to move it, or its corner to resize it. With the keyboard: arrow keys move the focused card, Shift and arrow keys resize it, Delete removes it.</p>
       <div data-yadad-editor-toolbar="" style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockEnd: "var(--yadad-toolbar-gap, 0.5rem)" }}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
@@ -185,10 +235,50 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {session.rejected.length > 0 && <ErrorSummary errors={session.rejected} />}
+      <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+        {entries.length > 0 && (
+          <>
+            {propertyInput(registry, `${base}-widget`, choiceField("widget", "Widget to add", entries.map((e) => e.label)), entry?.label, (v) => setChoice(asText(v)))}
+            <Button
+              label={`Add to ${tab.title}`}
+              type="button"
+              variant="primary"
+              disabled={!entry}
+              onPress={() => entry && change(addWidget(current, tab.id, uniqueItemId(current, tab.id, entry.base), entry.widget, entry.w, entry.h), `Added ${entry.label} to ${tab.title}.`)}
+            />
+          </>
+        )}
+        {propertyInput(registry, `${base}-tab-title`, { id: "tab_title", type: "text", label: "Tab title" }, tabTitle || tab.title, (v) => setTabTitle(asText(v)))}
+        <Button
+          label="Rename tab"
+          type="button"
+          variant="secondary"
+          disabled={tabTitle.trim() === "" || tabTitle.trim() === tab.title}
+          onPress={() => change(renameTab(current, tab.id, tabTitle.trim()), `Renamed the tab to ${tabTitle.trim()}.`, () => setTabTitle(""))}
+        />
+        <Button label="Remove tab" type="button" variant="secondary" disabled={current.tabs.length === 1} onPress={() => change(removeTab(current, tab.id), `Removed the ${tab.title} tab.`)} />
+        {propertyInput(registry, `${base}-new-tab`, { id: "new_tab", type: "text", label: "New tab title" }, newTab, (v) => setNewTab(asText(v)))}
+        <Button
+          label="Add tab"
+          type="button"
+          variant="secondary"
+          disabled={newTab.trim() === ""}
+          onPress={() => {
+            const id = idFromTitle(newTab, current.tabs.map((t) => t.id), "tab");
+            change(addTab(current, id, newTab.trim()), `Added the ${newTab.trim()} tab.`, () => {
+              setNewTab("");
+              setSelected(id);
+            });
+          }}
+        />
+      </div>
       <p aria-live="polite" data-yadad-editor-status="">
         {status}
       </p>
-      <Tabs label={`Edit ${dashboard.title ?? dashboard.id}`} tabs={current.tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={setSelected} panel={grid} />
+      <Tabs label={`Edit ${dashboard.title ?? dashboard.id}`} tabs={current.tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={(id) => {
+          setSelected(id);
+          setTabTitle("");
+        }} panel={grid} />
     </div>
   );
 }
