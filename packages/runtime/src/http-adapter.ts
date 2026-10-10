@@ -47,7 +47,7 @@ interface ErrorItem {
 /** The protocol's non-2xx body: `{ errors: [...] }`, with `"current"` added on 409. */
 interface ErrorBody {
   readonly errors?: readonly ErrorItem[];
-  readonly current?: unknown;
+  readonly current?: DataRecord | null;
 }
 
 /**
@@ -100,8 +100,10 @@ export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
         throw new ForbiddenError(message);
       case 404:
         throw new RecordNotFoundError(message);
-      case 409:
-        throw new RecordConflictError(message, isObject((body as ErrorBody).current) ? ((body as ErrorBody).current as DataRecord) : null);
+      case 409: {
+        const current = isObject(body) ? (body as ErrorBody).current : undefined;
+        throw new RecordConflictError(message, isObject(current) ? current : null);
+      }
       default:
         throw new Error(`The server responded with status ${status}.`);
     }

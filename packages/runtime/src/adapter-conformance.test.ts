@@ -408,4 +408,17 @@ describe("http adapter: request encoding and status mapping", () => {
     const notFound = createHttpAdapter({ baseUrl: "/api/records", fetch: status(404, "not-found") });
     expect(await notFound.findOne(ENTITY, "1")).toBeNull();
   });
+
+  test("a 409 without a JSON body is still a conflict, with no current record", async () => {
+    const noBody: FetchLike = async () => ({
+      status: 409,
+      json: async () => {
+        throw new SyntaxError("Unexpected end of JSON input");
+      },
+    });
+    const adapter = createHttpAdapter({ baseUrl: "/api/records", fetch: noBody });
+    const conflict = (await expectError(adapter.update(ENTITY, "1", { weight: 1 }, { entityRevision: REVISION, baseVersion: "v1" }))) as RecordConflictError;
+    expect(conflict).toBeInstanceOf(RecordConflictError);
+    expect(conflict.current).toBeNull();
+  });
 });
