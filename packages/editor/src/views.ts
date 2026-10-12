@@ -111,6 +111,49 @@ export function moveFormItem(view: FormView, fieldId: string, by: -1 | 1): Resul
   return ok([guard, { op: "move", from, path: target }]);
 }
 
+/**
+ * Moves a field to `toIndex` (the position it takes after the move) in
+ * `sectionId`, one patch for the whole move, within or across sections.
+ * Dropping a field where it already is produces no patch, so a no-op drop
+ * does not become an undo step.
+ */
+export function moveFieldTo(view: FormView, fieldId: string, sectionId: string, toIndex: number): Result {
+  const at = findItem(view, fieldId);
+  if (!at) return fail(["sections"], `"${fieldId}" is not on this form.`, "Add it first.");
+  const from = `/sections/${at.s}/items/${at.i}`;
+  const s = sectionIndex(view, sectionId);
+  if (s < 0) return fail(["sections"], `No section "${sectionId}".`, "Pick an existing section.");
+  const count = view.sections[s]?.items.length ?? 0;
+  const slots = s === at.s ? count - 1 : count; // positions the field can take after the move
+  if (toIndex < 0 || toIndex > slots) return fail(["sections", s], `No position ${toIndex + 1} in this section.`, "Drop it where a row would fit.");
+  const guard: PatchOperation = { op: "test", path: `${from}/field`, value: fieldId };
+  if (s === at.s && toIndex === at.i) return ok([]);
+  return ok([guard, { op: "move", from, path: `/sections/${s}/items/${toIndex}` }]);
+}
+
+/** Moves a section to `toIndex` (the position it takes after the move), one patch for the whole move. */
+export function moveSectionTo(view: FormView, sectionId: string, toIndex: number): Result {
+  const s = sectionIndex(view, sectionId);
+  if (s < 0) return fail(["sections"], `No section "${sectionId}".`, "Pick an existing section.");
+  if (toIndex < 0 || toIndex >= view.sections.length) return fail(["sections", s], `No position ${toIndex + 1} in this form.`, "Drop it where a section would fit.");
+  if (toIndex === s) return ok([]);
+  // A move op's path is the index the item takes after the move, so the drop index goes straight in.
+  return ok([
+    { op: "test", path: `/sections/${s}/id`, value: sectionId },
+    { op: "move", from: `/sections/${s}`, path: `/sections/${toIndex}` },
+  ]);
+}
+
+/** Moves a column to `toIndex` (the position it takes after the move), one patch for the whole move. */
+export function moveColumnTo(view: TableView, fieldId: string, toIndex: number): Result {
+  const c = columnIndex(view, fieldId);
+  if (c < 0) return fail(["columns"], `"${fieldId}" is not a column.`, "Add it first.");
+  if (toIndex < 0 || toIndex >= view.columns.length) return fail(["columns", c], `No position ${toIndex + 1} in this table.`, "Drop it where a column would fit.");
+  if (toIndex === c) return ok([]);
+  // A move op's path is the index the item takes after the move, so the drop index goes straight in.
+  return ok([{ op: "test", path: `/columns/${c}/field`, value: fieldId }, { op: "move", from: `/columns/${c}`, path: `/columns/${toIndex}` }]);
+}
+
 /** Shows a field as the last column. */
 export function addColumn(view: TableView, fieldId: string): PatchOperation[] {
   return [{ op: "add", path: "/columns/-", value: { field: fieldId } }];

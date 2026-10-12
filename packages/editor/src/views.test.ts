@@ -13,8 +13,11 @@ import {
   fieldsNotInTable,
   fieldsNotOnForm,
   moveColumn,
+  moveColumnTo,
+  moveFieldTo,
   moveFormItem,
   moveSection,
+  moveSectionTo,
   removeColumn,
   removeFormItem,
   removeSection,
@@ -100,6 +103,53 @@ describe("form view edits", () => {
   test("a section id already in use is refused by validation", () => {
     expect(edit(startSession(form), addSection(form, "main")).rejected[0]?.code).toBe("duplicate-id");
   });
+
+  test("moves a field to any position in any section, one patch per move", () => {
+    // The form is main:[title, done], more:[]; the entity fields are title, done, due.
+    expect(moveFieldTo(form, "done", "main", 0).ok).toBe(true); // within its section
+    expect(fieldsOf(apply(startSession(form), moveFieldTo(form, "done", "main", 0)).current)).toEqual([
+      "main:done,title",
+      "more:",
+    ]);
+    expect(fieldsOf(apply(startSession(form), moveFieldTo(form, "title", "main", 1)).current)).toEqual([
+      "main:done,title",
+      "more:",
+    ]);
+    // Across sections, into the empty one.
+    expect(fieldsOf(apply(startSession(form), moveFieldTo(form, "title", "more", 0)).current)).toEqual([
+      "main:done",
+      "more:title",
+    ]);
+    // Across sections, between existing rows: due joins more after title.
+    let s = apply(startSession(form), moveFieldTo(form, "title", "more", 0));
+    s = apply(s, addFormItem(s.current, "more", "due"));
+    expect(fieldsOf(s.current)).toEqual(["main:done", "more:title,due"]);
+    s = apply(s, moveFieldTo(s.current, "due", "main", 0));
+    expect(fieldsOf(s.current)).toEqual(["main:due,done", "more:title"]);
+    // No-op: a field where it already is produces no patch, so no undo step.
+    const noop = moveFieldTo(form, "title", "main", 0);
+    expect(noop.ok).toBe(true);
+    if (noop.ok) expect(noop.patch).toHaveLength(0);
+    // Refusals: a position past the end, a missing field, a missing section.
+    expect(moveFieldTo(form, "title", "main", 5).ok).toBe(false);
+    expect(moveFieldTo(form, "nope", "main", 0).ok).toBe(false);
+    expect(moveFieldTo(form, "title", "nope", 0).ok).toBe(false);
+  });
+
+  test("moves a section to any position, one patch per move", () => {
+    let s = startSession(form);
+    s = apply(s, moveSectionTo(s.current, "more", 0));
+    expect(s.current.sections.map((x) => x.id)).toEqual(["more", "main"]);
+    s = apply(s, moveSectionTo(s.current, "more", 1));
+    expect(s.current.sections.map((x) => x.id)).toEqual(["main", "more"]);
+    // No-op: a section where it already is produces no patch.
+    const noop = moveSectionTo(form, "main", 0);
+    expect(noop.ok).toBe(true);
+    if (noop.ok) expect(noop.patch).toHaveLength(0);
+    // Refusals: a position past the end, a missing section.
+    expect(moveSectionTo(form, "main", 2).ok).toBe(false);
+    expect(moveSectionTo(form, "nope", 0).ok).toBe(false);
+  });
 });
 
 describe("table view edits", () => {
@@ -116,6 +166,21 @@ describe("table view edits", () => {
     s = apply(s, removeColumn(s.current, "title"));
     s = apply(s, removeColumn(s.current, "done"));
     expect(removeColumn(s.current, "due").ok).toBe(false);
+  });
+
+  test("moves a column to any position, one patch per move", () => {
+    let s = startSession(table);
+    s = apply(s, moveColumnTo(s.current, "due", 0));
+    expect(s.current.columns.map((c) => c.field)).toEqual(["due", "title"]);
+    s = apply(s, moveColumnTo(s.current, "due", 1));
+    expect(s.current.columns.map((c) => c.field)).toEqual(["title", "due"]);
+    // No-op: a column where it already is produces no patch.
+    const noop = moveColumnTo(table, "title", 0);
+    expect(noop.ok).toBe(true);
+    if (noop.ok) expect(noop.patch).toHaveLength(0);
+    // Refusals: a position past the end, a missing column.
+    expect(moveColumnTo(table, "title", 2).ok).toBe(false);
+    expect(moveColumnTo(table, "nope", 0).ok).toBe(false);
   });
 
   test("sets and clears title, sort, page size and quick filters", () => {
