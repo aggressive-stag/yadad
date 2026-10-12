@@ -71,6 +71,74 @@ describe("FormViewEditor", () => {
     press("Move Done down");
     expect(within(screen.getByRole("table", { name: "Fields in Scheduling" })).getByText("Done")).toBeTruthy();
   });
+
+  test("arrow keys move a focused field grip, announced in the status line", () => {
+    setup();
+    const grip = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+    const status = () => document.querySelector("[data-yadad-editor-status]")?.textContent ?? "";
+    const rows = () => within(screen.getByRole("table", { name: "Fields in Task" })).getAllByRole("row").slice(1).map((r) => r.textContent ?? "");
+    const done = grip("Drag the field Done");
+    done.focus();
+    fireEvent.keyDown(done, { key: "ArrowUp" });
+    expect(status()).toBe("Done moved up to Task, position 1.");
+    expect(rows()[0]).toContain("Done");
+    fireEvent.keyDown(done, { key: "ArrowRight" });
+    expect(status()).toBe("Done moved down to Task, position 2.");
+    expect(rows()[1]).toContain("Done");
+    // Plain arrow keys without focus on the grip do nothing; a non-step key neither.
+    fireEvent.keyDown(done, { key: "a" });
+    expect(status()).toBe("Done moved down to Task, position 2.");
+    // Esc during a drag cancels it: no move, no announcement.
+    fireEvent.pointerDown(grip("Drag the field Title"), { pointerId: 1 });
+    fireEvent.keyDown(grip("Drag the field Title"), { key: "Escape" });
+    expect(status()).toBe("Done moved down to Task, position 2.");
+  });
+
+  test("arrow keys move a focused section grip, announced in the status line", () => {
+    setup();
+    const grip = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+    const status = () => document.querySelector("[data-yadad-editor-status]")?.textContent ?? "";
+    const sections = () => [...document.querySelectorAll("[data-yadad-section-span]")].map((el) => el.getAttribute("data-yadad-section-span"));
+    // The fixture has one section; add a second so the first has somewhere to go.
+    fireEvent.change(screen.getByLabelText("New section title"), { target: { value: "Scheduling" } });
+    press("Add section");
+    const sched = grip("Drag the section Scheduling");
+    sched.focus();
+    fireEvent.keyDown(sched, { key: "ArrowUp" });
+    expect(status()).toBe("Section Scheduling moved to position 1.");
+    expect(sections()).toEqual(["scheduling", "main"]);
+    fireEvent.keyDown(sched, { key: "ArrowDown" });
+    expect(status()).toBe("Section Scheduling moved to position 2.");
+    expect(sections()).toEqual(["main", "scheduling"]);
+  });
+
+  test("a pointer drag of a field shows the drop indicator, then applies one undoable move", () => {
+    const saved = setup();
+    const status = () => document.querySelector("[data-yadad-editor-status]")?.textContent ?? "";
+    const rows = () => within(screen.getByRole("table", { name: "Fields in Task" })).getAllByRole("row").slice(1);
+    const grip = screen.getByRole("button", { name: "Drag the field Title" });
+    // While the drag is in progress the indicator shows where the field will
+    // land. jsdom has no layout, so the pointer's y (40) is below every
+    // zero-height row's midpoint: the drop resolves to the end of the
+    // section, after the table.
+    fireEvent.pointerDown(grip, { pointerId: 1, clientY: 40 });
+    expect(document.querySelector("[data-yadad-drop-indicator]")).toBeTruthy();
+    fireEvent.pointerMove(grip, { pointerId: 1, clientY: 40 });
+    fireEvent.pointerUp(grip, { pointerId: 1, clientY: 40 });
+    expect(status()).toBe("Title moved to Task, position 2.");
+    expect(rows()[0]?.textContent).toContain("Done");
+    expect(rows()[1]?.textContent).toContain("Title");
+    expect(document.querySelector("[data-yadad-drop-indicator]")).toBeNull();
+    // The save is the moved document, with a new revision.
+    press("Save form");
+    expect(saved[0]?.revision).toBe(4);
+    expect(saved[0]?.sections[0]?.items.map((i) => i.field)).toEqual(["done", "title"]);
+    // One undo reverts the whole move, and the form is clean again: the
+    // save goes back to being disabled.
+    press("Undo");
+    expect(rows()[0]?.textContent).toContain("Title");
+    expect((screen.getByRole("button", { name: "Save form" }) as HTMLButtonElement).disabled).toBe(true);
+  });
 });
 
 describe("TableViewEditor", () => {

@@ -2,10 +2,13 @@ import type { DocumentError, EntityDocument, FieldValue, Registry, TableView } f
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
+import type { DropTarget, ReorderableRow } from "./drag.js";
+import { flatIndex } from "./drag.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
+import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
-import { addColumn, fieldsNotInTable, moveColumn, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableSort, setTableTitle } from "./views.js";
+import { addColumn, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableSort, setTableTitle } from "./views.js";
 
 export interface TableViewEditorProps {
   readonly view: TableView;
@@ -40,7 +43,10 @@ const settingsOf = (view: TableView): Settings => ({
 /**
  * Sets up a table: choose and order its columns, which ones rows can edit in
  * place, which fields viewers can quick-filter on, and its title, page size
- * and initial sort. A fixed filter, if the table has one, is kept and shown.
+ * and initial sort. A column can be dragged by its grip — the drag shows
+ * where it will land — or moved one step with the arrow keys; each move is
+ * one undoable patch, and where it lands is announced. A fixed filter, if
+ * the table has one, is kept and shown.
  */
 export function TableViewEditor({ view, entity, registry, onSave, onCancel }: TableViewEditorProps): ReactNode {
   const base = useId();
@@ -48,11 +54,16 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [settings, setSettings] = useState<Settings>(() => settingsOf(view));
   const [adding, setAdding] = useState<string | undefined>(undefined);
+  const [status, setStatus] = useState("");
   const { Table, Button, Section, ErrorSummary } = registry.layout;
   const current = session.current;
 
   const label = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
   const byLabel = (ids: readonly string[], v: FieldValue | undefined) => ids.find((id) => label(id) === v);
+  const announce = (message: string) => {
+    setProblems([]);
+    setStatus(message);
+  };
 
   const run = (result: Result, onOk?: () => void) => {
     if (!Array.isArray(result) && !result.ok) return setProblems([result.error]);
@@ -63,6 +74,52 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
     setProblems(next.rejected);
     if (next.rejected.length === 0) onOk?.();
   };
+
+  /** Applies a patch through the session and reports it in the status line. */
+  const applyAndAnnounce = (patch: PatchOperation[], message: (doc: TableView) => string): void => {
+    const next = edit(session, patch);
+    setSession(next);
+    setProblems(next.rejected);
+    if (next.rejected.length > 0) return announce(`Not moved: ${next.rejected[0]?.message ?? "invalid table"}.`);
+    announce(message(next.current));
+  };
+
+  /** A one-step move of a column from the keyboard, announced. */
+  const keyMoveColumn = (fieldId: string, step: -1 | 1) => {
+    const result = moveColumn(current, fieldId, step);
+    if (!Array.isArray(result) && !result.ok) return announce(`Not moved: ${result.error.message}`);
+    const patch = Array.isArray(result) ? result : result.patch;
+    applyAndAnnounce(patch, (doc) => `${label(fieldId)} moved ${step < 0 ? "left" : "right"} to position ${doc.columns.findIndex((c) => c.field === fieldId) + 1}.`);
+  };
+
+  /** A drag drop of a column: one validated patch, so one Undo reverts it. */
+  const dropColumn = (fieldId: string, target: DropTarget) => {
+    const result = moveColumnTo(current, fieldId, target.index);
+    if (!Array.isArray(result) && !result.ok) return announce(`Not moved: ${result.error.message}`);
+    const patch = Array.isArray(result) ? result : result.patch;
+    if (patch.length === 0) return; // a no-op drop: no undo step, nothing to say
+    applyAndAnnounce(patch, (doc) => `${label(fieldId)} moved to position ${doc.columns.findIndex((c) => c.field === fieldId) + 1}.`);
+  };
+
+  // Drag geometry over the laid-out DOM: the columns are a flat list of
+  // rows in the editor's table; a row's element is the closest <tr> of its
+  // first cell's marker.
+  const columnRows = (): readonly ReorderableRow[] => {
+    const rows: ReorderableRow[] = [];
+    for (const column of current.columns) {
+      const marker = document.querySelector<HTMLElement>(`[data-yadad-column-row="${column.field}"]`);
+      const el = (marker?.closest("tr") as HTMLElement | null) ?? marker ?? undefined;
+      if (el) rows.push({ id: column.field, sectionId: "", el });
+    }
+    return rows;
+  };
+  const columnDrag = useReorder((y, id) => ({ sectionId: "", index: flatIndex(columnRows(), y, id) }), dropColumn);
+
+  // Where the indicator sits: inside the cell of the column row the dragged
+  // one will precede, or after the table at the end.
+  const columnOthers = current.columns.filter((c) => c.field !== columnDrag.active);
+  const columnIndicatorBefore = (field: string): boolean => columnDrag.target !== undefined && columnOthers.findIndex((c) => c.field === field) === columnDrag.target.index;
+  const columnIndicatorAfterTable = columnDrag.target !== undefined && columnDrag.target.index >= columnOthers.length;
 
   // Title, page size and sort apply together, as one undoable edit.
   const applySettings = () =>
@@ -88,7 +145,24 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
     return {
       id: column.field,
       cells: [
-        name,
+        <span key="column" data-yadad-column-row={column.field} style={{ display: "flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>
+          {columnIndicatorBefore(column.field) && <DropIndicator />}
+          <ReorderGrip
+            label={`Drag the column ${name}`}
+            dragging={columnDrag.active === column.field}
+            onPointerDown={(e) => columnDrag.start(e, column.field)}
+            onPointerMove={columnDrag.move}
+            onPointerUp={columnDrag.drop}
+            onPointerCancel={columnDrag.cancel}
+            onKeyDown={(e) => {
+              const step = arrowStep(e);
+              if (step === 0) return;
+              e.preventDefault();
+              keyMoveColumn(column.field, step);
+            }}
+          />
+          {name}
+        </span>,
         editable ? "Yes" : "No",
         quick ? "Yes" : canFilter ? "No" : "Not available",
         <span key="actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
@@ -110,6 +184,7 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
 
   return (
     <div data-yadad-table-editor={view.id}>
+      <p id={`${base}-help`}>Drag a column by its grip to reorder it; with the keyboard, focus a grip and use the arrow keys (Left back, Right forward). Esc cancels a drag. The Move buttons step one place.</p>
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
@@ -142,7 +217,11 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
           </div>
         )}
         <Table caption={`Columns of ${current.title ?? current.id}`} columns={columns} rows={rows} onSort={() => {}} empty="No columns." />
+        {columnIndicatorAfterTable && <DropIndicator />}
       </Section>
+      <p aria-live="polite" data-yadad-editor-status="">
+        {status}
+      </p>
     </div>
   );
 }

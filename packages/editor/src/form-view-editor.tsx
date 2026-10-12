@@ -1,11 +1,25 @@
 import type { DocumentError, EntityDocument, FieldValue, FormItem, FormView, Registry } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 import type { ReactNode } from "react";
+import type { DropTarget, RangeSpan, ReorderableRow } from "./drag.js";
+import { flatIndex, insertIndex } from "./drag.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
+import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
-import { addFormItem, addSection, fieldsNotOnForm, moveFormItem, moveSection, removeFormItem, removeSection, setSectionTitle } from "./views.js";
+import {
+  addFormItem,
+  addSection,
+  fieldsNotOnForm,
+  moveFieldTo,
+  moveFormItem,
+  moveSection,
+  moveSectionTo,
+  removeFormItem,
+  removeSection,
+  setSectionTitle,
+} from "./views.js";
 
 export interface FormViewEditorProps {
   readonly view: FormView;
@@ -20,9 +34,11 @@ export interface FormViewEditorProps {
 type Result = PatchOperation[] | { ok: true; patch: PatchOperation[] } | { ok: false; error: DocumentError };
 
 /**
- * Lays out a form: place entity fields in sections, reorder them (a field
- * moves across into the next section at an edge), take them off, and add,
- * rename, reorder or remove sections. Conditions on a field are kept and shown.
+ * Lays out a form: place entity fields in sections, reorder them, take them
+ * off, and add, rename, reorder or remove sections. A field or section can
+ * be dragged by its grip — the drag shows where it will land — or moved one
+ * step with the arrow keys; each move is one undoable patch, and where it
+ * lands is announced. Conditions on a field are kept and shown.
  */
 export function FormViewEditor({ view, entity, registry, onSave, onCancel }: FormViewEditorProps): ReactNode {
   const base = useId();
@@ -31,11 +47,16 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
   const [newSection, setNewSection] = useState("");
   const [titles, setTitles] = useState<Readonly<Record<string, string>>>({});
   const [adding, setAdding] = useState<{ readonly field?: string | undefined; readonly section?: string | undefined }>({});
+  const [status, setStatus] = useState("");
   const { Table, Button, Section, ErrorSummary } = registry.layout;
   const current = session.current;
 
   const label = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
   const sectionName = (id: string) => current.sections.find((s) => s.id === id)?.title ?? id;
+  const announce = (message: string) => {
+    setProblems([]);
+    setStatus(message);
+  };
 
   const run = (result: Result, onOk?: () => void) => {
     if (!Array.isArray(result) && !result.ok) return setProblems([result.error]);
@@ -46,6 +67,109 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
     setProblems(next.rejected);
     if (next.rejected.length === 0) onOk?.();
   };
+
+  /** The 1-based position of a field within the section it is in. */
+  const positionOf = (doc: FormView, fieldId: string): { readonly section: string; readonly at: number } => {
+    for (const section of doc.sections) {
+      const at = section.items.findIndex((item) => item.field === fieldId);
+      if (at >= 0) return { section: section.title ?? section.id, at: at + 1 };
+    }
+    return { section: "", at: 0 };
+  };
+
+  /** Applies a patch through the session and reports it in the status line. */
+  const applyAndAnnounce = (patch: PatchOperation[], message: (doc: FormView) => string): void => {
+    const next = edit(session, patch);
+    setSession(next);
+    setProblems(next.rejected);
+    if (next.rejected.length > 0) return announce(`Not moved: ${next.rejected[0]?.message ?? "invalid form"}.`);
+    announce(message(next.current));
+  };
+
+  /** A one-step move of a field from the keyboard, announced. */
+  const keyMoveField = (fieldId: string, step: -1 | 1) => {
+    const result = moveFormItem(current, fieldId, step);
+    if (!Array.isArray(result) && !result.ok) return announce(`Not moved: ${result.error.message}`);
+    const patch = Array.isArray(result) ? result : result.patch;
+    applyAndAnnounce(patch, (next) => `${label(fieldId)} moved ${step < 0 ? "up" : "down"} to ${positionOf(next, fieldId).section}, position ${positionOf(next, fieldId).at}.`);
+  };
+
+  /** A drag drop of a field: one validated patch, so one Undo reverts it. */
+  const dropField = (fieldId: string, target: DropTarget) => {
+    const result = moveFieldTo(current, fieldId, target.sectionId, target.index);
+    if (!Array.isArray(result) && !result.ok) return announce(`Not moved: ${result.error.message}`);
+    const patch = Array.isArray(result) ? result : result.patch;
+    if (patch.length === 0) return; // a no-op drop: no undo step, nothing to say
+    applyAndAnnounce(patch, (next) => {
+      const { section, at } = positionOf(next, fieldId);
+      return `${label(fieldId)} moved to ${section}, position ${at}.`;
+    });
+  };
+
+  /** A one-step move of a section from the keyboard, announced. */
+  const keyMoveSection = (sectionId: string, step: -1 | 1) => {
+    const result = moveSection(current, sectionId, step);
+    if (!Array.isArray(result) && !result.ok) return announce(`Not moved: ${result.error.message}`);
+    const patch = Array.isArray(result) ? result : result.patch;
+    applyAndAnnounce(
+      patch,
+      (next) => `Section ${next.sections.find((s) => s.id === sectionId)?.title ?? sectionId} moved to position ${next.sections.findIndex((s) => s.id === sectionId) + 1}.`,
+    );
+  };
+
+  /** A drag drop of a section: one validated patch, so one Undo reverts it. */
+  const dropSection = (sectionId: string, target: DropTarget) => {
+    const result = moveSectionTo(current, sectionId, target.index);
+    if (!Array.isArray(result) && !result.ok) return announce(`Not moved: ${result.error.message}`);
+    const patch = Array.isArray(result) ? result : result.patch;
+    if (patch.length === 0) return; // a no-op drop: no undo step, nothing to say
+    applyAndAnnounce(
+      patch,
+      (next) => `Section ${next.sections.find((s) => s.id === sectionId)?.title ?? sectionId} moved to position ${next.sections.findIndex((s) => s.id === sectionId) + 1}.`,
+    );
+  };
+
+  // Drag geometry over the laid-out DOM. The rows and spans are looked up
+  // while the pointer moves, so the math always sees the rendered
+  // positions; the registry's Table owns the <tr>, so a row's element is
+  // the closest <tr> of its first cell's marker.
+  const rowEl = (id: string): HTMLElement | undefined => {
+    const marker = document.querySelector<HTMLElement>(`[data-yadad-row="${id}"]`);
+    return (marker?.closest("tr") as HTMLElement | null) ?? marker ?? undefined;
+  };
+  const spanEl = (id: string): HTMLElement | undefined => document.querySelector<HTMLElement>(`[data-yadad-section-span="${id}"]`) ?? undefined;
+
+  const fieldRows = (): readonly ReorderableRow[] => {
+    const rows: ReorderableRow[] = [];
+    for (const section of current.sections)
+      for (const item of section.items) {
+        const el = rowEl(item.field);
+        if (el) rows.push({ id: item.field, sectionId: section.id, el });
+      }
+    return rows;
+  };
+  const sectionRows = (): readonly ReorderableRow[] => {
+    const rows: ReorderableRow[] = [];
+    for (const section of current.sections) {
+      const el = spanEl(section.id);
+      if (el) rows.push({ id: section.id, sectionId: "", el });
+    }
+    return rows;
+  };
+  const sectionSpans = (): readonly RangeSpan[] => {
+    const spans: RangeSpan[] = [];
+    for (const section of current.sections) {
+      const el = spanEl(section.id);
+      if (el) spans.push({ id: section.id, el });
+    }
+    return spans;
+  };
+
+  const fieldDrag = useReorder((y, id) => insertIndex(fieldRows(), sectionSpans(), y, id), dropField);
+  const sectionDrag = useReorder(
+    (y, id) => ({ sectionId: "", index: flatIndex(sectionRows(), y, id) }),
+    (id, target) => dropSection(id, target),
+  );
 
   // Adding a field: pick one not on the form, and the section to put it in.
   const missing = fieldsNotOnForm(entity, current);
@@ -66,13 +190,53 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
 
   const columns = ["Field", "Rules", "Actions"].map((name) => ({ id: name.toLowerCase(), headerId: `${base}-col-${name}`, label: name, sortable: false }));
 
+  // Where the field drag's indicator sits in a section: inside the cell of
+  // the row the field will precede, or after the table at the end.
+  const fieldOthers = (section: FormView["sections"][number]) => section.items.filter((item) => item.field !== fieldDrag.active);
+  const fieldIndicator = (section: FormView["sections"][number], item: FormItem): boolean => {
+    const t = fieldDrag.target;
+    if (!t || t.sectionId !== section.id) return false;
+    return fieldOthers(section).findIndex((i) => i.field === item.field) === t.index;
+  };
+  const fieldIndicatorAfterTable = (section: FormView["sections"][number]): boolean => {
+    const t = fieldDrag.target;
+    return t !== undefined && t.sectionId === section.id && t.index >= fieldOthers(section).length;
+  };
+
+  // Where the section drag's indicator sits: before the section it will
+  // precede, or after the last section.
+  const sectionOthers = current.sections.filter((s) => s.id !== sectionDrag.active);
+  const sectionIndicatorBefore = (id: string): boolean => sectionDrag.target !== undefined && sectionOthers.findIndex((s) => s.id === id) === sectionDrag.target.index;
+  const sectionIndicatorAfterLast = sectionDrag.target !== undefined && sectionDrag.target.index >= sectionOthers.length;
+
+  const fieldGrip = (fieldId: string) => (
+    <ReorderGrip
+      label={`Drag the field ${label(fieldId)}`}
+      dragging={fieldDrag.active === fieldId}
+      onPointerDown={(e) => fieldDrag.start(e, fieldId)}
+      onPointerMove={fieldDrag.move}
+      onPointerUp={fieldDrag.drop}
+      onPointerCancel={fieldDrag.cancel}
+      onKeyDown={(e) => {
+        const step = arrowStep(e);
+        if (step === 0) return;
+        e.preventDefault();
+        keyMoveField(fieldId, step);
+      }}
+    />
+  );
+
   const sectionView = (section: FormView["sections"][number], index: number): ReactNode => {
     const titleId = `${base}-title-${section.id}`;
     const title = titles[section.id] ?? section.title ?? "";
     const rows = section.items.map((item) => ({
       id: item.field,
       cells: [
-        label(item.field),
+        <span key="field" data-yadad-row={item.field} style={{ display: "flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>
+          {fieldIndicator(section, item) && <DropIndicator />}
+          {fieldGrip(item.field)}
+          {label(item.field)}
+        </span>,
         conditions(item) || "None",
         <span key="actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
           <Button label={`Move ${label(item.field)} up`} type="button" variant="secondary" disabled={false} onPress={() => run(moveFormItem(current, item.field, -1))} />
@@ -84,6 +248,20 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
     return (
       <Section key={section.id} id={`${base}-section-${section.id}`} title={`Section: ${section.title ?? section.id}`}>
         <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+          <ReorderGrip
+            label={`Drag the section ${section.title ?? section.id}`}
+            dragging={sectionDrag.active === section.id}
+            onPointerDown={(e) => sectionDrag.start(e, section.id)}
+            onPointerMove={sectionDrag.move}
+            onPointerUp={sectionDrag.drop}
+            onPointerCancel={sectionDrag.cancel}
+            onKeyDown={(e) => {
+              const step = arrowStep(e);
+              if (step === 0) return;
+              e.preventDefault();
+              keyMoveSection(section.id, step);
+            }}
+          />
           {propertyInput(registry, titleId, { id: "title", type: "text", label: "Section title" }, title, (v) => setTitles((t) => ({ ...t, [section.id]: asText(v) })))}
           <Button label="Rename section" type="button" variant="secondary" disabled={title === (section.title ?? "")} onPress={() => run(setSectionTitle(current, section.id, title))} />
           <Button label="Move section up" type="button" variant="secondary" disabled={index === 0} onPress={() => run(moveSection(current, section.id, -1))} />
@@ -91,12 +269,16 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
           <Button label="Remove section" type="button" variant="secondary" disabled={false} onPress={() => run(removeSection(current, section.id))} />
         </div>
         <Table caption={`Fields in ${section.title ?? section.id}`} columns={columns} rows={rows} onSort={() => {}} empty="No fields in this section yet." />
+        {fieldIndicatorAfterTable(section) && <DropIndicator />}
       </Section>
     );
   };
 
   return (
     <div data-yadad-form-editor={view.id}>
+      <p id={`${base}-help`}>
+        Drag a field or section by its grip to move it; with the keyboard, focus a grip and use the arrow keys (Up and Left back, Down and Right forward). Esc cancels a drag. The Move buttons step one place.
+      </p>
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
@@ -136,7 +318,16 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
           />
         </div>
       </Section>
-      {current.sections.map(sectionView)}
+      {current.sections.map((section, index) => (
+        <Fragment key={section.id}>
+          {sectionIndicatorBefore(section.id) && <DropIndicator />}
+          <div data-yadad-section-span={section.id}>{sectionView(section, index)}</div>
+        </Fragment>
+      ))}
+      {sectionIndicatorAfterLast && <DropIndicator />}
+      <p aria-live="polite" data-yadad-editor-status="">
+        {status}
+      </p>
     </div>
   );
 }
