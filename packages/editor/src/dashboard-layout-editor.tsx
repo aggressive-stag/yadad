@@ -1,12 +1,15 @@
-import type { DashboardView, GridItem, Registry, ViewDocument } from "@yadad/core";
+import type { DashboardView, EntityDocument, GridItem, Registry, ViewDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { addTab, addWidget, moveItem, removeTab, removeWidget, renameTab, resizeItem, uniqueItemId } from "./layout.js";
 import type { NewWidget } from "./layout.js";
-import { asText, choiceField, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
+import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
+import type { ConditionDraft } from "./condition-builder.js";
+import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
+import { setCountWidgetFilter } from "./views.js";
 
 export interface DashboardLayoutEditorProps {
   readonly dashboard: DashboardView;
@@ -18,6 +21,8 @@ export interface DashboardLayoutEditorProps {
   readonly describeView?: (viewId: string) => string;
   /** Views that can be added as widgets: forms and tables embed, tables can also be counted. */
   readonly views?: readonly ViewDocument[];
+  /** The documents' entities, so a count widget's filter can be edited against its table's entity. */
+  readonly entities?: ReadonlyMap<string, EntityDocument>;
 }
 
 /** One entry of the add-widget list, with the size it starts at. */
@@ -65,7 +70,7 @@ const KEY_STEPS: Readonly<Record<string, readonly [number, number]>> = { ArrowLe
  * with arrow keys resizes it. Overlapping or out-of-bounds layouts are
  * rejected by document validation, with the reason announced.
  */
-export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, describeView = (id) => id, views = [] }: DashboardLayoutEditorProps): ReactNode {
+export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, describeView = (id) => id, views = [], entities }: DashboardLayoutEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<DashboardView>>(() => startSession(dashboard));
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
@@ -105,6 +110,40 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
   };
 
   const remove = (item: GridItem) => change(removeWidget(current, tab.id, item.id), `Removed ${name(item)}.`);
+
+  // A count widget's own filter: it narrows the widget's count without
+  // touching the table it counts. Edited against the table's entity.
+  const [countFilter, setCountFilter] = useState<{ readonly id: string; readonly draft: ConditionDraft | undefined } | undefined>(undefined);
+  const countEntityOf = (item: GridItem): EntityDocument | undefined => {
+    if (item.widget !== "count") return undefined;
+    const view = views.find((v) => v.id === item.view);
+    return view && view.kind === "table" ? entities?.get(view.entity) : undefined;
+  };
+  const openCountFilter = (item: GridItem) => {
+    if (item.widget !== "count") return;
+    const entity = countEntityOf(item);
+    if (!entity) return;
+    setCountFilter((open) => (open && open.id === item.id ? undefined : { id: item.id, draft: draftFor(entity, item.filter) }));
+  };
+  const applyCountFilter = (item: GridItem) => {
+    if (item.widget !== "count" || !countFilter || countFilter.id !== item.id) return;
+    const entity = countEntityOf(item);
+    if (!entity) return;
+    const built = builtOf(countFilter.draft);
+    if (JSON.stringify(built) === JSON.stringify(item.filter)) return;
+    const result = setCountWidgetFilter(current, tab.id, item.id, built);
+    if (!Array.isArray(result) && !result.ok) return;
+    const patch = Array.isArray(result) ? result : result.patch;
+    change(patch, built === undefined ? "Count filter cleared." : `Count now matches: ${describeCondition(built, labelOf(entity))}.`, () => setCountFilter(undefined));
+  };
+  const removeCountFilter = (item: GridItem) => {
+    if (item.widget !== "count") return;
+    const result = setCountWidgetFilter(current, tab.id, item.id, undefined);
+    if (!Array.isArray(result) && !result.ok) return;
+    const patch = Array.isArray(result) ? result : result.patch;
+    change(patch, "Count filter cleared.", () => setCountFilter(undefined));
+  };
+  const labelOf = (entity: EntityDocument) => (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, item: GridItem) => {
     if (event.key === "Delete" || event.key === "Backspace") {
@@ -208,8 +247,59 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
               <span data-yadad-editor-position="">{where(box)}</span>
               {/* Keep the button's press from starting a drag of the card. */}
               <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
-                <Button label={`Remove ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => remove(item)} />
+                <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                  <Button label={`Remove ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => remove(item)} />
+                  {item.widget === "count" && countEntityOf(item) !== undefined && (
+                    <Button
+                      label={item.filter !== undefined ? `Edit the count filter of ${name(item)}` : `Filter the count of ${name(item)}`}
+                      type="button"
+                      variant="secondary"
+                      disabled={false}
+                      onPress={() => openCountFilter(item)}
+                    />
+                  )}
+                  {item.widget === "count" && item.filter !== undefined && (
+                    <Button label={`Remove the count filter of ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => removeCountFilter(item)} />
+                  )}
+                </span>
               </span>
+              {item.widget === "count" && item.filter !== undefined && countEntityOf(item) !== undefined && (
+                <p style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                  Count now matches: {describeCondition(item.filter, labelOf(countEntityOf(item)!))}.
+                </p>
+              )}
+              {item.widget === "count" && countFilter?.id === item.id && (
+                <div data-yadad-count-filter-builder="" style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                  {(() => {
+                    const entity = countEntityOf(item);
+                    if (!entity) return <p>The table behind this count could not be found; its filter cannot be edited here.</p>;
+                    return (
+                      <>
+                        <ConditionBuilder
+                          id={`${base}-count-${item.id}`}
+                          label="the count"
+                          registry={registry}
+                          entity={entity}
+                          draft={countFilter.draft}
+                          onChange={(draft) => setCountFilter({ id: item.id, draft })}
+                          current={item.filter}
+                          onReplace={() => setCountFilter({ id: item.id, draft: draftFor(entity, undefined) })}
+                        />
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                          <Button
+                            label="Apply the count filter"
+                            type="button"
+                            variant="primary"
+                            disabled={builtOf(countFilter.draft) === undefined || JSON.stringify(builtOf(countFilter.draft)) === JSON.stringify(item.filter)}
+                            onPress={() => applyCountFilter(item)}
+                          />
+                          <Button label="Cancel the count filter" type="button" variant="secondary" disabled={false} onPress={() => setCountFilter(undefined)} />
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
             </Panel>
             <span
               data-yadad-editor-resize=""

@@ -1,5 +1,5 @@
 import { jsonPointer } from "@yadad/core";
-import type { DocumentError, EntityDocument, FormView, SortSpec, TableView } from "@yadad/core";
+import type { Condition, DashboardView, DocumentError, EntityDocument, FormView, SortSpec, TableView } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -225,4 +225,49 @@ export function setQuickFilter(view: TableView, fieldId: string, on: boolean): P
   if (on === has) return [];
   const next = (on ? [...filters, { field: fieldId }] : filters.filter((f) => f.field !== fieldId)).map((f) => ({ field: f.field }));
   return setOptional(view.quickFilters !== undefined, "/quickFilters", next.length > 0 ? next : undefined);
+}
+
+// ---- conditions -----------------------------------------------------------
+// A condition is a whole object: set it or remove it, one guarded patch each.
+// The builder (conditions.ts) decides what a condition may look like; the
+// document validator is the backstop, run on the patched document by the
+// session.
+
+/** Sets or clears a form item's "show only when" or "required while" condition. */
+export function setFormItemCondition(view: FormView, fieldId: string, key: "visibleWhen" | "requiredWhen", condition: Condition | undefined): Result {
+  const at = findItem(view, fieldId);
+  if (!at) return fail(["sections"], `No field "${fieldId}" on this form.`, "Add it first.");
+  const guard: PatchOperation = { op: "test", path: `/sections/${at.s}/items/${at.i}/field`, value: fieldId };
+  const ops = setOptional(view.sections[at.s]?.items[at.i]?.[key] !== undefined, `/sections/${at.s}/items/${at.i}/${key}`, condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [guard, ...ops]);
+}
+
+/** Sets or clears a form item's "clear the value while hidden" flag. */
+export function setClearWhenHidden(view: FormView, fieldId: string, on: boolean): Result {
+  const at = findItem(view, fieldId);
+  if (!at) return fail(["sections"], `No field "${fieldId}" on this form.`, "Add it first.");
+  const path = `/sections/${at.s}/items/${at.i}/clearWhenHidden`;
+  const has = view.sections[at.s]?.items[at.i]?.clearWhenHidden !== undefined;
+  const ops = on
+    ? (has ? [{ op: "replace" as const, path, value: true }] : [{ op: "add" as const, path, value: true }])
+    : has
+      ? [{ op: "remove" as const, path }]
+      : [];
+  return ok([{ op: "test", path: `/sections/${at.s}/items/${at.i}/field`, value: fieldId }, ...ops]);
+}
+
+/** Sets or clears a table's fixed filter ("rows always match"). */
+export function setTableFilter(view: TableView, condition: Condition | undefined): Result {
+  return ok(setOptional(view.filter !== undefined, "/filter", condition as unknown as Json | undefined));
+}
+
+/** Sets or clears a count widget's filter. The widget's table keeps its own fixed filter. */
+export function setCountWidgetFilter(view: DashboardView, tabId: string, itemId: string, condition: Condition | undefined): Result {
+  const t = view.tabs.findIndex((tab) => tab.id === tabId);
+  if (t < 0) return fail(["tabs"], `No tab "${tabId}".`, "Pick an existing tab.");
+  const i = view.tabs[t]?.items.findIndex((item) => item.id === itemId) ?? -1;
+  if (i < 0) return fail(["tabs", t], `No widget "${itemId}" on this tab.`, "Pick a widget on this tab.");
+  if (view.tabs[t]?.items[i]?.widget !== "count") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a count.`, "Counts have filters; views are embedded as-is.");
+  const path = `/tabs/${t}/items/${i}/filter`;
+  return ok([{ op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId }, ...setOptional(view.tabs[t]?.items[i]?.filter !== undefined, path, condition as unknown as Json | undefined)]);
 }

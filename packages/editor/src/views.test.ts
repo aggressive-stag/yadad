@@ -1,4 +1,4 @@
-import { validateDocument } from "@yadad/core";
+import { validateDocument, validateDocuments } from "@yadad/core";
 import type { DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { describe, expect, test } from "vitest";
@@ -22,9 +22,13 @@ import {
   removeFormItem,
   removeSection,
   setColumnEditable,
+  setClearWhenHidden,
+  setCountWidgetFilter,
+  setFormItemCondition,
   setPageSize,
   setQuickFilter,
   setSectionTitle,
+  setTableFilter,
   setTableSort,
   setTableTitle,
 } from "./views.js";
@@ -195,6 +199,83 @@ describe("table view edits", () => {
     s = apply(s, setPageSize(s.current, undefined));
     s = apply(s, setQuickFilter(s.current, "done", false));
     expect(s.current).toEqual(table);
+  });
+
+  test("sets and clears a rows-always-match; a bad field ref is the set validator's find", () => {
+    let s = startSession(table);
+    s = apply(s, setTableFilter(s.current, { op: "eq", field: "done", value: true }));
+    expect(s.current).toMatchObject({ filter: { op: "eq", field: "done", value: true } });
+    s = apply(s, setTableFilter(s.current, undefined));
+    expect(s.current).toEqual(table);
+    // A condition that only references fields the entity has is a valid set.
+    const good = apply(startSession(table), setTableFilter(table, { op: "eq", field: "done", value: true }));
+    expect(validateDocuments([entity, good.current]).ok).toBe(true);
+    // A condition naming a field that is not on the entity: the single-document
+    // validator sees only shape and accepts it; the cross-document set validator
+    // is what refuses the reference.
+    const r = setTableFilter(table, { op: "eq", field: "nope", value: true });
+    if (!r.ok) throw new Error("the helper should have built the patch");
+    const broken = edit(startSession(table), r.patch);
+    expect(broken.rejected).toEqual([]);
+    expect(validateDocuments([entity, broken.current]).ok).toBe(false);
+  });
+});
+
+describe("form item condition edits", () => {
+  test("sets and clears visibleWhen / requiredWhen / clearWhenHidden", () => {
+    let s = startSession(form);
+    s = apply(s, setFormItemCondition(s.current, "done", "visibleWhen", { op: "eq", field: "title", value: "" }));
+    s = apply(s, setFormItemCondition(s.current, "done", "requiredWhen", { op: "empty", field: "due" }));
+    s = apply(s, setClearWhenHidden(s.current, "done", true));
+    expect(s.current.sections[0]?.items.find((i) => i.field === "done")).toEqual({
+      field: "done",
+      visibleWhen: { op: "eq", field: "title", value: "" },
+      requiredWhen: { op: "empty", field: "due" },
+      clearWhenHidden: true,
+    });
+    s = apply(s, setFormItemCondition(s.current, "done", "visibleWhen", undefined));
+    s = apply(s, setFormItemCondition(s.current, "done", "requiredWhen", undefined));
+    s = apply(s, setClearWhenHidden(s.current, "done", false));
+    expect(s.current).toEqual(form);
+  });
+
+  test("refuses an item that is not on the form; a bad field ref is the set validator's find", () => {
+    // The helper guards the item's existence on the form.
+    expect(setFormItemCondition(form, "nope", "visibleWhen", { op: "empty", field: "due" }).ok).toBe(false);
+    expect(setClearWhenHidden(form, "nope", true).ok).toBe(false);
+    // A condition naming a field not on the entity passes the single-document
+    // validation (shape only); the cross-document set validator refuses it.
+    const r = setFormItemCondition(form, "done", "visibleWhen", { op: "eq", field: "nope", value: 1 });
+    if (!r.ok) throw new Error("the helper should have built the patch");
+    const broken = edit(startSession(form), r.patch);
+    expect(broken.rejected).toEqual([]);
+    expect(validateDocuments([entity, broken.current]).ok).toBe(false);
+  });
+});
+
+describe("count widget filter edits", () => {
+  const withCount = (): DashboardView => {
+    const d = blankDashboard("home", "Home");
+    const s = startSession(d);
+    const next = edit(s, addWidget(s.current, "main", "tasks", { widget: "count", label: "Open", view: "tasks" }, 4, 2));
+    expect(next.rejected).toEqual([]);
+    return next.current;
+  };
+
+  test("sets and clears the count filter without touching the counted table", () => {
+    let s = startSession(withCount());
+    const before = s.current;
+    s = apply(s, setCountWidgetFilter(s.current, "main", "tasks", { op: "eq", field: "done", value: false }));
+    expect(s.current.tabs[0]?.items.find((i) => i.id === "tasks")).toMatchObject({ filter: { op: "eq", field: "done", value: false } });
+    expect(s.current).not.toEqual(before);
+    s = apply(s, setCountWidgetFilter(s.current, "main", "tasks", undefined));
+    expect(s.current.tabs[0]?.items.find((i) => i.id === "tasks")).not.toHaveProperty("filter");
+  });
+
+  test("refuses a missing tab, item, or a non-count widget", () => {
+    const d = withCount();
+    expect(setCountWidgetFilter(d, "nope", "tasks", undefined).ok).toBe(false);
+    expect(setCountWidgetFilter(d, "main", "nope", undefined).ok).toBe(false);
   });
 });
 

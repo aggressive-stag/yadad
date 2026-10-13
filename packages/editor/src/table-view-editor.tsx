@@ -7,8 +7,10 @@ import { flatIndex } from "./drag.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
+import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
+import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
-import { addColumn, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableSort, setTableTitle } from "./views.js";
+import { addColumn, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle } from "./views.js";
 
 export interface TableViewEditorProps {
   readonly view: TableView;
@@ -182,6 +184,34 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
   const dirPicker = choiceField("sort_dir", "Direction", Object.keys(DIRECTIONS));
   const dirLabel = (Object.keys(DIRECTIONS) as DirectionLabel[]).find((k) => DIRECTIONS[k] === settings.sortDir);
 
+  // The fixed filter ("rows always match"), edited in place with the condition
+  // builder; any field of the entity may appear in it, the table's own columns
+  // included. Deeper conditions stay intact in words and are replaced, never
+  // edited half-way.
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterDraft, setFilterDraft] = useState<ConditionDraft | undefined>(undefined);
+  const openFilter = () => {
+    setFilterOpen(true);
+    setFilterDraft(draftFor(entity, current.filter));
+  };
+  const sameFilter = JSON.stringify(builtOf(filterDraft)) === JSON.stringify(current.filter);
+  const applyFilter = () => {
+    const built = builtOf(filterDraft);
+    if (sameFilter) return;
+    run(setTableFilter(current, built), () => {
+      setFilterOpen(false);
+      setFilterDraft(undefined);
+      announce(built === undefined ? "Rows always match: cleared." : `Rows always match: ${describeCondition(built, label)}.`);
+    });
+  };
+  const removeFilter = () => {
+    run(setTableFilter(current, undefined), () => {
+      setFilterOpen(false);
+      setFilterDraft(undefined);
+      announce("Rows always match: cleared.");
+    });
+  };
+
   return (
     <div data-yadad-table-editor={view.id}>
       <p id={`${base}-help`}>Drag a column by its grip to reorder it; with the keyboard, focus a grip and use the arrow keys (Left back, Right forward). Esc cancels a drag. The Move buttons step one place.</p>
@@ -206,7 +236,36 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
             })}
           <Button label="Apply settings" type="button" variant="secondary" disabled={false} onPress={applySettings} />
         </div>
-        {current.filter && <p>Rows always match: {describeCondition(current.filter, label)}.</p>}
+        {current.filter ? (
+          <p>
+            Rows always match: {describeCondition(current.filter, label)}.
+            <Button label="Edit rows always match" type="button" variant="secondary" disabled={false} onPress={openFilter} />
+          </p>
+        ) : (
+          <p>
+            Rows always match: none.
+            <Button label="Set rows always match" type="button" variant="secondary" disabled={false} onPress={openFilter} />
+          </p>
+        )}
+        {filterOpen && (
+          <div data-yadad-filter-builder="" style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+            <ConditionBuilder
+              id={`${base}-filter`}
+              label="rows always match"
+              registry={registry}
+              entity={entity}
+              draft={filterDraft}
+              onChange={setFilterDraft}
+              current={current.filter}
+              onReplace={() => setFilterDraft(draftFor(entity, undefined))}
+            />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+              <Button label="Apply rows always match" type="button" variant="primary" disabled={builtOf(filterDraft) === undefined || sameFilter} onPress={applyFilter} />
+              {current.filter !== undefined && <Button label="Remove rows always match" type="button" variant="secondary" disabled={false} onPress={removeFilter} />}
+              <Button label="Cancel rows always match" type="button" variant="secondary" disabled={false} onPress={() => setFilterOpen(false)} />
+            </div>
+          </div>
+        )}
       </Section>
       <Section id={`${base}-columns`} title="Columns">
         {missing.length > 0 && (

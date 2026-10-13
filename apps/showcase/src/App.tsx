@@ -135,7 +135,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
               </div>
             )}
             {mode.kind === "layout" && mode.id === id && view?.kind === "dashboard" ? (
-              <DashboardLayoutEditor dashboard={view} registry={registry} onSave={save} onCancel={close} describeView={(v) => describe(v, documents)} views={[...documents.views.values()]} />
+              <DashboardLayoutEditor dashboard={view} registry={registry} onSave={save} onCancel={close} describeView={(v) => describe(v, documents)} views={[...documents.views.values()]} entities={documents.entities} />
             ) : mode.kind === "fields" && entity && mode.id === entity.id ? (
               <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} onSave={save} onCancel={close} />
             ) : (mode.kind === "form" || mode.kind === "table") && editing ? (

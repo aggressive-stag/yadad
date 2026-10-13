@@ -7,6 +7,8 @@ import { flatIndex, insertIndex } from "./drag.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
+import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
+import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import {
   addFormItem,
@@ -18,6 +20,8 @@ import {
   moveSectionTo,
   removeFormItem,
   removeSection,
+  setClearWhenHidden,
+  setFormItemCondition,
   setSectionTitle,
 } from "./views.js";
 
@@ -171,6 +175,48 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
     (id, target) => dropSection(id, target),
   );
 
+  // Condition editing: one builder at a time, for one field's one rule.
+  // The builder edits the condition the document holds (conditions.ts);
+  // anything deeper than it edits is shown intact in words and replaced
+  // wholesale — never dropped, never half-edited. "Show only when" may not
+  // reference the field itself: the field would decide its own visibility.
+  // "Required while" may: a field can require itself while a value holds.
+  type RuleKey = "visibleWhen" | "requiredWhen" | "clearWhenHidden";
+  const [builder, setBuilder] = useState<{ readonly field: string; readonly rule: RuleKey; readonly draft: ConditionDraft | undefined } | undefined>(undefined);
+  const itemOf = (fieldId: string) => current.sections.flatMap((s) => s.items).find((i) => i.field === fieldId);
+  const ruleCondition = (item: FormItem | undefined, rule: RuleKey) => (rule === "visibleWhen" ? item?.visibleWhen : rule === "requiredWhen" ? item?.requiredWhen : undefined);
+  const ruleText = (item: FormItem | undefined, rule: RuleKey) => {
+    const c = ruleCondition(item, rule);
+    return c === undefined ? undefined : rule === "visibleWhen" ? `Shown when ${describeCondition(c, label)}` : `Required when ${describeCondition(c, label)}`;
+  };
+  const openRule = (fieldId: string, rule: RuleKey) => {
+    if (rule === "clearWhenHidden") return;
+    setBuilder((open) => (open && open.field === fieldId && open.rule === rule ? undefined : { field: fieldId, rule, draft: draftFor(entity, ruleCondition(itemOf(fieldId), rule), rule === "visibleWhen" ? fieldId : undefined) }));
+  };
+  const closeRule = () => setBuilder(undefined);
+  const applyRule = (fieldId: string, rule: RuleKey) => {
+    if (rule === "clearWhenHidden") {
+      const on = itemOf(fieldId)?.clearWhenHidden !== true;
+      run(setClearWhenHidden(current, fieldId, on), () => announce(`${label(fieldId)} ${on ? "clears its value while hidden." : "keeps its value while hidden."}`));
+      return;
+    }
+    const draft = builder && builder.field === fieldId && builder.rule === rule ? builder.draft : undefined;
+    const built = builtOf(draft);
+    const same = JSON.stringify(built) === JSON.stringify(ruleCondition(itemOf(fieldId), rule));
+    if (same) return;
+    run(setFormItemCondition(current, fieldId, rule, built), () => {
+      closeRule();
+      announce(built === undefined ? `${label(fieldId)} ${ruleLabelText(rule)}: cleared.` : `${label(fieldId)} ${ruleLabelText(rule)}: ${describeCondition(built, label)}.`);
+    });
+  };
+  const removeRule = (fieldId: string, rule: "visibleWhen" | "requiredWhen") => {
+    run(setFormItemCondition(current, fieldId, rule, undefined), () => {
+      closeRule();
+      announce(`${label(fieldId)} ${ruleLabelText(rule)}: cleared.`);
+    });
+  };
+  const ruleLabelText = (rule: RuleKey) => (rule === "visibleWhen" ? "show only when" : rule === "requiredWhen" ? "required while" : "clear while hidden");
+
   // Adding a field: pick one not on the form, and the section to put it in.
   const missing = fieldsNotOnForm(entity, current);
   const fieldChoice = adding.field && missing.includes(adding.field) ? adding.field : missing[0];
@@ -179,14 +225,48 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
   const sectionPicker = choiceField("add_to", "Into section", current.sections.map((s) => sectionName(s.id)));
   const pick = (choices: readonly string[], name: (id: string) => string, v: FieldValue | undefined) => choices.find((id) => name(id) === v);
 
-  const conditions = (item: FormItem): string =>
+  const conditionText = (item: FormItem): string =>
     [
-      item.visibleWhen && `Shown when ${describeCondition(item.visibleWhen, label)}`,
-      item.requiredWhen && `Required when ${describeCondition(item.requiredWhen, label)}`,
+      ruleText(item, "visibleWhen"),
+      ruleText(item, "requiredWhen"),
       item.clearWhenHidden && "Cleared while hidden",
     ]
       .filter(Boolean)
       .join(". ");
+
+  /** The open builder, when it belongs to this field's row: set or remove its rule. */
+  const builderFor = (item: FormItem): ReactNode => {
+    if (!builder || builder.field !== item.field || builder.rule === "clearWhenHidden") return null;
+    const rule: "visibleWhen" | "requiredWhen" = builder.rule;
+    return (
+      <div data-yadad-rule-builder="" style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+        <ConditionBuilder
+          id={`${base}-${item.field}-${rule}`}
+          label={ruleLabelText(rule)}
+          registry={registry}
+          entity={entity}
+          excludeField={rule === "visibleWhen" ? item.field : undefined}
+          draft={builder.draft}
+          onChange={(draft) => setBuilder({ field: item.field, rule, draft })}
+          current={ruleCondition(item, rule)}
+          onReplace={() => setBuilder({ field: item.field, rule, draft: draftFor(entity, undefined, rule === "visibleWhen" ? item.field : undefined) })}
+        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+          <Button
+            label={`Apply ${ruleLabelText(rule)}`}
+            type="button"
+            variant="primary"
+            disabled={builtOf(builder.draft) === undefined || JSON.stringify(builtOf(builder.draft)) === JSON.stringify(ruleCondition(item, rule))}
+            onPress={() => applyRule(item.field, rule)}
+          />
+          {ruleCondition(item, rule) !== undefined && (
+            <Button label={`Remove ${ruleLabelText(rule)}`} type="button" variant="secondary" disabled={false} onPress={() => removeRule(item.field, rule)} />
+          )}
+          <Button label={`Cancel ${ruleLabelText(rule)}`} type="button" variant="secondary" disabled={false} onPress={closeRule} />
+        </div>
+      </div>
+    );
+  };
 
   const columns = ["Field", "Rules", "Actions"].map((name) => ({ id: name.toLowerCase(), headerId: `${base}-col-${name}`, label: name, sortable: false }));
 
@@ -237,11 +317,23 @@ export function FormViewEditor({ view, entity, registry, onSave, onCancel }: For
           {fieldGrip(item.field)}
           {label(item.field)}
         </span>,
-        conditions(item) || "None",
+        <span key="rules">
+          {conditionText(item) || "None"}
+          {builderFor(item)}
+        </span>,
         <span key="actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
           <Button label={`Move ${label(item.field)} up`} type="button" variant="secondary" disabled={false} onPress={() => run(moveFormItem(current, item.field, -1))} />
           <Button label={`Move ${label(item.field)} down`} type="button" variant="secondary" disabled={false} onPress={() => run(moveFormItem(current, item.field, 1))} />
           <Button label={`Remove ${label(item.field)}`} type="button" variant="secondary" disabled={false} onPress={() => run(removeFormItem(current, item.field))} />
+          <Button label={`Show only when: ${label(item.field)}`} type="button" variant="secondary" disabled={false} onPress={() => openRule(item.field, "visibleWhen")} />
+          <Button label={`Required while: ${label(item.field)}`} type="button" variant="secondary" disabled={false} onPress={() => openRule(item.field, "requiredWhen")} />
+          <Button
+            label={`${item.clearWhenHidden ? "Keep" : "Clear"} ${label(item.field)} while hidden`}
+            type="button"
+            variant="secondary"
+            disabled={!item.visibleWhen}
+            onPress={() => applyRule(item.field, "clearWhenHidden")}
+          />
         </span>,
       ],
     }));
