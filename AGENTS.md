@@ -2,7 +2,19 @@
 
 Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md` first. The nearest `AGENTS.md` to the file you are editing takes precedence over this one.
 
+## Setup and commands
+
+Use the pnpm version pinned in `packageManager` (plain `pnpm` works when it is on your `PATH`; otherwise `corepack pnpm`). Node 22.12 or newer.
+
+```sh
+pnpm install
+pnpm --filter @yadad/showcase dev   # the showcase, on a random dev-server port
+pnpm describe-registry              # the document contract, as readable text (--json for machines)
+```
+
 ## Before you start a task
+
+Read order: `ARCHITECTURE.md`, then this file, then your task card. (A maintainer new to the repo reads `docs/DECISIONS.md` first.) `README.md` and the package READMEs are user-facing docs: keep them free of process notes, dated status and test counts, and update them when a public API changes.
 
 1. Read your task card (the owner tells you where it is). It names the package, the files you may change, the fixtures that must pass, and "done when". Ignore the PR, CODEOWNERS, task-code and review ceremony in `docs/BUILD_PLAN.md` and `docs/TASKS.md`: it is stale.
 2. Read the `AGENTS.md` in the package you are changing.
