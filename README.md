@@ -17,7 +17,7 @@ The packages are published to the project's GitLab npm registry. Point the `@yad
 
 ```sh
 echo "@yadad:registry=<registry URL>" >> .npmrc
-npm install @yadad/core @yadad/runtime @yadad/renderer @yadad/theme react react-dom
+npm install @yadad/core @yadad/runtime @yadad/renderer @yadad/theme @yadad/components react react-dom
 ```
 
 Describe an entity and two views, give the renderer a registry and a data adapter, and render:

@@ -1,6 +1,5 @@
-// PRE-CONTRACT token set: just enough for the Phase 0 text field and
-// FieldFrame. Token names freeze with contract-v0 (where they live, core or
-// theme, is an open question in ARCHITECTURE.md); values stay free to change.
+// The theme's token set. This package owns the token names (DECISIONS.md
+// D19); renaming one is a breaking change, values stay free to change.
 
 /** Token names. Each becomes the CSS variable --yadad-<name>. */
 export const TOKEN_NAMES = [

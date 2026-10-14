@@ -1,6 +1,5 @@
-// PRE-CONTRACT: the walking-skeleton contract. The document language is in
-// flux on specVersion 0; it changes with specVersion bumps and migrate()
-// steps, no freeze is planned. See packages/core/AGENTS.md.
+// The document contract. It changes with specVersion bumps and migrate()
+// steps (see migrate.ts); no freeze is planned. See packages/core/AGENTS.md.
 
 export * from "./condition.js";
 export * from "./contract.js";
