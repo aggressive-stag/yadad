@@ -1,8 +1,30 @@
 # @yadad/renderer
 
-The yadad React renderer: `FormRenderer`, `TableRenderer` and `DashboardRenderer` turn entity and view documents plus a registry and data source into working pages. Components are looked up by registry key; the renderer never imports a component.
+React renderers that turn entity and view documents, a registry and data adapters into working pages: `FormRenderer`, `TableRenderer` and `DashboardRenderer`. Components are looked up in the registry by exact key; the renderer never imports one.
 
-React 19 peer dependency. See the repo [README](https://github.com/aggressive-stag/yadad) and [ARCHITECTURE.md](https://github.com/aggressive-stag/yadad/blob/main/ARCHITECTURE.md) for the design.
+```sh
+npm install @yadad/renderer @yadad/runtime @yadad/core react
+```
+
+Peer dependency: React 19.
+
+```tsx
+import { DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
+import type { DocumentSet } from "@yadad/renderer";
+
+const dataSources = new Map([["default", adapter]]); // keyed by each view's `dataSource`
+
+<FormRenderer entity={entity} view={form} registry={registry} dataSources={dataSources} onSaved={(record) => {}} />
+<TableRenderer entity={entity} view={table} registry={registry} dataSources={dataSources} reloadKey={saves} />
+
+const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map([[form.id, form], [table.id, table]]) };
+<DashboardRenderer dashboard={dashboard} documents={documents} registry={registry} dataSources={dataSources} />
+```
+
+- **Registry.** Any `Registry<ReactNode>`: the `@yadad/components` reference set, your own, or `mockRegistry` from `@yadad/testing`. A missing key is reported in the core error format, not guessed at.
+- **Data.** Views name a `dataSource` key; the host maps keys to `DataAdapter`s. Views never carry URLs.
+- **Tables.** Honor `sort`, `pageSize`, the fixed `filter` and `quickFilters`. Change `reloadKey` to reload rows, e.g. after a form saves.
+- **Dashboards.** Plain CSS grid from `x, y, w, h`; the grid stacks into one column below `stackBelow` pixels (default 640).
 
 ## Drafts
 
@@ -12,7 +34,7 @@ Drafts are opt-in. Pass `drafts` to `FormRenderer` (or to `DashboardRenderer`, w
 import { createDraftStore } from "@yadad/runtime";
 
 const store = createDraftStore(window.localStorage);
-<FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} drafts={{ store, debounceMs: 400 }} />;
+<FormRenderer entity={entity} view={form} registry={registry} dataSources={dataSources} drafts={{ store, debounceMs: 400 }} />;
 ```
 
 - Drafts are kept per form view id, for create forms (stored under `yadad:draft:<viewId>:new`). Only input typed in the current session is written back, and what is stored is what the form would save (hidden `clearWhenHidden` values are left out).
