@@ -5,10 +5,10 @@
 // cross-document referential checks (entity exists, field ids exist on it,
 // widgets point at existing views) that only hold across a whole set.
 
-import { CONDITION_OPS } from "./condition.js";
+import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp } from "./condition.js";
 import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, PAGE_SIZE_MAX } from "./contract.js";
-import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
+import { FIELD_TYPES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
 import type { Document, DashboardView, EntityDocument, FieldType, FormView, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
@@ -405,8 +405,15 @@ function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): 
     case "contains":
       checkConditionKeys(errors, value, path, op, ["field", "value"]);
       checkId(errors, value, path, "field");
-      if (value["value"] !== undefined && !(op === "contains" ? typeof value["value"] === "string" : isScalar(value["value"]))) {
-        errors.add([...path, "value"], "type", `"value" must be ${op === "contains" ? "text" : "text, a number or true/false"}.`, `Use ${CONDITION_SHAPES[op]}.`);
+      if (value["value"] === undefined) return;
+      if (isRelativeDate(value["value"])) {
+        if (op === "contains") {
+          errors.add([...path, "value"], "type", '"contains" matches text, not a relative date.', `Use ${CONDITION_SHAPES[op]}; relative dates work with ${RELATIVE_DATE_OPS.join(", ")} on date fields.`);
+        } else {
+          checkRelativeDate(errors, value["value"], [...path, "value"]);
+        }
+      } else if (!(op === "contains" ? typeof value["value"] === "string" : isScalar(value["value"]))) {
+        errors.add([...path, "value"], "type", `"value" must be ${op === "contains" ? "text" : "text, a number, true/false or { \"daysFromToday\": <whole number> }"}.`, `Use ${CONDITION_SHAPES[op]}.`);
       }
       return;
     case "in": {
@@ -414,7 +421,11 @@ function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): 
       checkId(errors, value, path, "field");
       const values = checkArray(errors, value, path, "values");
       values?.forEach((v, i) => {
-        if (!isScalar(v)) errors.add([...path, "values", i], "type", "Each value must be text, a number or true/false.", `Use ${CONDITION_SHAPES.in}.`);
+        if (isRelativeDate(v)) {
+          errors.add([...path, "values", i], "type", '"in" lists fixed values; a relative date is not allowed here.', `Use ${CONDITION_SHAPES.in} with fixed values, or compare with gte/lte and { "daysFromToday": N } on a date field.`);
+        } else if (!isScalar(v)) {
+          errors.add([...path, "values", i], "type", "Each value must be text, a number or true/false.", `Use ${CONDITION_SHAPES.in}.`);
+        }
       });
       return;
     }
@@ -448,6 +459,21 @@ function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): 
   }
 }
 
+/** A relative date is exactly { daysFromToday: <whole number within +-MAX_RELATIVE_DAYS> }. */
+function checkRelativeDate(errors: Errors, value: object, path: Path): void {
+  const obj = value as JsonObject;
+  const shape = 'Use { "daysFromToday": 0 } for today, -7 for a week ago, 1 for tomorrow.';
+  for (const key of Object.keys(obj)) {
+    if (key !== "daysFromToday") errors.add([...path, key], "unknown-property", `Unknown property "${key}" in a relative date.`, shape, ["daysFromToday"]);
+  }
+  const days = obj["daysFromToday"];
+  if (typeof days !== "number" || !Number.isInteger(days)) {
+    errors.add([...path, "daysFromToday"], "type", '"daysFromToday" must be a whole number.', shape);
+  } else if (Math.abs(days) > MAX_RELATIVE_DAYS) {
+    errors.add([...path, "daysFromToday"], "invalid-value", `"daysFromToday" ${days} is out of range.`, `Use a whole number from -${MAX_RELATIVE_DAYS} to ${MAX_RELATIVE_DAYS}.`);
+  }
+}
+
 // ---- checks ---------------------------------------------------------------
 
 function isFieldType(value: unknown): value is FieldType {
@@ -473,15 +499,15 @@ function checkKeys(errors: Errors, obj: JsonObject, path: Path, required: readon
 
 function checkSpecVersion(errors: Errors, doc: JsonObject): void {
   const v = doc["specVersion"];
-  if (v === undefined || v === SPEC_VERSION) return;
+  if (v === undefined) return;
   if (typeof v !== "number") {
     errors.add(["specVersion"], "type", '"specVersion" must be a number.', `Use ${SPEC_VERSION}.`);
-  } else {
+  } else if (!SUPPORTED_SPEC_VERSIONS.some((s) => s === v)) {
     errors.add(
       ["specVersion"],
       "unsupported-spec-version",
       `specVersion ${v} is not supported.`,
-      `Pre-contract documents use specVersion ${SPEC_VERSION}.`,
+      `Use specVersion ${SPEC_VERSION} (older documents are upgraded with migrate()).`,
     );
   }
 }
@@ -715,6 +741,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     if (fieldIds.includes(fieldId)) return;
     errors.push(refError(view.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
   };
+  const checkDates = (condition: Condition | undefined, base: Path): void => checkRelativeDateFields(errors, view.id, entity, condition, base);
   if (view.kind === "form") {
     view.sections.forEach((section, i) => {
       section.items.forEach((item, j) => {
@@ -722,6 +749,8 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
         checkField(item.field, [...itemPath, "field"]);
         checkConditionFields(item.visibleWhen, [...itemPath, "visibleWhen"], checkField);
         checkConditionFields(item.requiredWhen, [...itemPath, "requiredWhen"], checkField);
+        checkDates(item.visibleWhen, [...itemPath, "visibleWhen"]);
+        checkDates(item.requiredWhen, [...itemPath, "requiredWhen"]);
       });
     });
     return;
@@ -730,6 +759,47 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   view.sort?.forEach((key, i) => checkField(key.field, ["sort", i, "field"]));
   view.quickFilters?.forEach((filter, i) => checkField(filter.field, ["quickFilters", i, "field"]));
   checkConditionFields(view.filter, ["filter"], checkField);
+  checkDates(view.filter, ["filter"]);
+}
+
+/** Reports a relative date compared with a field that is not a date field (fields that do not exist are reported elsewhere). */
+function checkRelativeDateFields(errors: DocumentError[], document: string, entity: EntityDocument, condition: Condition | undefined, base: Path): void {
+  if (!condition) return;
+  switch (condition.op) {
+    case "and":
+    case "or":
+      condition.conditions.forEach((c, i) => checkRelativeDateFields(errors, document, entity, c, [...base, "conditions", i]));
+      return;
+    case "not":
+      checkRelativeDateFields(errors, document, entity, condition.condition, [...base, "condition"]);
+      return;
+    case "eq":
+    case "neq":
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte": {
+      if (!isRelativeDate(condition.value)) return;
+      const field = entity.fields.find((f) => f.id === condition.field);
+      if (!field || field.type === "date") return;
+      errors.push({
+        path: jsonPointer([...base, "value"]),
+        code: "invalid-value",
+        message: `A relative date ({ "daysFromToday" }) can only be compared with a date field, but "${field.id}" is a ${field.type} field.`,
+        hint: `Use ${exampleFor(condition.op, field.type)}, or point "${condition.op}" at a date field.`,
+        document,
+      });
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+/** A correct example of this op on a field of this (non-date) type, for the hint. */
+function exampleFor(op: ConditionOp, type: FieldType): string {
+  const sample = type === "number" ? "5" : type === "boolean" ? "true" : '"text"';
+  return `{ "op": "${op}", "field": "<${type} field>", "value": ${sample} }`;
 }
 
 /** Calls `check` for every field a condition references, with its JSON Pointer. */
@@ -767,6 +837,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       const entity = idx.entities.get(table.entity);
       if (!entity) return; // the table's own missing entity is reported on the table
       const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+      checkRelativeDateFields(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkConditionFields(item.filter, [...itemPath, "filter"], (fieldId, path) => {
         if (!fieldIds.includes(fieldId)) {
           errors.push(refError(doc.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));

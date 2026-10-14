@@ -77,3 +77,25 @@ test("conditionFields lists every referenced field", () => {
     }),
   ).toEqual(["a", "b"]);
 });
+
+describe("relative dates", () => {
+  test("a relative date validates on eq/neq/gt/gte/lt/lte", () => {
+    for (const op of ["eq", "neq", "gt", "gte", "lt", "lte"]) {
+      expect(problems(form({ op, field: "a", value: { daysFromToday: -7 } }))).toEqual([]);
+    }
+    expect(problems(form({ op: "eq", field: "a", value: { daysFromToday: 0 } }))).toEqual([]);
+  });
+
+  test("rejects non-integers, out-of-range numbers, missing and extra keys", () => {
+    expect(problems(form({ op: "eq", field: "a", value: { daysFromToday: 1.5 } })).slice(0, 1)).toEqual([[`${P}/value/daysFromToday`, "type"]]);
+    expect(problems(form({ op: "eq", field: "a", value: { daysFromToday: "1" } })).slice(0, 1)).toEqual([[`${P}/value/daysFromToday`, "type"]]);
+    expect(problems(form({ op: "eq", field: "a", value: { daysFromToday: 1e9 } })).slice(0, 1)).toEqual([[`${P}/value/daysFromToday`, "invalid-value"]]);
+    expect(problems(form({ op: "eq", field: "a", value: { daysFromToday: 1, extra: 2 } })).slice(0, 1)).toEqual([[`${P}/value/extra`, "unknown-property"]]);
+    expect(problems(form({ op: "eq", field: "a", value: {} })).slice(0, 1)).toEqual([[`${P}/value`, "type"]]);
+  });
+
+  test("is rejected in in and contains", () => {
+    expect(problems(form({ op: "in", field: "a", values: [{ daysFromToday: 0 }] })).slice(0, 1)).toEqual([[`${P}/values/0`, "type"]]);
+    expect(problems(form({ op: "contains", field: "a", value: { daysFromToday: 0 } })).slice(0, 1)).toEqual([[`${P}/value`, "type"]]);
+  });
+});

@@ -147,3 +147,46 @@ describe("validateDocuments", () => {
     expect(problems(set)).toEqual([{ path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "dashboard"] }]);
   });
 });
+
+describe("relative dates across a set", () => {
+  const ent = {
+    kind: "entity",
+    specVersion: 1,
+    id: "thing",
+    revision: 1,
+    fields: [
+      { id: "day", type: "date", label: "Day" },
+      { id: "weight", type: "number", label: "Weight" },
+    ],
+  };
+  const rel = { daysFromToday: -7 };
+
+  test("is accepted on a date field in a form, a table and a count widget", () => {
+    const set = [
+      ent,
+      form("f", "thing", [{ field: "day", visibleWhen: { op: "gte", field: "day", value: rel } }]),
+      table("t", "thing", { columns: [{ field: "day" }], filter: { op: "lte", field: "day", value: rel } }),
+      dashboard("b", [{ id: "c", x: 0, y: 0, w: 2, h: 2, widget: "count", label: "C", view: "t", filter: { op: "eq", field: "day", value: { daysFromToday: 0 } } }]),
+    ];
+    expect(validateDocuments(set).ok).toBe(true);
+  });
+
+  test("is rejected on a non-date field, naming the op in the hint", () => {
+    const set = [ent, table("t", "thing", { columns: [{ field: "day" }], filter: { op: "not", condition: { op: "gte", field: "weight", value: rel } } })];
+    const result = validateDocuments(set);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.map((e) => [e.path, e.code])).toEqual([["/filter/condition/value", "invalid-value"]]);
+    expect(result.errors[0]?.hint).toContain('"op": "gte"');
+  });
+
+  test("is rejected on a non-date field in a count widget filter", () => {
+    const set = [
+      ent,
+      table("t", "thing", { columns: [{ field: "day" }] }),
+      dashboard("b", [{ id: "c", x: 0, y: 0, w: 2, h: 2, widget: "count", label: "C", view: "t", filter: { op: "eq", field: "weight", value: rel } }]),
+    ];
+    const result = validateDocuments(set);
+    expect(result.ok ? [] : result.errors.map((e) => e.path)).toEqual(["/tabs/0/items/0/filter/value"]);
+  });
+});

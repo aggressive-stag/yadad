@@ -388,3 +388,14 @@ describe("grid", () => {
     expect(new RegExp("^" + contract.id.pattern + "$").test("Workout-Set")).toBe(false);
   });
 });
+
+describe("relative dates in the description", () => {
+  test("is described and its example validates on a date field", () => {
+    const rd = contract.conditions.relativeDate;
+    expect(rd.ops).toEqual(["eq", "neq", "gt", "gte", "lt", "lte"]);
+    expect(rd.fieldTypes).toEqual(["date"]);
+    const example: unknown = JSON.parse(rd.example);
+    const doc = { kind: "table", specVersion: SPEC_VERSION, id: "t", entity: "e", revision: 1, dataSource: "d", columns: [{ field: "day" }], filter: example };
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+});

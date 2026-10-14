@@ -31,6 +31,8 @@ const expected: Record<string, Picked[]> = {
   "dashboard-count-unknown-field.json": [
     { path: "/tabs/0/items/0/filter/field", code: "unknown-reference", document: "board", allowed: ["name"] },
   ],
+  "relative-date-on-number-field.json": [{ path: "/filter/value", code: "invalid-value", document: "thing_table" }],
+  "relative-date-not-integer.json": [{ path: "/filter/value/daysFromToday", code: "type", document: "thing_table" }],
   "duplicate-id.json": [{ path: "/id", code: "duplicate-id", document: "thing" }],
   "structural-unknown-kind.json": [
     { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "dashboard"] },

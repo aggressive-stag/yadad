@@ -3,9 +3,15 @@
 
 import type { Condition } from "./condition.js";
 
-/** Engine document format version. Pre-contract documents are version 0. */
-export const SPEC_VERSION = 0;
-export type SpecVersion = typeof SPEC_VERSION;
+/**
+ * Engine document format version. Version 1 adds relative dates in conditions
+ * (`{ daysFromToday }`); a version 0 document is valid as it is, and
+ * `migrate()` stamps it as version 1.
+ */
+export const SPEC_VERSION = 1;
+/** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
+export const SUPPORTED_SPEC_VERSIONS = [0, 1] as const;
+export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
 export const FIELD_TYPES = ["text", "number", "boolean", "select", "date"] as const;
@@ -125,7 +131,7 @@ export interface TableView {
   readonly pageSize?: number;
   /** Rows must always match this. */
   readonly filter?: Condition;
-  /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring. */
+  /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring, number and date fields as a from/to range (gte/lte, either end optional). */
   readonly quickFilters?: readonly QuickFilter[];
 }
 

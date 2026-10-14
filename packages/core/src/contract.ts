@@ -3,7 +3,7 @@
 // constants, so the description and the validation cannot drift apart.
 
 import type { ConditionOp } from "./condition.js";
-import { CONDITION_OPS } from "./condition.js";
+import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
 import type { Document, FieldType, WidgetType } from "./document.js";
 import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 
@@ -81,6 +81,7 @@ export interface ContractDescription {
     readonly ops: readonly ConditionOpSpec[];
     readonly maxValueType: string;
     readonly maxDepth: number;
+    readonly relativeDate: { readonly description: string; readonly ops: readonly ConditionOp[]; readonly fieldTypes: readonly FieldType[]; readonly maxDays: number; readonly example: string };
   };
   readonly widgets: readonly WidgetSpec[];
   readonly grid: {
@@ -99,7 +100,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
     description: "The data model: owns fields, types and validation.",
     properties: [
       { key: "kind", required: true, description: 'The kind, "entity".' },
-      { key: "specVersion", required: true, description: "The engine document format version. Currently 0." },
+      { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
       { key: "id", required: true, description: "The entity's id." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "fields", required: true, description: "The fields, an array of { id, type, label, ... }." },
@@ -110,7 +111,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
     description: "Sections of fields from one entity, with per-field visibility and required rules.",
     properties: [
       { key: "kind", required: true, description: 'The kind, "form".' },
-      { key: "specVersion", required: true, description: "The engine document format version. Currently 0." },
+      { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
       { key: "id", required: true, description: "The form's id." },
       { key: "entity", required: true, description: "The id of the entity this form edits." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
@@ -123,7 +124,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
     description: "Records of one entity as rows, with columns, sorting, paging and filters.",
     properties: [
       { key: "kind", required: true, description: 'The kind, "table".' },
-      { key: "specVersion", required: true, description: "The engine document format version. Currently 0." },
+      { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
       { key: "id", required: true, description: "The table's id." },
       { key: "entity", required: true, description: "The id of the entity whose records are shown." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
@@ -133,7 +134,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "sort", required: false, description: "Initial sort: an array of { field, dir: \"asc\" | \"desc\" }." },
       { key: "pageSize", required: false, description: "Rows per page, a whole number from 1 to 1000." },
       { key: "filter", required: false, description: "A condition every row must always match." },
-      { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them." },
+      { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number and date fields as a from/to range (either end may stay empty)." },
     ],
   },
   {
@@ -141,7 +142,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
     description: "Tabs of widgets (views and counts) laid out on a grid. Refers to other views by id.",
     properties: [
       { key: "kind", required: true, description: 'The kind, "dashboard".' },
-      { key: "specVersion", required: true, description: "The engine document format version. Currently 0." },
+      { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
       { key: "id", required: true, description: "The dashboard's id." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "tabs", required: true, description: "An array of { id, title, columns?, items: [...] }; at least one." },
@@ -264,8 +265,16 @@ export function describeContract(): ContractDescription {
     fieldTypes: FIELD_TYPES.map((type) => FIELD_SPECS[type]),
     conditions: {
       ops: CONDITION_OPS.map((op) => ({ op, shape: CONDITION_SHAPES[op], example: CONDITION_EXAMPLES[op] })),
-      maxValueType: "text, a number or true/false (contains: text only)",
+      maxValueType: "text, a number or true/false (contains: text only; eq, neq, gt, gte, lt, lte on a date field also take a relative date)",
       maxDepth: MAX_CONDITION_DEPTH,
+      relativeDate: {
+        description:
+          'Instead of a fixed "YYYY-MM-DD", the value of a comparison may be { "daysFromToday": <whole number> } (0 is today, -7 a week ago, 1 tomorrow), resolved from the viewer\'s local date. Date fields only; not in "in" or "contains".',
+        ops: [...RELATIVE_DATE_OPS],
+        fieldTypes: ["date"],
+        maxDays: MAX_RELATIVE_DAYS,
+        example: '{ "op": "gte", "field": "day", "value": { "daysFromToday": -7 } }',
+      },
     },
     widgets: WIDGET_TYPES.map((widget) => WIDGET_SPECS[widget]),
     grid: {

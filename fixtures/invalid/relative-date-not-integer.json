@@ -1,0 +1,40 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 1,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "weight",
+        "type": "number",
+        "label": "Weight"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 1,
+    "id": "thing_table",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "day"
+      }
+    ],
+    "filter": {
+      "op": "gte",
+      "field": "day",
+      "value": {
+        "daysFromToday": 1.5
+      }
+    }
+  }
+]

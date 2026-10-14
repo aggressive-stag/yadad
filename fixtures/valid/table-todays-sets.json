@@ -1,0 +1,18 @@
+{
+  "kind": "table",
+  "specVersion": 1,
+  "id": "todays_sets",
+  "title": "Today's sets",
+  "entity": "workout_set",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [{ "field": "day" }, { "field": "exercise" }, { "field": "weight" }, { "field": "reps" }],
+  "filter": {
+    "op": "and",
+    "conditions": [
+      { "op": "gte", "field": "day", "value": { "daysFromToday": 0 } },
+      { "op": "lte", "field": "day", "value": { "daysFromToday": 0 } }
+    ]
+  },
+  "quickFilters": [{ "field": "exercise" }, { "field": "weight" }, { "field": "day" }]
+}
