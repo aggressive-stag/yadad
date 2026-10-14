@@ -21,6 +21,8 @@ export const TOKEN_NAMES = [
   "font-size-sm",
   "font-size-md",
   "focus-ring-width",
+  "shadow-sm",
+  "shadow-md",
 ] as const;
 
 export type TokenName = (typeof TOKEN_NAMES)[number];
@@ -50,6 +52,8 @@ export const lightTheme: Theme = {
   "color-border": "#8a8a8a",
   "color-accent": "#2459c7",
   "color-danger": "#b3261e",
+  "shadow-sm": "0 1px 2px rgb(0 0 0 / 0.08)",
+  "shadow-md": "0 4px 12px rgb(0 0 0 / 0.12)",
 };
 
 export const darkTheme: Theme = {
@@ -61,6 +65,8 @@ export const darkTheme: Theme = {
   "color-border": "#8f8f8f",
   "color-accent": "#8ab0ff",
   "color-danger": "#ff8a80",
+  "shadow-sm": "0 1px 2px rgb(0 0 0 / 0.5)",
+  "shadow-md": "0 4px 12px rgb(0 0 0 / 0.6)",
 };
 
 /** The CSS variable name for a token: "--yadad-color-text". */
