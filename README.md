@@ -12,6 +12,10 @@ Status (October 2026): pre-contract. The five engine packages are built and the 
 
 `ARCHITECTURE.md` is the authoritative design; it wins any conflict. `docs/DECISIONS.md` lists the settled decisions.
 
+## Document ids
+
+Document, field, section, tab and grid-item ids all match `[a-z][a-z0-9_]*`: lowercase letters, digits and underscores, starting with a letter. Use `workout_set`, not `workout-set`, `WorkoutSet` or `1st_set`. Grid-item ids only need to be unique within their tab. `pnpm describe-registry` prints the pattern.
+
 ## Two repositories
 
 | Repo | What it is |
