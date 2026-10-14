@@ -6,6 +6,7 @@ import {
   RecordValidationError,
   UnauthorizedError,
 } from "@yadad/core";
+import { resolveRelativeDates } from "./condition.js";
 
 /** A same-origin fetch's credentials mode, mirroring the browser's RequestCredentials. */
 export type FetchCredentials = "omit" | "same-origin" | "include";
@@ -183,7 +184,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /** Encodes a Query as the protocol's filter/sort/offset/limit query string. */
 function queryString(query: Query): string {
   const parts: string[] = [];
-  if (query.filter !== undefined) parts.push(`filter=${encodeURIComponent(JSON.stringify(query.filter))}`);
+  // The protocol only carries fixed values; callers resolve relative dates first, this keeps a stray one off the wire.
+  if (query.filter !== undefined) parts.push(`filter=${encodeURIComponent(JSON.stringify(resolveRelativeDates(query.filter)))}`);
   if (query.sort !== undefined) parts.push(`sort=${encodeURIComponent(JSON.stringify(query.sort))}`);
   if (query.page !== undefined) {
     parts.push(`offset=${encodeURIComponent(String(query.page.offset))}`);

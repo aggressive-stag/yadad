@@ -1,4 +1,5 @@
-import type { Condition, EntityDocument, FieldValue, FormView, RecordValues, Scalar } from "@yadad/core";
+import { isRelativeDate } from "@yadad/core";
+import type { ComparisonValue, Condition, EntityDocument, FieldValue, FormView, RecordValues, Scalar } from "@yadad/core";
 
 const isEmpty = (v: FieldValue | undefined): boolean => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
 
@@ -9,15 +10,66 @@ function order(a: FieldValue | undefined, b: Scalar): number | undefined {
   return undefined;
 }
 
-/** Evaluates a condition against a record's values. Comparisons across types are false. */
-export function evaluateCondition(condition: Condition, values: RecordValues): boolean {
+/** The local calendar date of `now` as "YYYY-MM-DD". */
+export function localIsoDate(now: Date): string {
+  const pad = (n: number, width: number): string => String(n).padStart(width, "0");
+  return `${pad(now.getFullYear(), 4)}-${pad(now.getMonth() + 1, 2)}-${pad(now.getDate(), 2)}`;
+}
+
+/** The local date `days` from `now` (negative: before), as "YYYY-MM-DD". Calendar days, so daylight saving never shifts it. */
+export function dateFromToday(days: number, now: Date = new Date()): string {
+  return localIsoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days));
+}
+
+function resolveValue(value: ComparisonValue, now: Date | undefined): Scalar {
+  return isRelativeDate(value) ? dateFromToday(value.daysFromToday, now) : value;
+}
+
+/**
+ * Replaces every relative date ({ daysFromToday }) in a condition with the
+ * "YYYY-MM-DD" it means on the client's local date (`now`, default the current
+ * time). Run it before a filter goes to a DataAdapter, so servers and the
+ * records protocol only ever see fixed values. Conditions without a relative
+ * date come back as the same object.
+ */
+export function resolveRelativeDates(condition: Condition, now?: Date): Condition;
+export function resolveRelativeDates(condition: Condition | undefined, now?: Date): Condition | undefined;
+export function resolveRelativeDates(condition: Condition | undefined, now?: Date): Condition | undefined {
+  if (!condition) return condition;
   switch (condition.op) {
     case "and":
-      return condition.conditions.every((c) => evaluateCondition(c, values));
+    case "or": {
+      const conditions = condition.conditions.map((c) => resolveRelativeDates(c, now));
+      return conditions.some((c, i) => c !== condition.conditions[i]) ? { op: condition.op, conditions } : condition;
+    }
+    case "not": {
+      const inner = resolveRelativeDates(condition.condition, now);
+      return inner === condition.condition ? condition : { op: "not", condition: inner };
+    }
+    case "eq":
+    case "neq":
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte":
+      return isRelativeDate(condition.value) ? { op: condition.op, field: condition.field, value: resolveValue(condition.value, now) } : condition;
+    default:
+      return condition;
+  }
+}
+
+/**
+ * Evaluates a condition against a record's values. Comparisons across types
+ * are false. Relative dates resolve against `now` (default the current time).
+ */
+export function evaluateCondition(condition: Condition, values: RecordValues, now?: Date): boolean {
+  switch (condition.op) {
+    case "and":
+      return condition.conditions.every((c) => evaluateCondition(c, values, now));
     case "or":
-      return condition.conditions.some((c) => evaluateCondition(c, values));
+      return condition.conditions.some((c) => evaluateCondition(c, values, now));
     case "not":
-      return !evaluateCondition(condition.condition, values);
+      return !evaluateCondition(condition.condition, values, now);
     case "empty":
       return isEmpty(values[condition.field]);
     case "notEmpty":
@@ -29,11 +81,11 @@ export function evaluateCondition(condition: Condition, values: RecordValues): b
       return typeof v === "string" && v.toLowerCase().includes(condition.value.toLowerCase());
     }
     case "eq":
-      return values[condition.field] === condition.value;
+      return values[condition.field] === resolveValue(condition.value, now);
     case "neq":
-      return values[condition.field] !== condition.value;
+      return values[condition.field] !== resolveValue(condition.value, now);
     default: {
-      const o = order(values[condition.field], condition.value);
+      const o = order(values[condition.field], resolveValue(condition.value, now));
       if (o === undefined) return false;
       return condition.op === "gt" ? o > 0 : condition.op === "gte" ? o >= 0 : condition.op === "lt" ? o < 0 : o <= 0;
     }

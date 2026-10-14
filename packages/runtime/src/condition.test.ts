@@ -1,6 +1,6 @@
 import type { Condition, EntityDocument, FormView } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { applyFormRules, evaluateCondition, evaluateFormRules } from "./condition.js";
+import { applyFormRules, dateFromToday, evaluateCondition, evaluateFormRules, resolveRelativeDates } from "./condition.js";
 import { createMemoryAdapter } from "./memory-adapter.js";
 
 const values = { exercise: "Squat", weight: 100, day: "2026-10-04", warmup: false, notes: "Left Knee pain", empty: "  " };
@@ -76,4 +76,61 @@ test("the memory adapter filters before sorting and paging", async () => {
   const page = await db.find("s", { filter: { op: "eq", field: "exercise", value: "Squat" }, sort: [{ field: "weight", dir: "desc" }], page: { offset: 0, limit: 1 } });
   expect(page.total).toBe(2);
   expect(page.items.map((r) => r.values["weight"])).toEqual([120]);
+});
+
+describe("relative dates", () => {
+  // Local noon on 2026-10-14, so no timezone shifts the calendar day.
+  const now = new Date(2026, 9, 14, 12, 0, 0);
+  const ev = (c: Condition, v: Record<string, string | number | boolean | null>) => evaluateCondition(c, v, now);
+
+  test("dateFromToday counts calendar days across month, year and leap boundaries", () => {
+    expect(dateFromToday(0, now)).toBe("2026-10-14");
+    expect(dateFromToday(-7, now)).toBe("2026-10-07");
+    expect(dateFromToday(1, now)).toBe("2026-10-15");
+    expect(dateFromToday(-14, now)).toBe("2026-09-30");
+    expect(dateFromToday(79, new Date(2026, 9, 14))).toBe("2027-01-01");
+    expect(dateFromToday(1, new Date(2028, 1, 28))).toBe("2028-02-29");
+    expect(dateFromToday(1, new Date(2026, 2, 28, 23, 59))).toBe("2026-03-29");
+  });
+
+  test("evaluates against the injected clock", () => {
+    expect(ev({ op: "eq", field: "day", value: { daysFromToday: 0 } }, { day: "2026-10-14" })).toBe(true);
+    expect(ev({ op: "eq", field: "day", value: { daysFromToday: 0 } }, { day: "2026-10-13" })).toBe(false);
+    expect(ev({ op: "gte", field: "day", value: { daysFromToday: -7 } }, { day: "2026-10-07" })).toBe(true);
+    expect(ev({ op: "gte", field: "day", value: { daysFromToday: -7 } }, { day: "2026-10-06" })).toBe(false);
+    expect(ev({ op: "lt", field: "day", value: { daysFromToday: 1 } }, { day: "2026-10-14" })).toBe(true);
+    expect(ev({ op: "neq", field: "day", value: { daysFromToday: 0 } }, { day: "2026-10-14" })).toBe(false);
+  });
+
+  test("resolveRelativeDates leaves only fixed values, and untouched conditions as the same object", () => {
+    const rel: Condition = {
+      op: "and",
+      conditions: [
+        { op: "gte", field: "day", value: { daysFromToday: -7 } },
+        { op: "not", condition: { op: "eq", field: "day", value: { daysFromToday: 0 } } },
+        { op: "or", conditions: [{ op: "eq", field: "exercise", value: "Squat" }] },
+      ],
+    };
+    expect(resolveRelativeDates(rel, now)).toEqual({
+      op: "and",
+      conditions: [
+        { op: "gte", field: "day", value: "2026-10-07" },
+        { op: "not", condition: { op: "eq", field: "day", value: "2026-10-14" } },
+        { op: "or", conditions: [{ op: "eq", field: "exercise", value: "Squat" }] },
+      ],
+    });
+    expect(JSON.stringify(resolveRelativeDates(rel, now))).not.toContain("daysFromToday");
+    const fixed: Condition = { op: "eq", field: "day", value: "2026-10-04" };
+    expect(resolveRelativeDates(fixed, now)).toBe(fixed);
+    expect(resolveRelativeDates(undefined, now)).toBeUndefined();
+  });
+
+  test("the memory adapter filters on relative dates", async () => {
+    const adapter = createMemoryAdapter();
+    const day = dateFromToday(0);
+    await adapter.create("e", { day }, { entityRevision: 1 });
+    await adapter.create("e", { day: dateFromToday(-3) }, { entityRevision: 1 });
+    const page = await adapter.find("e", { filter: { op: "eq", field: "day", value: { daysFromToday: 0 } } });
+    expect(page.items.map((r) => r.values["day"])).toEqual([day]);
+  });
 });
