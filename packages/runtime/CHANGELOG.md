@@ -1,5 +1,17 @@
 # @yadad/runtime
 
+## 0.4.0
+
+### Minor Changes
+
+- 0ccfcd9: `createHttpAdapter` accepts an optional `onUnauthorized` hook, called whenever a response is 401, so a host can redirect to sign-in. The call still rejects with `UnauthorizedError`.
+- e21c2e7: Add `resolveRelativeDates()`, `dateFromToday()` and `localIsoDate()`. `evaluateCondition()` takes an optional `now` and resolves relative dates, and the http adapter never sends one to the server.
+
+### Patch Changes
+
+- Updated dependencies [e21c2e7]
+  - @yadad/core@0.5.0
+
 ## 0.3.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @yadad/theme
 
+## 0.2.0
+
+### Minor Changes
+
+- 4ed38dd: Add the `shadow-sm` and `shadow-md` tokens (`--yadad-shadow-sm`, `--yadad-shadow-md`) with light and dark values.
+
 ## 0.1.1
 
 ### Patch Changes

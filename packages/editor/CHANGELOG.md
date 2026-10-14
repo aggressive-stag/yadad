@@ -1,5 +1,20 @@
 # @yadad/editor
 
+## 0.6.0
+
+### Minor Changes
+
+- e21c2e7: The condition builder offers "a fixed date" or "today plus or minus days" for date comparisons, and the table editor can turn number and date columns into quick filters.
+
+### Patch Changes
+
+- 7bcc624: Grid item ids are unique per tab, not per dashboard: switching tabs no longer carries a form's typed input into another tab's widget that shares the item id, and the layout editor's open count filter stays on its own tab.
+- Updated dependencies [0ccfcd9]
+- Updated dependencies [e21c2e7]
+- Updated dependencies [e21c2e7]
+  - @yadad/runtime@0.4.0
+  - @yadad/core@0.5.0
+
 ## 0.5.1
 
 ### Patch Changes

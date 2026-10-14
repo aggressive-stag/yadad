@@ -1,5 +1,21 @@
 # @yadad/renderer
 
+## 0.4.0
+
+### Minor Changes
+
+- e21c2e7: Number and date quick filters work as a from/to range (gte/lte, either end optional). Table and count-widget filters resolve relative dates before they reach the data adapter.
+
+### Patch Changes
+
+- baa1dc3: A count widget whose request fails now shows a "Could not load records" error instead of staying on the loading placeholder. Entering row edit mode in a table focuses the row's first editable input instead of the Save button.
+- 7bcc624: Grid item ids are unique per tab, not per dashboard: switching tabs no longer carries a form's typed input into another tab's widget that shares the item id, and the layout editor's open count filter stays on its own tab.
+- Updated dependencies [0ccfcd9]
+- Updated dependencies [e21c2e7]
+- Updated dependencies [e21c2e7]
+  - @yadad/runtime@0.4.0
+  - @yadad/core@0.5.0
+
 ## 0.3.2
 
 ### Patch Changes
