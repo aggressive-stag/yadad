@@ -59,6 +59,15 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
     };
   }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloads]);
 
+  // Entering edit mode moves focus to the row's first editable input.
+  const editingId = editing?.record.id;
+  useEffect(() => {
+    if (editingId === undefined) return;
+    const first = view.columns.find((c) => c.editable === true);
+    if (!first) return;
+    document.getElementById(`${tableId}-${editingId}-${first.field}`)?.focus();
+  }, [editingId, tableId, view.columns]);
+
   const refs = [
     ...view.columns.map((c, i) => ({ field: c.field, path: ["columns", i, "field"] })),
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),

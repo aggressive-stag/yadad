@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { DashboardView, EntityDocument, FormView, TableView, ViewDocument } from "@yadad/core";
+import type { DashboardView, DataAdapter, EntityDocument, FormView, TableView, ViewDocument } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -64,6 +64,22 @@ describe("DashboardRenderer", () => {
     expect(grid.style.gridTemplateColumns).toBe("repeat(12, minmax(0, 1fr))");
     expect(grid.style.gridAutoRows).toBe("var(--yadad-grid-row-height, 4rem)");
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("0"));
+  });
+
+  test("a failed count request shows an error instead of loading forever", async () => {
+    const db = createMemoryAdapter();
+    const failing: DataAdapter = { ...db, find: () => Promise.reject(new Error("The server responded with status 401.")) };
+    render(
+      <DashboardRenderer
+        dashboard={dashboard}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", failing]])}
+      />,
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not load records: The server responded with status 401.");
+    expect(screen.queryByTestId("count")).toBeNull();
   });
 
   test("saving the form updates the count; the other tab shows the table", async () => {

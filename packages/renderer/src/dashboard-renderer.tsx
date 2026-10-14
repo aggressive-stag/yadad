@@ -145,6 +145,7 @@ function CountLoader({
   reloadKey: number;
 }): ReactNode {
   const [value, setValue] = useState<number | undefined>(undefined);
+  const [failure, setFailure] = useState<string | undefined>(undefined);
   const adapter = dataSources.get(view.dataSource);
   const filter = useMemo((): Condition | undefined => {
     const parts = [view.filter, widget.filter].filter((c): c is Condition => c !== undefined);
@@ -156,14 +157,26 @@ function CountLoader({
     let current = true;
     adapter
       .find(entity.id, { page: { offset: 0, limit: 0 }, ...(filter ? { filter } : {}) })
-      .then((page) => current && setValue(page.total))
-      .catch(() => current && setValue(undefined));
+      .then((page) => {
+        if (!current) return;
+        setFailure(undefined);
+        setValue(page.total);
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setValue(undefined);
+        setFailure(error instanceof Error ? error.message : String(error));
+      });
     return () => {
       current = false;
     };
   }, [adapter, entity.id, filter, reloadKey]);
 
   const Count = registry.widgets.count;
+  if (failure !== undefined) {
+    const { ErrorSummary } = registry.layout;
+    return <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${failure}`, hint: "Reload the page or try again later." }]} />;
+  }
   return <Count label={widget.label} value={value} />;
 }
 

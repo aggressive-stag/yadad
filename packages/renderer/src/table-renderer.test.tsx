@@ -86,6 +86,14 @@ describe("TableRenderer", () => {
     expect((screen.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  test("entering edit mode focuses the row's first editable input", async () => {
+    await setup();
+    const firstRow = screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow).getByRole("button", { name: "Edit" }));
+    const weight = within(screen.getAllByRole("row")[1]!).getByRole("spinbutton", { name: "Weight" });
+    await waitFor(() => expect(document.activeElement).toBe(weight));
+  });
+
   test("edits a row in place: validates first, then saves under the current revision", async () => {
     const { db } = await setup();
     const firstRow = () => screen.getAllByRole("row")[1]!;
