@@ -113,7 +113,9 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
 
   // A count widget's own filter: it narrows the widget's count without
   // touching the table it counts. Edited against the table's entity.
-  const [countFilter, setCountFilter] = useState<{ readonly id: string; readonly draft: ConditionDraft | undefined } | undefined>(undefined);
+  // Item ids are unique per tab only, so the open filter also remembers its tab.
+  const [rawCountFilter, setCountFilter] = useState<{ readonly tabId: string; readonly id: string; readonly draft: ConditionDraft | undefined } | undefined>(undefined);
+  const countFilter = rawCountFilter?.tabId === tab.id ? rawCountFilter : undefined;
   const countEntityOf = (item: GridItem): EntityDocument | undefined => {
     if (item.widget !== "count") return undefined;
     const view = views.find((v) => v.id === item.view);
@@ -123,7 +125,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
     if (item.widget !== "count") return;
     const entity = countEntityOf(item);
     if (!entity) return;
-    setCountFilter((open) => (open && open.id === item.id ? undefined : { id: item.id, draft: draftFor(entity, item.filter) }));
+    setCountFilter((open) => (open && open.tabId === tab.id && open.id === item.id ? undefined : { tabId: tab.id, id: item.id, draft: draftFor(entity, item.filter) }));
   };
   const applyCountFilter = (item: GridItem) => {
     if (item.widget !== "count" || !countFilter || countFilter.id !== item.id) return;
@@ -281,9 +283,9 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
                           registry={registry}
                           entity={entity}
                           draft={countFilter.draft}
-                          onChange={(draft) => setCountFilter({ id: item.id, draft })}
+                          onChange={(draft) => setCountFilter({ tabId: tab.id, id: item.id, draft })}
                           current={item.filter}
-                          onReplace={() => setCountFilter({ id: item.id, draft: draftFor(entity, undefined) })}
+                          onReplace={() => setCountFilter({ tabId: tab.id, id: item.id, draft: draftFor(entity, undefined) })}
                         />
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                           <Button

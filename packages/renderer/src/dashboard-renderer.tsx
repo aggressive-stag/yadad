@@ -108,7 +108,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
     >
       {[...tab.items].sort(readingOrder).map((item) => (
         <div
-          key={item.id}
+          key={`${tab.id}/${item.id}`}
           data-yadad-grid-item={item.id}
           style={
             stacked
