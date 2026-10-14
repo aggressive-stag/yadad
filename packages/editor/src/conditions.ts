@@ -4,7 +4,8 @@
 // Anything deeper is shown intact in words and can be replaced, never dropped
 // (ARCHITECTURE.md §6).
 
-import type { Condition, FieldType, Scalar } from "@yadad/core";
+import { isRelativeDate } from "@yadad/core";
+import type { ComparisonValue, Condition, FieldType, Scalar } from "@yadad/core";
 
 /** One comparison of a field against a value; "not" applies to the comparison itself. */
 export interface Comparison {
@@ -12,8 +13,8 @@ export interface Comparison {
   /** The operator, "not" aside: eq/neq, ordering for numbers and dates, in/contains, empty/notEmpty. */
   readonly op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "contains" | "empty" | "notEmpty";
   readonly field: string;
-  /** A value for eq/neq and ordering; absent for empty/notEmpty. */
-  readonly value?: Scalar;
+  /** A value for eq/neq and ordering (on a date field also a relative date); absent for empty/notEmpty. */
+  readonly value?: ComparisonValue;
   /** The list for "in". */
   readonly values?: readonly Scalar[];
 }
@@ -57,6 +58,26 @@ export const OPERATOR_WORDS: Readonly<Record<Comparison["op"], string>> = {
   empty: "is empty",
   notEmpty: "is filled in",
 };
+
+/** The ops on a date field that can compare with "today +/- N days". */
+export function takesRelativeDate(type: FieldType, op: Comparison["op"]): boolean {
+  return type === "date" && (op === "eq" || op === "neq" || op === "gt" || op === "gte" || op === "lt" || op === "lte");
+}
+
+/** A relative date in words: "today", "yesterday", "7 days ago", "tomorrow", "in 3 days". */
+export function describeRelativeDate(days: number): string {
+  if (days === 0) return "today";
+  if (days === -1) return "yesterday";
+  if (days === 1) return "tomorrow";
+  return days < 0 ? `${-days} days ago` : `in ${days} days`;
+}
+
+/** A comparison value in words: a fixed value as written, a relative date as above. An unfinished one reads "…". */
+export function describeComparisonValue(value: ComparisonValue | undefined): string {
+  if (value === undefined) return "…";
+  if (isRelativeDate(value)) return Number.isInteger(value.daysFromToday) ? describeRelativeDate(value.daysFromToday) : "…";
+  return typeof value === "boolean" ? (value ? "yes" : "no") : String(value);
+}
 
 /**
  * One condition node to a comparison; undefined when it carries combining
@@ -131,6 +152,8 @@ export function compareToCondition(c: Comparison): Condition | undefined {
       break;
     default:
       if (c.value === undefined) return undefined;
+      // A relative date still being typed has no whole number yet.
+      if (isRelativeDate(c.value) && !Number.isInteger(c.value.daysFromToday)) return undefined;
       body = { op: c.op, field: c.field, value: c.value };
       break;
   }
@@ -173,9 +196,10 @@ export function roundTrips(condition: Condition | undefined): boolean {
  * field's own registry input, so this is a belt to the suspenders against
  * a condition the document validator would reject.
  */
-export function valueFits(type: FieldType, value: Scalar | readonly Scalar[] | undefined): boolean {
+export function valueFits(type: FieldType, value: ComparisonValue | readonly Scalar[] | undefined): boolean {
   if (value === undefined) return true;
-  const list = Array.isArray(value) ? value : [value];
+  if (isRelativeDate(value)) return type === "date" && Number.isInteger(value.daysFromToday);
+  const list: readonly Scalar[] = Array.isArray(value) ? value : [value as Scalar];
   if (list.some((v) => typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")) return false;
   switch (type) {
     case "number":

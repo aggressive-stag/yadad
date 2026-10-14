@@ -1,16 +1,22 @@
-import type { Condition, EntityDocument, Field, FieldValue, Registry } from "@yadad/core";
+import { isRelativeDate } from "@yadad/core";
+import type { Condition, EntityDocument, Field, FieldValue, Registry, RelativeDate } from "@yadad/core";
 import type { ReactNode } from "react";
-import { buildGroup, OPERATOR_WORDS, operatorsFor, parseGroup, roundTrips, takesValue } from "./conditions.js";
+import { buildGroup, describeComparisonValue, OPERATOR_WORDS, operatorsFor, parseGroup, roundTrips, takesRelativeDate, takesValue } from "./conditions.js";
 import type { Comparison, Group } from "./conditions.js";
 import { renderInput } from "./inputs.js";
 import { choiceField, describeCondition } from "./ui.js";
+
+/** A relative date still being typed: the number of days may be empty. */
+interface DraftRelativeDate {
+  readonly daysFromToday: number | undefined;
+}
 
 /** A comparison the user is composing: values are optional while being edited. */
 interface DraftComparison {
   readonly not: boolean;
   readonly op: Comparison["op"];
   readonly field: string;
-  readonly value?: FieldValue | undefined;
+  readonly value?: FieldValue | RelativeDate | DraftRelativeDate | undefined;
   readonly values?: readonly FieldValue[] | undefined;
 }
 
@@ -40,6 +46,10 @@ export function builtOf(draft: DraftGroup | undefined): Condition | undefined {
 }
 
 const COMBINE = { all: "All of", any: "Any of" } as const;
+
+const DATE_MODES = { fixed: "A fixed date", relative: "Today plus or minus days" } as const;
+const isRelative = (v: DraftComparison["value"]): v is RelativeDate | DraftRelativeDate => v !== undefined && v !== null && isRelativeDate(v);
+const DAYS_FIELD: Field = { id: "days_from_today", type: "number", label: "Days from today (negative: ago)", step: 1 };
 
 interface ConditionBuilderProps {
   /** A stable id for this builder: its inputs get `${id}-…` ids. */
@@ -71,7 +81,7 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
   const labelOf = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
   const fieldOf = (c: DraftComparison): Field => entity.fields.find((f) => f.id === c.field) ?? candidates[0]!;
 
-  const setComparison = (i: number, patch: { not?: boolean; op?: DraftComparison["op"]; field?: string; value?: FieldValue | undefined; values?: readonly FieldValue[] | undefined }) =>
+  const setComparison = (i: number, patch: { not?: boolean; op?: DraftComparison["op"]; field?: string; value?: DraftComparison["value"]; values?: readonly FieldValue[] | undefined }) =>
     onChange({
       combine: draft?.combine ?? "all",
       comparisons: (draft?.comparisons ?? []).map((c, j) => (j === i ? { ...c, ...patch } : c)),
@@ -90,14 +100,19 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
     const keep = next !== undefined && current !== undefined && operatorsFor(next.type).includes(current.op);
     setComparison(i, { field: fieldId, ...(keep ? {} : { op: "eq" as const }), value: undefined, values: undefined });
   };
-  const onOperator = (i: number, op: DraftComparison["op"]) => setComparison(i, { op, value: undefined, values: undefined });
+  const onOperator = (i: number, op: DraftComparison["op"]) => {
+    // A date comparison keeps "today plus N" when only the operator changes between comparing ops.
+    const c = draft?.comparisons[i];
+    const keep = c !== undefined && isRelative(c.value) && takesRelativeDate("date", op);
+    setComparison(i, { op, value: keep ? c.value : undefined, values: undefined });
+  };
 
   const combineId = `${id}-combine`;
   const combineField = choiceField("combine", "Match", Object.keys(COMBINE) as string[]);
   const compareWords = draft
     ? draft.comparisons.map((c) => {
         const words = OPERATOR_WORDS[c.op];
-        const value = c.op === "in" ? (c.values ?? []).join(", ") : takesValue(c.op) ? String(c.value ?? "…") : "";
+        const value = c.op === "in" ? (c.values ?? []).join(", ") : takesValue(c.op) ? describeComparisonValue(c.value as Comparison["value"]) : "";
         return `${labelOf(c.field)} ${words}${value ? ` ${value}` : ""}`;
       })
     : [];
@@ -142,7 +157,18 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
                     ))}
                   </span>
                 ) : takesValue(c.op) ? (
-                  renderInput(registry, f, c.value, { inputId: `${id}-value-${i}`, invalid: false }, (v) => setComparison(i, { value: v }))
+                  <>
+                    {takesRelativeDate(f.type, c.op)
+                      ? renderInput(registry, choiceField("date_mode", "Compare with", Object.values(DATE_MODES)), isRelative(c.value) ? DATE_MODES.relative : DATE_MODES.fixed, { inputId: `${id}-mode-${i}`, invalid: false }, (v) =>
+                          setComparison(i, { value: v === DATE_MODES.relative ? { daysFromToday: 0 } : undefined }),
+                        )
+                      : null}
+                    {isRelative(c.value)
+                      ? renderInput(registry, DAYS_FIELD, c.value.daysFromToday, { inputId: `${id}-days-${i}`, invalid: false }, (v) =>
+                          setComparison(i, { value: { daysFromToday: typeof v === "number" && Number.isInteger(v) ? v : undefined } }),
+                        )
+                      : renderInput(registry, f, c.value as FieldValue | undefined, { inputId: `${id}-value-${i}`, invalid: false }, (v) => setComparison(i, { value: v }))}
+                  </>
                 ) : null}
                 {renderInput(registry, { id: `${c.field}_not`, type: "boolean", label: "Not" }, c.not, { inputId: `${id}-not-${i}`, invalid: false }, (on) => setComparison(i, { not: on === true }))}
                 <Button label={`Remove comparison ${i + 1}`} type="button" variant="secondary" disabled={false} onPress={() => removeComparison(i)} />

@@ -1,6 +1,7 @@
 import type { Condition, FieldType } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { buildGroup, compareToCondition, operatorsFor, parseGroup, roundTrips, valueFits } from "./conditions.js";
+import { buildGroup, compareToCondition, describeRelativeDate, operatorsFor, parseGroup, roundTrips, valueFits } from "./conditions.js";
+import { describeCondition } from "./ui.js";
 import type { Comparison, Group } from "./conditions.js";
 
 const group = (combine: "all" | "any", ...cs: Comparison[]): Group => ({ combine, comparisons: cs });
@@ -138,5 +139,41 @@ describe("valueFits", () => {
   test("a list must all fit", () => {
     expect(valueFits("number", [1, 2])).toBe(true);
     expect(valueFits("number", [1, "2"])).toBe(false);
+  });
+});
+
+describe("relative dates", () => {
+  const rel = (n: number) => ({ daysFromToday: n });
+  const label = (id: string) => (id === "day" ? "Date" : id);
+
+  test("round-trip through parseGroup, buildGroup and roundTrips, also under not and and", () => {
+    const conditions: Condition[] = [
+      { op: "gte", field: "day", value: rel(-7) },
+      { op: "not", condition: { op: "eq", field: "day", value: rel(0) } },
+      { op: "and", conditions: [{ op: "gte", field: "day", value: rel(-7) }, { op: "lte", field: "day", value: rel(1) }] },
+    ];
+    for (const c of conditions) {
+      expect(roundTrips(c)).toBe(true);
+      const g = parseGroup(c);
+      expect(g && buildGroup(g)).toEqual(c);
+    }
+  });
+
+  test("compareToCondition builds a relative value and refuses one with no whole number yet", () => {
+    expect(compareToCondition({ not: false, op: "gte", field: "day", value: rel(-3) })).toEqual({ op: "gte", field: "day", value: rel(-3) });
+    expect(compareToCondition({ not: false, op: "gte", field: "day", value: { daysFromToday: Number.NaN } })).toBeUndefined();
+  });
+
+  test("valueFits accepts a relative date on a date field only", () => {
+    expect(valueFits("date", rel(0))).toBe(true);
+    expect(valueFits("number", rel(0))).toBe(false);
+  });
+
+  test("describeCondition reads in plain words", () => {
+    expect(describeCondition({ op: "gte", field: "day", value: rel(-7) }, label)).toBe("Date is at least 7 days ago");
+    expect(describeCondition({ op: "eq", field: "day", value: rel(0) }, label)).toBe("Date is today");
+    expect(describeCondition({ op: "lt", field: "day", value: rel(-1) }, label)).toBe("Date is less than yesterday");
+    expect(describeCondition({ op: "lte", field: "day", value: rel(3) }, label)).toBe("Date is at most in 3 days");
+    expect(describeRelativeDate(1)).toBe("tomorrow");
   });
 });

@@ -18,6 +18,7 @@ const entity: EntityDocument = {
     { id: "status", type: "select", label: "Status", options: { source: "static", values: ["open", "closed"] } },
     { id: "points", type: "number", label: "Points" },
     { id: "title", type: "text", label: "Title" },
+    { id: "due", type: "date", label: "Due" },
   ],
 };
 
@@ -64,5 +65,34 @@ describe("ConditionBuilder", () => {
     expect(builtOf(draft)).toBeUndefined();
     render(<Harness initial={draft} onDraft={() => {}} />);
     expect(screen.getByText("Fill in every row to apply this condition.")).toBeTruthy();
+  });
+
+  test("a date comparison can switch between a fixed date and today plus days", () => {
+    const drafts: (ConditionDraft | undefined)[] = [];
+    render(<Harness initial={{ combine: "all", comparisons: [{ not: false, op: "gte", field: "due", value: "2026-10-01" }] }} onDraft={(d) => drafts.push(d)} />);
+    expect(document.getElementById("t-days-0")).toBeNull();
+    fireEvent.change(document.getElementById("t-mode-0") as HTMLSelectElement, { target: { value: "Today plus or minus days" } });
+    expect(drafts.at(-1)?.comparisons[0]?.value).toEqual({ daysFromToday: 0 });
+    expect(builtOf(drafts.at(-1))).toEqual({ op: "gte", field: "due", value: { daysFromToday: 0 } });
+    fireEvent.change(document.getElementById("t-days-0") as HTMLInputElement, { target: { value: "-7" } });
+    expect(builtOf(drafts.at(-1))).toEqual({ op: "gte", field: "due", value: { daysFromToday: -7 } });
+    expect(screen.getByText("Due is at least 7 days ago")).toBeTruthy();
+    // Changing only the operator keeps the relative value.
+    fireEvent.change(document.getElementById("t-op-0") as HTMLSelectElement, { target: { value: "is at most" } });
+    expect(builtOf(drafts.at(-1))).toEqual({ op: "lte", field: "due", value: { daysFromToday: -7 } });
+    fireEvent.change(document.getElementById("t-mode-0") as HTMLSelectElement, { target: { value: "A fixed date" } });
+    expect(drafts.at(-1)?.comparisons[0]?.value).toBeUndefined();
+    expect(document.getElementById("t-days-0")).toBeNull();
+  });
+
+  test("clearing the days leaves the row unfinished", () => {
+    render(<Harness initial={{ combine: "all", comparisons: [{ not: false, op: "eq", field: "due", value: { daysFromToday: 2 } }] }} onDraft={() => {}} />);
+    fireEvent.change(document.getElementById("t-days-0") as HTMLInputElement, { target: { value: "" } });
+    expect(screen.getByText("Fill in every row to apply this condition.")).toBeTruthy();
+  });
+
+  test("a number field offers no date mode", () => {
+    render(<Harness initial={{ combine: "all", comparisons: [{ not: false, op: "eq", field: "points", value: 1 }] }} onDraft={() => {}} />);
+    expect(document.getElementById("t-mode-0")).toBeNull();
   });
 });

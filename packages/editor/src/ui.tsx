@@ -1,6 +1,7 @@
 import { validateDocument } from "@yadad/core";
 import type { Condition, Document, Field, FieldValue, Registry, Scalar } from "@yadad/core";
 import type { CSSProperties, ReactNode } from "react";
+import { describeComparisonValue } from "./conditions.js";
 import { renderInput } from "./inputs.js";
 
 /** Toolbar layout shared by the editors; hosts can change the gap with --yadad-toolbar-gap. */
@@ -55,7 +56,7 @@ export function describeCondition(condition: Condition, label: (fieldId: string)
     case "notEmpty":
       return `${label(condition.field)} is filled in`;
     default:
-      return `${label(condition.field)} ${OP_WORDS[condition.op]} ${show(condition.value)}`;
+      return `${label(condition.field)} ${OP_WORDS[condition.op]} ${describeComparisonValue(condition.value)}`;
   }
 }
 
