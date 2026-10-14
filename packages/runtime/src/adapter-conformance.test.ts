@@ -409,6 +409,17 @@ describe("http adapter: request encoding and status mapping", () => {
     expect(await notFound.findOne(ENTITY, "1")).toBeNull();
   });
 
+  test("onUnauthorized is called on a 401 and the call still rejects", async () => {
+    let calls = 0;
+    const fetch: FetchLike = async (_input, _init) => ({ status: 401, json: async () => ({ errors: [{ path: "", code: "unauthorized", message: "Sign in.", hint: "Sign in." }] }) });
+    const adapter = createHttpAdapter({ baseUrl: "/api/records", fetch, onUnauthorized: () => void calls++ });
+    expect(await expectError(adapter.find(ENTITY, {}))).toBeInstanceOf(UnauthorizedError);
+    expect(calls).toBe(1);
+    const forbidden = createHttpAdapter({ baseUrl: "/api/records", fetch: async () => ({ status: 403, json: async () => ({}) }), onUnauthorized: () => void calls++ });
+    await expectError(forbidden.find(ENTITY, {}));
+    expect(calls).toBe(1);
+  });
+
   test("a 409 without a JSON body is still a conflict, with no current record", async () => {
     const noBody: FetchLike = async () => ({
       status: 409,

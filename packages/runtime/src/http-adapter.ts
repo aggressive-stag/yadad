@@ -34,6 +34,13 @@ export interface HttpAdapterOptions {
   readonly credentials?: FetchCredentials;
   /** Extra request headers, merged over the JSON defaults. */
   readonly headers?: Record<string, string>;
+  /**
+   * Called whenever a response has status 401 (not signed in or session
+   * expired), e.g. to send the viewer to a sign-in page. The call still
+   * rejects with an `UnauthorizedError` as usual; an exception thrown by this
+   * hook is ignored.
+   */
+  readonly onUnauthorized?: () => void;
 }
 
 /** One item of the protocol's error body. */
@@ -74,6 +81,13 @@ export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
       headers: requestHeaders(body !== undefined),
       ...(body !== undefined ? { body } : {}),
     });
+    if (res.status === 401) {
+      try {
+        options.onUnauthorized?.();
+      } catch {
+        // A failing hook must not hide the UnauthorizedError the caller gets.
+      }
+    }
     if (res.status === 204) return { status: res.status, body: undefined };
     let json: unknown;
     try {
