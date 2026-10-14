@@ -83,7 +83,13 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
   };
 
   // A field or operator change invalidates a value of the old type; reset it.
-  const onField = (i: number, fieldId: string) => setComparison(i, { field: fieldId, value: undefined, values: undefined });
+  // The operator stays only when the new field's type offers it.
+  const onField = (i: number, fieldId: string) => {
+    const next = entity.fields.find((f) => f.id === fieldId);
+    const current = draft?.comparisons[i];
+    const keep = next !== undefined && current !== undefined && operatorsFor(next.type).includes(current.op);
+    setComparison(i, { field: fieldId, ...(keep ? {} : { op: "eq" as const }), value: undefined, values: undefined });
+  };
   const onOperator = (i: number, op: DraftComparison["op"]) => setComparison(i, { op, value: undefined, values: undefined });
 
   const combineId = `${id}-combine`;
@@ -143,6 +149,7 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
               </div>
             );
           })}
+          {draft.comparisons.length > 0 && builtOf(draft) === undefined ? <p data-yadad-condition-incomplete="">Fill in every row to apply this condition.</p> : null}
           <div style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
             <Button label="Add comparison" type="button" variant="secondary" disabled={false} onPress={() => onChange({ combine: draft.combine, comparisons: [...draft.comparisons, { not: false, op: "eq", field: candidates[0]!.id }] })} />
           </div>

@@ -94,6 +94,22 @@ describe("buildGroup edge cases", () => {
   test("a group with only incomplete comparisons is no condition", () => {
     expect(buildGroup({ combine: "all", comparisons: [cmp("eq", "a")] })).toBeUndefined();
   });
+  test("any incomplete comparison makes the whole group no condition", () => {
+    const done = cmp("eq", "a", { value: 1 });
+    expect(buildGroup(group("all", done, cmp("eq", "b")))).toBeUndefined();
+    expect(buildGroup(group("any", done, cmp("in", "c")))).toBeUndefined();
+    expect(buildGroup(group("any", done, cmp("in", "c", { values: [] })))).toBeUndefined();
+    expect(buildGroup(group("all", done, cmp("contains", "d", { value: 5 })))).toBeUndefined();
+  });
+  test("a complete multi-row group still builds", () => {
+    expect(buildGroup(group("all", cmp("eq", "a", { value: 1 }), cmp("in", "c", { values: ["x"] })))).toEqual({
+      op: "and",
+      conditions: [
+        { op: "eq", field: "a", value: 1 },
+        { op: "in", field: "c", values: ["x"] },
+      ],
+    });
+  });
   test("a single comparison is not wrapped in and", () => {
     expect(buildGroup(group("all", cmp("eq", "a", { value: 1 })))).toEqual({ op: "eq", field: "a", value: 1 });
   });

@@ -140,12 +140,15 @@ export function compareToCondition(c: Comparison): Condition | undefined {
 /**
  * The builder's shape to a Condition. An empty group is no condition: the
  * builder offers no way to express "always"/"never" (that is the absence of
- * a condition), so saving with no comparisons removes the rule.
+ * a condition), so saving with no comparisons removes the rule. A group with
+ * any incomplete comparison is no condition either, so it cannot be applied.
  */
 export function buildGroup(group: Group): Condition | undefined {
   if (group.comparisons.length === 0) return undefined;
-  const list = group.comparisons.map(compareToCondition).filter((c): c is Condition => c !== undefined);
-  if (list.length === 0) return undefined;
+  const built = group.comparisons.map(compareToCondition);
+  // One unfinished row makes the whole group unbuildable: dropping it would lose the user's row silently.
+  const list = built.filter((c): c is Condition => c !== undefined);
+  if (list.length !== built.length) return undefined;
   if (list.length === 1) return list[0];
   return { op: group.combine === "all" ? "and" : "or", conditions: list };
 }
