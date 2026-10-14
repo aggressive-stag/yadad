@@ -13,7 +13,7 @@ describe("migrate", () => {
   });
 
   test("does not mutate its input and leaves a current document alone", () => {
-    const copy = structuredClone(v0);
+    const copy: unknown = JSON.parse(JSON.stringify(v0));
     const once = migrate(v0);
     expect(v0).toEqual(copy);
     expect(migrate(once)).toEqual(once);
