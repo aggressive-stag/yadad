@@ -316,3 +316,13 @@ describe("blank documents", () => {
     expect(validateDocument(blankDashboard("home")).ok).toBe(true);
   });
 });
+
+describe("quick filter support", () => {
+  test("every field type can be a quick filter, number and date as a range", async () => {
+    const { canQuickFilter, QUICK_FILTER_KINDS } = await import("./views.js");
+    for (const type of ["text", "number", "boolean", "select", "date"] as const) expect(canQuickFilter(type)).toBe(true);
+    expect(canQuickFilter(undefined)).toBe(false);
+    expect(QUICK_FILTER_KINDS.number).toBe("range");
+    expect(QUICK_FILTER_KINDS.date).toBe("range");
+  });
+});

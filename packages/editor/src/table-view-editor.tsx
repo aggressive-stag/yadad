@@ -10,7 +10,7 @@ import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js"
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
-import { addColumn, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle } from "./views.js";
+import { addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
 
 export interface TableViewEditorProps {
   readonly view: TableView;
@@ -142,8 +142,8 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
     const name = label(column.field);
     const editable = column.editable === true;
     const quick = filtered.has(column.field);
-    // Quick filters match select and boolean fields exactly and text by substring.
-    const canFilter = ["select", "boolean", "text"].includes(fieldType(column.field) ?? "");
+    // Select and boolean match exactly, text by substring, number and date as a from/to range.
+    const canFilter = canQuickFilter(fieldType(column.field));
     return {
       id: column.field,
       cells: [
@@ -166,7 +166,7 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
           {name}
         </span>,
         editable ? "Yes" : "No",
-        quick ? "Yes" : canFilter ? "No" : "Not available",
+        quick ? "Yes" : canFilter ? "No" : <span key="quick" title={QUICK_FILTER_REASON}>Not available. {QUICK_FILTER_REASON}</span>,
         <span key="actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
           <Button label={`Move ${name} left`} type="button" variant="secondary" disabled={i === 0} onPress={() => run(moveColumn(current, column.field, -1))} />
           <Button label={`Move ${name} right`} type="button" variant="secondary" disabled={i === current.columns.length - 1} onPress={() => run(moveColumn(current, column.field, 1))} />

@@ -75,6 +75,9 @@ for (const op of contract.conditions.ops) {
   lines.push(`  ${op.op}: shape ${JSON.stringify(op.shape)}  example: ${op.example}`);
 }
 lines.push(`  value types: ${contract.conditions.maxValueType}`);
+const rel = contract.conditions.relativeDate;
+lines.push(`  relative dates (${rel.ops.join(", ")} on ${rel.fieldTypes.join(", ")} fields; up to ${rel.maxDays} days): ${rel.description}`);
+lines.push(`    example: ${rel.example}`);
 lines.push("");
 lines.push("widgets (dashboard grid items):");
 for (const widget of contract.widgets) {

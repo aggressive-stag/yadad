@@ -165,7 +165,7 @@ The contract itself is also machine-readable: `describeContract()` in `core` is 
 | Migration | Pure `migrate(doc, from, to)` in `core`, plus a before/after fixture pair | None for additive edits. Destructive edits (delete a field, change its type) go through an explicit editor transform. |
 | Records | n/a | Store `{ entityId, entityRevision }`. Old records are upcast lazily on read. If one fails validation, show "saved under revision N" instead of crashing. |
 
-Pre-contract documents use `specVersion: 0`; the validator rejects any other value for now (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
+Documents use `specVersion: 1`; the validator also accepts the older `0`, which `migrate()` stamps as `1` (version 1 added relative dates in conditions, D22). Any other value is rejected (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
 
 ## 9. Registry contract and ownership
 
@@ -220,7 +220,7 @@ Interface, `Query` and the typed adapter errors in `core`. The memory, key-value
 ## 11. Stability policy
 
 - Fixed package list; new packages and new dependencies need an RFC.
-- The contract is in flux: `specVersion` stays `0`, and no `contract-vN` freeze or tag is planned (D13). When the format does change, it ships with a `specVersion` bump, a `migrate()` step and a before/after fixture pair (AGENTS.md rule 8) — a future freeze is a separate decision, not a deadline.
+- The contract is in flux: `specVersion` is `1`, and no `contract-vN` freeze or tag is planned (D13). When the format does change, it ships with a `specVersion` bump, a `migrate()` step and a before/after fixture pair (AGENTS.md rule 8) — a future freeze is a separate decision, not a deadline.
 - Agents land and release their own work (D14): changes to a published package carry a changeset; breaking changes carry a `BREAKING CHANGE:` note that says exactly what consumers must change. Consumers adopt the new version, and the components repo widens its peer range when a release falls outside it.
 - Deprecations last at least one minor with a runtime warning.
 - Public API reports and size budgets (size-limit) are the next CI gates (see `.github/workflows/ci.yml`).

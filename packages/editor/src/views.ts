@@ -1,5 +1,5 @@
 import { jsonPointer } from "@yadad/core";
-import type { Condition, DashboardView, DocumentError, EntityDocument, FormView, SortSpec, TableView } from "@yadad/core";
+import type { Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, SortSpec, TableView } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -216,6 +216,27 @@ export function setTableSort(view: TableView, sort: SortSpec | undefined): Patch
 /** Sets rows per page; undefined goes back to the default. */
 export function setPageSize(view: TableView, pageSize: number | undefined): PatchOperation[] {
   return setOptional(view.pageSize !== undefined, "/pageSize", pageSize);
+}
+
+/**
+ * How a quick filter treats a field type: select and boolean match exactly,
+ * text by substring, number and date as a from/to range. Every field type
+ * has an entry, so adding a type forces a decision here.
+ */
+export const QUICK_FILTER_KINDS: { readonly [K in FieldType]: "match" | "contains" | "range" | undefined } = {
+  select: "match",
+  boolean: "match",
+  text: "contains",
+  number: "range",
+  date: "range",
+};
+
+/** Said where a field cannot be a quick filter. */
+export const QUICK_FILTER_REASON = "Quick filters work on select, boolean, text, number and date fields.";
+
+/** Whether a field of this type can be a quick filter. */
+export function canQuickFilter(type: FieldType | undefined): boolean {
+  return type !== undefined && QUICK_FILTER_KINDS[type] !== undefined;
 }
 
 /** Turns a viewer quick filter on a field on or off. */

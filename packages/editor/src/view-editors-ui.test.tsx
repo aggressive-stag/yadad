@@ -161,6 +161,26 @@ describe("TableViewEditor", () => {
     expect(saved[0]).toMatchObject({ revision: 2, columns: [{ field: "title" }, { field: "due", editable: true }, { field: "done" }], quickFilters: [{ field: "done" }] });
   });
 
+  test("number and date columns can be quick filters (a from/to range)", () => {
+    const saved: TableView[] = [];
+    const sets: EntityDocument = {
+      ...entity,
+      id: "set",
+      fields: [
+        { id: "day", type: "date", label: "Day" },
+        { id: "rpe", type: "number", label: "RPE" },
+      ],
+    };
+    const view: TableView = { ...table, entity: "set", columns: [{ field: "day" }, { field: "rpe" }] };
+    render(<TableViewEditor view={view} entity={sets} registry={mockRegistry} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    expect(screen.queryByText(/Not available/)).toBeNull();
+    press("Filter by RPE");
+    press("Filter by Day");
+    expect(button("Remove RPE filter")).toBeTruthy();
+    press("Save table");
+    expect(saved[0]?.quickFilters).toEqual([{ field: "rpe" }, { field: "day" }]);
+  });
+
   test("applies title, page size and sort as one undoable edit", () => {
     const saved = setup();
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "My tasks" } });
