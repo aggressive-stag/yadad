@@ -11,6 +11,7 @@ import type {
   ViewDocument,
 } from "@yadad/core";
 import { conditionFields, jsonPointer } from "@yadad/core";
+import { resolveRelativeDates } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { FormRenderer } from "./form-renderer.js";
@@ -155,8 +156,10 @@ function CountLoader({
   useEffect(() => {
     if (!adapter) return;
     let current = true;
+    // Relative dates become fixed ones here, so the adapter (and any server) never sees them.
+    const fixed = filter ? resolveRelativeDates(filter) : undefined;
     adapter
-      .find(entity.id, { page: { offset: 0, limit: 0 }, ...(filter ? { filter } : {}) })
+      .find(entity.id, { page: { offset: 0, limit: 0 }, ...(fixed ? { filter: fixed } : {}) })
       .then((page) => {
         if (!current) return;
         setFailure(undefined);

@@ -1,6 +1,6 @@
 import { conditionFields, jsonPointer } from "@yadad/core";
 import type { Condition, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, RecordValues, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { emptyFormState, setFieldValue, submitEdit } from "@yadad/runtime";
+import { emptyFormState, resolveRelativeDates, setFieldValue, submitEdit } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -50,7 +50,9 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
   useEffect(() => {
     if (!adapter) return;
     let current = true;
-    adapter.find(entity.id, { sort, page: { offset: page * pageSize, limit: pageSize }, ...(filter ? { filter } : {}) }).then(
+    // Relative dates become fixed ones here, on every load, so adapters never see them and "today" stays today.
+    const fixed = filter ? resolveRelativeDates(filter) : undefined;
+    adapter.find(entity.id, { sort, page: { offset: page * pageSize, limit: pageSize }, ...(fixed ? { filter: fixed } : {}) }).then(
       (result) => current && setRows({ status: "loaded", items: result.items, total: result.total }),
       (error: unknown) => current && setRows({ status: "failed", message: error instanceof Error ? error.message : String(error) }),
     );
@@ -74,7 +76,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
     ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
     ...(view.quickFilters ?? []).map((f, i) => ({ field: f.field, path: ["quickFilters", i, "field"] })),
   ];
-  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...checkQuickFilters(entity, view)];
+  const setupErrors = checkViewSetup(entity, view, adapter, refs);
   const { Table, Button, ErrorSummary, Section, FieldFrame } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
@@ -166,18 +168,30 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
     <div data-yadad-table-view={view.id}>
       {quickFields.length > 0 && (
         <Section id={`${view.id}-filters`} title="Filter">
-          {quickFields.map((field) => {
-            const control = filterControl(field);
-            const inputId = `${tableId}-filter-${field.id}`;
-            return (
-              <FieldFrame key={field.id} inputId={inputId} errorId={`${inputId}-errors`} label={field.label} required={false} errors={[]}>
-                {renderInput(registry, control, quick[field.id], { inputId, invalid: false }, (v) => {
+          {quickFields.map((field) =>
+            isRangeFilter(field) ? (
+              RANGE_ENDS.map(({ end, word }) => {
+                const control = { ...filterControl(field), label: `${field.label} ${word}` };
+                const key = rangeKey(end, field.id);
+                const inputId = `${tableId}-filter-${field.id}-${end}`;
+                return (
+                  <FieldFrame key={key} inputId={inputId} errorId={`${inputId}-errors`} label={control.label} required={false} errors={[]}>
+                    {renderInput(registry, control, quick[key], { inputId, invalid: false }, (v) => {
+                      setQuick((q) => ({ ...q, [key]: v ?? null }));
+                      setPage(0);
+                    })}
+                  </FieldFrame>
+                );
+              })
+            ) : (
+              <FieldFrame key={field.id} inputId={`${tableId}-filter-${field.id}`} errorId={`${tableId}-filter-${field.id}-errors`} label={field.label} required={false} errors={[]}>
+                {renderInput(registry, filterControl(field), quick[field.id], { inputId: `${tableId}-filter-${field.id}`, invalid: false }, (v) => {
                   setQuick((q) => ({ ...q, [field.id]: v ?? null }));
                   setPage(0);
                 })}
               </FieldFrame>
-            );
-          })}
+            ),
+          )}
         </Section>
       )}
       <Table
@@ -203,6 +217,17 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
 
 const BOOLEAN_CHOICES = ["Yes", "No"];
 
+/** Number and date fields filter as a from/to range; the other types match one value. */
+const isRangeFilter = (field: Field): boolean => field.type === "number" || field.type === "date";
+
+const RANGE_ENDS = [
+  { end: "from", word: "from", op: "gte" },
+  { end: "to", word: "to", op: "lte" },
+] as const;
+
+/** Where a range end is kept among the quick values. A colon can never be in a field id, so it cannot collide with one. */
+const rangeKey = (end: "from" | "to", fieldId: string): string => `${end}:${fieldId}`;
+
 /** The control a quick filter shows: the field itself (never required), or Yes/No for a checkbox. */
 function filterControl(field: Field): Field {
   if (field.type === "boolean") return { id: field.id, type: "select", label: field.label, options: { source: "static", values: BOOLEAN_CHOICES } };
@@ -214,6 +239,14 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
   const parts: Condition[] = view.filter ? [view.filter] : [];
   for (const { field: id } of view.quickFilters ?? []) {
     const field = entity.fields.find((f) => f.id === id);
+    if (field && isRangeFilter(field)) {
+      // A range filter is a from and a to bound; either end may stay empty.
+      for (const { end, op } of RANGE_ENDS) {
+        const bound = quick[rangeKey(end, id)];
+        if ((field.type === "number" && typeof bound === "number") || (field.type === "date" && typeof bound === "string" && bound !== "")) parts.push({ op, field: id, value: bound });
+      }
+      continue;
+    }
     const value = quick[id];
     if (!field || value === undefined || value === null || value === "") continue;
     // An untouched checkbox is never saved, so "No" also matches a missing value.
@@ -223,21 +256,4 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
     else if (typeof value === "string") parts.push({ op: "eq", field: id, value });
   }
   return parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { op: "and", conditions: parts };
-}
-
-/** Quick filters work for select, boolean and text fields only (for now). */
-function checkQuickFilters(entity: EntityDocument, view: TableView) {
-  return (view.quickFilters ?? []).flatMap((f, i) => {
-    const field = entity.fields.find((x) => x.id === f.field);
-    return field && !["select", "boolean", "text"].includes(field.type)
-      ? [
-          {
-            path: jsonPointer(["quickFilters", i, "field"]),
-            code: "invalid-value" as const,
-            message: `Quick filters do not support ${field.type} fields yet ("${field.id}").`,
-            hint: "Use a select, boolean or text field, or a fixed filter on the view.",
-          },
-        ]
-      : [];
-  });
 }

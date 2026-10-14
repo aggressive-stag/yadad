@@ -108,19 +108,3 @@ describe("table filters", () => {
     await waitFor(() => expect(notes()).toEqual(["top set", "Top set, paused"]));
   });
 });
-
-test("quick filters on unsupported field types are reported", () => {
-  const view: TableView = {
-    kind: "table",
-    specVersion: 0,
-    id: "t",
-    entity: "set",
-    revision: 1,
-    dataSource: "default",
-    columns: [{ field: "notes" }],
-    quickFilters: [{ field: "notes" }],
-  };
-  const withNumber: EntityDocument = { ...entity, fields: [...entity.fields.filter((f) => f.id !== "notes"), { id: "notes", type: "number", label: "Notes" }] };
-  render(<TableRenderer entity={withNumber} view={view} registry={mockRegistry} dataSources={new Map([["default", createMemoryAdapter()]])} />);
-  expect(screen.getByTestId("error-summary").textContent).toContain("do not support number fields");
-});
