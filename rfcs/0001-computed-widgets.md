@@ -2,7 +2,7 @@
 
 - Status: Draft, needs owner decision
 - Touches: `core` (document types, validator, `describeContract`), `runtime` (aggregation, adapters), `renderer` (dashboard), `editor` (widget panel), `docs/records-protocol.md` (optional endpoint), registry contract (`widgets`)
-- Bumps `specVersion` (0 to 1) with a `migrate()` step and a before/after fixture pair.
+- Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
 ## Summary
 
@@ -90,7 +90,7 @@ Recommendation: ship option 1 and specify option 2 in `records-protocol.md` as o
 - No escape hatches: no index signatures or props bags; every property is validated; registry keys only (`stat`, `series`); no component names or paths.
 - Documents are the contract: behavior changes through widget types, validator, then runtime and renderer. No special cases in components.
 - `core` stays free of I/O and React; aggregation sits in `runtime`.
-- `specVersion` 0 to 1, `migrate(0 to 1)` is the identity for existing documents (the change is additive), plus before/after fixtures and valid/invalid fixtures for each widget and measure op.
+- `specVersion` bump; `migrate()` is the identity for existing documents (the change is additive), plus before/after fixtures and valid/invalid fixtures for each widget and measure op.
 
 ## Alternatives considered
 

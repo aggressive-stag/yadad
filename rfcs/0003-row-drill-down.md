@@ -2,7 +2,7 @@
 
 - Status: Draft, needs owner decision
 - Touches: `core` (table view, validator), `runtime` (binding to filter), `renderer` (table, dashboard, navigation), `editor` (table panel), registry contract (maybe one `layout` key)
-- Bumps `specVersion` (0 to 1) with a `migrate()` step and a before/after fixture pair.
+- Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
 ## Summary
 
@@ -70,7 +70,7 @@ None. The target's filter is an ordinary `Condition`, sent through the existing 
 - No string expressions and no formula: bindings are `{field, to}` pairs; the filter is the existing AST.
 - No escape hatches: no params bag, no templated URLs; one closed shape. Registry keys only; a view id is an id, not a path or component name.
 - Documents stay the contract and stay static: the runtime computes a derived filter at open time; nothing is written to the document.
-- `core` gains one optional table property and its validation, so `specVersion` 0 to 1, identity `migrate()` (additive), before/after fixtures, valid and invalid fixtures (unknown view, field mismatch, cycle, depth, form target without `edit`).
+- `core` gains one optional table property and its validation, so a `specVersion` bump, identity `migrate()` (additive), before/after fixtures, valid and invalid fixtures (unknown view, field mismatch, cycle, depth, form target without `edit`).
 - Dependency direction preserved: types and validation in `core`; `bindFilter` in `runtime`; navigation state in `renderer`.
 
 ## Alternatives considered

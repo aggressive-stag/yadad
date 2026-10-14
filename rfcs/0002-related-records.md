@@ -2,7 +2,7 @@
 
 - Status: Draft, needs owner decision
 - Touches: `core` (field type, form item, validator, `DataAdapter`), `runtime` (form state, adapters), `renderer` (form), `editor`, `docs/records-protocol.md` (new endpoint), registry contract (`fields`)
-- Bumps `specVersion` (0 to 1) with a `migrate()` step and a before/after fixture pair.
+- Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
 ## Summary
 
@@ -93,7 +93,7 @@ type TransactionStep = {
 - No escape hatches: `reference` and `repeat` are closed, discriminated, validated; `refs` is data, not an expression. Registry keys only (`reference` field type); no component names.
 - Documents are the contract: relationships live in the entity (`reference`) and the view (`repeat`); the runtime and renderer follow. Nothing special-cased in components.
 - Dependency direction: types and validation in `core`, form tree and the transaction fallback in `runtime`, UI in `renderer`/`editor`.
-- `core` public API grows (`reference` field, `repeat` item, `transaction?`), so: `specVersion` 0 to 1, a `migrate()` step (identity for existing documents; existing items get implicit `kind: "field"` or the validator accepts the absent discriminant), before/after fixtures, valid and invalid fixtures for each new shape.
+- `core` public API grows (`reference` field, `repeat` item, `transaction?`), so: `specVersion` bump, a `migrate()` step (identity for existing documents; existing items get implicit `kind: "field"` or the validator accepts the absent discriminant), before/after fixtures, valid and invalid fixtures for each new shape.
 - Record values stay flat scalars on the wire. Nothing nests inside a record.
 
 ## Alternatives considered
