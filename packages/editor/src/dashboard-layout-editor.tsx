@@ -1,4 +1,5 @@
-import type { DashboardView, EntityDocument, GridItem, Registry, ViewDocument } from "@yadad/core";
+import { MEASURE_FIELD_TYPES, MEASURE_OPS } from "@yadad/core";
+import type { DashboardView, EntityDocument, GridItem, Measure, MeasureOp, Registry, ViewDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
@@ -9,7 +10,7 @@ import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
-import { setCountWidgetFilter } from "./views.js";
+import { measureFor, setCountWidgetFilter, setStatMeasure } from "./views.js";
 
 export interface DashboardLayoutEditorProps {
   readonly dashboard: DashboardView;
@@ -19,7 +20,7 @@ export interface DashboardLayoutEditorProps {
   readonly onCancel: () => void;
   /** A readable name for a view widget's view, e.g. its title. Defaults to the view id. */
   readonly describeView?: (viewId: string) => string;
-  /** Views that can be added as widgets: forms and tables embed, tables can also be counted. */
+  /** Views that can be added as widgets: forms and tables embed, tables can also be counted and summarised as a stat. */
   readonly views?: readonly ViewDocument[];
   /** The documents' entities, so a count widget's filter can be edited against its table's entity. */
   readonly entities?: ReadonlyMap<string, EntityDocument>;
@@ -34,13 +35,21 @@ interface PaletteEntry {
   readonly h: number;
 }
 
-function palette(views: readonly ViewDocument[], describeView: (viewId: string) => string): PaletteEntry[] {
+function palette(views: readonly ViewDocument[], describeView: (viewId: string) => string, entities: ReadonlyMap<string, EntityDocument> | undefined): PaletteEntry[] {
   return views.flatMap((v): PaletteEntry[] => {
     if (v.kind === "form") return [{ label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 }];
     if (v.kind === "table") {
       return [
         { label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 },
         { label: `Count of ${describeView(v.id)}`, base: `${v.id}_count`, widget: { widget: "count", label: v.title ?? v.id, view: v.id }, w: 3, h: 2 },
+        // A stat starts as the total of the first number field (or a count); the card's controls change it.
+        {
+          label: `Stat of ${describeView(v.id)}`,
+          base: `${v.id}_stat`,
+          widget: { widget: "stat", label: v.title ?? v.id, view: v.id, measure: (entities?.get(v.entity) && measureFor(entities.get(v.entity)!, "sum")) || { op: "count" } },
+          w: 3,
+          h: 2,
+        },
       ];
     }
     return [];
@@ -62,7 +71,13 @@ interface Drag {
 }
 
 const DEFAULT_COLUMNS = 12;
+const NO_SECOND_FIELD = "(none)";
 const KEY_STEPS: Readonly<Record<string, readonly [number, number]>> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+function describeMeasure(m: Measure, label: (fieldId: string) => string): string {
+  if (m.op === "count") return "the number of records";
+  return "product" in m ? `${m.op} of ${label(m.product[0])} times ${label(m.product[1])}` : `${m.op} of ${label(m.field)}`;
+}
 
 /**
  * Rearranges a dashboard's grid. Drag a card to move it, drag its corner to
@@ -86,10 +101,12 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
   const tab = current.tabs.find((t) => t.id === selected) ?? current.tabs[0];
   if (!tab) return null;
   const columns = tab.columns ?? DEFAULT_COLUMNS;
-  const entries = palette(views, describeView);
+  const entries = palette(views, describeView, entities);
   const entry = entries.find((e) => e.label === choice) ?? entries[0];
 
-  const name = (item: GridItem) => (item.widget === "count" ? `Count: ${item.label}` : describeView(item.view));
+  const name = (item: GridItem) => (item.widget === "count" ? `Count: ${item.label}` : item.widget === "stat" ? `Stat: ${item.label}` : describeView(item.view));
+  const noun = (item: GridItem) => (item.widget === "stat" ? "stat" : "count");
+  const Noun = (item: GridItem) => (item.widget === "stat" ? "Stat" : "Count");
   const where = (b: Box) => `column ${b.x + 1}, row ${b.y + 1}, ${b.w} wide, ${b.h} tall`;
 
   /** Applies a move or resize; says what happened or why it was refused. */
@@ -117,18 +134,18 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
   const [rawCountFilter, setCountFilter] = useState<{ readonly tabId: string; readonly id: string; readonly draft: ConditionDraft | undefined } | undefined>(undefined);
   const countFilter = rawCountFilter?.tabId === tab.id ? rawCountFilter : undefined;
   const countEntityOf = (item: GridItem): EntityDocument | undefined => {
-    if (item.widget !== "count") return undefined;
+    if (item.widget !== "count" && item.widget !== "stat") return undefined;
     const view = views.find((v) => v.id === item.view);
     return view && view.kind === "table" ? entities?.get(view.entity) : undefined;
   };
   const openCountFilter = (item: GridItem) => {
-    if (item.widget !== "count") return;
+    if (item.widget !== "count" && item.widget !== "stat") return;
     const entity = countEntityOf(item);
     if (!entity) return;
     setCountFilter((open) => (open && open.tabId === tab.id && open.id === item.id ? undefined : { tabId: tab.id, id: item.id, draft: draftFor(entity, item.filter) }));
   };
   const applyCountFilter = (item: GridItem) => {
-    if (item.widget !== "count" || !countFilter || countFilter.id !== item.id) return;
+    if ((item.widget !== "count" && item.widget !== "stat") || !countFilter || countFilter.id !== item.id) return;
     const entity = countEntityOf(item);
     if (!entity) return;
     const built = builtOf(countFilter.draft);
@@ -136,16 +153,43 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
     const result = setCountWidgetFilter(current, tab.id, item.id, built);
     if (!Array.isArray(result) && !result.ok) return;
     const patch = Array.isArray(result) ? result : result.patch;
-    change(patch, built === undefined ? "Count filter cleared." : `Count now matches: ${describeCondition(built, labelOf(entity))}.`, () => setCountFilter(undefined));
+    change(patch, built === undefined ? `${Noun(item)} filter cleared.` : `${Noun(item)} now matches: ${describeCondition(built, labelOf(entity))}.`, () => setCountFilter(undefined));
   };
   const removeCountFilter = (item: GridItem) => {
-    if (item.widget !== "count") return;
+    if (item.widget !== "count" && item.widget !== "stat") return;
     const result = setCountWidgetFilter(current, tab.id, item.id, undefined);
     if (!Array.isArray(result) && !result.ok) return;
     const patch = Array.isArray(result) ? result : result.patch;
-    change(patch, "Count filter cleared.", () => setCountFilter(undefined));
+    change(patch, `${Noun(item)} filter cleared.`, () => setCountFilter(undefined));
   };
   const labelOf = (entity: EntityDocument) => (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
+
+  /** Op, field and (for sum and avg) a second field to multiply by. Each change patches the stat's measure. */
+  const measureControls = (item: GridItem, entity: EntityDocument): ReactNode => {
+    if (item.widget !== "stat") return null;
+    const m = item.measure;
+    const field = m.op === "count" ? undefined : "product" in m ? m.product[0] : m.field;
+    const times = m.op !== "count" && "product" in m ? m.product[1] : undefined;
+    const set = (op: MeasureOp, f: string | undefined, t: string | undefined) => {
+      const next: Measure | undefined = measureFor(entity, op, f, t);
+      if (!next) return setStatus(`Not changed: ${entity.id} has no ${MEASURE_FIELD_TYPES[op].join(" or ")} field for "${op}".`);
+      const result = setStatMeasure(current, tab.id, item.id, next);
+      if (!result.ok) return setStatus(`Not changed: ${result.error.message}`);
+      change(result.patch, `${name(item)} now shows ${describeMeasure(next, labelOf(entity))}.`);
+    };
+    const pick = (id: string, label: string, choices: readonly string[], value: string | undefined, onChange: (v: string | undefined) => void) => (
+      <span style={{ display: "block" }}>{propertyInput(registry, `${base}-${item.id}-${id}`, choiceField(`${base}-${item.id}-${id}`, label, choices), value, (v) => onChange(asText(v)))}</span>
+    );
+    const accepted = m.op === "count" ? [] : entity.fields.filter((f) => MEASURE_FIELD_TYPES[m.op].includes(f.type)).map((f) => f.id);
+    const numbers = entity.fields.filter((f) => f.type === "number").map((f) => f.id);
+    return (
+      <>
+        {pick("op", `Measure of ${item.label}`, MEASURE_OPS, m.op, (v) => v !== undefined && set(v as MeasureOp, field, times))}
+        {m.op !== "count" && pick("field", `Field of ${item.label}`, accepted, field, (v) => set(m.op, v, times))}
+        {(m.op === "sum" || m.op === "avg") && pick("times", `Times (optional) of ${item.label}`, [NO_SECOND_FIELD, ...numbers.filter((id) => id !== field)], times ?? NO_SECOND_FIELD, (v) => set(m.op, field, v === NO_SECOND_FIELD ? undefined : v))}
+      </>
+    );
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, item: GridItem) => {
     if (event.key === "Delete" || event.key === "Backspace") {
@@ -251,35 +295,40 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
               <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                 <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                   <Button label={`Remove ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => remove(item)} />
-                  {item.widget === "count" && countEntityOf(item) !== undefined && (
+                  {(item.widget === "count" || item.widget === "stat") && countEntityOf(item) !== undefined && (
                     <Button
-                      label={item.filter !== undefined ? `Edit the count filter of ${name(item)}` : `Filter the count of ${name(item)}`}
+                      label={item.filter !== undefined ? `Edit the ${noun(item)} filter of ${name(item)}` : `Filter the ${noun(item)} of ${name(item)}`}
                       type="button"
                       variant="secondary"
                       disabled={false}
                       onPress={() => openCountFilter(item)}
                     />
                   )}
-                  {item.widget === "count" && item.filter !== undefined && (
-                    <Button label={`Remove the count filter of ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => removeCountFilter(item)} />
+                  {(item.widget === "count" || item.widget === "stat") && item.filter !== undefined && (
+                    <Button label={`Remove the ${noun(item)} filter of ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => removeCountFilter(item)} />
                   )}
                 </span>
               </span>
-              {item.widget === "count" && item.filter !== undefined && countEntityOf(item) !== undefined && (
+              {item.widget === "stat" && countEntityOf(item) !== undefined && (
+                <span onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} data-yadad-stat-measure="" style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                  {measureControls(item, countEntityOf(item)!)}
+                </span>
+              )}
+              {(item.widget === "count" || item.widget === "stat") && item.filter !== undefined && countEntityOf(item) !== undefined && (
                 <p style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
-                  Count now matches: {describeCondition(item.filter, labelOf(countEntityOf(item)!))}.
+                  {Noun(item)} now matches: {describeCondition(item.filter, labelOf(countEntityOf(item)!))}.
                 </p>
               )}
-              {item.widget === "count" && countFilter?.id === item.id && (
+              {(item.widget === "count" || item.widget === "stat") && countFilter?.id === item.id && (
                 <div data-yadad-count-filter-builder="" style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                   {(() => {
                     const entity = countEntityOf(item);
-                    if (!entity) return <p>The table behind this count could not be found; its filter cannot be edited here.</p>;
+                    if (!entity) return <p>The table behind this {noun(item)} could not be found; its filter cannot be edited here.</p>;
                     return (
                       <>
                         <ConditionBuilder
                           id={`${base}-count-${item.id}`}
-                          label="the count"
+                          label={`the ${noun(item)}`}
                           registry={registry}
                           entity={entity}
                           draft={countFilter.draft}
@@ -289,13 +338,13 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
                         />
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                           <Button
-                            label="Apply the count filter"
+                            label={`Apply the ${noun(item)} filter`}
                             type="button"
                             variant="primary"
                             disabled={builtOf(countFilter.draft) === undefined || JSON.stringify(builtOf(countFilter.draft)) === JSON.stringify(item.filter)}
                             onPress={() => applyCountFilter(item)}
                           />
-                          <Button label="Cancel the count filter" type="button" variant="secondary" disabled={false} onPress={() => setCountFilter(undefined)} />
+                          <Button label={`Cancel the ${noun(item)} filter`} type="button" variant="secondary" disabled={false} onPress={() => setCountFilter(undefined)} />
                         </div>
                       </>
                     );

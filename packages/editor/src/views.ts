@@ -1,5 +1,5 @@
-import { jsonPointer } from "@yadad/core";
-import type { Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, SortSpec, TableView } from "@yadad/core";
+import { MEASURE_FIELD_TYPES, jsonPointer } from "@yadad/core";
+import type { Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, SortSpec, TableView } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -283,13 +283,52 @@ export function setTableFilter(view: TableView, condition: Condition | undefined
   return ok(setOptional(view.filter !== undefined, "/filter", condition as unknown as Json | undefined));
 }
 
-/** Sets or clears a count widget's filter. The widget's table keeps its own fixed filter. */
+/** Sets or clears the filter of a count or stat widget. The widget's table keeps its own fixed filter. */
 export function setCountWidgetFilter(view: DashboardView, tabId: string, itemId: string, condition: Condition | undefined): Result {
-  const t = view.tabs.findIndex((tab) => tab.id === tabId);
-  if (t < 0) return fail(["tabs"], `No tab "${tabId}".`, "Pick an existing tab.");
-  const i = view.tabs[t]?.items.findIndex((item) => item.id === itemId) ?? -1;
-  if (i < 0) return fail(["tabs", t], `No widget "${itemId}" on this tab.`, "Pick a widget on this tab.");
-  if (view.tabs[t]?.items[i]?.widget !== "count") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a count.`, "Counts have filters; views are embedded as-is.");
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "count" && item.widget !== "stat") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a count or a stat.`, "Counts and stats have filters; views are embedded as-is.");
   const path = `/tabs/${t}/items/${i}/filter`;
-  return ok([{ op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId }, ...setOptional(view.tabs[t]?.items[i]?.filter !== undefined, path, condition as unknown as Json | undefined)]);
+  return ok([{ op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId }, ...setOptional(item.filter !== undefined, path, condition as unknown as Json | undefined)]);
+}
+
+/** Replaces a stat widget's measure. */
+export function setStatMeasure(view: DashboardView, tabId: string, itemId: string, measure: Measure): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "stat") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a stat.`, "Only stat widgets have a measure.");
+  return ok([
+    { op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId },
+    { op: "replace", path: `/tabs/${t}/items/${i}/measure`, value: measure as unknown as Json },
+  ]);
+}
+
+/**
+ * A measure for `op` over the entity's fields: `field` if it fits the op, else
+ * the first field that does; for sum and avg, `times` (a number field) makes
+ * it a product. undefined when the entity has no field the op accepts.
+ */
+export function measureFor(entity: EntityDocument, op: MeasureOp, field?: string, times?: string): Measure | undefined {
+  if (op === "count") return { op };
+  const accepted = MEASURE_FIELD_TYPES[op];
+  const fits = (id: string | undefined) => entity.fields.find((f) => f.id === id && accepted.includes(f.type))?.id;
+  const first = fits(field) ?? entity.fields.find((f) => accepted.includes(f.type))?.id;
+  if (first === undefined) return undefined;
+  if (op === "sum" || op === "avg") {
+    const second = entity.fields.find((f) => f.id === times && f.type === "number")?.id;
+    if (second !== undefined) return { op, product: [first, second] };
+    return { op, field: first };
+  }
+  return { op, field: first };
+}
+
+function findWidget(view: DashboardView, tabId: string, itemId: string): { ok: true; t: number; i: number; item: GridItem } | { ok: false; result: Result } {
+  const t = view.tabs.findIndex((tab) => tab.id === tabId);
+  if (t < 0) return { ok: false, result: fail(["tabs"], `No tab "${tabId}".`, "Pick an existing tab.") };
+  const i = view.tabs[t]?.items.findIndex((item) => item.id === itemId) ?? -1;
+  const item = view.tabs[t]?.items[i];
+  if (!item) return { ok: false, result: fail(["tabs", t], `No widget "${itemId}" on this tab.`, "Pick a widget on this tab.") };
+  return { ok: true, t, i, item };
 }
