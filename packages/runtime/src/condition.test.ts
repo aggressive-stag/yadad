@@ -134,3 +134,13 @@ describe("relative dates", () => {
     expect(page.items.map((r) => r.values["day"])).toEqual([day]);
   });
 });
+
+describe("ordering comparisons and empty values", () => {
+  test("a blank string matches none of gt, gte, lt, lte", () => {
+    for (const op of ["gt", "gte", "lt", "lte"] as const) {
+      expect(evaluateCondition({ op, field: "due", value: "2026-10-15" }, { due: "" })).toBe(false);
+      expect(evaluateCondition({ op, field: "due", value: "2026-10-15" }, { due: null })).toBe(false);
+      expect(evaluateCondition({ op, field: "due", value: "2026-10-15" }, {})).toBe(false);
+    }
+  });
+});

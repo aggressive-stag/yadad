@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { BatchOperations, DataAdapter, Query, RecordValues } from "@yadad/core";
+import type { BatchOperations, Condition, DataAdapter, Query, RecordValues } from "@yadad/core";
 import {
   ForbiddenError,
   RecordConflictError,
@@ -15,7 +15,7 @@ import { createMemoryAdapter } from "./memory-adapter.js";
 import type { AdapterOptions } from "./memory-adapter.js";
 
 const ENTITY = "set";
-const FIELDS: AdapterOptions = { fields: { set: ["exercise", "weight", "reps"] } };
+const FIELDS: AdapterOptions = { fields: { set: ["exercise", "weight", "reps", "due"] } };
 const REVISION = 3;
 
 async function expectError(promise: Promise<unknown>): Promise<unknown> {
@@ -219,6 +219,29 @@ function runConformance(label: string, make: () => DataAdapter): void {
       const paged = await db.find(ENTITY, { page: { offset: 1, limit: 1 } });
       expect(paged.total).toBe(3);
       expect(paged.items).toHaveLength(1);
+    });
+
+    test("an empty date matches neither gte nor lte, so a date-range filter excludes undated records", async () => {
+      const db = make();
+      await db.create(ENTITY, { exercise: "Dated", due: "2026-10-15" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "Cleared", due: "2026-10-16" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "Blank", due: "" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "Missing" }, { entityRevision: REVISION });
+      const cleared = (await db.find(ENTITY, { filter: { op: "eq", field: "exercise", value: "Cleared" } })).items[0];
+      await db.update(ENTITY, cleared?.id ?? "", { due: null }, { entityRevision: REVISION, baseVersion: cleared?.version ?? "" });
+      const names = async (filter: Condition) => (await db.find(ENTITY, { filter })).items.map((r) => r.values["exercise"]).sort();
+      expect(await names({ op: "gte", field: "due", value: "0000-01-01" })).toEqual(["Dated"]);
+      expect(await names({ op: "lte", field: "due", value: "9999-12-31" })).toEqual(["Dated"]);
+      expect(
+        await names({
+          op: "and",
+          conditions: [
+            { op: "gte", field: "due", value: "2026-10-01" },
+            { op: "lte", field: "due", value: "2026-10-31" },
+          ],
+        }),
+      ).toEqual(["Dated"]);
+      expect(await names({ op: "empty", field: "due" })).toEqual(["Blank", "Cleared", "Missing"]);
     });
 
     test("find sorts by a field", async () => {

@@ -3,8 +3,9 @@ import type { ComparisonValue, Condition, EntityDocument, FieldValue, FormView, 
 
 const isEmpty = (v: FieldValue | undefined): boolean => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
 
-/** Orders two values of the same type; undefined when they cannot be compared. */
+/** Orders two values of the same type; undefined when they cannot be compared or the first is empty. */
 function order(a: FieldValue | undefined, b: Scalar): number | undefined {
+  if (isEmpty(a)) return undefined; // an empty value (including blank text) is above and below nothing
   if (typeof a === "number" && typeof b === "number") return a - b;
   if (typeof a === "string" && typeof b === "string") return a < b ? -1 : a > b ? 1 : 0;
   return undefined;
