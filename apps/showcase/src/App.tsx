@@ -12,11 +12,12 @@ import entityHello from "../../../fixtures/valid/entity-hello.json?raw";
 import entityWorkoutSet from "../../../fixtures/valid/entity-workout-set.json?raw";
 import formHello from "../../../fixtures/valid/form-hello.json?raw";
 import formLogSet from "../../../fixtures/valid/form-log-set.json?raw";
+import tableExerciseHistory from "../../../fixtures/valid/table-exercise-history.json?raw";
 import tableSets from "../../../fixtures/valid/table-sets.json?raw";
 import { loadDocumentSet } from "./documents";
 
 /** The fixture documents, as raw JSON. Edit those files and the page follows. */
-export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, dashboardTraining, entityHello, formHello];
+export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
 
 /** Views rendered at the top level of the page, by id. */
 export const defaultRoots: readonly string[] = ["training", "hello_form"];
@@ -164,7 +165,7 @@ function viewEditor(mode: { readonly kind: "form" | "table"; readonly id: string
   const entity = view && view.kind !== "dashboard" ? documents.entities.get(view.entity) : undefined;
   if (!entity) return null;
   if (view?.kind === "form") return <FormViewEditor view={view} entity={entity} registry={registry} onSave={save} onCancel={close} />;
-  if (view?.kind === "table") return <TableViewEditor view={view} entity={entity} registry={registry} onSave={save} onCancel={close} />;
+  if (view?.kind === "table") return <TableViewEditor view={view} entity={entity} registry={registry} context={{ tables: [...documents.views.values()].filter((v): v is TableView => v.kind === "table"), entities: [...documents.entities.values()] }} onSave={save} onCancel={close} />;
   return null;
 }
 
@@ -225,6 +226,6 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
   return view.kind === "form" ? (
     <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} {...drafts} />
   ) : (
-    <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} />
+    <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} />
   );
 }
