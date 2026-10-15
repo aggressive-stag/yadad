@@ -6,6 +6,6 @@ Files are `NNNN-short-name.md`. Each carries a `Status:` line (Draft, Accepted, 
 
 | RFC | Summary | Status |
 | --- | --- | --- |
-| [0001 Computed widgets](0001-computed-widgets.md) | Dashboard `stat` and `series` widgets that compute sums, distinct counts, min/max and group-by series over a table view's records, rendered as a number, table, bar or line | Draft, needs owner decision |
-| [0002 Related records](0002-related-records.md) | A `reference` field type, a repeating group in forms, and an all-or-nothing transaction that creates a parent and its children with the new parent id | Draft, needs owner decision |
-| [0003 Row drill-down](0003-row-drill-down.md) | A table `rowAction` that opens another view (or an edit form) scoped to the clicked row through typed field bindings | Draft, needs owner decision |
+| [0001 Computed widgets](0001-computed-widgets.md) | Dashboard `stat` and `series` widgets that compute sums, distinct counts, min/max and group-by series over a table view's records, rendered as a number, table, bar or line | Accepted (slice 1 in progress) |
+| [0002 Related records](0002-related-records.md) | A `reference` field type, a repeating group in forms, and an all-or-nothing transaction that creates a parent and its children with the new parent id | Accepted (slice 1 in progress) |
+| [0003 Row drill-down](0003-row-drill-down.md) | A table `rowAction` that opens another view (or an edit form) scoped to the clicked row through typed field bindings | Accepted (slice 1 in progress) |

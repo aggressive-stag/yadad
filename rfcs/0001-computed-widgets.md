@@ -1,6 +1,6 @@
 # RFC 0001: Computed dashboard widgets
 
-- Status: Draft, needs owner decision
+- Status: Accepted (slice 1 in progress)
 - Touches: `core` (document types, validator, `describeContract`), `runtime` (aggregation, adapters), `renderer` (dashboard), `editor` (widget panel), `docs/records-protocol.md` (optional endpoint), registry contract (`widgets`)
 - Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
@@ -107,6 +107,18 @@ Recommendation: ship option 1 and specify option 2 in `records-protocol.md` as o
 3. **Slice 3 (optional):** `_aggregate` endpoint and `aggregate?` adapter method; date `bucket`.
 
 Where I would stop: one group key, no formulas beyond the product pair, no multi-series charts, no derived-from-aggregate values (such as an estimated one-rep max, which needs a per-record formula). A host that needs those should compute them in its backend and expose the result as a field.
+
+## Decision (2026-10-15)
+
+Accepted; slice 1 is being implemented.
+
+1. The pairwise `product` is accepted; no `computed` field design first.
+2. Client-side aggregation with the 5000-record ceiling and a "partial" notice is fine for slice 1; `_aggregate` comes later if needed.
+3. Two widgets: `stat` and `series`.
+4. Date bucketing comes later, not in the first `series` slice.
+5. The components repo draws charts; the engine stays chart-free.
+
+Slice 1 renders `stat` through the existing count display registry component (a labelled number) rather than a new registry key, unless that component cannot show a formatted decimal.
 
 ## Open questions for the owner
 

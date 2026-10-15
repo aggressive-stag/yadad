@@ -1,6 +1,6 @@
 # RFC 0003: Row drill-down
 
-- Status: Draft, needs owner decision
+- Status: Accepted (slice 1 in progress)
 - Touches: `core` (table view, validator), `runtime` (binding to filter), `renderer` (table, dashboard, navigation), `editor` (table panel), registry contract (maybe one `layout` key)
 - Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
@@ -87,6 +87,16 @@ None. The target's filter is an ordinary `Condition`, sent through the existing 
 3. **Later:** dashboard-in-cell navigation polish; deep links via the host hook.
 
 Where I would stop: one hop at a time with fixed bindings, no parameters, no forms prefilled from the clicked row (creating a new child pre-filled with a reference is RFC 0002's territory), no drill into dashboards.
+
+## Decision (2026-10-15)
+
+Accepted; slice 1 is being implemented.
+
+1. Binding-based scoping is enough; no parameterized views.
+2. `replace` with Back only in slice 1; `dialog` later.
+3. The engine keeps a simple in-container back stack; the `onOpenView` host hook comes in slice 2.
+4. Form-edit is a separate feature, not part of this RFC's slice 1.
+5. Depth cap of 3 and no revisits.
 
 ## Open questions for the owner
 

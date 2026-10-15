@@ -1,6 +1,6 @@
 # RFC 0002: Creating related records together
 
-- Status: Draft, needs owner decision
+- Status: Accepted (slice 1 in progress)
 - Touches: `core` (field type, form item, validator, `DataAdapter`), `runtime` (form state, adapters), `renderer` (form), `editor`, `docs/records-protocol.md` (new endpoint), registry contract (`fields`)
 - Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
@@ -112,6 +112,16 @@ type TransactionStep = {
 4. **Slice 4:** nested repeats (depth 3), editing existing parent-with-children, table display of children.
 
 Where I would stop: no cascade deletes, no editing a tree in place in slice 3, no many-to-many, no computed rollups of children onto parents (see RFC 0001 for aggregation).
+
+## Decision (2026-10-15)
+
+Accepted; slice 1 (the `reference` field alone) is being implemented.
+
+1. `reference` plus `repeat` is the right level.
+2. One repeat level (parent plus children) when `repeat` lands.
+3. Deferred to slice 3.
+4. An explicit `display` field id, defaulting to the target entity's first text field.
+5. The server enforces references; the client only offers existing records in the picker.
 
 ## Open questions for the owner
 
