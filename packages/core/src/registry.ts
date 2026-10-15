@@ -82,12 +82,12 @@ export interface ReferenceInputExtras {
 
 /**
  * Props a reference Display gets besides the common ones. `label` is the text
- * to show: the referenced record's label, or its raw id while loading, or
- * "Unknown" when the record no longer exists.
+ * to show: the referenced record's label, its raw id while loading or when
+ * the lookup failed ("error"), or "Unknown" when the record no longer exists.
  */
 export interface ReferenceDisplayExtras {
   readonly label: string;
-  readonly status: "loading" | "found" | "missing";
+  readonly status: "loading" | "found" | "missing" | "error";
 }
 
 /** Extra Input props per field type; only reference has any. */
