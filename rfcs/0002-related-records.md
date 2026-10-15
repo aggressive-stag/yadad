@@ -1,6 +1,6 @@
 # RFC 0002: Creating related records together
 
-- Status: Accepted (slice 1 in progress)
+- Status: Accepted (slice 1 implemented)
 - Touches: `core` (field type, form item, validator, `DataAdapter`), `runtime` (form state, adapters), `renderer` (form), `editor`, `docs/records-protocol.md` (new endpoint), registry contract (`fields`)
 - Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
@@ -115,7 +115,7 @@ Where I would stop: no cascade deletes, no editing a tree in place in slice 3, n
 
 ## Decision (2026-10-15)
 
-Accepted; slice 1 (the `reference` field alone) is being implemented.
+Accepted; slice 1 (the `reference` field alone) is implemented.
 
 1. `reference` plus `repeat` is the right level.
 2. One repeat level (parent plus children) when `repeat` lands.
