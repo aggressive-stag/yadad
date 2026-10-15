@@ -146,7 +146,7 @@ Rules:
 | --- | --- | --- |
 | Question | Is this entity/view well-formed? | Is this record valid for its entity? |
 | Lives in | `core` | `runtime` |
-| How | Shape per document, written in `core` against the TS types. Across a set, `validateDocuments`: referential checks (the view's entity exists, field ids exist on that entity, widgets point at existing views) | Hand-written per field type in `runtime` for now; the entity will compile to standard JSON Schema instead, so a backend can validate against the same schema |
+| How | Shape per document, written in `core` against the TS types. Across a set, `validateDocuments`: referential checks (the view's entity exists, field ids exist on that entity, widgets point at existing views) | `validateRecord` in `runtime`, hand-written per field type (readable messages for forms). `recordJsonSchema(entity)` in `core` compiles the entity to standard JSON Schema (draft 2020-12), so a backend validates with any off-the-shelf validator; a parity test proves the two agree, and the few known differences are listed in `docs/records-protocol.md`. `pnpm record-schema <entity.json>` prints the schema |
 | Constraints | n/a | `required`, `min`, `max` (and `step` for numbers) live on the entity. Views may only make rules stricter, never looser. |
 
 Error format everywhere: `{ path, code, message, hint }`, where `path` is a JSON Pointer. Messages must be readable by a person and actionable by an agent. A set's errors also name the document they belong to (`DocumentError.document`) and, where a value must be one of a known set, the accepted alternatives (`DocumentError.allowed`).

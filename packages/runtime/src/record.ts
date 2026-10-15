@@ -2,8 +2,11 @@ import { isIsoDate, jsonPointer } from "@yadad/core";
 import type { DocumentError, EntityDocument, Field, FieldValue, RecordValues } from "@yadad/core";
 
 /**
- * Checks record values against their entity. Hand-written per field type for
- * now; the contract will compile the entity to JSON Schema instead.
+ * Checks record values against their entity, for forms and adapters. A backend
+ * validates the same records with `recordJsonSchema(entity)` from @yadad/core,
+ * a standard JSON Schema. record-schema.test.ts proves the two agree, apart
+ * from the differences listed in docs/records-protocol.md: change a rule here
+ * and there together.
  * Paths are JSON Pointers into the values object ("/weight").
  */
 export function validateRecord(entity: EntityDocument, values: RecordValues): readonly DocumentError[] {

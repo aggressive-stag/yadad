@@ -27,6 +27,35 @@ It is pre-contract like the documents: it can still change before `contract-v0`,
 - `entityRevision` is a schema stamp, not concurrency control: old records are upcast on read. A write carries the revision the client built its `values` against, and the server stamps it on the saved record. A server never rejects a write because the request's `entityRevision` is older or newer than its own current one: it judges the `values` by its own rules, so a field it does not know is a `400` (unknown field) and everything else is accepted. The stamp is the only thing the revision changes.
 - `version` is concurrency control. The client sends it back as `baseVersion` on writes; the server rejects the write if the record changed since. It must change on every write that changes the record, so two writes close together never share one. Its format is the server's business (a counter, a hash, or a timestamp fine-grained enough for that). Several records may share a version if the server stores them together; a write to any of them changes all of their versions.
 
+## Validating records on the server
+
+Do not re-implement the field rules. Generate a JSON Schema (draft 2020-12) from the entity document and validate each write's `values` against it. In JavaScript, `recordJsonSchema(entity)` from `@yadad/core` returns it. Without JavaScript in the backend's runtime, generate the files at build time from the repository:
+
+```sh
+node tools/record-schema.mjs entities/set.json > schemas/set.schema.json   # or: pnpm record-schema entities/set.json
+```
+
+Then, for example in Python with `jsonschema` (install `jsonschema[format]` for the `date` format check):
+
+```python
+import json
+from jsonschema import Draft202012Validator, FormatChecker
+validator = Draft202012Validator(json.load(open("schemas/set.schema.json")), format_checker=FormatChecker())
+errors = list(validator.iter_errors(request_values))  # empty list means valid
+```
+
+Regenerate the schema whenever the entity changes revision.
+
+What the schema says: one property per field; `additionalProperties: false` (unknown field); `required` lists required fields; optional fields also accept `null`; a required boolean must be `true`; a required text or reference field must not be blank; a select is an `enum`; a number has `minimum`/`maximum`; a date is a `YYYY-MM-DD` string within `min`/`max`.
+
+### Where the schema and `validateRecord` differ
+
+`validateRecord` (the browser check) is checked against the schema by a parity test that fails when one changes without the other. These cases are the known, deliberate differences:
+
+- **Blank strings.** `validateRecord` treats `""` and whitespace-only strings as empty for every field type. The protocol says empty is `null`, so the schema rejects `""` for number, boolean, select and date fields (text and reference fields are strings, so an optional one accepts it). A server should reject them too.
+- **Step.** JSON Schema `multipleOf` counts from zero and divides in floating point. The schema emits it only when that is exact (the step is a binary fraction such as 1, 0.5 or 0.25, and `min` is a multiple of it). Otherwise (a step like 0.1, or a `min` that is not a multiple of the step) the rule is only described in the field's `description` and the server must check it itself, counting steps from `min`. Even when emitted, `validateRecord` forgives a float error of 1e-9 that `multipleOf` does not.
+- **Calendar dates.** The schema checks the `YYYY-MM-DD` shape and the `min`/`max` range exactly (as patterns), but `2026-02-30` is rejected only by a validator that asserts the `date` format (most do, when format checking is enabled).
+
 ## Endpoints
 
 | Method and path | Body | Success |
