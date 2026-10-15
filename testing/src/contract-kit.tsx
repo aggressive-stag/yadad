@@ -6,7 +6,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FIELD_TYPES } from "@yadad/core";
-import type { DocumentError, FieldDefinitions, FieldType, FieldValueTypes, Registry } from "@yadad/core";
+import type { DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -16,19 +16,67 @@ import { describe, expect, test } from "vitest";
 export interface FieldSample<K extends FieldType> {
   readonly field: FieldDefinitions[K];
   readonly value: FieldValueTypes[K];
+  /** Extra props the Input needs (a reference picker's options). */
+  readonly inputExtras: FieldInputExtras[K];
+  /** Extra props the Display needs (a reference's label). */
+  readonly displayExtras: FieldDisplayExtras[K];
+  /** Text Display must show for `value`, when it is not the value itself (a reference shows its label). */
+  readonly shown?: string;
+}
+
+const NONE = {};
+
+/** Props plus a field type's extras, as one object (spreading generic types directly confuses the compiler). */
+function withExtras<B extends object, E extends object>(base: B, extras: E): B & E {
+  return Object.assign({}, base, extras);
+}
+
+/**
+ * Renders `component` with `props`. The compiler cannot check JSX on a generic
+ * component type, so this calls it as a function inside its own render, which
+ * is the same thing for React (the component's hooks belong to this host).
+ */
+function Host<P>({ component, props }: { readonly component: (props: P) => ReactNode; readonly props: P }): ReactNode {
+  return component(props);
+}
+
+function displayProps<K extends FieldType>(base: DisplayProps<FieldDefinitions[K], FieldValueTypes[K]>, extras: FieldDisplayExtras[K]): FieldDisplayProps<K> {
+  return withExtras(base, extras);
+}
+
+function inputProps<K extends FieldType>(base: InputProps<FieldDefinitions[K], FieldValueTypes[K]>, extras: FieldInputExtras[K]): FieldInputProps<K> {
+  return withExtras(base, extras);
 }
 
 export type FieldSamples = { readonly [K in FieldType]: FieldSample<K> };
 
 export const defaultSamples: FieldSamples = {
-  text: { field: { id: "name", type: "text", label: "Name", required: true }, value: "Ada" },
-  number: { field: { id: "weight", type: "number", label: "Weight", min: 0, step: 2.5, unit: "kg" }, value: 102.5 },
-  boolean: { field: { id: "warmup", type: "boolean", label: "Warm-up set" }, value: true },
+  text: { field: { id: "name", type: "text", label: "Name", required: true }, value: "Ada", inputExtras: NONE, displayExtras: NONE },
+  number: { field: { id: "weight", type: "number", label: "Weight", min: 0, step: 2.5, unit: "kg" }, value: 102.5, inputExtras: NONE, displayExtras: NONE },
+  boolean: { field: { id: "warmup", type: "boolean", label: "Warm-up set" }, value: true, inputExtras: NONE, displayExtras: NONE },
   select: {
     field: { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat", "Bench"] } },
     value: "Bench",
+    inputExtras: NONE,
+    displayExtras: NONE,
   },
-  date: { field: { id: "day", type: "date", label: "Day" }, value: "2026-10-04" },
+  date: { field: { id: "day", type: "date", label: "Day" }, value: "2026-10-04", inputExtras: NONE, displayExtras: NONE },
+  reference: {
+    field: { id: "lift", type: "reference", label: "Lift", entity: "exercise" },
+    value: "e2",
+    inputExtras: {
+      options: {
+        status: "ready",
+        options: [
+          { id: "e1", label: "Squat" },
+          { id: "e2", label: "Bench press" },
+        ],
+        more: false,
+      },
+    },
+    displayExtras: { label: "Bench press", status: "found" },
+    shown: "Bench press",
+  },
 };
 
 /** How to read and drive a control holding values of type V. */
@@ -63,6 +111,7 @@ const drivers: { readonly [K in FieldType]: Driver<FieldValueTypes[K]> } = {
   text: stringDriver,
   select: stringDriver,
   date: stringDriver,
+  reference: stringDriver,
   number: {
     jsonType: "number",
     cleared: undefined,
@@ -147,13 +196,19 @@ function fieldChecks<K extends FieldType>(
     const errors = props.errors ?? [];
     return render(
       <FieldFrame inputId={inputId} errorId={errorId} label={sample.field.label} required={sample.field.required === true} errors={errors}>
-        <Input
-          inputId={inputId}
-          field={sample.field}
-          value={props.value}
-          onChange={props.onChange ?? (() => {})}
-          invalid={errors.length > 0}
-          {...(errors.length > 0 ? { describedBy: errorId } : {})}
+        <Host
+          component={Input}
+          props={inputProps<K>(
+            {
+              inputId,
+              field: sample.field,
+              value: props.value,
+              onChange: props.onChange ?? (() => {}),
+              invalid: errors.length > 0,
+              ...(errors.length > 0 ? { describedBy: errorId } : {}),
+            },
+            sample.inputExtras,
+          )}
         />
       </FieldFrame>,
     );
@@ -251,7 +306,7 @@ function fieldChecks<K extends FieldType>(
       render(
         <div>
           <span id={labelId}>{sample.field.label}</span>
-          <Input inputId={inputId} field={sample.field} value={undefined} onChange={() => {}} invalid={false} labelledBy={labelId} />
+          <Host component={Input} props={inputProps<K>({ inputId, field: sample.field, value: undefined, onChange: () => {}, invalid: false, labelledBy: labelId }, sample.inputExtras)} />
         </div>,
       );
       const el = control(problems);
@@ -261,8 +316,10 @@ function fieldChecks<K extends FieldType>(
     }),
 
     check("Display shows the value", (problems) => {
-      const { container } = render(<Display field={sample.field} value={sample.value} />);
-      if (!driver.shows(container.textContent, sample.value)) problems.push(`Display did not show ${JSON.stringify(sample.value)}.`);
+      const { container } = render(<Host component={Display} props={displayProps<K>({ field: sample.field, value: sample.value }, sample.displayExtras)} />);
+      if (sample.shown !== undefined ? !container.textContent.includes(sample.shown) : !driver.shows(container.textContent, sample.value)) {
+        problems.push(`Display did not show ${JSON.stringify(sample.shown ?? sample.value)}.`);
+      }
     }),
 
     check("passes axe (valid and invalid)", async (problems) => {

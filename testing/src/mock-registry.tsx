@@ -4,6 +4,8 @@ import type {
   CountWidgetProps,
   DateField,
   DisplayProps,
+  FieldDisplayProps,
+  FieldInputProps,
   ErrorSummaryProps,
   Field,
   FieldFrameProps,
@@ -32,6 +34,7 @@ export const mockRegistry: Registry<ReactNode> = {
     boolean: { type: "boolean", Input: MockBooleanInput, Display: MockDisplay },
     select: { type: "select", Input: MockSelectInput, Display: MockDisplay },
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
+    reference: { type: "reference", Input: MockReferenceInput, Display: MockReferenceDisplay },
   },
   layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel },
   widgets: { count: MockCount },
@@ -92,6 +95,36 @@ function MockDateInput(props: InputProps<DateField, string>): ReactNode {
   const { field, value, onChange } = props;
   return (
     <input {...controlProps(props)} type="date" min={field.min} max={field.max} value={value ?? ""} onChange={(e) => onChange(orUndefined(e.target.value))} />
+  );
+}
+
+function MockReferenceInput(props: FieldInputProps<"reference">): ReactNode {
+  const { options, value, valueLabel, onChange } = props;
+  const listed = options.status === "ready" && options.options.some((o) => o.id === value);
+  return (
+    <>
+      <select {...controlProps(props)} value={value ?? ""} disabled={options.status === "loading"} onChange={(e) => onChange(orUndefined(e.target.value))}>
+        <option value="">{options.status === "loading" ? "Loading…" : "Choose…"}</option>
+        {value !== undefined && !listed && <option value={value}>{valueLabel ?? value}</option>}
+        {options.status === "ready" &&
+          options.options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+      </select>
+      {options.status === "error" && <span data-testid={`options-error-${props.field.id}`}>Could not load choices: {options.message}</span>}
+      {options.status === "ready" && options.options.length === 0 && <span data-testid={`options-empty-${props.field.id}`}>No records to choose from.</span>}
+      {options.status === "ready" && options.more && <span data-testid={`options-more-${props.field.id}`}>More records exist than are listed.</span>}
+    </>
+  );
+}
+
+function MockReferenceDisplay({ field, label, status }: FieldDisplayProps<"reference">): ReactNode {
+  return (
+    <span data-testid={`display-${field.id}`} data-status={status}>
+      {label}
+    </span>
   );
 }
 
