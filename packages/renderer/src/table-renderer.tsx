@@ -1,9 +1,10 @@
-import { conditionFields, jsonPointer } from "@yadad/core";
-import type { Condition, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { emptyFormState, resolveRelativeDates, setFieldValue, submitEdit } from "@yadad/runtime";
+import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
+import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
+import { bindFilter, emptyFormState, resolveRelativeDates, setFieldValue, submitEdit } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
 import { renderDisplay, renderInput } from "./fields.js";
 import { useReferences } from "./references.js";
@@ -21,6 +22,40 @@ export interface TableRendererProps {
   readonly entities?: ReadonlyMap<string, EntityDocument>;
   /** Change this to reload rows, e.g. after a form saves a record. */
   readonly reloadKey?: unknown;
+  /**
+   * The other documents in the set. Needed when the view has a `rowAction`: the
+   * target table and its entity are looked up here.
+   */
+  readonly documents?: DocumentSet;
+}
+
+/** What the table shows for a row's action: its accessible name and what happens on activation. */
+interface RowActionHandle {
+  readonly label: (record: DataRecord) => string;
+  readonly open: (record: DataRecord) => void;
+}
+
+interface TableBodyProps extends Omit<TableRendererProps, "documents"> {
+  /** Replaces the view's own fixed filter: the target's filter with the row bindings applied. */
+  readonly baseFilter?: Condition | undefined;
+  /** Fields whose quick filters are hidden because a row action fixed them. */
+  readonly lockedFields?: readonly string[];
+  readonly rowAction?: RowActionHandle | undefined;
+  /** Problems with the row action itself (unknown or non-table target). */
+  readonly extraErrors?: readonly DocumentError[];
+}
+
+/** One level of the in-container back stack: the table shown, and how the viewer got here. */
+interface Level {
+  readonly view: TableView;
+  readonly entity: EntityDocument;
+  /** The target's own filter with the clicked row's bindings applied. */
+  readonly baseFilter?: Condition | undefined;
+  readonly lockedFields: readonly string[];
+  /** The heading: what this level shows. */
+  readonly heading?: string;
+  /** The record whose action opened this level, to return focus to on Back. */
+  readonly originRow?: string;
 }
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -38,8 +73,115 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * Renders a table view: rows from the data adapter, sortable column headers,
  * paging, and in-place editing of the columns the view marks editable. The
  * table chrome, cells, editors and buttons all come from the registry.
+ *
+ * With a `rowAction`, every row gets an "Open ..." button that replaces the
+ * table, in the same container, with the target table filtered by that row
+ * and a Back button. Earlier tables stay mounted (hidden), so Back restores
+ * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents }: TableRendererProps): ReactNode {
+  const [stack, setStack] = useState<readonly Level[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const afterRender = useRef<(() => void) | undefined>(undefined);
+  const { Button } = registry.layout;
+  const refEntities = entities ?? documents?.entities;
+
+  useEffect(() => {
+    const run = afterRender.current;
+    afterRender.current = undefined;
+    run?.();
+  }, [stack]);
+
+  const levels: readonly Level[] = [{ view, entity, baseFilter: view.filter, lockedFields: [] }, ...stack];
+  const top = levels.length - 1;
+
+  /** The row action of the table at `index` in the stack, with problems found while resolving its target. */
+  const resolveAction = (index: number): Pick<TableBodyProps, "rowAction" | "extraErrors"> => {
+    const level = levels[index];
+    const action = level?.view.rowAction;
+    if (!level || !action) return {};
+    const fail = (message: string, hint: string): Pick<TableBodyProps, "extraErrors"> => ({ extraErrors: [{ path: "/rowAction/open", code: "invalid-value", message, hint }] });
+    const target = documents?.views.get(action.open);
+    if (!documents) return fail(`View "${level.view.id}" has a row action, but no documents were passed to look up "${action.open}".`, "Pass the document set as the documents prop.");
+    if (!target || target.kind !== "table") return fail(`Row action opens "${action.open}", which is not a table view in the document set.`, "Point rowAction.open at a table view, or load that view.");
+    const targetEntity = documents.entities.get(target.entity);
+    if (!targetEntity) return fail(`View "${target.id}" is for entity "${target.entity}", which is not loaded.`, "Load that entity document.");
+    if (index >= MAX_ROW_ACTION_DEPTH) return {}; // the validator caps chains; never nest deeper at run time
+    const text = (record: DataRecord, field: string): string => {
+      const value = record.values[field];
+      return value === undefined || value === null || value === "" ? "" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+    };
+    const first = action.bind[0];
+    return {
+      rowAction: {
+        label: (record) => {
+          const bound = first ? text(record, first.field) : "";
+          const here = text(record, level.view.columns[0]?.field ?? "");
+          const name = target.title ?? target.id;
+          return `Open ${name}${bound ? ` for ${bound}` : ""}${here && here !== bound ? ` (${here})` : ""}`;
+        },
+        open: (record) => {
+          const chips = action.bind.map((b) => `${targetEntity.fields.find((f) => f.id === b.to)?.label ?? b.to} = ${text(record, b.field) || "(empty)"}`);
+          const next: Level = {
+            view: target,
+            entity: targetEntity,
+            baseFilter: bindFilter(record.values, action.bind, target.filter),
+            lockedFields: action.bind.map((b) => b.to),
+            heading: `${target.title ?? target.id}: ${chips.join(", ")}`,
+            originRow: record.id,
+          };
+          afterRender.current = () => {
+            const headings = containerRef.current?.querySelectorAll<HTMLElement>("[data-yadad-drill-heading]");
+            headings?.[headings.length - 1]?.focus();
+          };
+          setStack((s) => [...s, next]);
+        },
+      },
+    };
+  };
+
+  const back = (): void => {
+    const closing = levels[top];
+    const index = top - 1;
+    if (!closing || index < 0) return;
+    const rowId = closing.originRow;
+    afterRender.current = () => {
+      const buttons = containerRef.current?.querySelectorAll<HTMLElement>(`[data-yadad-drill-level="${index}"] [data-yadad-row-open="${rowId}"] button`);
+      buttons?.[0]?.focus();
+    };
+    setStack((s) => s.slice(0, -1));
+  };
+
+  return (
+    <div ref={containerRef} data-yadad-drill={view.id}>
+      {levels.map((level, i) => (
+        <div key={`${i}:${level.view.id}`} data-yadad-drill-level={i} {...(i === top ? {} : { hidden: true })}>
+          {i > 0 && (
+            <div data-yadad-drill-header="">
+              <Button label="Back" type="button" variant="secondary" disabled={false} onPress={back} />
+              <h2 tabIndex={-1} data-yadad-drill-heading="">
+                {level.heading}
+              </h2>
+            </div>
+          )}
+          <TableBody
+            entity={level.entity}
+            view={level.view}
+            registry={registry}
+            dataSources={dataSources}
+            {...(refEntities ? { entities: refEntities } : {})}
+            reloadKey={reloadKey}
+            baseFilter={level.baseFilter}
+            lockedFields={level.lockedFields}
+            {...resolveAction(i)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TableBody({ entity, view, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [] }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -51,7 +193,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
 
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
-  const filter = useMemo(() => combineFilters(view, entity, quick), [view, entity, quick]);
+  const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter), [view, entity, quick, baseFilter]);
 
   useEffect(() => {
     if (!adapter) return;
@@ -91,7 +233,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
     ...(view.quickFilters ?? []).map((f, i) => ({ field: f.field, path: ["quickFilters", i, "field"] })),
   ];
-  const setupErrors = checkViewSetup(entity, view, adapter, refs);
+  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors];
   const { Table, Button, ErrorSummary, Section, FieldFrame } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
@@ -99,7 +241,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     const field = entity.fields.find((f) => f.id === c.field);
     return field ? [{ field, editable: c.editable === true }] : [];
   });
-  const hasActions = columns.some((c) => c.editable);
+  const hasActions = columns.some((c) => c.editable) || rowAction !== undefined;
   const headerId = (columnId: string) => `${tableId}-col-${columnId}`;
   const editErrorsId = `${tableId}-edit-errors`;
 
@@ -164,7 +306,14 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
         <Button label="Cancel" type="button" variant="secondary" disabled={saving} onPress={() => setEditing(undefined)} />
       </>
     ) : (
-      <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => setEditing({ record, state: emptyFormState })} />
+      <>
+        {columns.some((c) => c.editable) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => setEditing({ record, state: emptyFormState })} />}
+        {rowAction && (
+          <span data-yadad-row-open={record.id}>
+            <Button label={rowAction.label(record)} type="button" variant="secondary" disabled={saving} onPress={() => rowAction.open(record)} />
+          </span>
+        )}
+      </>
     );
 
   const items = rows.status === "loaded" ? rows.items : [];
@@ -177,6 +326,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   const editErrors = editing?.state.errors ?? [];
 
   const quickFields = (view.quickFilters ?? []).flatMap((f) => {
+    if (lockedFields.includes(f.field)) return [];
     const field = entity.fields.find((x) => x.id === f.field);
     return field && field.type !== "reference" ? [field] : []; // a reference cannot be a quick filter (the validator rejects it)
   });
@@ -252,8 +402,8 @@ function filterControl(field: Field): Field {
 }
 
 /** The view's fixed filter and every quick filter the viewer has set, combined with "and". */
-function combineFilters(view: TableView, entity: EntityDocument, quick: RecordValues): Condition | undefined {
-  const parts: Condition[] = view.filter ? [view.filter] : [];
+function combineFilters(view: TableView, entity: EntityDocument, quick: RecordValues, baseFilter: Condition | undefined): Condition | undefined {
+  const parts: Condition[] = baseFilter ? [baseFilter] : [];
   for (const { field: id } of view.quickFilters ?? []) {
     const field = entity.fields.find((f) => f.id === id);
     if (field && isRangeFilter(field)) {

@@ -10,22 +10,18 @@ import type {
   Registry,
   StatWidget,
   TableView,
-  ViewDocument,
 } from "@yadad/core";
 import { conditionFields, jsonPointer } from "@yadad/core";
 import { aggregate } from "@yadad/runtime";
 import type { AggregateResult } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
+import type { DocumentSet } from "./document-set.js";
 import { FormRenderer } from "./form-renderer.js";
 import type { FormRendererProps } from "./form-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
 
-/** The documents a dashboard can refer to, by id. */
-export interface DocumentSet {
-  readonly entities: ReadonlyMap<string, EntityDocument>;
-  readonly views: ReadonlyMap<string, ViewDocument>;
-}
+export type { DocumentSet } from "./document-set.js";
 
 export interface DashboardRendererProps {
   readonly dashboard: DashboardView;
@@ -93,7 +89,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} />;
     }
     if (view.kind === "table") {
-      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} reloadKey={reloadKey} />;
+      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
     }
     return null;
   };
