@@ -1,5 +1,12 @@
 # @yadad/editor
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [0f5e074]
+  - @yadad/runtime@0.6.0
+
 ## 0.7.2
 
 ### Patch Changes
