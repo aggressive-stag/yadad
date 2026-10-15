@@ -1,5 +1,25 @@
 # @yadad/editor
 
+## 0.7.0
+
+### Minor Changes
+
+- 6ec0fed: The entity fields editor can add a reference field (pick the target entity and an optional display field; pass `entities` for pickers). The condition builder offers is, is not, is empty and is filled in for references; they are not offered as quick filters or sort keys.
+- 64fcdd7: `TableViewEditor` can set and clear a table's row action (RFC 0003): pick another table view, one field here and a same-typed field of the target. It takes an optional `context` prop (`{ tables, entities }`); without it the section is hidden. `setRowAction()` and `rowActionTargets()` are exported; the patch is checked with the document validator, so unknown targets, type mismatches, cycles and over-deep chains are refused with its message and hint.
+- ed001aa: The dashboard layout editor can add a stat widget, change its measure (op, field, and a second field to multiply by for sum and avg), and edit its filter with the condition builder. New `setStatMeasure()` and `measureFor()` helpers; `fieldReferences()` reports stat measures and filters.
+
+### Patch Changes
+
+- Updated dependencies [6ec0fed]
+- Updated dependencies [6ec0fed]
+- Updated dependencies [7b3c167]
+- Updated dependencies [d2cad00]
+- Updated dependencies [696677d]
+- Updated dependencies [de5d2d3]
+- Updated dependencies [2d1368b]
+  - @yadad/core@0.6.0
+  - @yadad/runtime@0.5.0
+
 ## 0.6.0
 
 ### Minor Changes

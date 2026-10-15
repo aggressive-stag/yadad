@@ -1,5 +1,21 @@
 # @yadad/runtime
 
+## 0.5.0
+
+### Minor Changes
+
+- 6ec0fed: Validate reference values as record ids, and add `loadReferenceOptions` (picker options sorted by the display field, capped at 200 with a `more` flag) and `resolveReferenceLabels` (labels for a set of ids).
+- d2cad00: Add `bindFilter(row, bindings, targetFilter?)`: the pure filter a row action's target view shows, the target's own filter AND `eq(to, row[field])` per binding.
+- 2d1368b: Add `aggregate()` and `computeMeasure()`: compute a stat measure over an adapter's records, paging 500 at a time up to 5000 records and reporting `partial` past that.
+
+### Patch Changes
+
+- Updated dependencies [6ec0fed]
+- Updated dependencies [7b3c167]
+- Updated dependencies [696677d]
+- Updated dependencies [de5d2d3]
+  - @yadad/core@0.6.0
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,25 @@
 # @yadad/renderer
 
+## 0.5.0
+
+### Minor Changes
+
+- 6ec0fed: Render `reference` fields: forms show a picker loaded from the view's data source, tables show the referenced record's label (batch-resolved per page). Forms and tables take an optional `entities` map of the target entity documents; the dashboard passes its own.
+- 9ee694f: `TableRenderer` supports a table's `rowAction`: each row gets an "Open ..." button that replaces the table, in place, with the target table filtered by the row (heading naming the scope, Back button, focus moved to the heading and back to the row's button). It takes an optional `documents` prop (required for a row action), which `DashboardRenderer` passes, so it also works in a dashboard widget. `DocumentSet` moved to its own module and is still exported.
+- 624dcb6: Render `stat` dashboard widgets through the registry's count component: formatted number (grouped, at most two decimals), a dash when there is no value, a loading marker, the same error state as counts, and a "partial" note when more than 5000 records matched.
+
+### Patch Changes
+
+- Updated dependencies [6ec0fed]
+- Updated dependencies [6ec0fed]
+- Updated dependencies [7b3c167]
+- Updated dependencies [d2cad00]
+- Updated dependencies [696677d]
+- Updated dependencies [de5d2d3]
+- Updated dependencies [2d1368b]
+  - @yadad/core@0.6.0
+  - @yadad/runtime@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

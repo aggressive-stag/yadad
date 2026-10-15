@@ -1,5 +1,20 @@
 # @yadad/testing
 
+## 0.2.0
+
+### Minor Changes
+
+- 6ec0fed: The mock registry and the contract kit cover the `reference` field. `FieldSample` gains `inputExtras`, `displayExtras` and an optional `shown` text; custom samples must provide the first two.
+- 624dcb6: The mock count widget shows the optional `text` prop, and the contract kit checks that a count component does.
+
+### Patch Changes
+
+- Updated dependencies [6ec0fed]
+- Updated dependencies [7b3c167]
+- Updated dependencies [696677d]
+- Updated dependencies [de5d2d3]
+  - @yadad/core@0.6.0
+
 ## 0.1.5
 
 ### Patch Changes

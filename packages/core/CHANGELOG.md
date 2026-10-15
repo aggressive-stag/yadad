@@ -1,5 +1,14 @@
 # @yadad/core
 
+## 0.6.0
+
+### Minor Changes
+
+- 6ec0fed: Add the `reference` field type (RFC 0002 slice 1): `{ type: "reference", entity, display? }` stores another entity's record id. The validator checks the target entity and display field across a set and rejects reference fields as quick filters, table sort keys and in ordering conditions. The registry gains the `reference` key, whose Input gets the picker options and whose Display gets the resolved label (`ReferenceOptions`, `ReferenceInputExtras`, `ReferenceDisplayExtras`).
+- 7b3c167: Table views gain an optional `rowAction` (`{ open, bind: [{ field, to }], mode? }`, RFC 0003 slice 1): a row opens another table view filtered by the row's values. The validator checks the target is a table, both fields exist with the same type, no cycles and at most 3 hops (`MAX_ROW_ACTION_DEPTH`). `describeContract()` reports it.
+- 696677d: `specVersion` is now 2. Version 0 and 1 documents stay valid, and `migrate()` stamps them as version 2.
+- de5d2d3: Add the `stat` dashboard widget (RFC 0001, slice 1): a `measure` of `count`, `sum`, `avg`, `min`, `max` or `countDistinct` over a table view's records, with `product: [a, b]` for sum and avg. `describeContract()` lists the measure ops, the validator checks view, field ids and field types, and `CountWidgetProps` gains an optional preformatted `text`.
+
 ## 0.5.0
 
 ### Minor Changes
