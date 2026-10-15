@@ -8,3 +8,4 @@ export * from "./http-adapter.js";
 export * from "./drafts.js";
 export * from "./reference.js";
 export * from "./aggregate.js";
+export * from "./row-action.js";
