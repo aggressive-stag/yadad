@@ -1,4 +1,4 @@
-import type { DocumentError, EntityDocument, FieldValue, Registry, TableView } from "@yadad/core";
+import type { DocumentError, EntityDocument, FieldValue, Registry, RowAction, TableView } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -10,13 +10,20 @@ import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js"
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
-import { addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
+import { rowActionTargets, setRowAction, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
+import type { RowActionContext } from "./views.js";
 
 export interface TableViewEditorProps {
   readonly view: TableView;
   /** The view's entity, for field labels and the fields not shown yet. */
   readonly entity: EntityDocument;
   readonly registry: Registry<ReactNode>;
+  /**
+   * The other documents in the set (table views and their entities), for the
+   * row action: it can open any other table. Without it the editor offers no
+   * row action, and a table's existing one is kept.
+   */
+  readonly context?: RowActionContext;
   /** Receives the edited table with its revision bumped. */
   readonly onSave: (view: TableView) => void;
   readonly onCancel: () => void;
@@ -50,7 +57,7 @@ const settingsOf = (view: TableView): Settings => ({
  * one undoable patch, and where it lands is announced. A fixed filter, if
  * the table has one, is kept and shown.
  */
-export function TableViewEditor({ view, entity, registry, onSave, onCancel }: TableViewEditorProps): ReactNode {
+export function TableViewEditor({ view, entity, registry, context, onSave, onCancel }: TableViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<TableView>>(() => startSession(view));
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
@@ -213,6 +220,32 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
     });
   };
 
+  // The row action ("click a row to open another table, scoped to it"): one
+  // target table and one pair of same-typed fields, checked by the validator.
+  const targets = context ? rowActionTargets(current, context) : [];
+  const targetLabel = (t: TableView) => (t.title ? `${t.title} (${t.id})` : t.id);
+  const targetEntity = (t: TableView | undefined) => context?.entities.find((e) => e.id === t?.entity);
+  const [rowTarget, setRowTarget] = useState<string | undefined>(undefined);
+  const [rowFrom, setRowFrom] = useState<string | undefined>(undefined);
+  const [rowTo, setRowTo] = useState<string | undefined>(undefined);
+  const pickedTarget = targets.find((t) => t.id === rowTarget) ?? targets[0];
+  const pickedFrom = entity.fields.find((f) => f.id === rowFrom) ?? entity.fields[0];
+  const toFields = targetEntity(pickedTarget)?.fields.filter((f) => f.type === pickedFrom?.type) ?? [];
+  const pickedTo = toFields.find((f) => f.id === rowTo) ?? toFields[0];
+  const action = current.rowAction;
+  const describeAction = (a: RowAction): string => {
+    const t = context?.tables.find((x) => x.id === a.open);
+    const te = targetEntity(t);
+    const pairs = a.bind.map((b) => `${label(b.field)} to ${te?.fields.find((f) => f.id === b.to)?.label ?? b.to}`);
+    return `Clicking a row opens ${t ? targetLabel(t) : a.open}, matching ${pairs.join(", ")}.`;
+  };
+  const applyRowAction = () => {
+    if (!pickedTarget || !pickedFrom || !pickedTo) return;
+    run(setRowAction(current, entity, context ?? { tables: [], entities: [] }, { open: pickedTarget.id, bind: [{ field: pickedFrom.id, to: pickedTo.id }], mode: "replace" }), () =>
+      announce(`Row action set: opens ${targetLabel(pickedTarget)}.`),
+    );
+  };
+
   return (
     <div data-yadad-table-editor={view.id}>
       <p id={`${base}-help`}>Drag a column by its grip to reorder it; with the keyboard, focus a grip and use the arrow keys (Left back, Right forward). Esc cancels a drag. The Move buttons step one place.</p>
@@ -268,6 +301,32 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
           </div>
         )}
       </Section>
+      {context && (
+        <Section id={`${base}-row-action`} title="Row action">
+          {action ? <p>{describeAction(action)}</p> : <p>Clicking a row does nothing.</p>}
+          {targets.length === 0 ? (
+            <p>There is no other table view to open.</p>
+          ) : (
+            <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+              {propertyInput(registry, `${base}-ra-open`, choiceField("row_action_open", "Open table", targets.map(targetLabel)), pickedTarget ? targetLabel(pickedTarget) : undefined, (v) => {
+                setRowTarget(targets.find((t) => targetLabel(t) === v)?.id);
+                setRowTo(undefined);
+              })}
+              {propertyInput(registry, `${base}-ra-from`, choiceField("row_action_from", "Match this field", entityIds.map(label)), pickedFrom ? label(pickedFrom.id) : undefined, (v) => {
+                setRowFrom(byLabel(entityIds, v));
+                setRowTo(undefined);
+              })}
+              {toFields.length === 0 ? (
+                <p>{`${pickedTarget ? targetLabel(pickedTarget) : "The target"} has no ${pickedFrom?.type ?? "matching"} field to match.`}</p>
+              ) : (
+                propertyInput(registry, `${base}-ra-to`, choiceField("row_action_to", "With this field of the target", toFields.map((f) => f.label)), pickedTo?.label, (v) => setRowTo(toFields.find((f) => f.label === v)?.id))
+              )}
+              <Button label="Set row action" type="button" variant="secondary" disabled={!pickedTarget || !pickedFrom || !pickedTo} onPress={applyRowAction} />
+              {action && <Button label="Remove row action" type="button" variant="secondary" disabled={false} onPress={() => run(setRowAction(current, entity, context, undefined), () => announce("Row action removed."))} />}
+            </div>
+          )}
+        </Section>
+      )}
       <Section id={`${base}-columns`} title="Columns">
         {missing.length > 0 && (
           <div data-yadad-editor-toolbar="" style={toolbarStyle}>

@@ -1,5 +1,5 @@
-import { MEASURE_FIELD_TYPES, jsonPointer } from "@yadad/core";
-import type { Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, SortSpec, TableView } from "@yadad/core";
+import { MEASURE_FIELD_TYPES, jsonPointer, validateDocuments } from "@yadad/core";
+import type { Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -331,4 +331,40 @@ function findWidget(view: DashboardView, tabId: string, itemId: string): { ok: t
   const item = view.tabs[t]?.items[i];
   if (!item) return { ok: false, result: fail(["tabs", t], `No widget "${itemId}" on this tab.`, "Pick a widget on this tab.") };
   return { ok: true, t, i, item };
+}
+
+// ---- row action -----------------------------------------------------------
+
+/** The other documents a row action may point at: table views and the entities they (and this table) use. */
+export interface RowActionContext {
+  readonly tables: readonly TableView[];
+  readonly entities: readonly EntityDocument[];
+}
+
+/** The table views a row action on `view` may open: every other table in the context. */
+export function rowActionTargets(view: TableView, context: RowActionContext): TableView[] {
+  return context.tables.filter((t) => t.id !== view.id);
+}
+
+/**
+ * Sets or clears a table's row action. The candidate is checked against the
+ * whole set with the document validator, so an unknown target, fields that
+ * are missing or of different types, a cycle or a chain over the depth limit
+ * are refused with the validator's own message and hint, and no patch is made.
+ */
+export function setRowAction(view: TableView, entity: EntityDocument, context: RowActionContext, action: RowAction | undefined): Result {
+  const path = "/rowAction";
+  if (action === undefined) return ok(setOptional(view.rowAction !== undefined, path, undefined));
+  const candidate: TableView = { ...view, rowAction: action };
+  const set = [
+    entity,
+    ...context.entities.filter((e) => e.id !== entity.id),
+    ...context.tables.filter((t) => t.id !== view.id),
+    candidate,
+  ];
+  const result = validateDocuments(set);
+  const problem = result.ok ? undefined : result.errors.find((e) => e.path.startsWith(path));
+  if (problem) return { ok: false, error: { path: problem.path, code: problem.code, message: problem.message, hint: problem.hint } };
+  if (JSON.stringify(view.rowAction) === JSON.stringify(action)) return ok([]);
+  return ok(setOptional(view.rowAction !== undefined, path, action as unknown as Json));
 }

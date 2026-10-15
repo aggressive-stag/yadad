@@ -242,3 +242,41 @@ test("an editor shows a warning while its document is empty", () => {
   press("Remove Title");
   expect(document.querySelector("[data-yadad-editor-warnings]")?.textContent).toContain("This form shows no fields.");
 });
+
+describe("TableViewEditor row action", () => {
+  const table: TableView = { kind: "table", specVersion: 2, id: "tasks", entity: "task", revision: 1, dataSource: "default", columns: [{ field: "title" }, { field: "done" }] };
+  const history: TableView = { ...table, id: "task_history", title: "Task history", columns: [{ field: "title" }] };
+  const context = { tables: [table, history], entities: [entity] };
+  const setup = (withContext: boolean) => {
+    const saved: TableView[] = [];
+    render(<TableViewEditor view={table} entity={entity} registry={mockRegistry} {...(withContext ? { context } : {})} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    return saved;
+  };
+
+  test("is not offered without a context", () => {
+    setup(false);
+    expect(screen.queryByText("Row action")).toBeNull();
+  });
+
+  test("picks a target and a field pair, sets it, saves, and can clear it", () => {
+    const saved = setup(true);
+    expect(screen.getByText("Clicking a row does nothing.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Match this field"), { target: { value: "Due" } });
+    press("Set row action");
+    expect(screen.getByText("Clicking a row opens Task history (task_history), matching Due to Due.")).toBeTruthy();
+    press("Save table");
+    expect(saved[0]?.rowAction).toEqual({ open: "task_history", bind: [{ field: "due", to: "due" }], mode: "replace" });
+    press("Remove row action");
+    expect(screen.getByText("Clicking a row does nothing.")).toBeTruthy();
+    press("Save table");
+    expect(saved[1]?.rowAction).toBeUndefined();
+  });
+
+  test("the target field choices are limited to fields of the same type", () => {
+    setup(true);
+    fireEvent.change(screen.getByLabelText("Match this field"), { target: { value: "Done" } });
+    const options = within(screen.getByLabelText("With this field of the target")).getAllByRole("option").map((o) => o.textContent);
+    expect(options).toContain("Done");
+    expect(options).not.toContain("Title");
+  });
+});
