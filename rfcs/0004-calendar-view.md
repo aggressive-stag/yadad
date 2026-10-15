@@ -304,3 +304,10 @@ Accepted. The owner accepted the direction; the design calls were made while wri
 2. Should `layout.Calendar` become required in the next major release, or stay optional for good (calendars as an opt-in extension)?
 3. Is the cap of 2,000 entries per range right, or should very busy hosts be able to raise it (a view property)?
 4. Is hiding entries that are moved out of the visible range (with an announcement) enough, or should "Move to day…" be limited to visible days?
+
+### Answers (2026-10-15)
+
+1. Fixed six weeks. A stable grid height matters more than saving a row, especially inside dashboard cells.
+2. `layout.Calendar` stays optional until the reference component set ships a calendar, then becomes required in the next minor release (0.x minors may break), so a registry can't silently lack it.
+3. 2,000 stays a runtime constant, not a view property. Revisit with a host hook for the visible range (slice 2) if a host needs more.
+4. "Move to day…" accepts any date, as written: hiding the moved entry and announcing where it went is enough.
