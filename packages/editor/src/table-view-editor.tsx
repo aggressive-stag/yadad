@@ -131,7 +131,8 @@ export function TableViewEditor({ view, entity, registry, onSave, onCancel }: Ta
       ...setTableSort(current, settings.sortField ? { field: settings.sortField, dir: settings.sortDir } : undefined),
     ]);
 
-  const entityIds = entity.fields.map((f) => f.id);
+  // A reference holds a record id, which says nothing about order, so it is not offered as a sort key.
+  const entityIds = entity.fields.filter((f) => f.type !== "reference").map((f) => f.id);
   const missing = fieldsNotInTable(entity, current);
   const addChoice = adding && missing.includes(adding) ? adding : missing[0];
   const filtered = new Set(current.quickFilters?.map((f) => f.field));

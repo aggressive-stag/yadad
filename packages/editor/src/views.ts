@@ -229,6 +229,7 @@ export const QUICK_FILTER_KINDS: { readonly [K in FieldType]: "match" | "contain
   text: "contains",
   number: "range",
   date: "range",
+  reference: undefined,
 };
 
 /** Said where a field cannot be a quick filter. */

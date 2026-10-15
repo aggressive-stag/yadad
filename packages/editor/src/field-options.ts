@@ -20,6 +20,11 @@ export const FIELD_PROPERTIES: { readonly [K in FieldType]: readonly Field[] } =
     { id: "min", type: "date", label: "Earliest date" },
     { id: "max", type: "date", label: "Latest date" },
   ],
+  // The entity editor swaps these for pickers when it knows the other entities.
+  reference: [
+    { id: "entity", type: "text", label: "Target entity id", required: true },
+    { id: "display", type: "text", label: "Display field id (default: the target's first text field)" },
+  ],
 };
 
 /** Properties every field has, shown above the type-specific ones. */
@@ -35,6 +40,7 @@ export const FIELD_TYPE_LABELS: { readonly [K in FieldType]: string } = {
   boolean: "Checkbox",
   select: "Choice list",
   date: "Date",
+  reference: "Link to another record",
 };
 
 const str = (v: FieldValue | undefined): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined);
@@ -54,6 +60,8 @@ export function fieldFromProperties(type: FieldType, v: RecordValues): Field {
       return { ...base, type, ...opt("min", num(v["min"])), ...opt("max", num(v["max"])), ...opt("step", num(v["step"])), ...opt("unit", str(v["unit"])) };
     case "date":
       return { ...base, type, ...opt("min", date(v["min"])), ...opt("max", date(v["max"])) };
+    case "reference":
+      return { ...base, type, entity: str(v["entity"]) ?? "", ...opt("display", str(v["display"])) };
     case "select": {
       const values = (str(v["choices"]) ?? "")
         .split(",")
@@ -72,6 +80,8 @@ export function propertiesFromField(field: Field): RecordValues {
       return { ...base, min: field.min ?? null, max: field.max ?? null, step: field.step ?? null, unit: field.unit ?? null };
     case "date":
       return { ...base, min: field.min ?? null, max: field.max ?? null };
+    case "reference":
+      return { ...base, entity: field.entity, display: field.display ?? null };
     case "select":
       return { ...base, choices: field.options.values.join(", ") };
     default:

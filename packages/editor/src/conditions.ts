@@ -36,6 +36,7 @@ export function operatorsFor(type: FieldType): readonly Comparison["op"][] {
     case "select":
       return ["eq", "neq", "in", "empty", "notEmpty"];
     case "boolean":
+    case "reference":
       return ["eq", "neq", "empty", "notEmpty"];
   }
 }

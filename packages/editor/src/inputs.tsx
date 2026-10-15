@@ -48,6 +48,11 @@ export function renderInput(
       const { Input } = registry.fields.date;
       return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
     }
+    case "reference": {
+      // The editor never reads records, so it cannot offer the picker: a record id is typed as text.
+      const { Input } = registry.fields.text;
+      return <Input {...common} field={{ id: field.id, type: "text", label: field.label }} value={asString(value)} onChange={onChange} />;
+    }
   }
 }
 
@@ -73,6 +78,11 @@ export function renderDisplay(registry: Registry<ReactNode>, field: Field, value
     case "date": {
       const { Display } = registry.fields.date;
       return <Display field={field} value={asString(value)} />;
+    }
+    case "reference": {
+      const { Display } = registry.fields.reference;
+      const id = asString(value);
+      return <Display field={field} value={id} label={id ?? ""} status="found" />;
     }
   }
 }

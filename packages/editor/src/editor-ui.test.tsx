@@ -124,3 +124,22 @@ describe("EntityFieldsEditor", () => {
     expect(saved[0]?.fields.map((f) => f.id)).toEqual(["day"]);
   });
 });
+
+describe("EntityFieldsEditor reference fields", () => {
+  const exercise: EntityDocument = { kind: "entity", specVersion: 2, id: "exercise", revision: 1, fields: [{ id: "name", type: "text", label: "Name" }] };
+  const entry: EntityDocument = { kind: "entity", specVersion: 2, id: "set_entry", revision: 1, fields: [{ id: "reps", type: "number", label: "Reps" }] };
+
+  test("adds a reference field by picking the target entity and display field", () => {
+    const saved: EntityDocument[] = [];
+    render(<EntityFieldsEditor entity={entry} views={[]} entities={[exercise]} registry={mockRegistry} onSave={(e) => saved.push(e)} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "New field" }));
+    fireEvent.change(screen.getByLabelText(/Field type/), { target: { value: "Link to another record" } });
+    fireEvent.change(screen.getByLabelText(/Id \(letters/), { target: { value: "lift" } });
+    fireEvent.change(screen.getByLabelText("Label", { exact: false }), { target: { value: "Lift" } });
+    fireEvent.change(screen.getByLabelText(/Target entity/), { target: { value: "exercise" } });
+    fireEvent.change(screen.getByLabelText(/Display field/), { target: { value: "name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add field" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(saved[0]?.fields.at(-1)).toEqual({ id: "lift", type: "reference", label: "Lift", entity: "exercise", display: "name" });
+  });
+});

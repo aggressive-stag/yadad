@@ -14,6 +14,11 @@ export interface EntityFieldsEditorProps {
   /** Every view, so removing a field that is still in use can be refused. */
   readonly views: readonly ViewDocument[];
   readonly registry: Registry<ReactNode>;
+  /**
+   * The other entities, so a reference field can pick its target and display
+   * field from lists. Without it those are typed as ids.
+   */
+  readonly entities?: readonly EntityDocument[];
   /** Receives the edited entity with its revision bumped. */
   readonly onSave: (entity: EntityDocument) => void;
   readonly onCancel: () => void;
@@ -39,7 +44,7 @@ const typeChooser: SelectField = {
  * options or required flag, or remove one no view uses. Ids and types of
  * existing fields are fixed, since saved records depend on them.
  */
-export function EntityFieldsEditor({ entity, views, registry, onSave, onCancel }: EntityFieldsEditorProps): ReactNode {
+export function EntityFieldsEditor({ entity, views, registry, entities, onSave, onCancel }: EntityFieldsEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<EntityDocument>>(() => startSession(entity));
   const [panel, setPanel] = useState<PanelState | undefined>(undefined);
@@ -79,6 +84,21 @@ export function EntityFieldsEditor({ entity, views, registry, onSave, onCancel }
     );
   };
 
+  /** The panel's type-specific properties; a reference's target and display become pickers when the entities are known. */
+  const propertiesFor = (type: FieldType): readonly Field[] => {
+    if (type !== "reference" || !entities || !panel) return FIELD_PROPERTIES[type];
+    const targets = [current, ...entities.filter((e) => e.id !== current.id)];
+    const chosen = panel.values["entity"];
+    const target = typeof chosen === "string" ? targets.find((e) => e.id === chosen) : undefined;
+    const labelFields = (target?.fields ?? []).filter((f) => f.type === "text" || f.type === "select").map((f) => f.id);
+    return [
+      { id: "entity", type: "select", label: "Target entity", required: true, options: { source: "static", values: targets.map((e) => e.id) } },
+      ...(labelFields.length > 0
+        ? [{ id: "display", type: "select", label: "Display field (default: the first text field)", options: { source: "static", values: labelFields } } satisfies Field]
+        : []),
+    ];
+  };
+
   const typeInputId = `${base}-type`;
   const panelView = panel && (
     <Section id="field-panel" title={panel.editing ? `Edit "${panel.editing}"` : "Add a field"}>
@@ -95,7 +115,7 @@ export function EntityFieldsEditor({ entity, views, registry, onSave, onCancel }
         </FieldFrame>
       )}
       {COMMON_PROPERTIES.filter((p) => !(panel.editing && p.id === "id")).map(property)}
-      {FIELD_PROPERTIES[panel.type].map(property)}
+      {propertiesFor(panel.type).map(property)}
       <Button label={panel.editing ? "Apply changes" : "Add field"} type="button" variant="primary" disabled={false} onPress={applyPanel} />
       <Button label="Close" type="button" variant="secondary" disabled={false} onPress={() => setPanel(undefined)} />
     </Section>
