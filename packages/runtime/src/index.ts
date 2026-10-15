@@ -7,3 +7,4 @@ export * from "./key-value-adapter.js";
 export * from "./http-adapter.js";
 export * from "./drafts.js";
 export * from "./reference.js";
+export * from "./aggregate.js";
