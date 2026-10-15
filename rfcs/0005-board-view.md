@@ -335,3 +335,10 @@ Accepted. The owner accepted the direction; the design calls were made while wri
 2. Is a cap of 1,000 cards for the whole board right, given counts are then partial, or should per-column paging come first?
 3. Should a moved card sit last in its new column until the next load (as written), or should the renderer re-sort it locally into its sort position?
 4. Should `layout.Board` follow `layout.Calendar` and become required in the same minor once the reference component set ships both?
+
+### Answers (2026-10-15)
+
+1. No `hideEmpty` in slice 1. Empty columns always show; slice 2 adds the option alongside `quickFilters`. The 50-column reference cap and its notice cover the worst case meanwhile.
+2. 1,000 cards stays the slice-1 cap, with the notice saying column counts may be partial. Per-column paging comes later if a host needs it.
+3. Re-sort locally: a moved card takes the position the view's `sort` gives it in the new column, so it doesn't jump when the cards reload. With no `sort`, it goes last.
+4. Yes. `layout.Board` and `layout.Calendar` become required together, in the same minor release, once the reference component set ships both.
