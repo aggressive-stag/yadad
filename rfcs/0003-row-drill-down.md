@@ -1,6 +1,6 @@
 # RFC 0003: Row drill-down
 
-- Status: Accepted (slice 1 in progress)
+- Status: Accepted (slice 1 implemented)
 - Touches: `core` (table view, validator), `runtime` (binding to filter), `renderer` (table, dashboard, navigation), `editor` (table panel), registry contract (maybe one `layout` key)
 - Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
@@ -90,7 +90,7 @@ Where I would stop: one hop at a time with fixed bindings, no parameters, no for
 
 ## Decision (2026-10-15)
 
-Accepted; slice 1 is being implemented.
+Accepted; slice 1 is implemented.
 
 1. Binding-based scoping is enough; no parameterized views.
 2. `replace` with Back only in slice 1; `dialog` later.
