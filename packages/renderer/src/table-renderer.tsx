@@ -1,11 +1,12 @@
 import { conditionFields, jsonPointer } from "@yadad/core";
-import type { Condition, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, RecordValues, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
+import type { Condition, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
 import { emptyFormState, resolveRelativeDates, setFieldValue, submitEdit } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { checkViewSetup } from "./setup.js";
 import { renderDisplay, renderInput } from "./fields.js";
+import { useReferences } from "./references.js";
 
 export interface TableRendererProps {
   readonly entity: EntityDocument;
@@ -13,6 +14,11 @@ export interface TableRendererProps {
   readonly registry: Registry<ReactNode>;
   /** Host-provided adapters, looked up by the view's `dataSource` key. */
   readonly dataSources: ReadonlyMap<string, DataAdapter>;
+  /**
+   * The documents of the target entities of the entity's reference fields,
+   * by id. Labels and picker options are loaded from the table's own data source.
+   */
+  readonly entities?: ReadonlyMap<string, EntityDocument>;
   /** Change this to reload rows, e.g. after a form saves a record. */
   readonly reloadKey?: unknown;
 }
@@ -33,7 +39,7 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * paging, and in-place editing of the columns the view marks editable. The
  * table chrome, cells, editors and buttons all come from the registry.
  */
-export function TableRenderer({ entity, view, registry, dataSources, reloadKey }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey }: TableRendererProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -60,6 +66,15 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
       current = false;
     };
   }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloads]);
+
+  // Labels for the references on the loaded page; picker options only while a row is being edited.
+  const referenceColumns = view.columns.flatMap((c) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === c.field));
+  const wants = rows.status !== "loaded" ? [] : rows.items.flatMap((record) => referenceColumns.flatMap((field) => {
+    const value = (editing?.record.id === record.id && field.id in editing.state.values ? editing.state.values[field.id] : undefined) ?? record.values[field.id];
+    return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
+  }));
+  const editableReferences = editing ? referenceColumns.filter((f) => view.columns.some((c) => c.field === f.id && c.editable === true)) : [];
+  const references = useReferences(adapter, entities, editableReferences, wants, reloadKey);
 
   // Entering edit mode moves focus to the row's first editable input.
   const editingId = editing?.record.id;
@@ -91,7 +106,8 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
   const headers: TableColumnHeader[] = [
     ...columns.map(({ field }) => {
       const active = sort[0]?.field === field.id ? { sort: sort[0].dir } : {};
-      return { id: field.id, headerId: headerId(field.id), label: field.label, sortable: true, ...active };
+      // A reference holds a record id, which says nothing about order.
+      return { id: field.id, headerId: headerId(field.id), label: field.label, sortable: field.type !== "reference", ...active };
     }),
     ...(hasActions ? [{ id: ACTIONS_COLUMN, headerId: headerId(ACTIONS_COLUMN), label: "Actions", sortable: false }] : []),
   ];
@@ -120,7 +136,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
   }
 
   const renderCell = (record: DataRecord, field: Field, editable: boolean): ReactNode => {
-    if (!editable || editing?.record.id !== record.id) return renderDisplay(registry, field, record.values[field.id]);
+    if (!editable || editing?.record.id !== record.id) return renderDisplay(registry, field, record.values[field.id], references);
     const state = editing.state;
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
     const value = field.id in state.values ? state.values[field.id] : record.values[field.id];
@@ -137,6 +153,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
         ...(errors.length > 0 ? { describedBy: editErrorsId } : {}),
       },
       onChange,
+      references,
     );
   };
 
@@ -161,7 +178,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
 
   const quickFields = (view.quickFilters ?? []).flatMap((f) => {
     const field = entity.fields.find((x) => x.id === f.field);
-    return field ? [field] : [];
+    return field && field.type !== "reference" ? [field] : []; // a reference cannot be a quick filter (the validator rejects it)
   });
 
   return (
@@ -179,7 +196,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
                     {renderInput(registry, control, quick[key], { inputId, invalid: false }, (v) => {
                       setQuick((q) => ({ ...q, [key]: v ?? null }));
                       setPage(0);
-                    })}
+                    }, references)}
                   </FieldFrame>
                 );
               })
@@ -188,7 +205,7 @@ export function TableRenderer({ entity, view, registry, dataSources, reloadKey }
                 {renderInput(registry, filterControl(field), quick[field.id], { inputId: `${tableId}-filter-${field.id}`, invalid: false }, (v) => {
                   setQuick((q) => ({ ...q, [field.id]: v ?? null }));
                   setPage(0);
-                })}
+                }, references)}
               </FieldFrame>
             ),
           )}

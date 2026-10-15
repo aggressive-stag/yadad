@@ -87,10 +87,10 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return view.kind === "table" ? <CountLoader widget={item} view={view} entity={entity} registry={registry} dataSources={dataSources} reloadKey={reloadKey} /> : null;
     }
     if (view.kind === "form") {
-      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} />;
+      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} />;
     }
     if (view.kind === "table") {
-      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} reloadKey={reloadKey} />;
+      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} reloadKey={reloadKey} />;
     }
     return null;
   };

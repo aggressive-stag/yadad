@@ -1,5 +1,6 @@
 import type { Field, FieldValue, Registry } from "@yadad/core";
 import type { ReactNode } from "react";
+import type { ReferenceSupport } from "./references.js";
 
 /** Props every Input gets besides its field, value and onChange. */
 export interface CommonInputProps {
@@ -23,6 +24,7 @@ export function renderInput(
   value: FieldValue | undefined,
   common: CommonInputProps,
   onChange: (value: FieldValue | undefined) => void,
+  references: ReferenceSupport,
 ): ReactNode {
   switch (field.type) {
     case "text": {
@@ -45,11 +47,16 @@ export function renderInput(
       const { Input } = registry.fields.date;
       return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
     }
+    case "reference": {
+      const { Input } = registry.fields.reference;
+      const id = asString(value);
+      return <Input {...common} {...references.input(field, id)} field={field} value={id} onChange={onChange} />;
+    }
   }
 }
 
 /** Renders the field's read-only Display from the registry. */
-export function renderDisplay(registry: Registry<ReactNode>, field: Field, value: FieldValue | undefined): ReactNode {
+export function renderDisplay(registry: Registry<ReactNode>, field: Field, value: FieldValue | undefined, references: ReferenceSupport): ReactNode {
   switch (field.type) {
     case "text": {
       const { Display } = registry.fields.text;
@@ -70,6 +77,12 @@ export function renderDisplay(registry: Registry<ReactNode>, field: Field, value
     case "date": {
       const { Display } = registry.fields.date;
       return <Display field={field} value={asString(value)} />;
+    }
+    case "reference": {
+      const { Display } = registry.fields.reference;
+      const id = asString(value);
+      // An empty reference has no record to look up: show nothing.
+      return <Display {...(id === undefined || id === "" ? { label: "", status: "found" as const } : references.display(field, id))} field={field} value={id} />;
     }
   }
 }

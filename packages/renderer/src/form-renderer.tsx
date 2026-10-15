@@ -1,5 +1,5 @@
 import { conditionFields, jsonPointer } from "@yadad/core";
-import type { DataAdapter, DataRecord, EntityDocument, FieldValue, FormItem, FormView, Registry } from "@yadad/core";
+import type { DataAdapter, DataRecord, EntityDocument, FieldValue, FormItem, FormView, ReferenceField, Registry } from "@yadad/core";
 import { applyFormRules, emptyFormState, evaluateFormRules, restoreDraft, setFieldValue, submitForm } from "@yadad/runtime";
 import type { DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import type { FormEvent, ReactNode } from "react";
 import { checkViewSetup } from "./setup.js";
 import { renderInput } from "./fields.js";
 import type { CommonInputProps } from "./fields.js";
+import { useReferences } from "./references.js";
 
 export interface FormRendererProps {
   readonly entity: EntityDocument;
@@ -14,6 +15,12 @@ export interface FormRendererProps {
   readonly registry: Registry<ReactNode>;
   /** Host-provided adapters, looked up by the view's `dataSource` key. */
   readonly dataSources: ReadonlyMap<string, DataAdapter>;
+  /**
+   * The documents of the target entities of the entity's reference fields,
+   * by id (the entity itself is not needed here). The picker's options are
+   * loaded from the form's own data source.
+   */
+  readonly entities?: ReadonlyMap<string, EntityDocument>;
   readonly onSaved?: (record: DataRecord) => void;
   /**
    * Opt-in drafts: unsaved input is kept in the store (debounced, default
@@ -27,7 +34,7 @@ export interface FormRendererProps {
  * the Save button) comes from the injected registry; saving goes through
  * runtime and the data adapter.
  */
-export function FormRenderer({ entity, view, registry, dataSources, onSaved, drafts }: FormRendererProps): ReactNode {
+export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts }: FormRendererProps): ReactNode {
   const formId = useId();
   const store = drafts?.store;
   const [initial] = useState(() => {
@@ -53,6 +60,12 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved, dra
   }, [store, debounceMs, entity, view, state.values]);
 
   const adapter = dataSources.get(view.dataSource);
+  const shownRefs = view.sections.flatMap((s) => s.items.flatMap((i) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === i.field)));
+  const wants = shownRefs.flatMap((field) => {
+    const value = state.values[field.id];
+    return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
+  });
+  const references = useReferences(adapter, entities, shownRefs, wants);
   const refs = view.sections.flatMap((section, i) =>
     section.items.flatMap((item, j) => {
       const path = ["sections", i, "items", j];
@@ -118,7 +131,7 @@ export function FormRenderer({ entity, view, registry, dataSources, onSaved, dra
     };
     return (
       <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={field.label} required={field.required === true || rules.required.has(field.id)} errors={errors}>
-        {renderInput(registry, field, state.values[field.id], common, onChange)}
+        {renderInput(registry, field, state.values[field.id], common, onChange, references)}
       </FieldFrame>
     );
   };

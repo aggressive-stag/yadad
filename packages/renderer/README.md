@@ -26,6 +26,10 @@ const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views
 - **Tables.** Honor `sort`, `pageSize`, the fixed `filter` and `quickFilters`. Change `reloadKey` to reload rows, e.g. after a form saves.
 - **Dashboards.** Plain CSS grid from `x, y, w, h`; the grid stacks into one column below `stackBelow` pixels (default 640).
 
+## Reference fields
+
+A `reference` field stores another entity's record id. Pass the documents of the target entities as `entities` (a `Map` by id; a dashboard takes them from `documents.entities`). The picker's options (up to 200, sorted by the display field) and the table's labels are read from the **view's own data source**: one adapter serves every entity, so a form or table whose `dataSource` is `"default"` also reads the targets from `"default"`. A table shows the label of each id on the page, the raw id while it loads, and "Unknown" when the record no longer exists. Without `entities`, the picker shows an error state.
+
 ## Drafts
 
 Drafts are opt-in. Pass `drafts` to `FormRenderer` (or to `DashboardRenderer`, which hands it to every embedded form) and unsaved input is saved after a pause (`debounceMs`, default 400) and restored the next time the form mounts:
