@@ -1,5 +1,12 @@
 # @yadad/testing
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [0d0c2d0]
+  - @yadad/core@0.7.0
+
 ## 0.2.0
 
 ### Minor Changes

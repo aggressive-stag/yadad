@@ -1,5 +1,13 @@
 # @yadad/renderer
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [0d0c2d0]
+  - @yadad/core@0.7.0
+  - @yadad/runtime@0.5.1
+
 ## 0.5.0
 
 ### Minor Changes
