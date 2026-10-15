@@ -148,6 +148,30 @@ export interface TableView {
   readonly filter?: Condition;
   /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring, number and date fields as a from/to range (gte/lte, either end optional). */
   readonly quickFilters?: readonly QuickFilter[];
+  /** Clicking a row opens another table view scoped to that row (RFC 0003). */
+  readonly rowAction?: RowAction;
+}
+
+/** Row action modes. Slice 1 has `replace` only (the target takes the table's place, with Back). */
+export const ROW_ACTION_MODES = ["replace"] as const;
+export type RowActionMode = (typeof ROW_ACTION_MODES)[number];
+
+/** Copies the clicked row's `field` value into the target view's filter on `to` (an `eq` condition). */
+export interface RowBinding {
+  /** Id of a field on this table's entity. */
+  readonly field: string;
+  /** Id of a field on the target table's entity, of the same type. */
+  readonly to: string;
+}
+
+/** Opens a table view, filtered by the clicked row. The documents are never modified. */
+export interface RowAction {
+  /** Id of a table view. */
+  readonly open: string;
+  /** At least one; every binding adds an `eq(to, row[field])` condition to the target's own filter. */
+  readonly bind: readonly RowBinding[];
+  /** Defaults to "replace". */
+  readonly mode?: RowActionMode;
 }
 
 export interface QuickFilter {

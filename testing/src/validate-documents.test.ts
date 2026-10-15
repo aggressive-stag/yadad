@@ -64,6 +64,15 @@ const expected: Record<string, Picked[]> = {
     { path: "/quickFilters/0/field", code: "invalid-value", document: "entries" },
     { path: "/filter/op", code: "invalid-value", document: "entries" },
   ],
+  "row-action-unknown-view.json": [{ path: "/rowAction/open", code: "unknown-reference", document: "a", allowed: ["a"] }],
+  "row-action-field-mismatch.json": [
+    { path: "/rowAction/bind/0/field", code: "unknown-reference", document: "a", allowed: ["name", "qty"] },
+    { path: "/rowAction/bind/0/to", code: "unknown-reference", document: "a", allowed: ["name", "qty"] },
+  ],
+  "row-action-type-mismatch.json": [{ path: "/rowAction/bind/0", code: "invalid-value", document: "a" }],
+  "row-action-cycle.json": [{ path: "/rowAction/open", code: "invalid-value", document: "b" }],
+  "row-action-too-deep.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a" }],
+  "row-action-form-target.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a", allowed: ["a"] }],
   "duplicate-id.json": [{ path: "/id", code: "duplicate-id", document: "thing" }],
   "structural-unknown-kind.json": [
     { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "dashboard"] },

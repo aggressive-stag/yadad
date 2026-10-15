@@ -1,0 +1,60 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 2,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      }
+    ]
+  },
+  {
+    "kind": "form",
+    "specVersion": 2,
+    "id": "f",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "name"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 2,
+    "id": "a",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "rowAction": {
+      "open": "f",
+      "bind": [
+        {
+          "field": "name",
+          "to": "name"
+        }
+      ]
+    }
+  }
+]

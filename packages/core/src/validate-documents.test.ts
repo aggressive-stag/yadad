@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { validateDocuments } from "./validate.js";
+import { validateDocument, validateDocuments } from "./validate.js";
 
 type ExpectedError = { path: string; code: string; document?: string | undefined; allowed?: readonly string[] | undefined };
 
@@ -188,5 +188,46 @@ describe("relative dates across a set", () => {
     ];
     const result = validateDocuments(set);
     expect(result.ok ? [] : result.errors.map((e) => e.path)).toEqual(["/tabs/0/items/0/filter/value"]);
+  });
+});
+
+describe("table rowAction", () => {
+  const ent = entity("thing", [{ id: "name", type: "text" }, { id: "qty", type: "number" }]);
+  const go = (open: string, extra: Record<string, unknown> = {}) => ({ open, bind: [{ field: "name", to: "name" }], ...extra });
+
+  test("a chain of three hops is valid; the mode may be stated", () => {
+    const set = [ent, table("a", "thing", { rowAction: go("b", { mode: "replace" }) }), table("b", "thing", { rowAction: go("c") }), table("c", "thing", { rowAction: go("d") }), table("d", "thing")];
+    expect(validateDocuments(set).ok).toBe(true);
+  });
+
+  test("structural problems: dialog mode, no bindings, a repeated target field, unknown keys", () => {
+    const set = [
+      table("a", "thing", { rowAction: { open: "a", bind: [], mode: "dialog" } }),
+      table("b", "thing", { rowAction: { open: "a", bind: [{ field: "name", to: "name" }, { field: "qty", to: "name" }], edit: true } }),
+    ];
+    const results = set.map((d) => validateDocument(d));
+    expect(results[0]?.ok ? [] : results[0]?.errors.map((e) => [e.path, e.code])).toEqual([["/rowAction/mode", "invalid-value"], ["/rowAction/bind", "invalid-value"]]);
+    expect(results[1]?.ok ? [] : results[1]?.errors.map((e) => [e.path, e.code])).toEqual([["/rowAction/edit", "unknown-property"], ["/rowAction/bind/1/to", "duplicate-id"]]);
+    const dialog = results[0];
+    expect(dialog?.ok ? "" : dialog?.errors[0]?.hint).toContain("replace");
+  });
+
+  test("a row action that opens its own table is a cycle", () => {
+    expect(problems([ent, table("a", "thing", { rowAction: go("a") })])).toEqual([{ path: "/rowAction/open", code: "invalid-value", document: "a", allowed: undefined }]);
+  });
+
+  test("a table that leads into a cycle is not itself reported as one", () => {
+    const set = [ent, table("c", "thing", { rowAction: go("a") }), table("a", "thing", { rowAction: go("b") }), table("b", "thing", { rowAction: go("a") })];
+    expect(problems(set)).toEqual([{ path: "/rowAction/open", code: "invalid-value", document: "b", allowed: undefined }]);
+  });
+
+  test("a four-hop chain is reported once, with a readable hint", () => {
+    const set = [ent, table("a", "thing", { rowAction: go("b") }), table("b", "thing", { rowAction: go("c") }), table("c", "thing", { rowAction: go("d") }), table("d", "thing", { rowAction: go("e") }), table("e", "thing")];
+    expect(problems(set)).toEqual([{ path: "/rowAction/open", code: "invalid-value", document: "a", allowed: undefined }]);
+  });
+
+  test("the target may be a different entity", () => {
+    const other = entity("order", [{ id: "name", type: "text" }]);
+    expect(validateDocuments([ent, other, table("a", "thing", { rowAction: go("b") }), table("b", "order")]).ok).toBe(true);
   });
 });

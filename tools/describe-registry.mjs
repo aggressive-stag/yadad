@@ -94,7 +94,7 @@ lines.push("");
 lines.push(`grid (dashboard tabs): a tab has ${contract.grid.columns.default} columns by default, at most ${contract.grid.columns.max}.`);
 for (const item of contract.grid.items) lines.push(`  item ${item.key}: whole number from ${item.min} to ${item.max}`);
 lines.push("");
-lines.push(`limits: pageSize is a whole number from 1 to ${contract.limits.pageSize.max}.`);
+lines.push(`limits: pageSize is a whole number from 1 to ${contract.limits.pageSize.max}; a table's rowAction chain runs at most ${contract.limits.rowActionDepth.max} hops.`);
 lines.push("");
 lines.push("error codes (validation): " + contract.errorCodes.join(", "));
 console.log(lines.join("\n"));

@@ -408,3 +408,11 @@ describe("relative dates in the description", () => {
     expect(validateDocument(doc).ok).toBe(true);
   });
 });
+
+describe("row action in the description", () => {
+  test("rowAction is an optional table property and the depth limit is reported", () => {
+    const table = describeContract().documentKinds.find((k) => k.kind === "table");
+    expect(table?.properties.find((p) => p.key === "rowAction")?.required).toBe(false);
+    expect(describeContract().limits.rowActionDepth.max).toBe(3);
+  });
+});

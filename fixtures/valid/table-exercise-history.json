@@ -1,0 +1,35 @@
+{
+  "kind": "table",
+  "specVersion": 2,
+  "id": "exercise_history",
+  "title": "Exercise history",
+  "entity": "workout_set",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [
+    {
+      "field": "day"
+    },
+    {
+      "field": "weight"
+    },
+    {
+      "field": "reps"
+    },
+    {
+      "field": "warmup"
+    }
+  ],
+  "sort": [
+    {
+      "field": "day",
+      "dir": "desc"
+    }
+  ],
+  "pageSize": 10,
+  "quickFilters": [
+    {
+      "field": "day"
+    }
+  ]
+}

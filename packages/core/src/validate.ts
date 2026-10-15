@@ -7,8 +7,8 @@
 
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp } from "./condition.js";
-import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
-import { FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
+import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
+import { FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
 import type { Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
@@ -199,8 +199,9 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters", "rowAction"]);
   checkCondition(errors, doc["filter"], ["filter"]);
+  checkRowAction(errors, doc["rowAction"]);
   const filters = checkArray(errors, doc, [], "quickFilters");
   const filtered: { id: string; path: Path }[] = [];
   filters?.forEach((f, i) => {
@@ -258,6 +259,37 @@ function validateTable(errors: Errors, doc: JsonObject): void {
   if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > PAGE_SIZE_MAX)) {
     errors.add(["pageSize"], "invalid-value", `"pageSize" must be a whole number from 1 to ${PAGE_SIZE_MAX}.`, "Use e.g. 25.");
   }
+}
+
+const ROW_ACTION_HINT = 'Use { "open": "<table view id>", "bind": [{ "field": "<field here>", "to": "<field on the target>" }] }.';
+
+function checkRowAction(errors: Errors, value: unknown): void {
+  if (value === undefined) return;
+  const path: Path = ["rowAction"];
+  if (!isObject(value)) {
+    errors.add(path, "type", "A rowAction must be a JSON object.", ROW_ACTION_HINT);
+    return;
+  }
+  checkKeys(errors, value, path, ["open", "bind"], ["mode"]);
+  checkId(errors, value, path, "open");
+  if (value["mode"] !== undefined && !ROW_ACTION_MODES.some((m) => m === value["mode"])) {
+    errors.add([...path, "mode"], "invalid-value", `Unsupported rowAction mode ${JSON.stringify(value["mode"])}.`, `Use "replace" (the only mode so far; "dialog" is planned). Allowed: ${ROW_ACTION_MODES.join(", ")}.`, [...ROW_ACTION_MODES]);
+  }
+  const bind = checkArray(errors, value, path, "bind");
+  if (bind?.length === 0) errors.add([...path, "bind"], "invalid-value", "A rowAction needs at least one binding.", 'Add { "field": "<field here>", "to": "<field on the target>" }.');
+  const targets: { id: string; path: Path }[] = [];
+  bind?.forEach((b, i) => {
+    const bpath = [...path, "bind", i];
+    if (!isObject(b)) {
+      errors.add(bpath, "type", "A binding must be a JSON object.", 'Use { "field": "<field here>", "to": "<field on the target>" }.');
+      return;
+    }
+    checkKeys(errors, b, bpath, ["field", "to"], []);
+    checkId(errors, b, bpath, "field");
+    checkId(errors, b, bpath, "to");
+    if (typeof b["to"] === "string") targets.push({ id: b["to"], path: [...bpath, "to"] });
+  });
+  reportDuplicates(errors, targets, "binding", "a rowAction (each target field is bound once)");
 }
 
 function validateDashboard(errors: Errors, doc: JsonObject): void {
@@ -750,6 +782,7 @@ function checkSetReferences(errors: DocumentError[], docs: readonly Document[]):
     }
   }
   const embeddable = [...idx.forms.keys(), ...idx.tables.keys()];
+  checkRowActionChains(errors, idx);
   for (const doc of docs) {
     switch (doc.kind) {
       case "entity":
@@ -828,6 +861,98 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   });
   checkConditionFields(view.filter, ["filter"], checkField);
   checkDates(view.filter, ["filter"]);
+  if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+}
+
+/** Checks a table's row action: the target is a table, the bound fields exist on both entities and have the same type. */
+function checkRowActionTarget(errors: DocumentError[], view: TableView, entity: EntityDocument, idx: SetIndex): void {
+  const action = view.rowAction;
+  if (!action) return;
+  const target = idx.tables.get(action.open);
+  if (!target) {
+    if (idx.forms.has(action.open) || idx.dashboards.has(action.open)) {
+      errors.push({
+        path: jsonPointer(["rowAction", "open"]),
+        code: "invalid-value",
+        message: `Row action opens "${action.open}", which is not a table view.`,
+        hint: "Row actions open table views only for now (a form target comes later); point at a table view.",
+        document: view.id,
+        allowed: [...idx.tables.keys()],
+      });
+    } else {
+      errors.push(refError(view.id, ["rowAction", "open"], `Row action opens unknown view "${action.open}".`, "Point at a table view in the set.", [...idx.tables.keys()]));
+    }
+    return;
+  }
+  const targetEntity = idx.entities.get(target.entity);
+  action.bind.forEach((b, i) => {
+    const from = entity.fields.find((f) => f.id === b.field);
+    if (!from) {
+      const ids = [...new Set(entity.fields.map((f) => f.id))];
+      errors.push(refError(view.id, ["rowAction", "bind", i, "field"], `Field "${b.field}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, ids));
+    }
+    if (!targetEntity) return; // the target's own missing entity is reported on the target
+    const to = targetEntity.fields.find((f) => f.id === b.to);
+    if (!to) {
+      const ids = [...new Set(targetEntity.fields.map((f) => f.id))];
+      errors.push(refError(view.id, ["rowAction", "bind", i, "to"], `Field "${b.to}" is not on entity "${targetEntity.id}" (the entity of "${target.id}").`, `Use a field id on "${targetEntity.id}".`, ids));
+    }
+    if (from && to && from.type !== to.type) {
+      errors.push({
+        path: jsonPointer(["rowAction", "bind", i]),
+        code: "invalid-value",
+        message: `Cannot bind "${b.field}" (${from.type}) to "${b.to}" (${to.type}): the field types differ.`,
+        hint: `Bind fields of the same type; pick a ${from.type} field on "${targetEntity.id}".`,
+        document: view.id,
+      });
+    }
+  });
+}
+
+/** Walks every row action chain: no view may be revisited, and a chain has at most MAX_ROW_ACTION_DEPTH hops. */
+function checkRowActionChains(errors: DocumentError[], idx: SetIndex): void {
+  const next = (id: string): string | undefined => {
+    const open = idx.tables.get(id)?.rowAction?.open;
+    return open !== undefined && idx.tables.has(open) ? open : undefined;
+  };
+  const cyclic = new Set<string>();
+  for (const start of idx.tables.keys()) {
+    if (cyclic.has(start)) continue;
+    const seen = [start];
+    for (let cur = next(start); cur !== undefined && !seen.slice(1).includes(cur); cur = next(cur)) {
+      if (cur === start) {
+        seen.forEach((id) => cyclic.add(id));
+        errors.push({
+          path: jsonPointer(["rowAction", "open"]),
+          code: "invalid-value",
+          message: `Row actions form a cycle: ${[...seen, start].join(" -> ")}.`,
+          hint: "A chain may not revisit a view it already opened; point this row action at a different table view or remove it.",
+          document: seen[seen.length - 1] ?? start,
+        });
+        break;
+      }
+      seen.push(cur);
+    }
+  }
+  const hops = (id: string, trail: readonly string[]): number => {
+    const n = next(id);
+    return n === undefined || trail.includes(n) ? 0 : 1 + hops(n, [...trail, n]);
+  };
+  for (const id of idx.tables.keys()) {
+    if (cyclic.has(id)) continue;
+    const n = next(id);
+    if (n === undefined) continue;
+    const length = hops(id, [id]);
+    if (length > MAX_ROW_ACTION_DEPTH && hops(n, [id, n]) <= MAX_ROW_ACTION_DEPTH) {
+      errors.push({
+        path: jsonPointer(["rowAction", "open"]),
+        code: "invalid-value",
+        message: `Row actions starting at "${id}" are ${length} hops long; the most allowed is ${MAX_ROW_ACTION_DEPTH}.`,
+        hint: `Shorten the chain to at most ${MAX_ROW_ACTION_DEPTH} hops (remove a rowAction).`,
+        document: id,
+      });
+    }
+  }
 }
 
 /** Checks each reference field of an entity: the target entity exists and `display` is a text or select field on it. */

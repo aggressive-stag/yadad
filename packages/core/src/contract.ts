@@ -32,6 +32,9 @@ export const GRID_ITEM_KEYS: readonly { readonly key: GridItemKey; readonly min:
 /** Upper bound for every grid item number, so a document stays sane. */
 export const GRID_ITEM_MAX = 1000;
 
+/** A row action chain (A opens B opens C ...) is at most this many hops long, with no revisits. */
+export const MAX_ROW_ACTION_DEPTH = 3;
+
 /** Conditions may nest at most this many levels (and/or/not). */
 export const MAX_CONDITION_DEPTH = 16;
 
@@ -102,7 +105,7 @@ export interface ContractDescription {
     readonly columns: { readonly default: number; readonly max: number };
     readonly items: readonly { readonly key: GridItemKey; readonly min: number; readonly max: number }[];
   };
-  readonly limits: { readonly pageSize: { readonly max: number } };
+  readonly limits: { readonly pageSize: { readonly max: number }; readonly rowActionDepth: { readonly max: number } };
   readonly errorCodes: readonly string[];
 }
 
@@ -149,6 +152,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "pageSize", required: false, description: "Rows per page, a whole number from 1 to 1000." },
       { key: "filter", required: false, description: "A condition every row must always match." },
       { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number and date fields as a from/to range (either end may stay empty)." },
+      { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only.` },
     ],
   },
   {
@@ -339,7 +343,7 @@ export function describeContract(): ContractDescription {
       columns: { default: GRID_COLUMNS_DEFAULT, max: MAX_GRID_COLUMNS },
       items: GRID_ITEM_KEYS.map(({ key, min }) => ({ key, min, max: GRID_ITEM_MAX })),
     },
-    limits: { pageSize: { max: PAGE_SIZE_MAX } },
+    limits: { pageSize: { max: PAGE_SIZE_MAX }, rowActionDepth: { max: MAX_ROW_ACTION_DEPTH } },
     errorCodes: [...ERROR_CODES],
   };
 }

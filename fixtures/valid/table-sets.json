@@ -1,10 +1,10 @@
 {
   "kind": "table",
-  "specVersion": 0,
+  "specVersion": 2,
   "id": "sets",
   "title": "Logged sets",
   "entity": "workout_set",
-  "revision": 2,
+  "revision": 3,
   "dataSource": "default",
   "columns": [
     {
@@ -50,5 +50,14 @@
     {
       "field": "notes"
     }
-  ]
+  ],
+  "rowAction": {
+    "open": "exercise_history",
+    "bind": [
+      {
+        "field": "exercise",
+        "to": "exercise"
+      }
+    ]
+  }
 }
