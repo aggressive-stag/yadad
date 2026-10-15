@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { DashboardView, DataAdapter, EntityDocument, FormView, TableView, ViewDocument } from "@yadad/core";
+import type { Condition, DashboardView, DataAdapter, EntityDocument, FormView, TableView, ViewDocument } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -154,3 +154,92 @@ describe("DashboardRenderer", () => {
     expect(summary).toContain("dashboards cannot be nested");
   });
 });
+
+describe("stat widgets", () => {
+  const sets: EntityDocument = {
+    kind: "entity",
+    specVersion: 2,
+    id: "set",
+    revision: 1,
+    fields: [
+      { id: "exercise", type: "text", label: "Exercise" },
+      { id: "weight", type: "number", label: "Weight" },
+      { id: "reps", type: "number", label: "Reps" },
+      { id: "day", type: "date", label: "Day" },
+    ],
+  };
+  const tbl: TableView = { kind: "table", specVersion: 2, id: "sets", entity: "set", revision: 1, dataSource: "default", columns: [{ field: "exercise" }] };
+  const board = (items: DashboardView["tabs"][number]["items"]): DashboardView => ({ kind: "dashboard", specVersion: 2, id: "b", revision: 1, tabs: [{ id: "t", title: "T", items }] });
+  const stat = (id: string, y: number, measure: Extract<DashboardView["tabs"][number]["items"][number], { widget: "stat" }>["measure"], extra: { filter?: Condition } = {}) =>
+    ({ id, x: 0, y, w: 4, h: 1, widget: "stat" as const, label: id, view: "sets", measure, ...extra });
+
+  async function show(d: DashboardView, db: DataAdapter) {
+    render(
+      <DashboardRenderer dashboard={d} documents={{ entities: new Map([["set", sets]]), views: new Map([["sets", tbl]]) }} registry={mockRegistry} dataSources={new Map([["default", db]])} />,
+    );
+  }
+  const text = (id: string) => document.querySelector(`[data-yadad-grid-item="${id}"]`)!.textContent ?? "";
+
+  test("shows each measure through the count component, formatted, with dashes for nothing", async () => {
+    const db = createMemoryAdapter();
+    await db.create("set", { exercise: "Squat", weight: 100, reps: 5, day: "2026-10-01" }, { entityRevision: 1 });
+    await db.create("set", { exercise: "Squat", weight: 102.5, reps: 10, day: "2026-10-03" }, { entityRevision: 1 });
+    await db.create("set", { exercise: "Bench", weight: 80, reps: 3, day: "2026-10-03" }, { entityRevision: 1 });
+    await show(
+      board([
+        stat("volume", 0, { op: "sum", product: ["weight", "reps"] }),
+        stat("avg", 1, { op: "avg", field: "weight" }),
+        stat("days", 2, { op: "countDistinct", field: "day" }),
+        stat("first", 3, { op: "min", field: "day" }),
+        stat("squat_best", 4, { op: "max", field: "weight" }, { filter: { op: "eq", field: "exercise", value: "Squat" } }),
+        stat("none", 5, { op: "avg", field: "weight" }, { filter: { op: "eq", field: "exercise", value: "Press" } }),
+        stat("none_sum", 6, { op: "sum", field: "weight" }, { filter: { op: "eq", field: "exercise", value: "Press" } }),
+      ]),
+      db,
+    );
+    await waitFor(() => expect(text("volume")).toContain(NF(1765)));
+    await waitFor(() => expect(text("avg")).toContain(NF(94.17)));
+    expect(text("days")).toContain("2");
+    expect(text("first")).toContain("2026-10-01");
+    expect(text("squat_best")).toContain(NF(102.5));
+    expect(text("none")).toContain("—");
+    expect(text("none_sum")).toContain("0");
+    expect(document.querySelector("[data-yadad-stat-partial]")).toBeNull();
+  });
+
+  test("shows a loading marker first, and an error when records cannot be loaded", async () => {
+    const db = createMemoryAdapter();
+    const failing: DataAdapter = { ...db, find: () => Promise.reject(new Error("boom")) };
+    await show(board([stat("volume", 0, { op: "sum", field: "weight" })]), failing);
+    expect(text("volume")).toContain("…");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("boom");
+    expect(screen.queryByTestId("count")).toBeNull();
+  });
+
+  test("says so when only the first 5000 records were read", async () => {
+    const db = createMemoryAdapter();
+    const many = Array.from({ length: 5001 }, () => ({ weight: 1 }));
+    await db.batch("set", { create: many }, { entityRevision: 1 });
+    await show(board([stat("total", 0, { op: "sum", field: "weight" })]), db);
+    const note = await screen.findByRole("note");
+    expect(note.textContent).toContain(NF(5000));
+    expect(note.textContent).toContain(NF(5001));
+    expect(text("total")).toContain(NF(5000));
+  });
+
+  test("a stat with an unknown measure field is reported, not rendered", () => {
+    const db = createMemoryAdapter();
+    render(
+      <DashboardRenderer
+        dashboard={board([stat("bad", 0, { op: "sum", field: "ghost" })])}
+        documents={{ entities: new Map([["set", sets]]), views: new Map([["sets", tbl]]) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", db]])}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain('Field "ghost" does not exist');
+  });
+});
+
+const NF = (n: number): string => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);

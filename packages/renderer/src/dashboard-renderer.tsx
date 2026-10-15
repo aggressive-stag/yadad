@@ -6,12 +6,15 @@ import type {
   DocumentError,
   EntityDocument,
   GridItem,
+  Measure,
   Registry,
+  StatWidget,
   TableView,
   ViewDocument,
 } from "@yadad/core";
 import { conditionFields, jsonPointer } from "@yadad/core";
-import { resolveRelativeDates } from "@yadad/runtime";
+import { aggregate } from "@yadad/runtime";
+import type { AggregateResult } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { FormRenderer } from "./form-renderer.js";
@@ -63,7 +66,7 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * widget taller than its area scrolls inside its Panel. The gap is
  * --yadad-grid-gap. Narrower than `stackBelow`, the items stack into one
  * full-width column in reading order. Saving a form anywhere on the
- * dashboard reloads its tables and counts.
+ * dashboard reloads its tables, counts and stats.
  */
 export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts }: DashboardRendererProps): ReactNode {
   const [rootRef, width] = useWidth();
@@ -83,7 +86,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
     const view = documents.views.get(item.view);
     const entity = view && view.kind !== "dashboard" ? documents.entities.get(view.entity) : undefined;
     if (!view || !entity) return null; // reported by checkDashboard
-    if (item.widget === "count") {
+    if (item.widget === "count" || item.widget === "stat") {
       return view.kind === "table" ? <CountLoader widget={item} view={view} entity={entity} registry={registry} dataSources={dataSources} reloadKey={reloadKey} /> : null;
     }
     if (view.kind === "form") {
@@ -130,6 +133,16 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
   );
 }
 
+const NUMBER_FORMAT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+const NO_VALUE = "\u2014";
+
+/** A stat's value as text: grouped digits, at most two decimals, a dash for nothing. */
+function formatStat(value: AggregateResult["value"]): string {
+  if (value === undefined) return NO_VALUE;
+  return typeof value === "number" ? NUMBER_FORMAT.format(value) : value;
+}
+
+/** Loads a count or a stat and shows it through the registry's count component (a labelled number). */
 function CountLoader({
   widget,
   view,
@@ -138,50 +151,64 @@ function CountLoader({
   dataSources,
   reloadKey,
 }: {
-  widget: CountWidget;
+  widget: CountWidget | StatWidget;
   view: TableView;
   entity: EntityDocument;
   registry: Registry<ReactNode>;
   dataSources: ReadonlyMap<string, DataAdapter>;
   reloadKey: number;
 }): ReactNode {
-  const [value, setValue] = useState<number | undefined>(undefined);
+  const [result, setResult] = useState<AggregateResult | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
   const adapter = dataSources.get(view.dataSource);
   const filter = useMemo((): Condition | undefined => {
     const parts = [view.filter, widget.filter].filter((c): c is Condition => c !== undefined);
     return parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { op: "and", conditions: parts };
   }, [view.filter, widget.filter]);
+  const measure: Measure = widget.widget === "stat" ? widget.measure : COUNT;
+  // Stable across renders while the document is unchanged.
+  const measureKey = JSON.stringify(measure);
 
   useEffect(() => {
     if (!adapter) return;
     let current = true;
-    // Relative dates become fixed ones here, so the adapter (and any server) never sees them.
-    const fixed = filter ? resolveRelativeDates(filter) : undefined;
-    adapter
-      .find(entity.id, { page: { offset: 0, limit: 0 }, ...(fixed ? { filter: fixed } : {}) })
-      .then((page) => {
+    // aggregate() turns relative dates into fixed ones, so the adapter (and any server) never sees them.
+    aggregate(adapter, entity.id, JSON.parse(measureKey) as Measure, filter ? { filter } : {})
+      .then((next) => {
         if (!current) return;
         setFailure(undefined);
-        setValue(page.total);
+        setResult(next);
       })
       .catch((error: unknown) => {
         if (!current) return;
-        setValue(undefined);
+        setResult(undefined);
         setFailure(error instanceof Error ? error.message : String(error));
       });
     return () => {
       current = false;
     };
-  }, [adapter, entity.id, filter, reloadKey]);
+  }, [adapter, entity.id, filter, measureKey, reloadKey]);
 
   const Count = registry.widgets.count;
   if (failure !== undefined) {
     const { ErrorSummary } = registry.layout;
     return <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${failure}`, hint: "Reload the page or try again later." }]} />;
   }
-  return <Count label={widget.label} value={value} />;
+  if (widget.widget === "count") return <Count label={widget.label} value={result?.total} />;
+  const value = typeof result?.value === "number" ? result.value : undefined;
+  return (
+    <>
+      <Count label={widget.label} value={value} {...(result ? { text: formatStat(result.value) } : {})} />
+      {result?.partial ? (
+        <small data-yadad-stat-partial="" role="note">
+          Partial: the first {NUMBER_FORMAT.format(result.read)} of {NUMBER_FORMAT.format(result.total)} records.
+        </small>
+      ) : null}
+    </>
+  );
 }
+
+const COUNT: Measure = { op: "count" };
 
 /** Every widget must point at a view that exists and fits it, with its entity and data source. */
 function checkDashboard(dashboard: DashboardView, documents: DocumentSet, dataSources: ReadonlyMap<string, DataAdapter>): DocumentError[] {
@@ -193,17 +220,27 @@ function checkDashboard(dashboard: DashboardView, documents: DocumentSet, dataSo
       const view = documents.views.get(item.view);
       if (!view) return add([...path, "view"], `No view with id "${item.view}".`, `Use one of: ${[...documents.views.keys()].join(", ")}.`);
       if (view.kind === "dashboard") return add([...path, "view"], `"${item.view}" is a dashboard; dashboards cannot be nested.`, "Embed a form or table view.");
-      if (item.widget === "count" && view.kind !== "table") return add([...path, "view"], `A count widget needs a table view; "${item.view}" is a ${view.kind}.`, "Point it at a table view.");
+      if ((item.widget === "count" || item.widget === "stat") && view.kind !== "table") return add([...path, "view"], `A ${item.widget} widget needs a table view; "${item.view}" is a ${view.kind}.`, "Point it at a table view.");
       const entity = documents.entities.get(view.entity);
       if (!entity) return add([...path, "view"], `View "${view.id}" is for entity "${view.entity}", which is not loaded.`, "Load that entity document.");
       if (!dataSources.has(view.dataSource)) add([...path, "view"], `View "${view.id}" uses data source "${view.dataSource}", which was not provided.`, "Add it to the dataSources the host passes in.");
-      if (item.widget === "count" && item.filter) {
+      if ((item.widget === "count" || item.widget === "stat") && item.filter) {
         for (const field of conditionFields(item.filter)) {
           if (!entity.fields.some((f) => f.id === field)) add([...path, "filter"], `Field "${field}" does not exist on entity "${entity.id}".`, `Use one of: ${entity.fields.map((f) => f.id).join(", ")}.`);
+        }
+      }
+      if (item.widget === "stat") {
+        for (const field of measureFields(item.measure)) {
+          if (!entity.fields.some((f) => f.id === field)) add([...path, "measure"], `Field "${field}" does not exist on entity "${entity.id}".`, `Use one of: ${entity.fields.map((f) => f.id).join(", ")}.`);
         }
       }
       return undefined;
     }),
   );
   return errors;
+}
+
+function measureFields(measure: Measure): readonly string[] {
+  if (measure.op === "count") return [];
+  return "product" in measure ? measure.product : [measure.field];
 }

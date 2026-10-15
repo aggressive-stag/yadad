@@ -274,10 +274,10 @@ function MockPanel({ title, children }: PanelProps<ReactNode>): ReactNode {
   );
 }
 
-function MockCount({ label, value }: CountWidgetProps): ReactNode {
+function MockCount({ label, value, text }: CountWidgetProps): ReactNode {
   return (
     <div data-testid="count">
-      <span>{label}</span> <strong>{value ?? "…"}</strong>
+      <span>{label}</span> <strong>{text ?? value ?? "…"}</strong>
     </div>
   );
 }

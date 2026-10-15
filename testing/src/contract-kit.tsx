@@ -434,6 +434,11 @@ function layoutChecks(registry: Registry<ReactNode>): ContractCheck[] {
       if (!screen.queryByText(/Squat sets/)) problems.push("While loading (value undefined) the count widget must still show its label.");
     }),
 
+    layoutCheck("count widget shows preformatted text instead of the value when given", async (problems) => {
+      const { container } = render(<Count label="Volume" value={12345.6789} text="12,345.68" />);
+      if (!container.textContent.includes("12,345.68")) problems.push("The count widget must show `text` when it is given (stat widgets pass formatted numbers and a dash this way).");
+    }),
+
     layoutCheck("ErrorSummary announces every message and hint", async (problems) => {
       const { container } = render(<ErrorSummary id="kit-errors" errors={problemsToShow} />);
       const alert = screen.queryByRole("alert");
