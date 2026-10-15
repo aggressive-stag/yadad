@@ -1,6 +1,6 @@
 # @yadad/renderer
 
-React renderers that turn entity and view documents, a registry and data adapters into working pages: `FormRenderer`, `TableRenderer` and `DashboardRenderer`. Components are looked up in the registry by exact key; the renderer never imports one.
+React renderers that turn entity and view documents, a registry and data adapters into working pages: `FormRenderer`, `TableRenderer`, `CalendarRenderer` and `DashboardRenderer`. Components are looked up in the registry by exact key; the renderer never imports one.
 
 ```sh
 npm install @yadad/renderer @yadad/runtime @yadad/core react
@@ -9,13 +9,14 @@ npm install @yadad/renderer @yadad/runtime @yadad/core react
 Peer dependency: React 19.
 
 ```tsx
-import { DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
+import { CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
 
 const dataSources = new Map([["default", adapter]]); // keyed by each view's `dataSource`
 
 <FormRenderer entity={entity} view={form} registry={registry} dataSources={dataSources} onSaved={(record) => {}} />
 <TableRenderer entity={entity} view={table} registry={registry} dataSources={dataSources} reloadKey={saves} />
+<CalendarRenderer entity={entity} view={calendar} registry={registry} dataSources={dataSources} reloadKey={saves} />
 
 const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map([[form.id, form], [table.id, table]]) };
 <DashboardRenderer dashboard={dashboard} documents={documents} registry={registry} dataSources={dataSources} />
@@ -24,7 +25,8 @@ const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views
 - **Registry.** Any `Registry<ReactNode>`: the `@yadad/components` reference set, your own, or `mockRegistry` from `@yadad/testing`. A missing key is reported in the core error format, not guessed at.
 - **Data.** Views name a `dataSource` key; the host maps keys to `DataAdapter`s. Views never carry URLs.
 - **Tables.** Honor `sort`, `pageSize`, the fixed `filter` and `quickFilters`. Change `reloadKey` to reload rows, e.g. after a form saves.
-- **Dashboards.** Plain CSS grid from `x, y, w, h`; the grid stacks into one column below `stackBelow` pixels (default 640).
+- **Calendars.** The records of an entity on the days of a month or week, placed by `dateField`, rendered through the registry's `layout.Calendar` (an optional key; a registry without it gets an error summary). The renderer owns the visible range, the load and the announcements and hands days, entries and callbacks to the component. With `editable: true`, a move is optimistic — only the date field is sent with the record's `baseVersion` — and on any failure the entry goes back, the adapter's message shows and the range reloads. A `rowAction` opens the target table for an entry in place, with a Back control.
+- **Dashboards.** Plain CSS grid from `x, y, w, h`; the grid stacks into one column below `stackBelow` pixels (default 640). A `view` widget embeds a form, table or calendar.
 
 ## Reference fields
 

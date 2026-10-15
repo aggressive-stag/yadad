@@ -1,0 +1,399 @@
+import { AdapterError, RecordValidationError, conditionFields } from "@yadad/core";
+import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, TableView } from "@yadad/core";
+import { bindFilter, calendarToday, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, shiftAnchor, visibleDays, visibleRange, weekdayLabels } from "@yadad/runtime";
+import type { CalendarLoad, DateRange } from "@yadad/runtime";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import type { DocumentSet } from "./document-set.js";
+import { renderDisplay } from "./fields.js";
+import { useReferences } from "./references.js";
+import type { ReferenceSupport } from "./references.js";
+import { checkViewSetup } from "./setup.js";
+import { TableRenderer } from "./table-renderer.js";
+
+export interface CalendarRendererProps {
+  readonly entity: EntityDocument;
+  readonly view: CalendarView;
+  readonly registry: Registry<ReactNode>;
+  /** Host-provided adapters, looked up by the view's `dataSource` key. */
+  readonly dataSources: ReadonlyMap<string, DataAdapter>;
+  /** The documents of the entities that the entity's reference fields point at, by id (for labels). */
+  readonly entities?: ReadonlyMap<string, EntityDocument>;
+  /** Change this to reload the visible range, e.g. after a form saves a record. */
+  readonly reloadKey?: unknown;
+  /** The other documents in the set. Needed when the view has a `rowAction`. */
+  readonly documents?: DocumentSet;
+  /** The clock for "today" and relative dates in the view's filter. Defaults to the current time. */
+  readonly now?: Date;
+}
+
+const DEFAULT_MODES: readonly CalendarMode[] = ["month", "week"];
+const MODE_LABELS: Record<CalendarMode, string> = { month: "Month", week: "Week" };
+const UNTITLED = "(untitled)";
+
+type Loaded = { readonly status: "loaded"; readonly records: readonly DataRecord[]; readonly total: number; readonly truncated: boolean };
+/** The state of one range load; `key` names the range it is for, so a stale one is never shown on another range. */
+type RangeState = ({ readonly status: "failed"; readonly message: string } | Loaded) & { readonly key: string };
+
+/** An open entry: the target table, with the clicked record's bindings applied, replacing the calendar. */
+interface Opened {
+  readonly view: TableView;
+  readonly heading: string;
+}
+
+/**
+ * Renders a calendar view: the records of one entity on the days of a month
+ * or week, placed by one date field. It loads the visible range through the
+ * runtime, builds entries with the fields' Display components and hands days,
+ * entries and callbacks to the registry's `layout.Calendar`. There is no drag
+ * code here: the component calls `onMove`, and so does its "Move to day…"
+ * action. A move is optimistic; any failure puts the entry back, shows the
+ * adapter's message and reloads the range (RFC 0004).
+ *
+ * With a `rowAction`, activating an entry replaces the calendar, in the same
+ * container, with the target table filtered by that record and a Back button.
+ * The calendar stays mounted (hidden), so Back returns to the same period.
+ */
+export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now }: CalendarRendererProps): ReactNode {
+  const [opened, setOpened] = useState<Opened | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const afterRender = useRef<(() => void) | undefined>(undefined);
+  const { Button } = registry.layout;
+  const refEntities = entities ?? documents?.entities;
+
+  useEffect(() => {
+    const run = afterRender.current;
+    afterRender.current = undefined;
+    run?.();
+  }, [opened]);
+
+  const action = view.rowAction;
+  const target = action ? documents?.views.get(action.open) : undefined;
+  const targetEntity = target && target.kind === "table" ? documents?.entities.get(target.entity) : undefined;
+  const actionErrors: DocumentError[] = [];
+  if (action) {
+    const fail = (message: string, hint: string) => actionErrors.push({ path: "/rowAction/open", code: "invalid-value", message, hint });
+    if (!documents) fail(`View "${view.id}" has a row action, but no documents were passed to look up "${action.open}".`, "Pass the document set as the documents prop.");
+    else if (!target || target.kind !== "table") fail(`Row action opens "${action.open}", which is not a table view in the document set.`, "Point rowAction.open at a table view, or load that view.");
+    else if (!targetEntity) fail(`View "${target.id}" is for entity "${target.entity}", which is not loaded.`, "Load that entity document.");
+  }
+
+  const open = (record: DataRecord): void => {
+    if (!action || !target || target.kind !== "table" || !targetEntity) return;
+    const text = (field: string): string => {
+      const value = record.values[field];
+      return value === undefined || value === null || value === "" ? "" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+    };
+    const locked = action.bind.map((b) => b.to);
+    // The bound fields are fixed by the clicked entry, so their quick filters are not offered (as in a table drill-down).
+    const quickFilters = target.quickFilters?.filter((q) => !locked.includes(q.field));
+    const { quickFilters: _dropped, filter: _filter, ...rest } = target;
+    const filter = bindFilter(record.values, action.bind, target.filter);
+    const chips = action.bind.map((b) => `${targetEntity.fields.find((f) => f.id === b.to)?.label ?? b.to} = ${text(b.field) || "(empty)"}`);
+    afterRender.current = () => containerRef.current?.querySelector<HTMLElement>("[data-yadad-drill-heading]")?.focus();
+    setOpened({
+      view: { ...rest, ...(filter ? { filter } : {}), ...(quickFilters && quickFilters.length > 0 ? { quickFilters } : {}) },
+      heading: `${target.title ?? target.id}: ${chips.join(", ")}`,
+    });
+  };
+
+  const back = (): void => {
+    afterRender.current = () => containerRef.current?.querySelector<HTMLElement>("[data-yadad-calendar-view]")?.focus();
+    setOpened(undefined);
+  };
+
+  return (
+    <div ref={containerRef} data-yadad-drill={view.id}>
+      <div data-yadad-drill-level={0} {...(opened ? { hidden: true } : {})}>
+        <CalendarBody
+          entity={entity}
+          view={view}
+          registry={registry}
+          dataSources={dataSources}
+          {...(refEntities ? { entities: refEntities } : {})}
+          reloadKey={reloadKey}
+          {...(now ? { now } : {})}
+          extraErrors={actionErrors}
+          {...(action && actionErrors.length === 0 ? { onOpen: open } : {})}
+        />
+      </div>
+      {opened && targetEntity && documents && (
+        <div data-yadad-drill-level={1}>
+          <div data-yadad-drill-header="">
+            <Button label="Back" type="button" variant="secondary" disabled={false} onPress={back} />
+            <h2 tabIndex={-1} data-yadad-drill-heading="">
+              {opened.heading}
+            </h2>
+          </div>
+          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CalendarBodyProps {
+  readonly entity: EntityDocument;
+  readonly view: CalendarView;
+  readonly registry: Registry<ReactNode>;
+  readonly dataSources: ReadonlyMap<string, DataAdapter>;
+  readonly entities?: ReadonlyMap<string, EntityDocument>;
+  readonly reloadKey?: unknown;
+  readonly now?: Date;
+  readonly extraErrors: readonly DocumentError[];
+  readonly onOpen?: (record: DataRecord) => void;
+}
+
+const rangeKey = (range: DateRange): string => `${range.first}/${range.last}`;
+
+function failureMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** A failed update as the core error list: a 400's issues as they are, anything else one message. */
+function moveErrors(error: unknown): DocumentError[] {
+  if (error instanceof RecordValidationError) return [...error.issues];
+  const code = error instanceof AdapterError ? (error.code === "validation" ? "invalid-value" : error.code) : "invalid-value";
+  return [{ path: "", code, message: failureMessage(error), hint: "The entry is back on its day. Reload if the problem stays." }];
+}
+
+function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, onOpen }: CalendarBodyProps): ReactNode {
+  const clock = (): Date => now ?? new Date();
+  const modes = view.modes ?? DEFAULT_MODES;
+  const weekStartsOn = view.weekStartsOn ?? 1;
+  const [mode, setMode] = useState<CalendarMode>(modes[0] ?? "month");
+  const [anchor, setAnchor] = useState(() => calendarToday(clock()));
+  const [state, setState] = useState<RangeState | undefined>(undefined);
+  const [reloads, setReloads] = useState(0);
+  /** Records whose move is in flight, with the day they were moved to. */
+  const [pending, setPending] = useState<ReadonlyMap<string, string>>(new Map());
+  const inFlight = useRef(new Set<string>());
+  const [errors, setErrors] = useState<readonly DocumentError[]>([]);
+  const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
+
+  const adapter = dataSources.get(view.dataSource);
+  const range = useMemo(() => visibleRange(anchor, mode, weekStartsOn), [anchor, mode, weekStartsOn]);
+  const key = rangeKey(range);
+
+  // One load per range. A response for a range that is no longer current is discarded.
+  useEffect(() => {
+    if (!adapter) return;
+    let current = true;
+    loadCalendarRange(adapter, view, range, { entity, now: clock() }).then(
+      (load: CalendarLoad) => current && setState({ status: "loaded", key, records: load.records, total: load.total, truncated: load.truncated }),
+      (error: unknown) => current && setState({ status: "failed", key, message: failureMessage(error) }),
+    );
+    return () => {
+      current = false;
+    };
+    // `clock` reads `now`, which is a stable input in practice; the range key stands for `range`.
+  }, [adapter, entity, view, key, reloadKey, reloads]);
+
+  // Only a load for the range on screen counts; anything else is "still loading" and shows no entries.
+  const here = state && state.key === key ? state : undefined;
+  const loadedRecords = here?.status === "loaded" ? here.records : undefined;
+  const records = useMemo(
+    () =>
+      (loadedRecords ?? []).map((r) => {
+        const day = pending.get(r.id);
+        return day === undefined ? r : { ...r, values: { ...r.values, [view.dateField]: day } };
+      }),
+    [loadedRecords, pending, view.dateField],
+  );
+
+  const titleField = view.titleField ?? entity.fields.find((f) => f.type === "text")?.id;
+  const detailFields = (view.detailFields ?? []).flatMap((id) => entity.fields.filter((f) => f.id === id));
+  const colorField = view.colorField === undefined ? undefined : entity.fields.find((f) => f.id === view.colorField);
+  const referenceFields = [...detailFields, ...(colorField ? [colorField] : [])].filter((f): f is ReferenceField => f.type === "reference");
+  const wants = records.flatMap((r) =>
+    referenceFields.flatMap((field) => {
+      const value = r.values[field.id];
+      return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
+    }),
+  );
+  const references = useReferences(adapter, entities, [], wants, reloadKey);
+
+  const refs = [
+    { field: view.dateField, path: ["dateField"] },
+    ...(view.titleField ? [{ field: view.titleField, path: ["titleField"] }] : []),
+    ...(view.colorField ? [{ field: view.colorField, path: ["colorField"] }] : []),
+    ...(view.detailFields ?? []).map((field, i) => ({ field, path: ["detailFields", i] })),
+    ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),
+    ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
+  ];
+  const setupErrors: DocumentError[] = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors];
+  const dateDef = entity.fields.find((f) => f.id === view.dateField);
+  if (dateDef && dateDef.type !== "date") {
+    setupErrors.push({ path: "/dateField", code: "invalid-value", message: `Field "${dateDef.id}" is a ${dateDef.type} field, not a date field.`, hint: "Use a date field as dateField." });
+  }
+  const { Calendar, ErrorSummary, Button } = registry.layout;
+  if (!Calendar) {
+    setupErrors.push({
+      path: "/layout/Calendar",
+      code: "required",
+      message: `This registry has no layout.Calendar component, so the calendar view ${view.id} cannot be shown.`,
+      hint: "Add a layout.Calendar component to the registry.",
+    });
+  }
+  if (setupErrors.length > 0 || !Calendar) return <ErrorSummary errors={setupErrors} />;
+
+  const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
+  const navigate = (next: () => void): void => {
+    setErrors([]);
+    next();
+  };
+
+  const recordTitle = (record: DataRecord): string => {
+    const field = titleField === undefined ? undefined : entity.fields.find((f) => f.id === titleField);
+    const value = field ? record.values[field.id] : undefined;
+    return typeof value === "string" && value.trim() !== "" ? value : UNTITLED;
+  };
+
+  const plain = (field: Field, record: DataRecord): string => plainText(field, record.values[field.id], references);
+
+  const byDay = groupByDay(records, view.dateField);
+  const today = calendarToday(clock());
+  const colorOptions = colorField?.type === "select" ? colorField.options.values : [];
+  const colorOf = (record: DataRecord): { slot: number; label: string } | undefined => {
+    if (!colorField || (colorField.type !== "select" && colorField.type !== "reference")) return undefined;
+    const value = record.values[colorField.id];
+    const slot = colorSlot(value, colorField.type, { options: colorOptions });
+    return slot === undefined ? undefined : { slot, label: plainText(colorField, value, references) };
+  };
+
+  const entry = (record: DataRecord): CalendarEntry<ReactNode> => {
+    const title = recordTitle(record);
+    const color = colorOf(record);
+    const isPending = pending.has(record.id);
+    const details = detailFields.filter((f) => record.values[f.id] !== undefined && record.values[f.id] !== null && record.values[f.id] !== "");
+    return {
+      id: record.id,
+      content: (
+        <>
+          <span data-yadad-calendar-title="">{title}</span>
+          {details.map((field) => (
+            <small key={field.id} data-yadad-calendar-detail={field.id}>
+              {renderDisplay(registry, field, record.values[field.id], references)}
+            </small>
+          ))}
+        </>
+      ),
+      label: [title, ...details.map((f) => plain(f, record)), ...(color ? [color.label] : [])].join(", "),
+      ...(color ? { color } : {}),
+      movable: view.editable === true && !isPending,
+      pending: isPending,
+    };
+  };
+
+  const days = visibleDays(anchor, mode, weekStartsOn, today).map((day) => ({
+    ...day,
+    label: dayLabel(day.date),
+    entries: (byDay.get(day.date) ?? []).map(entry),
+  }));
+
+  // The legend lists what is on screen: select values in option order, references by label.
+  const legend = (() => {
+    if (!colorField) return [];
+    const shown = days.flatMap((d) => d.entries).flatMap((e) => (e.color ? [e.color] : []));
+    const unique = [...new Map(shown.map((c) => [c.label, c])).values()];
+    if (colorField.type === "select") return unique.sort((a, b) => colorOptions.indexOf(a.label) - colorOptions.indexOf(b.label));
+    return unique.sort((a, b) => a.label.localeCompare(b.label));
+  })();
+
+  const move = (recordId: string, day: string): void => {
+    const record = loadedRecords?.find((r) => r.id === recordId);
+    if (!record || !adapter || inFlight.current.has(recordId)) return;
+    const title = recordTitle(record);
+    let plan;
+    try {
+      plan = moveDay(view, entity, record, day);
+    } catch (error) {
+      announce(`Could not move ${title}: ${failureMessage(error)}`);
+      return;
+    }
+    if (plan.kind === "none") return;
+    if (plan.kind === "blocked") {
+      announce(`Could not move ${title}: ${plan.message}`);
+      return;
+    }
+    inFlight.current.add(recordId);
+    setErrors([]);
+    setPending((p) => new Map(p).set(recordId, day));
+    const settle = (): void => {
+      inFlight.current.delete(recordId);
+      setPending((p) => {
+        const next = new Map(p);
+        next.delete(recordId);
+        return next;
+      });
+    };
+    adapter.update(plan.entity, plan.id, plan.patch, plan.meta).then(
+      (saved) => {
+        setState((s) => (s?.status === "loaded" ? { ...s, records: s.records.map((r) => (r.id === saved.id ? saved : r)) } : s));
+        settle();
+        announce(`Moved ${title} to ${dayLabel(day)}`);
+      },
+      (error: unknown) => {
+        settle();
+        setErrors(moveErrors(error));
+        announce(`Could not move ${title}: ${failureMessage(error)}`);
+        setReloads((n) => n + 1); // show the server's state
+      },
+    );
+  };
+
+  const offersWeek = modes.includes("week") && mode !== "week";
+  const notice =
+    here?.status === "loaded" && here.truncated ? (
+      <p data-yadad-calendar-notice="">
+        Showing the first {NUMBER.format(here.records.length)} of {NUMBER.format(here.total)} entries in this range. {offersWeek ? "Switch to a week or narrow the filter." : "Narrow the filter."}
+      </p>
+    ) : undefined;
+
+  return (
+    <div data-yadad-calendar-view={view.id} tabIndex={-1}>
+      {here?.status === "failed" && (
+        <div data-yadad-calendar-load-error="">
+          <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${here.message}`, hint: "Retry, or reload the page." }]} />
+          <Button label="Retry" type="button" variant="secondary" disabled={false} onPress={() => setReloads((n) => n + 1)} />
+        </div>
+      )}
+      {errors.length > 0 && <ErrorSummary errors={[...errors]} />}
+      <Calendar
+        label={view.title ?? entity.id}
+        title={periodTitle(anchor, mode, weekStartsOn)}
+        mode={mode}
+        modes={modes.map((m) => ({ mode: m, label: MODE_LABELS[m] }))}
+        weekdays={weekdayLabels(weekStartsOn)}
+        days={days}
+        legend={legend.map(({ slot, label }) => ({ slot, label }))}
+        loading={here === undefined}
+        {...(notice ? { notice } : {})}
+        {...(announcement ? { announcement } : {})}
+        onModeChange={(next) => navigate(() => setMode(next))}
+        onPrevious={() => navigate(() => setAnchor((a) => shiftAnchor(a, mode, -1)))}
+        onNext={() => navigate(() => setAnchor((a) => shiftAnchor(a, mode, 1)))}
+        onToday={() => navigate(() => setAnchor(calendarToday(clock())))}
+        {...(onOpen
+          ? {
+              onOpenEntry: (id: string) => {
+                const record = loadedRecords?.find((r) => r.id === id);
+                if (record) onOpen(record);
+              },
+            }
+          : {})}
+        {...(view.editable === true ? { onMove: move } : {})}
+      />
+    </div>
+  );
+}
+
+const NUMBER = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+
+/** A field value as plain text, for accessible names: references by their loaded label. */
+function plainText(field: Field, value: unknown, references: ReferenceSupport): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (field.type === "reference" && typeof value === "string") return references.display(field, value).label;
+  return String(value);
+}

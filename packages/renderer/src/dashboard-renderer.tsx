@@ -17,6 +17,7 @@ import type { AggregateResult } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { DocumentSet } from "./document-set.js";
+import { CalendarRenderer } from "./calendar-renderer.js";
 import { FormRenderer } from "./form-renderer.js";
 import type { FormRendererProps } from "./form-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
@@ -90,6 +91,9 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
     }
     if (view.kind === "table") {
       return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
+    }
+    if (view.kind === "calendar") {
+      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
     }
     return null;
   };
@@ -215,7 +219,7 @@ function checkDashboard(dashboard: DashboardView, documents: DocumentSet, dataSo
       const path = ["tabs", i, "items", j];
       const view = documents.views.get(item.view);
       if (!view) return add([...path, "view"], `No view with id "${item.view}".`, `Use one of: ${[...documents.views.keys()].join(", ")}.`);
-      if (view.kind === "dashboard") return add([...path, "view"], `"${item.view}" is a dashboard; dashboards cannot be nested.`, "Embed a form or table view.");
+      if (view.kind === "dashboard") return add([...path, "view"], `"${item.view}" is a dashboard; dashboards cannot be nested.`, "Embed a form, table or calendar view.");
       if ((item.widget === "count" || item.widget === "stat") && view.kind !== "table") return add([...path, "view"], `A ${item.widget} widget needs a table view; "${item.view}" is a ${view.kind}.`, "Point it at a table view.");
       const entity = documents.entities.get(view.entity);
       if (!entity) return add([...path, "view"], `View "${view.id}" is for entity "${view.entity}", which is not loaded.`, "Load that entity document.");
