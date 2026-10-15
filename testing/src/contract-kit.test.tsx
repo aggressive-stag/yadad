@@ -78,7 +78,7 @@ describe("the kit catches broken components", () => {
       },
     };
     expect(await failing(registry)).toEqual(["layout: Table is named by its caption, with sortable headers and rows"]);
-    const problems = await registryContractChecks(registry).at(-1)!.run();
+    const problems = await registryContractChecks(registry).find((c) => c.name.startsWith("layout: Table"))!.run();
     expect(problems).toEqual(
       expect.arrayContaining([expect.stringContaining('id="kit-col-day"'), expect.stringContaining("button to sort"), expect.stringContaining("empty content")]),
     );
@@ -139,5 +139,30 @@ describe("the kit catches broken components", () => {
         "text: passes axe (valid and invalid)",
       ]),
     );
+  });
+});
+
+describe("the kit's calendar checks", () => {
+  const calendarChecks = () => registryContractChecks(mockRegistry).filter((c) => c.name.startsWith("layout: Calendar"));
+  const run = async (registry: Registry<ReactNode>, name: string) => (await registryContractChecks(registry).find((c) => c.name.startsWith(name))!.run());
+
+  test("a registry without a calendar has no calendar checks", () => {
+    const { Calendar: _calendar, ...layout } = mockRegistry.layout;
+    expect(registryContractChecks({ ...mockRegistry, layout }).filter((c) => c.name.startsWith("layout: Calendar"))).toEqual([]);
+    expect(calendarChecks().length).toBeGreaterThan(0);
+  });
+
+  test("a calendar whose days are not named by their date", async () => {
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      layout: { ...mockRegistry.layout, Calendar: (props) => <div>{props.days.map((d) => <div key={d.date}>{d.dayOfMonth}</div>)}</div> },
+    };
+    expect(await run(registry, "layout: Calendar is a named grid")).toEqual(expect.arrayContaining([expect.stringContaining('role="grid"'), expect.stringContaining("gridcell")]));
+  });
+
+  test("a calendar that never offers Move to day…", async () => {
+    const Calendar = mockRegistry.layout.Calendar!;
+    const registry: Registry<ReactNode> = { ...mockRegistry, layout: { ...mockRegistry.layout, Calendar: ({ onMove: _onMove, ...props }) => Calendar(props) } };
+    expect(await run(registry, "layout: Calendar offers Move to day")).toEqual(expect.arrayContaining([expect.stringContaining("Move to day")]));
   });
 });

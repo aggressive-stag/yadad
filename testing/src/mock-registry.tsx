@@ -1,6 +1,7 @@
 import type {
   BooleanField,
   ButtonProps,
+  CalendarProps,
   CountWidgetProps,
   DateField,
   DisplayProps,
@@ -20,7 +21,7 @@ import type {
   TextField,
 } from "@yadad/core";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 
 /**
  * Unstyled stub components with data-testid hooks, one per field type.
@@ -36,7 +37,7 @@ export const mockRegistry: Registry<ReactNode> = {
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
     reference: { type: "reference", Input: MockReferenceInput, Display: MockReferenceDisplay },
   },
-  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel },
+  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar },
   widgets: { count: MockCount },
 };
 
@@ -279,5 +280,148 @@ function MockCount({ label, value, text }: CountWidgetProps): ReactNode {
     <div data-testid="count">
       <span>{label}</span> <strong>{text ?? value ?? "…"}</strong>
     </div>
+  );
+}
+
+/**
+ * A plain calendar: a grid of day cells named by their full date, entries as
+ * buttons (or text), and a "Move to day…" control per movable entry. No drag
+ * (that is the components repo's job); this is the path every user has.
+ */
+function MockCalendar({
+  label,
+  title,
+  mode,
+  modes,
+  weekdays,
+  days,
+  legend,
+  loading,
+  notice,
+  announcement,
+  onModeChange,
+  onPrevious,
+  onNext,
+  onToday,
+  onOpenEntry,
+  onMove,
+}: CalendarProps<ReactNode>): ReactNode {
+  const base = useId();
+  const [moving, setMoving] = useState<string | undefined>(undefined);
+  const [target, setTarget] = useState("");
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const noun = mode === "month" ? "month" : "week";
+  const rows = Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => days.slice(i * 7, i * 7 + 7));
+  const finish = (): void => {
+    setMoving(undefined);
+    queueMicrotask(() => returnFocus.current?.focus());
+  };
+  return (
+    <section aria-label={label} aria-busy={loading} data-testid="calendar" data-mode={mode}>
+      <h3 id={`${base}-title`}>{title}</h3>
+      <div role="group" aria-label={`${label} navigation`}>
+        <button type="button" aria-label={`Previous ${noun}`} onClick={onPrevious}>
+          Previous
+        </button>
+        <button type="button" onClick={onToday}>
+          Today
+        </button>
+        <button type="button" aria-label={`Next ${noun}`} onClick={onNext}>
+          Next
+        </button>
+        {modes.length > 1 &&
+          modes.map((m) => (
+            <button key={m.mode} type="button" aria-pressed={m.mode === mode} onClick={() => onModeChange(m.mode)}>
+              {m.label}
+            </button>
+          ))}
+      </div>
+      {notice !== undefined && <div data-testid="calendar-notice">{notice}</div>}
+      <div role="status" aria-live="polite" data-testid="calendar-status">
+        {announcement?.text}
+      </div>
+      {legend.length > 0 && (
+        <ul aria-label="Colours" data-testid="calendar-legend">
+          {legend.map((l) => (
+            <li key={l.label} data-slot={l.slot}>
+              {l.label}
+            </li>
+          ))}
+        </ul>
+      )}
+      <table role="grid" aria-labelledby={`${base}-title`}>
+        <thead>
+          <tr>
+            {weekdays.map((w) => (
+              <th key={w.long} scope="col" abbr={w.long}>
+                {w.short}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row[0]?.date}>
+              {row.map((day) => (
+                <td key={day.date} role="gridcell" aria-label={day.label} aria-current={day.isToday ? "date" : undefined} data-date={day.date} data-in-month={day.inMonth}>
+                  <span aria-hidden="true">{day.dayOfMonth}</span>
+                  {day.isToday && <small> Today</small>}
+                  <ul>
+                    {day.entries.map((entry) => (
+                      <li key={entry.id} data-testid={`entry-${entry.id}`} data-pending={entry.pending} data-slot={entry.color?.slot}>
+                        {onOpenEntry ? (
+                          <button type="button" aria-label={entry.label} onClick={() => onOpenEntry(entry.id)}>
+                            {entry.content}
+                          </button>
+                        ) : (
+                          <span aria-label={entry.label} role="group">
+                            {entry.content}
+                          </span>
+                        )}
+                        {onMove && entry.movable && (
+                          <button
+                            type="button"
+                            aria-label={`Move to day… ${entry.label}`}
+                            style={{ minWidth: 24, minHeight: 24 }}
+                            onClick={(e) => {
+                              returnFocus.current = e.currentTarget;
+                              setTarget(day.date);
+                              setMoving(entry.id);
+                            }}
+                          >
+                            Move to day…
+                          </button>
+                        )}
+                        {onMove && moving === entry.id && (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              if (target !== "") onMove(entry.id, target);
+                              finish();
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") finish();
+                            }}
+                          >
+                            <label>
+                              {`Move ${entry.label} to`}
+                              <input type="date" autoFocus value={target} onChange={(e) => setTarget(e.target.value)} />
+                            </label>
+                            <button type="submit">Move</button>
+                            <button type="button" onClick={finish}>
+                              Cancel
+                            </button>
+                          </form>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }

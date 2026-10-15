@@ -6,7 +6,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FIELD_TYPES } from "@yadad/core";
-import type { DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry } from "@yadad/core";
+import type { CalendarDayProps, CalendarProps, DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -158,7 +158,7 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * one at a time (await each), never concurrently.
  */
 export function registryContractChecks(registry: Registry<ReactNode>, samples: FieldSamples = defaultSamples): readonly ContractCheck[] {
-  return [...FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry)];
+  return [...FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry), ...calendarChecks(registry)];
 }
 
 function checksFor<K extends FieldType>(type: K, registry: Registry<ReactNode>, samples: FieldSamples): ContractCheck[] {
@@ -519,6 +519,188 @@ function layoutChecks(registry: Registry<ReactNode>): ContractCheck[] {
       cleanup();
       render(<Table caption="Sets" columns={columns} rows={[]} onSort={() => {}} empty="No sets" />);
       if (!screen.queryByText("No sets")) problems.push("An empty Table must show its empty content.");
+    }),
+  ];
+}
+
+const kitWeekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((short, i) => ({ short, long: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i] ?? short }));
+const KIT_LONG_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** `count` consecutive days from 2026-09-28 (a Monday); 2026-10-15 is today, September's are out of the month. */
+function kitDays(count: number, entries: Readonly<Record<string, CalendarDayProps<ReactNode>["entries"]>> = {}): CalendarDayProps<ReactNode>[] {
+  return Array.from({ length: count }, (_, i) => {
+    const t = new Date(Date.UTC(2026, 8, 28 + i));
+    const date = t.toISOString().slice(0, 10);
+    const label = `${KIT_LONG_DAYS[t.getUTCDay()]} ${t.getUTCDate()} ${t.toLocaleString("en", { month: "long", timeZone: "UTC" })} ${t.getUTCFullYear()}`;
+    return { date, dayOfMonth: t.getUTCDate(), weekday: t.getUTCDay(), label, inMonth: t.getUTCMonth() === 9, isToday: date === "2026-10-15", entries: entries[date] ?? [] };
+  });
+}
+
+const kitEntry = (id: string, title: string, over: Partial<CalendarDayProps<ReactNode>["entries"][number]> = {}): CalendarDayProps<ReactNode>["entries"][number] => ({
+  id,
+  content: <span>{title}</span>,
+  label: title,
+  movable: false,
+  pending: false,
+  ...over,
+});
+
+/**
+ * Checks for `layout.Calendar` (RFC 0004). The key is optional, so a registry
+ * without a calendar has no calendar checks; one with a calendar must pass all.
+ */
+function calendarChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const { Calendar } = registry.layout;
+  if (!Calendar) return [];
+
+  const none = () => {};
+  const base: CalendarProps<ReactNode> = {
+    label: "Tasks",
+    title: "October 2026",
+    mode: "month",
+    modes: [
+      { mode: "month", label: "Month" },
+      { mode: "week", label: "Week" },
+    ],
+    weekdays: kitWeekdays,
+    days: kitDays(42),
+    legend: [],
+    loading: false,
+    onModeChange: none,
+    onPrevious: none,
+    onNext: none,
+    onToday: none,
+  };
+  const withEntries = kitDays(42, {
+    "2026-10-15": [kitEntry("a", "Pay rent", { color: { slot: 3, label: "Home" }, movable: true }), kitEntry("p", "Book flights", { pending: true })],
+    "2026-10-16": [kitEntry("b", "Call Ada", { movable: true })],
+  });
+  const cells = () => screen.queryAllByRole("gridcell");
+  const button = (name: RegExp | string) => screen.queryByRole("button", { name });
+
+  return [
+    layoutCheck("Calendar is a named grid of days named by their full date", async (problems) => {
+      const { container } = render(<Calendar {...base} />);
+      if (!screen.queryByRole("grid")) problems.push('Calendar must render role="grid" for the days.');
+      if (!screen.queryByText("October 2026")) problems.push("Calendar must show its period title.");
+      if (!screen.queryByLabelText("Tasks") && !screen.queryByRole("region", { name: "Tasks" }) && !screen.queryByRole("grid", { name: /Tasks|October 2026/ })) problems.push("Calendar must be named by its label.");
+      if (screen.queryAllByRole("columnheader").length !== 7) problems.push("Calendar must render seven column headers, one per weekday.");
+      if (cells().length !== 42) problems.push(`Calendar must render one gridcell per day (expected 42, got ${cells().length}).`);
+      for (const d of [base.days[0], base.days[17], base.days[41]]) {
+        if (d && !screen.queryByRole("gridcell", { name: d.label })) problems.push(`The day ${d.date} must be a gridcell named "${d.label}", including days outside the month.`);
+      }
+      const today = cells().find((c) => c.getAttribute("aria-current") === "date");
+      if (!today) problems.push('Today must set aria-current="date".');
+      else {
+        if (today.getAttribute("aria-label") !== "Thursday 15 October 2026") problems.push("The cell with aria-current=date must be today (2026-10-15).");
+        if (!/today/i.test(today.textContent)) problems.push("Today must also show the text \"Today\", not only a colour.");
+      }
+      problems.push(...(await axeProblems(container, "calendar month grid")));
+    }),
+
+    layoutCheck("Calendar shows a week of seven days", async (problems) => {
+      const { container } = render(<Calendar {...base} mode="week" days={kitDays(7)} title="28 September to 4 October 2026" />);
+      if (cells().length !== 7) problems.push(`A week must render seven gridcells, got ${cells().length}.`);
+      problems.push(...(await axeProblems(container, "calendar week")));
+    }),
+
+    layoutCheck("Calendar navigation and mode switcher call their callbacks", async (problems) => {
+      const calls: string[] = [];
+      render(<Calendar {...base} onPrevious={() => calls.push("previous")} onNext={() => calls.push("next")} onToday={() => calls.push("today")} onModeChange={(m) => calls.push(`mode:${m}`)} />);
+      for (const [name, call] of [[/^previous/i, "previous"], [/^next/i, "next"], [/^today$/i, "today"]] as const) {
+        const b = button(name);
+        if (!b) problems.push(`Calendar must offer a "${call}" button (Previous, Next and Today).`);
+        else fireEvent.click(b);
+      }
+      if (calls.join() !== "previous,next,today") problems.push(`Previous, Next and Today must call onPrevious, onNext and onToday, got [${calls.join(", ")}].`);
+      if (!button(/previous month/i) || !button(/next month/i)) problems.push('In month mode the buttons must be named "Previous month" and "Next month".');
+      const week = button(/^week$/i);
+      if (!week) problems.push("With more than one mode, Calendar must offer a button per mode, named by its label.");
+      else {
+        fireEvent.click(week);
+        if (!calls.includes("mode:week")) problems.push('Choosing "Week" must call onModeChange("week").');
+      }
+      if (button(/^month$/i)?.getAttribute("aria-pressed") !== "true") problems.push("The current mode's button must set aria-pressed=\"true\".");
+      cleanup();
+      render(<Calendar {...base} modes={[{ mode: "month", label: "Month" }]} />);
+      if (button(/^(month|week)$/i)) problems.push("With one mode there must be no mode switcher.");
+    }),
+
+    layoutCheck("Calendar entries are named by their label and open on activation", async (problems) => {
+      const opened: string[] = [];
+      const { container } = render(<Calendar {...base} days={withEntries} legend={[{ slot: 3, label: "Home" }]} onOpenEntry={(id) => opened.push(id)} />);
+      const entry = button("Pay rent");
+      if (!entry) problems.push("With onOpenEntry set, each entry must be a button (or link) named by its label.");
+      else fireEvent.click(entry);
+      if (opened.join() !== "a") problems.push(`Activating an entry must call onOpenEntry with its id, got [${opened.join(", ")}].`);
+      if (!screen.queryByText("Call Ada")) problems.push("Calendar must show every entry's content on its day.");
+      const day = screen.queryByRole("gridcell", { name: "Thursday 15 October 2026" });
+      if (day && !day.textContent.includes("Pay rent")) problems.push("An entry must be inside the cell of its day.");
+      if (!screen.queryByText("Home")) problems.push("Calendar must show the legend, so colour is never the only signal.");
+      problems.push(...(await axeProblems(container, "calendar entries")));
+      cleanup();
+      render(<Calendar {...base} days={withEntries} />);
+      if (button("Pay rent")) problems.push("Without onOpenEntry, entries must not be buttons.");
+    }),
+
+    layoutCheck("Calendar offers Move to day… for every movable entry and calls onMove once", async (problems) => {
+      const moves: string[] = [];
+      const { container } = render(<Calendar {...base} days={withEntries} onMove={(id, date) => moves.push(`${id}@${date}`)} />);
+      const triggers = screen.queryAllByRole("button", { name: /move to day/i });
+      if (triggers.length !== 2) problems.push(`Every movable entry (and only those) must have a "Move to day…" button; expected 2, got ${triggers.length}. Pending entries are not movable.`);
+      const first = triggers[0];
+      if (first) {
+        if ((first as HTMLButtonElement).disabled || first.tabIndex < 0) problems.push('"Move to day…" must be focusable, not hidden until hover.');
+        fireEvent.click(first);
+        const input = container.querySelector<HTMLInputElement>('input[type="date"]');
+        if (!input) problems.push('"Move to day…" must open a date input.');
+        else {
+          if (input.value !== "2026-10-15") problems.push("The date input must default to the entry's current day.");
+          const name = `${input.getAttribute("aria-label") ?? ""} ${Array.from(input.labels ?? []).map((l) => l.textContent).join(" ")}`;
+          if (!name.includes("Pay rent")) problems.push("The date input must be labelled, and the label must name the entry.");
+          problems.push(...(await axeProblems(container, "move to day")));
+          fireEvent.change(input, { target: { value: "2026-11-03" } });
+          const confirm = screen.queryByRole("button", { name: /^(move|confirm|ok|save)$/i });
+          if (!confirm) problems.push("The date input must have a confirm button.");
+          else fireEvent.click(confirm);
+        }
+      }
+      if (moves.join() !== "a@2026-11-03") problems.push(`Confirming must call onMove(id, date) exactly once with any real date, got [${moves.join(", ")}].`);
+      cleanup();
+      moves.length = 0;
+      render(<Calendar {...base} days={withEntries} onMove={(id, date) => moves.push(`${id}@${date}`)} />);
+      const again = screen.queryAllByRole("button", { name: /move to day/i })[0];
+      if (again) {
+        fireEvent.click(again);
+        const input = document.querySelector<HTMLInputElement>('input[type="date"]');
+        if (input) {
+          fireEvent.change(input, { target: { value: "2026-11-03" } });
+          fireEvent.keyDown(input, { key: "Escape" });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0)); // focus may be restored in an effect or a microtask
+        if (document.querySelector('input[type="date"]')) problems.push("Escape must close the date input.");
+        if (moves.length > 0) problems.push("Escape must cancel without calling onMove.");
+        if (document.activeElement === document.body) problems.push("After Escape, focus must return to the entry, not be lost.");
+      }
+      cleanup();
+      render(<Calendar {...base} days={withEntries} />);
+      if (screen.queryByRole("button", { name: /move to day/i })) problems.push('Without onMove there must be no "Move to day…" control.');
+    }),
+
+    layoutCheck("Calendar announces through a live region and reports loading", async (problems) => {
+      const { container, rerender } = render(<Calendar {...base} loading announcement={{ seq: 1, text: "Moved Pay rent to Friday 16 October 2026" }} notice={<p>Showing the first 2,000 of 2,431 entries.</p>} />);
+      const status = screen.queryByRole("status");
+      if (!status) problems.push('Calendar must keep a role="status" live region mounted.');
+      else {
+        if (status.getAttribute("aria-live") !== "polite" && status.getAttribute("aria-live") !== null) problems.push('The live region must be polite (aria-live="polite").');
+        if (!status.textContent.includes("Moved Pay rent to Friday 16 October 2026")) problems.push("The live region must show announcement.text.");
+      }
+      if (container.querySelector('[aria-busy="true"]') === null) problems.push('While loading, the grid (or the calendar) must set aria-busy="true".');
+      if (!screen.queryByText(/Showing the first 2,000 of 2,431 entries/)) problems.push("Calendar must show the notice above the grid.");
+      problems.push(...(await axeProblems(container, "calendar loading")));
+      rerender(<Calendar {...base} announcement={{ seq: 2, text: "Could not move Pay rent: Forbidden" }} />);
+      if (!screen.queryByRole("status")?.textContent.includes("Could not move Pay rent: Forbidden")) problems.push("The live region must show a newer announcement.");
+      if (container.querySelector('[aria-busy="true"]') !== null) problems.push("When not loading, nothing may be aria-busy.");
     }),
   ];
 }
