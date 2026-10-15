@@ -25,4 +25,12 @@ describe("migrate", () => {
     expect(migrate({ ...v0, specVersion: "0" })).toEqual({ ...v0, specVersion: "0" });
     expect(migrate({ ...v0, specVersion: 99 })).toEqual({ ...v0, specVersion: 99 });
   });
+
+  test("each step moves up exactly one version, so version 0, 1 and 2 documents all reach the current one", () => {
+    for (const from of [0, 1, 2]) {
+      const result = migrate({ ...v0, specVersion: from });
+      expect(result).toEqual({ ...v0, specVersion: SPEC_VERSION });
+    }
+    expect(SPEC_VERSION).toBe(3);
+  });
 });

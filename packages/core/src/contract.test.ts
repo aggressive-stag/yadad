@@ -34,6 +34,13 @@ describe("contract lists", () => {
     expect(contract.conditions.ops.map((o) => o.op)).toEqual(contract.conditions.ops.map((o) => o.op)); // the op list comes from CONDITION_OPS via the mapping
     expect(contract.conditions.ops.length).toBeGreaterThanOrEqual(13);
   });
+  test("the calendar kind, its limits and the optional registry key are described", () => {
+    const kind = contract.documentKinds.find((k) => k.kind === "calendar");
+    expect(kind?.properties.filter((p) => p.required).map((p) => p.key)).toEqual(["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"]);
+    expect(kind?.properties.map((p) => p.key)).toEqual(expect.arrayContaining(["titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "rowAction"]));
+    expect(contract.calendar).toMatchObject({ modes: ["month", "week"], defaultModes: ["month", "week"], weekStartsOn: { default: 1, min: 0, max: 6 }, detailFieldsMax: 3 });
+    expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(["layout.Calendar"]);
+  });
   test("specVersion matches SPEC_VERSION", () => {
     expect(contract.specVersion).toBe(SPEC_VERSION);
   });

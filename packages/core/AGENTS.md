@@ -2,7 +2,7 @@
 
 Package rules on top of the root `AGENTS.md`. **This package is the contract.** Touch it only when your task card says so.
 
-- **Owns:** document shapes (entity, form/table/dashboard views), JSON Schemas, document validation (meta schema plus referential checks), spec migrations, and the interfaces `Registry`, `DataAdapter`, `Query`, theme token names and the error format.
+- **Owns:** document shapes (entity, form/table/calendar/dashboard views), JSON Schemas, document validation (meta schema plus referential checks), spec migrations, and the interfaces `Registry`, `DataAdapter`, `Query`, theme token names and the error format.
 - **Imports:** nothing from the workspace. The only allowed dependency is its validator library. No React, DOM or I/O.
 - **Shapes:** discriminated unions everywhere (`kind`, `type`, `op`, `widget`). No index signatures, no `additionalProperties: true`, no `custom` field type, no string expressions, no `any` in exports.
 - **Schemas:** one source of truth. Author types once and generate the JSON Schemas; commit the generated `*.schema.json` and never hand-edit them.

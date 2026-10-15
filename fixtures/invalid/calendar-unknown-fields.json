@@ -1,0 +1,70 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 3,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            "Good",
+            "Bad"
+          ]
+        }
+      },
+      {
+        "id": "owner",
+        "type": "reference",
+        "label": "Owner",
+        "entity": "e",
+        "display": "name"
+      }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 3,
+    "id": "cal",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "when",
+    "titleField": "label",
+    "detailFields": [
+      "qty",
+      "nope"
+    ],
+    "colorField": "shade",
+    "filter": {
+      "op": "eq",
+      "field": "gone",
+      "value": 1
+    },
+    "sort": [
+      {
+        "field": "later",
+        "dir": "asc"
+      }
+    ]
+  }
+]

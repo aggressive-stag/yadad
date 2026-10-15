@@ -52,6 +52,11 @@ export function fieldReferences(views: Iterable<ViewDocument>, entityId: string,
           }
         }),
       );
+    } else if (view.kind === "calendar") {
+      for (const key of ["dateField", "titleField", "colorField"] as const) if (view[key] === fieldId) at(key);
+      view.detailFields?.forEach((f, i) => f === fieldId && at("detailFields", i));
+      view.sort?.forEach((s, i) => s.field === fieldId && at("sort", i));
+      if (view.filter && conditionFields(view.filter).includes(fieldId)) at("filter");
     } else {
       view.columns.forEach((c, i) => c.field === fieldId && at("columns", i));
       view.sort?.forEach((s, i) => s.field === fieldId && at("sort", i));

@@ -9,10 +9,12 @@ import type { Condition } from "./condition.js";
  * `migrate()` stamps it as version 1. Version 2 adds the first slices of
  * RFCs 0001-0003 (the `stat` widget, the `reference` field, table
  * `rowAction`); older documents stay valid and `migrate()` stamps them.
+ * Version 3 adds the `calendar` view (RFC 0004); older documents stay valid
+ * and `migrate()` stamps them.
  */
-export const SPEC_VERSION = 2;
+export const SPEC_VERSION = 3;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
@@ -174,6 +176,47 @@ export interface RowAction {
   readonly mode?: RowActionMode;
 }
 
+/** The periods a calendar can show. A phone-width agenda is a rendering choice, not a mode. */
+export const CALENDAR_MODES = ["month", "week"] as const;
+export type CalendarMode = (typeof CALENDAR_MODES)[number];
+
+/**
+ * Records of one entity placed on the days of a month or week by one `date`
+ * field (RFC 0004). With `editable`, moving an entry to another day changes
+ * that field. Dates are calendar dates ("YYYY-MM-DD"): no time, no time zone.
+ */
+export interface CalendarView {
+  readonly kind: "calendar";
+  readonly specVersion: SpecVersion;
+  readonly id: string;
+  /** Accessible name and heading. Defaults to the entity id. */
+  readonly title?: string;
+  readonly entity: string;
+  readonly revision: number;
+  /** Key the host maps to a DataAdapter. Never a URL. */
+  readonly dataSource: string;
+  /** Id of a `date` field of the entity: the day an entry is placed on. */
+  readonly dateField: string;
+  /** Id of a text or select field shown as the entry's title. Defaults to the entity's first text field. */
+  readonly titleField?: string;
+  /** Up to CALENDAR_DETAIL_FIELDS_MAX field ids shown small under the title (not the date or title field). */
+  readonly detailFields?: readonly string[];
+  /** Id of a select or reference field that colours entries. */
+  readonly colorField?: string;
+  /** Entries must always match this. */
+  readonly filter?: Condition;
+  /** Order of entries within a day. */
+  readonly sort?: readonly SortSpec[];
+  /** The periods the viewer can switch between; the first is the default. Non-empty, no duplicates. Defaults to ["month", "week"]. */
+  readonly modes?: readonly CalendarMode[];
+  /** First day of the week, 0 (Sunday) to 6. Defaults to 1 (Monday). */
+  readonly weekStartsOn?: number;
+  /** Moving an entry changes `dateField`. Defaults to false. */
+  readonly editable?: boolean;
+  /** Activating an entry opens a table view scoped to it, as on tables. A calendar can start a chain, never be a target. */
+  readonly rowAction?: RowAction;
+}
+
 export interface QuickFilter {
   readonly field: string;
 }
@@ -182,7 +225,7 @@ export interface QuickFilter {
 export const WIDGET_TYPES = ["view", "count", "stat"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
-/** Embeds a form or table view, by id. */
+/** Embeds a form, table or calendar view, by id. */
 export interface ViewWidget {
   readonly widget: "view";
   readonly view: string;
@@ -247,6 +290,6 @@ export interface DashboardView {
 }
 
 /** Discriminated on `kind`. */
-export type ViewDocument = FormView | TableView | DashboardView;
+export type ViewDocument = FormView | TableView | CalendarView | DashboardView;
 export type Document = EntityDocument | ViewDocument;
 export type DocumentKind = Document["kind"];

@@ -1,0 +1,19 @@
+{
+  "kind": "calendar",
+  "specVersion": 3,
+  "id": "sets_calendar",
+  "title": "Training calendar",
+  "entity": "workout_set",
+  "revision": 1,
+  "dataSource": "default",
+  "dateField": "day",
+  "titleField": "exercise",
+  "detailFields": ["weight", "reps"],
+  "colorField": "felt",
+  "filter": { "op": "gte", "field": "day", "value": { "daysFromToday": -365 } },
+  "sort": [{ "field": "exercise", "dir": "asc" }],
+  "modes": ["week", "month"],
+  "weekStartsOn": 0,
+  "editable": true,
+  "rowAction": { "open": "exercise_history", "bind": [{ "field": "exercise", "to": "exercise" }] }
+}

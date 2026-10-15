@@ -2,7 +2,7 @@
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
 // CellEditor and optionsSchema come later.
 
-import type { BooleanField, DateField, Field, FieldType, NumberField, ReferenceField, SelectField, TextField } from "./document.js";
+import type { BooleanField, CalendarMode, DateField, Field, FieldType, NumberField, ReferenceField, SelectField, TextField } from "./document.js";
 import type { DocumentError } from "./errors.js";
 
 /**
@@ -214,6 +214,73 @@ export interface WidgetComponents<N> {
   readonly count: Component<CountWidgetProps, N>;
 }
 
+/** One entry (a record) on a calendar day (RFC 0004). */
+export interface CalendarEntry<N> {
+  /** The record id. */
+  readonly id: string;
+  /** Title and detail fields, built by the renderer. */
+  readonly content: N;
+  /** Plain-text accessible name: title, details and the colour text. */
+  readonly label: string;
+  /** A colour slot from 0 to 7 and its text; the component maps slots to its own colours. Colour is never the only signal. */
+  readonly color?: { readonly slot: number; readonly label: string };
+  /** The calendar is editable and no move of this entry is in flight. */
+  readonly movable: boolean;
+  /** A move of this entry is in flight. */
+  readonly pending: boolean;
+}
+
+export interface CalendarDayProps<N> {
+  /** "YYYY-MM-DD" */
+  readonly date: string;
+  readonly dayOfMonth: number;
+  /** 0 = Sunday */
+  readonly weekday: number;
+  /** Long form for accessible names, e.g. "Thursday 15 October 2026". */
+  readonly label: string;
+  /** Always true in week mode. */
+  readonly inMonth: boolean;
+  readonly isToday: boolean;
+  /** All of the day's entries, in sort order. */
+  readonly entries: readonly CalendarEntry<N>[];
+}
+
+/**
+ * A month or week of days with entries. The renderer owns data, range,
+ * optimistic state and announcements; the component owns drawing and every
+ * drag (RFC 0004). `layout.Calendar` is optional in this version: a registry
+ * without it cannot show a calendar view, and the renderer says so.
+ */
+export interface CalendarProps<N> {
+  /** Accessible name of the whole calendar (the view's title). */
+  readonly label: string;
+  /** The period heading, e.g. "October 2026". */
+  readonly title: string;
+  readonly mode: CalendarMode;
+  /** The modes the viewer can switch between; one entry means no switcher. */
+  readonly modes: readonly { readonly mode: CalendarMode; readonly label: string }[];
+  /** Seven, in weekStartsOn order. */
+  readonly weekdays: readonly { readonly short: string; readonly long: string }[];
+  /** 42 (month) or 7 (week), in order, in rows of 7. */
+  readonly days: readonly CalendarDayProps<N>[];
+  /** Colour slots present in the range, with their texts. */
+  readonly legend: readonly { readonly slot: number; readonly label: string }[];
+  /** Entries are being fetched; days are still given. */
+  readonly loading: boolean;
+  /** E.g. the over-cap message; shown above the grid and announced politely. */
+  readonly notice?: N;
+  /** For the component's live region; `seq` increases on every message so a repeated text is announced again. */
+  readonly announcement?: { readonly seq: number; readonly text: string };
+  readonly onModeChange: (mode: CalendarMode) => void;
+  readonly onPrevious: () => void;
+  readonly onNext: () => void;
+  readonly onToday: () => void;
+  /** Set only when the view has a rowAction. */
+  readonly onOpenEntry?: (recordId: string) => void;
+  /** Set only when the view is editable. Accepts any real "YYYY-MM-DD", not only visible days. */
+  readonly onMove?: (recordId: string, date: string) => void;
+}
+
 /**
  * Exact-key lookup: one entry per field type, enforced by the type system
  * (a mapped type over FieldType, not an index signature), plus layout chrome.
@@ -228,6 +295,8 @@ export interface Registry<N> {
     readonly ErrorSummary: Component<ErrorSummaryProps, N>;
     readonly Tabs: Component<TabsProps<N>, N>;
     readonly Panel: Component<PanelProps<N>, N>;
+    /** Optional until the reference component set ships a calendar (RFC 0004); then it becomes required. */
+    readonly Calendar?: Component<CalendarProps<N>, N>;
   };
   readonly widgets: WidgetComponents<N>;
 }

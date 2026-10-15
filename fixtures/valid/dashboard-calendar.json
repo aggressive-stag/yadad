@@ -1,0 +1,14 @@
+{
+  "kind": "dashboard",
+  "specVersion": 3,
+  "id": "training_calendar_board",
+  "title": "Training calendar",
+  "revision": 1,
+  "tabs": [
+    {
+      "id": "calendar",
+      "title": "Calendar",
+      "items": [{ "id": "month", "x": 0, "y": 0, "w": 12, "h": 10, "widget": "view", "view": "sets_calendar" }]
+    }
+  ]
+}

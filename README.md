@@ -81,12 +81,12 @@ Documents that come from a database or a user are untrusted JSON: run them throu
 
 ## Key concepts
 
-- **Entity and view documents.** An entity owns fields, types and validation. Views show an entity: a `form` (sections of fields), a `table` (columns, sorting, paging, filters) or a `dashboard` (tabs of form, table and count widgets on a 12-column grid). `pnpm describe-registry` prints everything a document may contain.
+- **Entity and view documents.** An entity owns fields, types and validation. Views show an entity: a `form` (sections of fields), a `table` (columns, sorting, paging, filters), a `calendar` (records on the days of a month or week by a date field) or a `dashboard` (tabs of form, table, calendar and count widgets on a 12-column grid). `pnpm describe-registry` prints everything a document may contain.
 - **Registry.** The engine never imports a component. You inject a `Registry`, which maps each field type, layout piece and widget to a React component by exact key. [`yadad-components`](https://github.com/aggressive-stag/yadad-components) is the reference set (`@yadad/components`); bring your own if you prefer.
 - **Data adapters.** A view names a `dataSource` key, never a URL; the host maps the key to a `DataAdapter`. Records carry a `version`, and a stale write is a conflict.
 - **Conditions.** A JSON AST (`eq`, `gt`, `in`, `and`, `not`, ...) drives `visibleWhen`, `requiredWhen` and filters; there are no string expressions. Date comparisons accept a relative date, `{ "daysFromToday": n }` (0 is today, -7 a week ago), resolved from the viewer's local date.
 - **Quick filters.** A table's `quickFilters` lets the viewer filter by a field: exact for select and boolean, substring for text, a from/to range for number and date.
-- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 1) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
+- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 3) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
 - **Document ids.** Document, field, section, tab and grid-item ids all match `[a-z][a-z0-9_]*`: lowercase letters, digits and underscores, starting with a letter. Use `workout_set`, not `workout-set`, `WorkoutSet` or `1st_set`. Grid-item ids only need to be unique within their tab.
 
 ## Documentation

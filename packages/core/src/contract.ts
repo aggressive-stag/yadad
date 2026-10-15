@@ -4,11 +4,11 @@
 
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
-import type { Document, FieldType, MeasureOp, WidgetType } from "./document.js";
-import { FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
+import type { CalendarMode, Document, FieldType, MeasureOp, WidgetType } from "./document.js";
+import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
-export const DOCUMENT_KINDS = ["entity", "form", "table", "dashboard"] as const;
+export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "dashboard"] as const;
 
 /** Ids for fields, sections, tabs, grid items, columns, documents and views. */
 export const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
@@ -34,6 +34,15 @@ export const GRID_ITEM_MAX = 1000;
 
 /** A row action chain (A opens B opens C ...) is at most this many hops long, with no revisits. */
 export const MAX_ROW_ACTION_DEPTH = 3;
+
+/** A calendar shows at most this many detail fields under an entry's title. */
+export const CALENDAR_DETAIL_FIELDS_MAX = 3;
+/** Calendar defaults: the modes offered (first is the default period) and the first day of the week (1 = Monday). */
+export const CALENDAR_MODES_DEFAULT: readonly CalendarMode[] = CALENDAR_MODES;
+export const CALENDAR_WEEK_STARTS_ON_DEFAULT = 1;
+/** Field types a calendar's title, colour and date fields may have. */
+export const CALENDAR_TITLE_FIELD_TYPES: readonly FieldType[] = ["text", "select"];
+export const CALENDAR_COLOR_FIELD_TYPES: readonly FieldType[] = ["select", "reference"];
 
 /** Conditions may nest at most this many levels (and/or/not). */
 export const MAX_CONDITION_DEPTH = 16;
@@ -99,6 +108,18 @@ export interface ContractDescription {
     readonly relativeDate: { readonly description: string; readonly ops: readonly ConditionOp[]; readonly fieldTypes: readonly FieldType[]; readonly maxDays: number; readonly example: string };
   };
   readonly widgets: readonly WidgetSpec[];
+  /** Limits and defaults of the `calendar` view kind. */
+  readonly calendar: {
+    readonly modes: readonly CalendarMode[];
+    readonly defaultModes: readonly CalendarMode[];
+    readonly weekStartsOn: { readonly default: number; readonly min: number; readonly max: number };
+    readonly detailFieldsMax: number;
+    readonly dateFieldTypes: readonly FieldType[];
+    readonly titleFieldTypes: readonly FieldType[];
+    readonly colorFieldTypes: readonly FieldType[];
+  };
+  /** Registry keys a registry may leave out; the renderer reports a view that needs a missing one. */
+  readonly optionalRegistryKeys: readonly { readonly key: string; readonly description: string }[];
   /** The ops of a `stat` widget's `measure`. */
   readonly measures: readonly MeasureSpec[];
   readonly grid: {
@@ -153,6 +174,29 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "filter", required: false, description: "A condition every row must always match." },
       { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number and date fields as a from/to range (either end may stay empty)." },
       { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only.` },
+    ],
+  },
+  {
+    kind: "calendar",
+    description: "Records of one entity placed on the days of a month or week by one date field; with editable, moving an entry to another day changes that field. Calendar dates only: no time of day, no time zone.",
+    properties: [
+      { key: "kind", required: true, description: 'The kind, "calendar".' },
+      { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
+      { key: "id", required: true, description: "The calendar's id." },
+      { key: "entity", required: true, description: "The id of the entity whose records are shown." },
+      { key: "revision", required: true, description: "Bumped whenever this document changes." },
+      { key: "dataSource", required: true, description: "Key the host maps to a DataAdapter. Never a URL." },
+      { key: "dateField", required: true, description: "The id of a date field of the entity: the day an entry is placed on. Records with no date are not shown." },
+      { key: "title", required: false, description: "Accessible name and heading. Defaults to the entity id." },
+      { key: "titleField", required: false, description: "The id of a text or select field shown as the entry's title. Defaults to the entity's first text field; required when the entity has none." },
+      { key: "detailFields", required: false, description: `Up to ${CALENDAR_DETAIL_FIELDS_MAX} field ids shown small under the title, each once, not the date or title field.` },
+      { key: "colorField", required: false, description: "The id of a select or reference field that colours entries (eight colour slots; the value's text is always available too)." },
+      { key: "filter", required: false, description: "A condition every entry must always match (relative dates allowed)." },
+      { key: "sort", required: false, description: "Order of entries within a day: an array of { field, dir }. Defaults to the title field, ascending." },
+      { key: "modes", required: false, description: `The periods the viewer can switch between, from ${CALENDAR_MODES.join(", ")}; non-empty, no duplicates, the first is the default. Defaults to [${CALENDAR_MODES_DEFAULT.map((m) => JSON.stringify(m)).join(", ")}].` },
+      { key: "weekStartsOn", required: false, description: `First day of the week: a whole number from 0 (Sunday) to 6. Defaults to ${CALENDAR_WEEK_STARTS_ON_DEFAULT} (Monday).` },
+      { key: "editable", required: false, description: "Whether moving an entry to another day changes its date field. Defaults to false." },
+      { key: "rowAction", required: false, description: `Opens a table view from an entry, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A calendar can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
     ],
   },
   {
@@ -264,8 +308,8 @@ const MEASURE_SPECS: { readonly [K in MeasureOp]: MeasureSpec } = {
 const WIDGET_SPECS: Record<WidgetType, WidgetSpec> = {
   view: {
     widget: "view",
-    description: "Embeds a form or table view, by id.",
-    properties: [{ key: "view", required: true, description: "The id of the form or table view to embed." }],
+    description: "Embeds a form, table or calendar view, by id.",
+    properties: [{ key: "view", required: true, description: "The id of the form, table or calendar view to embed. Counts and stats take table views only." }],
   },
   count: {
     widget: "count",
@@ -338,6 +382,18 @@ export function describeContract(): ContractDescription {
       },
     },
     widgets: WIDGET_TYPES.map((widget) => WIDGET_SPECS[widget]),
+    calendar: {
+      modes: [...CALENDAR_MODES],
+      defaultModes: [...CALENDAR_MODES_DEFAULT],
+      weekStartsOn: { default: CALENDAR_WEEK_STARTS_ON_DEFAULT, min: 0, max: 6 },
+      detailFieldsMax: CALENDAR_DETAIL_FIELDS_MAX,
+      dateFieldTypes: ["date"],
+      titleFieldTypes: [...CALENDAR_TITLE_FIELD_TYPES],
+      colorFieldTypes: [...CALENDAR_COLOR_FIELD_TYPES],
+    },
+    optionalRegistryKeys: [
+      { key: "layout.Calendar", description: "Draws a calendar view (CalendarProps). Optional for now: without it a calendar view renders an error summary instead. It becomes required once the reference component set ships a calendar." },
+    ],
     measures: MEASURE_OPS.map((op) => MEASURE_SPECS[op]),
     grid: {
       columns: { default: GRID_COLUMNS_DEFAULT, max: MAX_GRID_COLUMNS },

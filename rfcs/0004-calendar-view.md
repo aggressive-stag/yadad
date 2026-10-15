@@ -311,3 +311,16 @@ Accepted. The owner accepted the direction; the design calls were made while wri
 2. `layout.Calendar` stays optional until the reference component set ships a calendar, then becomes required in the next minor release (0.x minors may break), so a registry can't silently lack it.
 3. 2,000 stays a runtime constant, not a view property. Revisit with a host hook for the visible range (slice 2) if a host needs more.
 4. "Move to day…" accepts any date, as written: hiding the moved entry and announcing where it went is enough.
+
+## Notes from the core implementation (2026-10-15)
+
+Calls made where this RFC was silent; none changes the design.
+
+- Ids in `dateField`, `titleField`, `colorField` and `detailFields` are checked like every other id: a non-string is `type`, a malformed id is `invalid-value`.
+- A duplicate `detailFields` entry is `invalid-value` (as the table says), not `duplicate-id`. `sort` duplicates stay `duplicate-id`, as on tables.
+- "The same field as `titleField`" for a detail field means the effective title: the explicit `titleField`, or the default (the entity's first text field) when it is omitted.
+- `titleField: required` carries `allowed` (the entity's text and select fields) so an agent can pick one.
+- A `rowAction` chain that starts at a calendar counts the calendar's own hop, so a calendar plus three table hops is the longest allowed; a longer one is `invalid-value` at `/rowAction/open` of the calendar. A calendar named as a `rowAction` target is the same `invalid-value` as a form.
+- `count` and `stat` pointing at a calendar get a message that names the calendar; the code and path are unchanged.
+- `describeContract()` gains `calendar` (modes, defaults, limits, allowed field types) and `optionalRegistryKeys` (`layout.Calendar`), which `pnpm describe-registry` prints.
+- Adding `calendar` to `ViewDocument` forced a calendar case in the editor's field-reference lookup (so a field a calendar uses cannot be removed) and a placeholder in the showcase; the real editor panel and showcase view stay with their own cards.

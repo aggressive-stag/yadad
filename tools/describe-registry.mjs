@@ -85,6 +85,12 @@ for (const widget of contract.widgets) {
   for (const p of widget.properties) lines.push(`    ${prop(p)}`);
 }
 lines.push("");
+const cal = contract.calendar;
+lines.push(`calendar view: modes ${cal.modes.join(", ")} (default ${JSON.stringify(cal.defaultModes)}); weekStartsOn ${cal.weekStartsOn.min}-${cal.weekStartsOn.max} (default ${cal.weekStartsOn.default}); at most ${cal.detailFieldsMax} detailFields; dateField: ${cal.dateFieldTypes.join(" or ")}; titleField: ${cal.titleFieldTypes.join(" or ")}; colorField: ${cal.colorFieldTypes.join(" or ")}.`);
+lines.push("");
+lines.push("optional registry keys (a registry may omit them; the renderer then reports the view that needs one):");
+for (const k of contract.optionalRegistryKeys) lines.push(`  ${k.key} (optional) -- ${k.description}`);
+lines.push("");
 lines.push("measures (the `measure` of a stat widget; empty values are skipped):");
 for (const m of contract.measures) {
   const on = m.fields.length > 0 ? `field: ${m.fields.join(" or ")}${m.product ? "; or product: two number fields" : ""}` : "no field";

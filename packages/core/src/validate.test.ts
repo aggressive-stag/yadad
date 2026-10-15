@@ -53,7 +53,7 @@ describe("document level", () => {
   });
 
   test("unsupported spec version", () => {
-    expect(problems({ ...entity, specVersion: 3 })).toEqual([["/specVersion", "unsupported-spec-version"]]);
+    expect(problems({ ...entity, specVersion: 4 })).toEqual([["/specVersion", "unsupported-spec-version"]]);
     expect(problems({ ...entity, specVersion: "0" })).toEqual([["/specVersion", "type"]]);
   });
 
@@ -331,5 +331,74 @@ describe("reference fields", () => {
     expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise" }))).toEqual([["/fields/0/entity", "required"]]);
     expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise", entity: "exercise", options: [] }))).toEqual([["/fields/0/options", "unknown-property"]]);
     expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise", entity: "Bad Id" }))).toEqual([["/fields/0/entity", "invalid-value"]]);
+  });
+});
+
+describe("calendar view", () => {
+  const calendar = { kind: "calendar", specVersion: 3, id: "cal", entity: "e", revision: 1, dataSource: "default", dateField: "day" };
+
+  test("the required keys are enough, and every optional key is accepted", () => {
+    expect(problems(calendar)).toEqual([]);
+    const full = {
+      ...calendar,
+      title: "Cal",
+      titleField: "name",
+      detailFields: ["a", "b", "c"],
+      colorField: "mood",
+      filter: { op: "notEmpty", field: "name" },
+      sort: [{ field: "name", dir: "desc" }],
+      modes: ["week"],
+      weekStartsOn: 0,
+      editable: false,
+      rowAction: { open: "t", bind: [{ field: "a", to: "a" }] },
+    };
+    expect(problems(full)).toEqual([]);
+  });
+
+  test("required keys and unknown properties", () => {
+    expect(problems({ kind: "calendar", specVersion: 3 })).toEqual([
+      ["/id", "required"],
+      ["/entity", "required"],
+      ["/revision", "required"],
+      ["/dataSource", "required"],
+      ["/dateField", "required"],
+    ]);
+    expect(problems({ ...calendar, columns: [] })).toEqual([["/columns", "unknown-property"]]);
+  });
+
+  test("ids", () => {
+    expect(problems({ ...calendar, dateField: 3, titleField: "Bad Id", colorField: [] })).toEqual([
+      ["/dateField", "type"],
+      ["/titleField", "invalid-value"],
+      ["/colorField", "type"],
+    ]);
+  });
+
+  test("detailFields: shape, at most three, no duplicates", () => {
+    expect(problems({ ...calendar, detailFields: "a" })).toEqual([["/detailFields", "type"]]);
+    expect(problems({ ...calendar, detailFields: ["a", 1] })).toEqual([["/detailFields/1", "type"]]);
+    expect(problems({ ...calendar, detailFields: ["a", "b", "c", "d"] })).toEqual([["/detailFields", "invalid-value"]]);
+    expect(problems({ ...calendar, detailFields: ["a", "b", "a"] })).toEqual([["/detailFields/2", "invalid-value"]]);
+  });
+
+  test("modes: an array, non-empty, month or week, no duplicates", () => {
+    expect(problems({ ...calendar, modes: "month" })).toEqual([["/modes", "type"]]);
+    expect(problems({ ...calendar, modes: [] })).toEqual([["/modes", "invalid-value"]]);
+    expect(problems({ ...calendar, modes: ["month", "day"] })).toEqual([["/modes/1", "invalid-value"]]);
+    expect(problems({ ...calendar, modes: ["month", "month"] })).toEqual([["/modes/1", "invalid-value"]]);
+  });
+
+  test("weekStartsOn: a whole number from 0 to 6", () => {
+    expect(problems({ ...calendar, weekStartsOn: "1" })).toEqual([["/weekStartsOn", "type"]]);
+    for (const bad of [7, -1, 1.5]) expect(problems({ ...calendar, weekStartsOn: bad })).toEqual([["/weekStartsOn", "invalid-value"]]);
+    for (const good of [0, 1, 6]) expect(problems({ ...calendar, weekStartsOn: good })).toEqual([]);
+  });
+
+  test("editable, filter, sort and rowAction are checked as on tables", () => {
+    expect(problems({ ...calendar, editable: "yes" })).toEqual([["/editable", "type"]]);
+    expect(problems({ ...calendar, filter: { op: "eq", field: "x" } })).toEqual([["/filter/value", "required"]]);
+    expect(problems({ ...calendar, sort: [{ field: "x", dir: "up" }] })).toEqual([["/sort/0/dir", "invalid-value"]]);
+    expect(problems({ ...calendar, sort: [{ field: "x", dir: "asc" }, { field: "x", dir: "asc" }] })).toEqual([["/sort/1/field", "duplicate-id"]]);
+    expect(problems({ ...calendar, rowAction: { open: "t", bind: [] } })).toEqual([["/rowAction/bind", "invalid-value"]]);
   });
 });

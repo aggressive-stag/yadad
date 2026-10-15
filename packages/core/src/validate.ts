@@ -7,9 +7,9 @@
 
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp } from "./condition.js";
-import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
-import { FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
-import type { Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView } from "./document.js";
+import { CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
+import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
+import type { CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -48,6 +48,8 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
     validateForm(errors, input);
   } else if (input["kind"] === "table") {
     validateTable(errors, input);
+  } else if (input["kind"] === "calendar") {
+    validateCalendar(errors, input);
   } else if (input["kind"] === "dashboard") {
     validateDashboard(errors, input);
   } else if (input["kind"] === undefined) {
@@ -238,6 +240,16 @@ function validateTable(errors: Errors, doc: JsonObject): void {
   });
   reportDuplicates(errors, shown, "column", "a table (each field appears once)");
 
+  checkSort(errors, doc, "a table's sort");
+
+  const pageSize = doc["pageSize"];
+  if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > PAGE_SIZE_MAX)) {
+    errors.add(["pageSize"], "invalid-value", `"pageSize" must be a whole number from 1 to ${PAGE_SIZE_MAX}.`, "Use e.g. 25.");
+  }
+}
+
+/** Shape of a `sort` array: { field, dir? } entries, each field once. */
+function checkSort(errors: Errors, doc: JsonObject, scope: string): void {
   const sort = checkArray(errors, doc, [], "sort");
   const sorted: { id: string; path: Path }[] = [];
   sort?.forEach((key, i) => {
@@ -253,11 +265,56 @@ function validateTable(errors: Errors, doc: JsonObject): void {
     }
     if (typeof key["field"] === "string") sorted.push({ id: key["field"], path: [...path, "field"] });
   });
-  reportDuplicates(errors, sorted, "sort", "a table's sort");
+  reportDuplicates(errors, sorted, "sort", scope);
+}
 
-  const pageSize = doc["pageSize"];
-  if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > PAGE_SIZE_MAX)) {
-    errors.add(["pageSize"], "invalid-value", `"pageSize" must be a whole number from 1 to ${PAGE_SIZE_MAX}.`, "Use e.g. 25.");
+const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField"] as const;
+
+function validateCalendar(errors: Errors, doc: JsonObject): void {
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "rowAction"]);
+  checkSpecVersion(errors, doc);
+  checkId(errors, doc, [], "id");
+  checkId(errors, doc, [], "entity");
+  checkRevision(errors, doc);
+  checkNonEmptyString(errors, doc, [], "dataSource");
+  checkNonEmptyString(errors, doc, [], "title");
+  for (const key of CALENDAR_ID_KEYS) checkId(errors, doc, [], key);
+  checkCondition(errors, doc["filter"], ["filter"]);
+  checkRowAction(errors, doc["rowAction"]);
+  checkSort(errors, doc, "a calendar's sort");
+  checkBoolean(errors, doc, [], "editable");
+
+  const details = checkArray(errors, doc, [], "detailFields");
+  if (details) {
+    if (details.length > CALENDAR_DETAIL_FIELDS_MAX) {
+      errors.add(["detailFields"], "invalid-value", `A calendar shows at most ${CALENDAR_DETAIL_FIELDS_MAX} detail fields, but ${details.length} are listed.`, `Remove ${details.length - CALENDAR_DETAIL_FIELDS_MAX}.`);
+    }
+    const seen = new Set<string>();
+    details.forEach((d, i) => {
+      if (typeof d !== "string") errors.add(["detailFields", i], "type", "A detail field must be a field id string.", ID_HINT);
+      else if (!ID_PATTERN.test(d)) errors.add(["detailFields", i], "invalid-value", `${JSON.stringify(d)} is not a valid id.`, ID_HINT);
+      else if (seen.has(d)) errors.add(["detailFields", i], "invalid-value", `Detail field "${d}" is listed twice.`, "Remove the duplicate.");
+      else seen.add(d);
+    });
+  }
+
+  const modes = checkArray(errors, doc, [], "modes");
+  if (modes) {
+    if (modes.length === 0) errors.add(["modes"], "invalid-value", "A calendar needs at least one mode.", `Use e.g. ["month", "week"]. Allowed: ${CALENDAR_MODES.join(", ")}.`, [...CALENDAR_MODES]);
+    const seen = new Set<unknown>();
+    modes.forEach((m, i) => {
+      if (!CALENDAR_MODES.some((x) => x === m)) {
+        errors.add(["modes", i], "invalid-value", `Unknown calendar mode ${JSON.stringify(m)}.`, `Use one of: ${CALENDAR_MODES.join(", ")}.`, [...CALENDAR_MODES]);
+      } else if (seen.has(m)) {
+        errors.add(["modes", i], "invalid-value", `Mode ${JSON.stringify(m)} is listed twice.`, "Remove the duplicate.");
+      } else seen.add(m);
+    });
+  }
+
+  const weekStartsOn = doc["weekStartsOn"];
+  if (weekStartsOn !== undefined) {
+    if (typeof weekStartsOn !== "number") errors.add(["weekStartsOn"], "type", '"weekStartsOn" must be a number.', "Use 0 (Sunday) to 6 (Saturday); 1 is Monday.");
+    else if (!isWhole(weekStartsOn, 0, 6)) errors.add(["weekStartsOn"], "invalid-value", `weekStartsOn ${weekStartsOn} is not a whole number from 0 to 6.`, "Use 0 (Sunday) to 6 (Saturday); 1 is Monday.");
   }
 }
 
@@ -760,11 +817,12 @@ interface SetIndex {
   readonly entities: Map<string, EntityDocument>;
   readonly forms: Map<string, FormView>;
   readonly tables: Map<string, TableView>;
+  readonly calendars: Map<string, CalendarView>;
   readonly dashboards: Map<string, DashboardView>;
 }
 
 function checkSetReferences(errors: DocumentError[], docs: readonly Document[]): void {
-  const idx: SetIndex = { entities: new Map(), forms: new Map(), tables: new Map(), dashboards: new Map() };
+  const idx: SetIndex = { entities: new Map(), forms: new Map(), tables: new Map(), calendars: new Map(), dashboards: new Map() };
   for (const doc of docs) {
     switch (doc.kind) {
       case "entity":
@@ -776,12 +834,15 @@ function checkSetReferences(errors: DocumentError[], docs: readonly Document[]):
       case "table":
         putUnique(idx.tables, doc, "table", errors);
         break;
+      case "calendar":
+        putUnique(idx.calendars, doc, "calendar", errors);
+        break;
       case "dashboard":
         putUnique(idx.dashboards, doc, "dashboard", errors);
         break;
     }
   }
-  const embeddable = [...idx.forms.keys(), ...idx.tables.keys()];
+  const embeddable = [...idx.forms.keys(), ...idx.tables.keys(), ...idx.calendars.keys()];
   checkRowActionChains(errors, idx);
   for (const doc of docs) {
     switch (doc.kind) {
@@ -791,6 +852,9 @@ function checkSetReferences(errors: DocumentError[], docs: readonly Document[]):
       case "form":
       case "table":
         checkViewFields(errors, doc, idx);
+        break;
+      case "calendar":
+        checkCalendarFields(errors, doc, idx);
         break;
       case "dashboard":
         checkDashboard(errors, doc, idx, embeddable);
@@ -865,12 +929,12 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
 }
 
 /** Checks a table's row action: the target is a table, the bound fields exist on both entities and have the same type. */
-function checkRowActionTarget(errors: DocumentError[], view: TableView, entity: EntityDocument, idx: SetIndex): void {
+function checkRowActionTarget(errors: DocumentError[], view: TableView | CalendarView, entity: EntityDocument, idx: SetIndex): void {
   const action = view.rowAction;
   if (!action) return;
   const target = idx.tables.get(action.open);
   if (!target) {
-    if (idx.forms.has(action.open) || idx.dashboards.has(action.open)) {
+    if (idx.forms.has(action.open) || idx.calendars.has(action.open) || idx.dashboards.has(action.open)) {
       errors.push({
         path: jsonPointer(["rowAction", "open"]),
         code: "invalid-value",
@@ -960,6 +1024,101 @@ function checkRowActionChains(errors: DocumentError[], idx: SetIndex): void {
       });
     }
   }
+  // A calendar can start a chain but is never a target, so it cannot be part of a cycle; only the length counts.
+  for (const calendar of idx.calendars.values()) {
+    const open = calendar.rowAction?.open;
+    if (open === undefined || !idx.tables.has(open)) continue;
+    const rest = hops(open, [open]);
+    if (rest <= MAX_ROW_ACTION_DEPTH && 1 + rest > MAX_ROW_ACTION_DEPTH) {
+      errors.push({
+        path: jsonPointer(["rowAction", "open"]),
+        code: "invalid-value",
+        message: `Row actions starting at "${calendar.id}" are ${1 + rest} hops long; the most allowed is ${MAX_ROW_ACTION_DEPTH}.`,
+        hint: `Shorten the chain to at most ${MAX_ROW_ACTION_DEPTH} hops (remove a rowAction).`,
+        document: calendar.id,
+      });
+    }
+  }
+}
+
+/** Checks a calendar's entity and every field it uses. */
+function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: SetIndex): void {
+  const entity = idx.entities.get(view.entity);
+  if (!entity) {
+    errors.push(refError(view.id, ["entity"], `View references unknown entity "${view.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
+    return;
+  }
+  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const find = (id: string): Field | undefined => entity.fields.find((f) => f.id === id);
+  const idsOfType = (types: readonly FieldType[]): string[] => [...new Set(entity.fields.filter((f) => types.includes(f.type)).map((f) => f.id))];
+  const unknown = (id: string, path: Path): void => {
+    errors.push(refError(view.id, path, `Field "${id}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+  };
+  /** Reports an unknown field, or one whose type is not allowed; returns the field when it is fine. */
+  const typed = (id: string, path: Path, role: string, types: readonly FieldType[]): Field | undefined => {
+    const field = find(id);
+    if (!field) {
+      unknown(id, path);
+      return undefined;
+    }
+    if (!types.includes(field.type)) {
+      const allowed = idsOfType(types);
+      errors.push({
+        path: jsonPointer(path),
+        code: "invalid-value",
+        message: `"${id}" is a ${field.type} field, but a calendar's ${role} must be a ${types.join(" or ")} field.`,
+        hint: allowed.length > 0 ? `Use one of: ${allowed.join(", ")}.` : `Entity "${entity.id}" has no ${types.join(" or ")} field; add one.`,
+        document: view.id,
+        allowed,
+      });
+      return undefined;
+    }
+    return field;
+  };
+
+  typed(view.dateField, ["dateField"], "dateField", ["date"]);
+  let title: string | undefined;
+  if (view.titleField !== undefined) {
+    if (typed(view.titleField, ["titleField"], "titleField", CALENDAR_TITLE_FIELD_TYPES)) title = view.titleField;
+  } else {
+    title = entity.fields.find((f) => f.type === "text")?.id;
+    if (title === undefined) {
+      const allowed = idsOfType(CALENDAR_TITLE_FIELD_TYPES);
+      errors.push({
+        path: jsonPointer(["titleField"]),
+        code: "required",
+        message: `Entity "${entity.id}" has no text field to title entries with, so "titleField" is required.`,
+        hint: allowed.length > 0 ? `Set "titleField" to a select field: ${allowed.join(", ")}.` : `Add a text or select field to "${entity.id}" and set "titleField" to it.`,
+        document: view.id,
+        allowed,
+      });
+    }
+  }
+  view.detailFields?.forEach((id, i) => {
+    const path: Path = ["detailFields", i];
+    if (!find(id)) unknown(id, path);
+    else if (id === view.dateField || id === title) {
+      errors.push({
+        path: jsonPointer(path),
+        code: "invalid-value",
+        message: `Detail field "${id}" is already shown as the calendar's ${id === view.dateField ? "date" : "title"}.`,
+        hint: "Remove it or pick another field.",
+        document: view.id,
+        allowed: fieldIds.filter((f) => f !== view.dateField && f !== title),
+      });
+    }
+  });
+  if (view.colorField !== undefined) typed(view.colorField, ["colorField"], "colorField", CALENDAR_COLOR_FIELD_TYPES);
+  checkConditionFields(view.filter, ["filter"], (id, path) => {
+    if (!find(id)) unknown(id, path);
+  });
+  checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
+  checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
+  view.sort?.forEach((key, i) => {
+    if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
+    else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
+  });
+  if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
 }
 
 /** Checks each reference field of an entity: the target entity exists and `display` is a text or select field on it. */
@@ -1121,14 +1280,16 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
     tab.items.forEach((item, j) => {
       const itemPath: Path = ["tabs", i, "items", j];
       if (item.widget === "view") {
-        if (!idx.forms.has(item.view) && !idx.tables.has(item.view)) {
-          errors.push(refError(doc.id, [...itemPath, "view"], `Widget references unknown view "${item.view}".`, "Point at a form or table view.", embeddable));
+        if (!idx.forms.has(item.view) && !idx.tables.has(item.view) && !idx.calendars.has(item.view)) {
+          errors.push(refError(doc.id, [...itemPath, "view"], `Widget references unknown view "${item.view}".`, "Point at a form, table or calendar view.", embeddable));
         }
         return;
       }
       const table = idx.tables.get(item.view);
       if (!table) {
-        errors.push(refError(doc.id, [...itemPath, "view"], `${item.widget === "stat" ? "Stat" : "Count"} widget references unknown table view "${item.view}".`, "Point at a table view.", [...idx.tables.keys()]));
+        const what = item.widget === "stat" ? "Stat" : "Count";
+        const message = idx.calendars.has(item.view) ? `${what} widgets work from a table view, but "${item.view}" is a calendar view.` : `${what} widget references unknown table view "${item.view}".`;
+        errors.push(refError(doc.id, [...itemPath, "view"], message, "Point at a table view.", [...idx.tables.keys()]));
         return;
       }
       const entity = idx.entities.get(table.entity);

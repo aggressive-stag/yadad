@@ -8,7 +8,7 @@ npm install @yadad/core
 
 ## Validate documents
 
-Documents (entities and form, table and dashboard views) are plain JSON. Validate anything that did not come from your own code:
+Documents (entities and form, table, calendar and dashboard views) are plain JSON. Validate anything that did not come from your own code:
 
 ```ts
 import { migrate, validateDocument, validateDocuments } from "@yadad/core";
@@ -27,7 +27,7 @@ Errors are `{ path, code, message, hint }`: `path` is a JSON Pointer, and the me
 
 ## Exports
 
-- Document types: `EntityDocument`, `FormView`, `TableView`, `DashboardView`, `Field`, `Condition` and friends; `SPEC_VERSION`.
+- Document types: `EntityDocument`, `FormView`, `TableView`, `CalendarView`, `DashboardView`, `Field`, `Condition` and friends; `SPEC_VERSION`.
 - `validateDocument`, `validateDocuments`, `migrate` (upgrades a document from an older `specVersion`; version 0 documents stay valid).
 - `Registry<N>`: the exact-key map of field `Input`/`Display` components, layout pieces and widgets that the renderer looks components up in. `N` is the UI library's node type, so core needs no React.
 - `DataAdapter`, `Query`, `DataRecord`, `WriteMeta`, and the typed adapter errors (`RecordConflictError`, `RecordNotFoundError`, `RecordValidationError`, `UnauthorizedError`, `ForbiddenError`).
@@ -36,7 +36,7 @@ Errors are `{ path, code, message, hint }`: `path` is a JSON Pointer, and the me
 
 ## Rules worth knowing
 
-- `specVersion` is the document format (currently 1); `revision` counts user edits to a document and is data.
+- `specVersion` is the document format (currently 3); `revision` counts user edits to a document and is data.
 - Ids (documents, fields, sections, tabs, grid items) match `[a-z][a-z0-9_]*`, e.g. `workout_set`; grid-item ids need only be unique within their tab.
 - Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`.
 

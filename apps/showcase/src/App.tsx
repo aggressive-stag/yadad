@@ -155,9 +155,10 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
 function viewsOf(rootId: string, documents: DocumentSet): (FormView | TableView)[] {
   const root = documents.views.get(rootId);
   if (!root) return [];
+  if (root.kind === "calendar") return [];
   if (root.kind !== "dashboard") return [root];
   const ids = [...new Set(root.tabs.flatMap((t) => t.items.filter((i) => i.widget === "view").map((i) => i.view)))];
-  return ids.map((id) => documents.views.get(id)).filter((v): v is FormView | TableView => v !== undefined && v.kind !== "dashboard");
+  return ids.map((id) => documents.views.get(id)).filter((v): v is FormView | TableView => v !== undefined && (v.kind === "form" || v.kind === "table"));
 }
 
 function viewEditor(mode: { readonly kind: "form" | "table"; readonly id: string }, documents: DocumentSet, registry: Registry<ReactNode>, save: (doc: Document) => void, close: () => void): ReactNode {
@@ -221,6 +222,7 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
   if (!view) return null;
   const drafts = draftStore ? { drafts: { store: draftStore } } : {};
   if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} {...drafts} />;
+  if (view.kind === "calendar") return null; // the showcase gets a calendar in a later change
   const entity = documents.entities.get(view.entity);
   if (!entity) return null;
   return view.kind === "form" ? (

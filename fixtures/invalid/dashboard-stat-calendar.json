@@ -1,0 +1,93 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 3,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            "Good",
+            "Bad"
+          ]
+        }
+      },
+      {
+        "id": "owner",
+        "type": "reference",
+        "label": "Owner",
+        "entity": "e",
+        "display": "name"
+      }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 3,
+    "id": "cal",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "day"
+  },
+  {
+    "kind": "dashboard",
+    "specVersion": 3,
+    "id": "board",
+    "revision": 1,
+    "tabs": [
+      {
+        "id": "t",
+        "title": "T",
+        "items": [
+          {
+            "id": "w",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "cal",
+            "measure": {
+              "op": "count"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 3,
+    "id": "t",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ]
+  }
+]

@@ -130,7 +130,7 @@ An **entity** owns fields, types and validation. A **view** owns layout and refe
       "visibleWhen": { "op": "notEmpty", "field": "exercise" } } ] } ] }
 ```
 
-View kinds: `form` (sections, items), `table` (columns, initial sort, `pageSize`, a fixed `filter`, viewer `quickFilters`, inline-edit flags), `dashboard` (tabs, grid items `{x, y, w, h, widget}`, widget union: `view` and `count`). All three shapes are designed and implemented at `specVersion: 0`, and the contract is still in flux (§11).
+View kinds: `form` (sections, items), `table` (columns, initial sort, `pageSize`, a fixed `filter`, viewer `quickFilters`, inline-edit flags), `calendar` (records placed on the days of a month or week by one date field, RFC 0004), `dashboard` (tabs, grid items `{x, y, w, h, widget}`, widget union: `view` and `count`). All three shapes are designed and implemented at `specVersion: 0`, and the contract is still in flux (§11).
 
 Rules:
 

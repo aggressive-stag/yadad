@@ -1,0 +1,36 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 3,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            "Good",
+            "Bad"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 3,
+    "id": "cal",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "day"
+  }
+]

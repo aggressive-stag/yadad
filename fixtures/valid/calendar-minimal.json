@@ -1,0 +1,9 @@
+{
+  "kind": "calendar",
+  "specVersion": 3,
+  "id": "sets_calendar_minimal",
+  "entity": "workout_set",
+  "revision": 1,
+  "dataSource": "default",
+  "dateField": "day"
+}

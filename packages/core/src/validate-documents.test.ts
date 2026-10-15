@@ -144,7 +144,7 @@ describe("validateDocuments", () => {
 
   test("a structural error is tagged with the document's id and keeps its allowed list", () => {
     const set = [entity("e", [{ id: "name", type: "text" }]), { kind: "widget", specVersion: 0, id: "w", revision: 1 }];
-    expect(problems(set)).toEqual([{ path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "dashboard"] }]);
+    expect(problems(set)).toEqual([{ path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "dashboard"] }]);
   });
 });
 
@@ -244,5 +244,60 @@ describe("table rowAction", () => {
   test("the target may be a different entity", () => {
     const other = entity("order", [{ id: "name", type: "text" }]);
     expect(validateDocuments([ent, other, table("a", "thing", { rowAction: go("b") }), table("b", "order")]).ok).toBe(true);
+  });
+});
+
+describe("calendar views", () => {
+  const ent = {
+    kind: "entity",
+    specVersion: 3,
+    id: "task",
+    revision: 1,
+    fields: [
+      { id: "title", type: "text", label: "Title" },
+      { id: "due", type: "date", label: "Due" },
+      { id: "list", type: "reference", label: "List", entity: "task" },
+      { id: "status", type: "select", label: "Status", options: { source: "static", values: ["open", "done"] } },
+    ],
+  };
+  const cal = (extra: Record<string, unknown> = {}, id = "cal"): unknown => ({
+    kind: "calendar",
+    specVersion: 3,
+    id,
+    entity: "task",
+    revision: 1,
+    dataSource: "default",
+    dateField: "due",
+    ...extra,
+  });
+  const go = (open: string) => ({ columns: [{ field: "title" }], rowAction: { open, bind: [{ field: "title", to: "title" }] } });
+  const end = { columns: [{ field: "title" }] };
+
+  test("a valid calendar with a reference colour field, embedded by a dashboard view widget", () => {
+    const set = [
+      ent,
+      cal({ colorField: "list", titleField: "status", filter: { op: "gte", field: "due", value: { daysFromToday: -7 } } }),
+      dashboard("board", [{ id: "w", x: 0, y: 0, w: 6, h: 8, widget: "view", view: "cal" }]),
+    ];
+    const result = validateDocuments(set);
+    expect(result.ok ? [] : result.errors).toEqual([]);
+  });
+
+  test("a relative date on a non-date field is reported", () => {
+    const set = [ent, cal({ filter: { op: "gte", field: "title", value: { daysFromToday: 1 } } })];
+    expect(problems(set)).toEqual([{ path: "/filter/value", code: "invalid-value", document: "cal", allowed: undefined }]);
+  });
+
+  test("a calendar may start a row action chain of three hops, not four", () => {
+    const ok = [ent, cal({ rowAction: go("a").rowAction }), table("a", "task", go("b")), table("b", "task", go("c")), table("c", "task", end)];
+    expect(validateDocuments(ok).ok).toBe(true);
+    const tooLong = [ent, cal({ rowAction: go("a").rowAction }), table("a", "task", go("b")), table("b", "task", go("c")), table("c", "task", go("d")), table("d", "task", end)];
+    expect(problems(tooLong)).toEqual([{ path: "/rowAction/open", code: "invalid-value", document: "cal", allowed: undefined }]);
+  });
+
+  test("a missing text field needs a titleField, and a select titleField satisfies it", () => {
+    const noText = { ...ent, fields: ent.fields.filter((f) => f.type !== "text") };
+    expect(problems([noText, cal()])).toEqual([{ path: "/titleField", code: "required", document: "cal", allowed: ["status"] }]);
+    expect(validateDocuments([noText, cal({ titleField: "status" })]).ok).toBe(true);
   });
 });

@@ -7,6 +7,8 @@ const invalidDir = new URL("../../fixtures/invalid/", import.meta.url);
 
 type Picked = { path: string; code: string; document?: string | undefined; allowed?: readonly string[] | undefined };
 
+const CALENDAR_FIELDS = ["name", "day", "qty", "mood", "owner"];
+
 /** The exact errors (in order) each invalid fixture must yield. */
 const expected: Record<string, Picked[]> = {
   "unknown-entity.json": [{ path: "/entity", code: "unknown-reference", document: "thing_form", allowed: ["thing"] }],
@@ -73,9 +75,40 @@ const expected: Record<string, Picked[]> = {
   "row-action-cycle.json": [{ path: "/rowAction/open", code: "invalid-value", document: "b" }],
   "row-action-too-deep.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a" }],
   "row-action-form-target.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a", allowed: ["a"] }],
+  "calendar-unknown-property.json": [{ path: "/color", code: "unknown-property", document: "cal" }],
+  "calendar-empty-modes.json": [{ path: "/modes", code: "invalid-value", document: "cal", allowed: ["month", "week"] }],
+  "calendar-duplicate-mode.json": [{ path: "/modes/2", code: "invalid-value", document: "cal" }],
+  "calendar-bad-week-start.json": [{ path: "/weekStartsOn", code: "invalid-value", document: "cal" }],
+  "calendar-too-many-detail-fields.json": [{ path: "/detailFields", code: "invalid-value", document: "cal" }],
+  "calendar-date-field-wrong-type.json": [{ path: "/dateField", code: "invalid-value", document: "cal", allowed: ["day"] }],
+  "calendar-title-field-wrong-type.json": [{ path: "/titleField", code: "invalid-value", document: "cal", allowed: ["name", "mood"] }],
+  "calendar-missing-title-field.json": [{ path: "/titleField", code: "required", document: "cal", allowed: ["mood"] }],
+  "calendar-color-field-wrong-type.json": [{ path: "/colorField", code: "invalid-value", document: "cal", allowed: ["mood", "owner"] }],
+  "calendar-detail-repeats-title.json": [
+    { path: "/detailFields/0", code: "invalid-value", document: "cal", allowed: ["qty", "mood", "owner"] },
+    { path: "/detailFields/1", code: "invalid-value", document: "cal", allowed: ["qty", "mood", "owner"] },
+  ],
+  "calendar-unknown-entity.json": [{ path: "/entity", code: "unknown-reference", document: "cal", allowed: ["e"] }],
+  "calendar-unknown-fields.json": [
+    { path: "/dateField", code: "unknown-reference", document: "cal", allowed: CALENDAR_FIELDS },
+    { path: "/titleField", code: "unknown-reference", document: "cal", allowed: CALENDAR_FIELDS },
+    { path: "/detailFields/1", code: "unknown-reference", document: "cal", allowed: CALENDAR_FIELDS },
+    { path: "/colorField", code: "unknown-reference", document: "cal", allowed: CALENDAR_FIELDS },
+    { path: "/filter/field", code: "unknown-reference", document: "cal", allowed: CALENDAR_FIELDS },
+    { path: "/sort/0/field", code: "unknown-reference", document: "cal", allowed: CALENDAR_FIELDS },
+  ],
+  "calendar-unsupported-use.json": [
+    { path: "/filter/op", code: "invalid-value", document: "cal" },
+    { path: "/sort/0/field", code: "invalid-value", document: "cal" },
+  ],
+  "calendar-row-action-form-target.json": [{ path: "/rowAction/open", code: "invalid-value", document: "cal", allowed: ["t"] }],
+  "calendar-row-action-calendar-target.json": [{ path: "/rowAction/open", code: "invalid-value", document: "cal", allowed: ["t"] }],
+  "calendar-row-action-too-deep.json": [{ path: "/rowAction/open", code: "invalid-value", document: "cal" }],
+  "dashboard-count-calendar.json": [{ path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["t"] }],
+  "dashboard-stat-calendar.json": [{ path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["t"] }],
   "duplicate-id.json": [{ path: "/id", code: "duplicate-id", document: "thing" }],
   "structural-unknown-kind.json": [
-    { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "dashboard"] },
+    { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "dashboard"] },
   ],
 };
 

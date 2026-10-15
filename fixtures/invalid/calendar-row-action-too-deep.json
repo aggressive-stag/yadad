@@ -1,0 +1,141 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 3,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            "Good",
+            "Bad"
+          ]
+        }
+      },
+      {
+        "id": "owner",
+        "type": "reference",
+        "label": "Owner",
+        "entity": "e",
+        "display": "name"
+      }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 3,
+    "id": "cal",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "day",
+    "rowAction": {
+      "open": "a",
+      "bind": [
+        {
+          "field": "mood",
+          "to": "mood"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 3,
+    "id": "a",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "rowAction": {
+      "open": "b",
+      "bind": [
+        {
+          "field": "mood",
+          "to": "mood"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 3,
+    "id": "b",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "rowAction": {
+      "open": "c",
+      "bind": [
+        {
+          "field": "mood",
+          "to": "mood"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 3,
+    "id": "c",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "rowAction": {
+      "open": "d",
+      "bind": [
+        {
+          "field": "mood",
+          "to": "mood"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 3,
+    "id": "d",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ]
+  }
+]
