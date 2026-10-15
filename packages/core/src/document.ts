@@ -6,11 +6,13 @@ import type { Condition } from "./condition.js";
 /**
  * Engine document format version. Version 1 adds relative dates in conditions
  * (`{ daysFromToday }`); a version 0 document is valid as it is, and
- * `migrate()` stamps it as version 1.
+ * `migrate()` stamps it as version 1. Version 2 adds the first slices of
+ * RFCs 0001-0003 (the `stat` widget, the `reference` field, table
+ * `rowAction`); older documents stay valid and `migrate()` stamps them.
  */
-export const SPEC_VERSION = 1;
+export const SPEC_VERSION = 2;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */

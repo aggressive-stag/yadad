@@ -22,6 +22,12 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     description: 'Version 1 adds relative dates ({ "daysFromToday": N }) in conditions and number/date quick filters. Every version 0 document stays valid, so this step only stamps the new version.',
     run: (doc) => ({ ...doc, specVersion: 1 }),
   },
+  {
+    from: 1,
+    to: 2,
+    description: "Version 2 adds the first slices of RFCs 0001-0003: the dashboard `stat` widget, the `reference` field type and the table `rowAction`. Every version 1 document stays valid, so this step only stamps the new version.",
+    run: (doc) => ({ ...doc, specVersion: 2 }),
+  },
 ];
 
 function isObject(value: unknown): value is JsonObject {
