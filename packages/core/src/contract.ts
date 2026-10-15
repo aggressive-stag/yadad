@@ -177,6 +177,15 @@ const FIELD_SPECS: Record<FieldType, FieldSpec> = {
       { key: "max", required: false, description: 'Latest allowed date, "YYYY-MM-DD".' },
     ],
   },
+  reference: {
+    type: "reference",
+    description:
+      "A link to a record of another entity. The stored value is the target record's id (text). The server enforces that the record exists; the form offers existing records. Conditions on it take eq, neq, in, empty and notEmpty; it cannot be a quick filter or a table sort key.",
+    properties: [
+      { key: "entity", required: true, description: "The id of the target entity (an entity in the same set; may be the entity itself)." },
+      { key: "display", required: false, description: "The id of a text or select field on the target that labels a record. Defaults to the target's first text field." },
+    ],
+  },
 };
 
 const CONDITION_EXAMPLES: { readonly [K in ConditionOp]: string } = {

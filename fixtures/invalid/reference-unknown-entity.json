@@ -1,0 +1,4 @@
+[
+  { "kind": "entity", "specVersion": 2, "id": "exercise", "revision": 1, "fields": [{ "id": "name", "type": "text", "label": "Name" }, { "id": "sets", "type": "number", "label": "Sets" }] },
+  { "kind": "entity", "specVersion": 2, "id": "entry", "revision": 1, "fields": [{ "id": "exercise", "type": "reference", "label": "Exercise", "entity": "ghost" }] }
+]

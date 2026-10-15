@@ -1,0 +1,11 @@
+{
+  "kind": "entity",
+  "specVersion": 2,
+  "id": "set_entry",
+  "revision": 1,
+  "fields": [
+    { "id": "exercise", "type": "reference", "label": "Exercise", "required": true, "entity": "exercise", "display": "name" },
+    { "id": "alternate", "type": "reference", "label": "Alternate exercise", "entity": "exercise" },
+    { "id": "reps", "type": "number", "label": "Reps", "required": true, "min": 1, "step": 1 }
+  ]
+}

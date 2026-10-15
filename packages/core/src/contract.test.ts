@@ -266,6 +266,7 @@ const fieldExamples: Record<string, Record<string, unknown>> = {
   boolean: {},
   select: { options: { source: "static", values: ["Squat", "Bench"] } },
   date: { min: "2026-01-01", max: "2026-12-31" },
+  reference: { entity: "exercise", display: "name" },
 };
 
 type FieldDoc = { kind: string; specVersion: number; id: string; revision: number; fields: Array<Record<string, unknown>> };
@@ -282,12 +283,14 @@ for (const fieldSpec of contract.fieldTypes) {
     test("a minimal field of this type validates", () => {
       const doc = typeDoc();
       if (fieldSpec.type === "select") doc.fields[0]!.options = fieldExamples["select"]!.options;
+      if (fieldSpec.type === "reference") doc.fields[0]!.entity = fieldExamples["reference"]!.entity;
       expect(problems(doc)).toEqual([]);
     });
     for (const prop of fieldSpec.properties) {
       test(`property "${prop.key}" validates`, () => {
         const doc = typeDoc();
         if (fieldSpec.type === "select" && prop.key !== "options") doc.fields[0]!.options = fieldExamples["select"]!.options;
+        if (fieldSpec.type === "reference" && prop.key !== "entity") doc.fields[0]!.entity = fieldExamples["reference"]!.entity;
         doc.fields[0]![prop.key] = fieldExamples[fieldSpec.type]![prop.key];
         expect(problems(doc)).toEqual([]);
       });

@@ -9,7 +9,7 @@ import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } f
 import type { Condition, ConditionOp } from "./condition.js";
 import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, PAGE_SIZE_MAX } from "./contract.js";
 import { FIELD_TYPES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
-import type { Document, DashboardView, EntityDocument, FieldType, FormView, TableView } from "./document.js";
+import type { Document, DashboardView, EntityDocument, Field, FieldType, FormView, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -131,6 +131,10 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
       checkIsoDate(errors, field, path, "max");
       checkRange(errors, field, path, (v): v is string => typeof v === "string" && isIsoDate(v));
       return;
+    case "reference":
+      checkId(errors, field, path, "entity");
+      if (field["display"] !== undefined) checkId(errors, field, path, "display");
+      return;
   }
 }
 
@@ -141,6 +145,7 @@ const FIELD_KEYS: { readonly [K in FieldType]: { readonly required: readonly str
   boolean: { required: [], optional: [] },
   select: { required: ["options"], optional: [] },
   date: { required: [], optional: ["min", "max"] },
+  reference: { required: ["entity"], optional: ["display"] },
 };
 
 function validateForm(errors: Errors, doc: JsonObject): void {
@@ -696,6 +701,9 @@ function checkSetReferences(errors: DocumentError[], docs: readonly Document[]):
   const embeddable = [...idx.forms.keys(), ...idx.tables.keys()];
   for (const doc of docs) {
     switch (doc.kind) {
+      case "entity":
+        checkReferenceFields(errors, doc, idx);
+        break;
       case "form":
       case "table":
         checkViewFields(errors, doc, idx);
@@ -741,7 +749,10 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     if (fieldIds.includes(fieldId)) return;
     errors.push(refError(view.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
   };
-  const checkDates = (condition: Condition | undefined, base: Path): void => checkRelativeDateFields(errors, view.id, entity, condition, base);
+  const checkDates = (condition: Condition | undefined, base: Path): void => {
+    checkRelativeDateFields(errors, view.id, entity, condition, base);
+    checkReferenceOps(errors, view.id, entity, condition, base);
+  };
   if (view.kind === "form") {
     view.sections.forEach((section, i) => {
       section.items.forEach((item, j) => {
@@ -756,10 +767,86 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     return;
   }
   view.columns.forEach((column, i) => checkField(column.field, ["columns", i, "field"]));
-  view.sort?.forEach((key, i) => checkField(key.field, ["sort", i, "field"]));
-  view.quickFilters?.forEach((filter, i) => checkField(filter.field, ["quickFilters", i, "field"]));
+  view.sort?.forEach((key, i) => {
+    checkField(key.field, ["sort", i, "field"]);
+    checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
+  });
+  view.quickFilters?.forEach((filter, i) => {
+    checkField(filter.field, ["quickFilters", i, "field"]);
+    checkNotReference(errors, view.id, entity, filter.field, ["quickFilters", i, "field"], "quick filter");
+  });
   checkConditionFields(view.filter, ["filter"], checkField);
   checkDates(view.filter, ["filter"]);
+}
+
+/** Checks each reference field of an entity: the target entity exists and `display` is a text or select field on it. */
+function checkReferenceFields(errors: DocumentError[], entity: EntityDocument, idx: SetIndex): void {
+  entity.fields.forEach((field, i) => {
+    if (field.type !== "reference") return;
+    const path: Path = ["fields", i];
+    const target = idx.entities.get(field.entity);
+    if (!target) {
+      errors.push(refError(entity.id, [...path, "entity"], `Reference field "${field.id}" points at unknown entity "${field.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
+      return;
+    }
+    if (field.display === undefined) return;
+    const shown = target.fields.find((f) => f.id === field.display);
+    if (!shown) {
+      errors.push(
+        refError(entity.id, [...path, "display"], `Field "${field.display}" is not on entity "${target.id}".`, `Use a text or select field id on "${target.id}".`, target.fields.filter(isLabelField).map((f) => f.id)),
+      );
+    } else if (!isLabelField(shown)) {
+      errors.push({
+        path: jsonPointer([...path, "display"]),
+        code: "invalid-value",
+        message: `"display" must be a text or select field, but "${shown.id}" on "${target.id}" is a ${shown.type} field.`,
+        hint: `Use one of: ${target.fields.filter(isLabelField).map((f) => f.id).join(", ") || "(none; add a text field to the target)"}.`,
+        document: entity.id,
+      });
+    }
+  });
+}
+
+const isLabelField = (f: Field): boolean => f.type === "text" || f.type === "select";
+
+/** Reference fields cannot be quick filters or sort keys in this version. */
+function checkNotReference(errors: DocumentError[], document: string, entity: EntityDocument, fieldId: string, path: Path, what: string): void {
+  const field = entity.fields.find((f) => f.id === fieldId);
+  if (field?.type !== "reference") return;
+  errors.push({
+    path: jsonPointer(path),
+    code: "invalid-value",
+    message: `Reference field "${fieldId}" cannot be a ${what}.`,
+    hint: "Reference fields hold a record id, so they cannot be a quick filter or sort key. Use a fixed filter with eq, neq, in, empty or notEmpty instead.",
+    document,
+  });
+}
+
+const REFERENCE_OPS: readonly ConditionOp[] = ["eq", "neq", "in", "empty", "notEmpty"];
+
+/** Reports a comparison other than eq, neq, in, empty and notEmpty on a reference field. */
+function checkReferenceOps(errors: DocumentError[], document: string, entity: EntityDocument, condition: Condition | undefined, base: Path): void {
+  if (!condition) return;
+  switch (condition.op) {
+    case "and":
+    case "or":
+      condition.conditions.forEach((c, i) => checkReferenceOps(errors, document, entity, c, [...base, "conditions", i]));
+      return;
+    case "not":
+      checkReferenceOps(errors, document, entity, condition.condition, [...base, "condition"]);
+      return;
+    default: {
+      const field = entity.fields.find((f) => f.id === condition.field);
+      if (field?.type !== "reference" || REFERENCE_OPS.includes(condition.op)) return;
+      errors.push({
+        path: jsonPointer([...base, "op"]),
+        code: "invalid-value",
+        message: `"${condition.op}" cannot be used on reference field "${field.id}": it holds a record id.`,
+        hint: `Use one of: ${REFERENCE_OPS.join(", ")}.`,
+        document,
+      });
+    }
+  }
 }
 
 /** Reports a relative date compared with a field that is not a date field (fields that do not exist are reported elsewhere). */
@@ -838,6 +925,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       if (!entity) return; // the table's own missing entity is reported on the table
       const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
       checkRelativeDateFields(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
+      checkReferenceOps(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkConditionFields(item.filter, [...itemPath, "filter"], (fieldId, path) => {
         if (!fieldIds.includes(fieldId)) {
           errors.push(refError(doc.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));

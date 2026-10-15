@@ -33,6 +33,15 @@ const expected: Record<string, Picked[]> = {
   ],
   "relative-date-on-number-field.json": [{ path: "/filter/value", code: "invalid-value", document: "thing_table" }],
   "relative-date-not-integer.json": [{ path: "/filter/value/daysFromToday", code: "type", document: "thing_table" }],
+  "reference-unknown-entity.json": [{ path: "/fields/0/entity", code: "unknown-reference", document: "entry", allowed: ["exercise", "entry"] }],
+  "reference-unknown-display.json": [{ path: "/fields/0/display", code: "unknown-reference", document: "entry", allowed: ["name"] }],
+  "reference-display-not-text.json": [{ path: "/fields/0/display", code: "invalid-value", document: "entry" }],
+  "reference-missing-entity.json": [{ path: "/fields/0/entity", code: "required", document: "entry" }],
+  "reference-unsupported-use.json": [
+    { path: "/sort/0/field", code: "invalid-value", document: "entries" },
+    { path: "/quickFilters/0/field", code: "invalid-value", document: "entries" },
+    { path: "/filter/op", code: "invalid-value", document: "entries" },
+  ],
   "duplicate-id.json": [{ path: "/id", code: "duplicate-id", document: "thing" }],
   "structural-unknown-kind.json": [
     { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "dashboard"] },

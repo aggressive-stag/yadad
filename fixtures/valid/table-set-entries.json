@@ -1,0 +1,12 @@
+{
+  "kind": "table",
+  "specVersion": 2,
+  "id": "set_entries",
+  "title": "Set entries",
+  "entity": "set_entry",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [{ "field": "exercise", "editable": true }, { "field": "alternate" }, { "field": "reps" }],
+  "sort": [{ "field": "reps", "dir": "desc" }],
+  "filter": { "op": "notEmpty", "field": "exercise" }
+}

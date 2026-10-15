@@ -2,7 +2,7 @@
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
 // CellEditor and optionsSchema come later.
 
-import type { BooleanField, DateField, Field, FieldType, NumberField, SelectField, TextField } from "./document.js";
+import type { BooleanField, DateField, Field, FieldType, NumberField, ReferenceField, SelectField, TextField } from "./document.js";
 import type { DocumentError } from "./errors.js";
 
 /**
@@ -20,6 +20,8 @@ export interface FieldValueTypes {
   readonly select: string;
   /** "YYYY-MM-DD" */
   readonly date: string;
+  /** The target record's id. */
+  readonly reference: string;
 }
 
 /** The field definition type for each field type. */
@@ -29,6 +31,7 @@ export interface FieldDefinitions {
   readonly boolean: BooleanField;
   readonly select: SelectField;
   readonly date: DateField;
+  readonly reference: ReferenceField;
 }
 
 export interface InputProps<F extends Field, V> {
@@ -50,10 +53,70 @@ export interface DisplayProps<F extends Field, V> {
   readonly value: V | undefined;
 }
 
+/** One record a reference picker offers: its id (the stored value) and the text that labels it. */
+export interface ReferenceOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * What the renderer knows about the options of a reference picker. The renderer
+ * loads them from the target entity's data source; the component only shows
+ * them. `more` is true when the target has more records than `options` holds.
+ */
+export type ReferenceOptions =
+  | { readonly status: "loading" }
+  | { readonly status: "error"; readonly message: string }
+  | { readonly status: "ready"; readonly options: readonly ReferenceOption[]; readonly more: boolean };
+
+/** Props a reference Input gets besides the common ones. */
+export interface ReferenceInputExtras {
+  readonly options: ReferenceOptions;
+  /**
+   * The label of the current value, when the renderer could resolve it. The
+   * value may be missing from `options` (beyond the cap, or deleted), so the
+   * Input must still show it.
+   */
+  readonly valueLabel?: string;
+}
+
+/**
+ * Props a reference Display gets besides the common ones. `label` is the text
+ * to show: the referenced record's label, or its raw id while loading, or
+ * "Unknown" when the record no longer exists.
+ */
+export interface ReferenceDisplayExtras {
+  readonly label: string;
+  readonly status: "loading" | "found" | "missing";
+}
+
+/** Extra Input props per field type; only reference has any. */
+export interface FieldInputExtras {
+  readonly text: Record<never, never>;
+  readonly number: Record<never, never>;
+  readonly boolean: Record<never, never>;
+  readonly select: Record<never, never>;
+  readonly date: Record<never, never>;
+  readonly reference: ReferenceInputExtras;
+}
+
+/** Extra Display props per field type; only reference has any. */
+export interface FieldDisplayExtras {
+  readonly text: Record<never, never>;
+  readonly number: Record<never, never>;
+  readonly boolean: Record<never, never>;
+  readonly select: Record<never, never>;
+  readonly date: Record<never, never>;
+  readonly reference: ReferenceDisplayExtras;
+}
+
+export type FieldInputProps<K extends FieldType> = InputProps<FieldDefinitions[K], FieldValueTypes[K]> & FieldInputExtras[K];
+export type FieldDisplayProps<K extends FieldType> = DisplayProps<FieldDefinitions[K], FieldValueTypes[K]> & FieldDisplayExtras[K];
+
 export interface FieldTypeEntry<K extends FieldType, N> {
   readonly type: K;
-  readonly Input: Component<InputProps<FieldDefinitions[K], FieldValueTypes[K]>, N>;
-  readonly Display: Component<DisplayProps<FieldDefinitions[K], FieldValueTypes[K]>, N>;
+  readonly Input: Component<FieldInputProps<K>, N>;
+  readonly Display: Component<FieldDisplayProps<K>, N>;
 }
 
 /** Label, help and error chrome around every Input. */

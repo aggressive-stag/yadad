@@ -1,0 +1,10 @@
+{
+  "kind": "entity",
+  "specVersion": 2,
+  "id": "exercise",
+  "revision": 1,
+  "fields": [
+    { "id": "name", "type": "text", "label": "Name", "required": true },
+    { "id": "muscle", "type": "select", "label": "Main muscle", "options": { "source": "static", "values": ["Legs", "Chest", "Back", "Shoulders"] } }
+  ]
+}

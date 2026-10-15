@@ -315,3 +315,21 @@ describe("condition hints", () => {
     expect(errors.ok ? [] : errors.errors.map((e) => [e.message, e.allowed])).toEqual([['Unknown property "value" for "empty".', ["op", "field"]]]);
   });
 });
+
+describe("reference fields", () => {
+  const entity = (field: object) => ({ kind: "entity", specVersion: 2, id: "entry", revision: 1, fields: [field] });
+  const problemsOf = (doc: unknown): [string, string][] => {
+    const result = validateDocument(doc);
+    return result.ok ? [] : result.errors.map((e) => [e.path, e.code]);
+  };
+
+  test("accepts entity and an optional display", () => {
+    expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise", entity: "exercise" }))).toEqual([]);
+    expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise", entity: "exercise", display: "name", required: true }))).toEqual([]);
+  });
+  test("requires entity, rejects unknown properties and bad ids", () => {
+    expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise" }))).toEqual([["/fields/0/entity", "required"]]);
+    expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise", entity: "exercise", options: [] }))).toEqual([["/fields/0/options", "unknown-property"]]);
+    expect(problemsOf(entity({ id: "ex", type: "reference", label: "Exercise", entity: "Bad Id" }))).toEqual([["/fields/0/entity", "invalid-value"]]);
+  });
+});

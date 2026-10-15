@@ -16,7 +16,7 @@ export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
-export const FIELD_TYPES = ["text", "number", "boolean", "select", "date"] as const;
+export const FIELD_TYPES = ["text", "number", "boolean", "select", "date", "reference"] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
 interface FieldBase {
@@ -62,8 +62,21 @@ export interface DateField extends FieldBase {
   readonly max?: string;
 }
 
+/**
+ * A link to a record of another entity (RFC 0002). The stored value is the
+ * target record's id, a string. The server owns referential integrity; the
+ * engine only offers existing records in the picker.
+ */
+export interface ReferenceField extends FieldBase {
+  readonly type: "reference";
+  /** Id of the target entity. Self references are allowed. */
+  readonly entity: string;
+  /** Id of a text or select field on the target that labels a record. Defaults to the target's first text field. */
+  readonly display?: string;
+}
+
 /** Discriminated on `type`. */
-export type Field = TextField | NumberField | BooleanField | SelectField | DateField;
+export type Field = TextField | NumberField | BooleanField | SelectField | DateField | ReferenceField;
 
 /** Data model: owns fields, types and validation. */
 export interface EntityDocument {

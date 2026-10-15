@@ -1,0 +1,9 @@
+{
+  "kind": "form",
+  "specVersion": 2,
+  "id": "log_set_entry",
+  "entity": "set_entry",
+  "revision": 1,
+  "dataSource": "default",
+  "sections": [{ "id": "main", "items": [{ "field": "exercise" }, { "field": "reps" }, { "field": "alternate", "visibleWhen": { "op": "notEmpty", "field": "exercise" } }] }]
+}
