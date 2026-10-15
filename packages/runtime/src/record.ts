@@ -70,6 +70,9 @@ function checkValue(field: Field, value: FieldValue): Problem | undefined {
         ? undefined
         : { code: "invalid-value", message: `${JSON.stringify(value)} is not a choice for ${name}.`, hint: `Use one of: ${field.options.values.join(", ")}.` };
 
+    case "reference":
+      return typeof value === "string" ? undefined : wrongType(name, "the id of a record");
+
     case "date":
       if (typeof value !== "string" || !isIsoDate(value)) return wrongType(name, "a date (YYYY-MM-DD)");
       if (field.min !== undefined && value < field.min) return outOfRange(name, `on or after ${field.min}`);

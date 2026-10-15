@@ -6,3 +6,4 @@ export * from "./patch.js";
 export * from "./key-value-adapter.js";
 export * from "./http-adapter.js";
 export * from "./drafts.js";
+export * from "./reference.js";
