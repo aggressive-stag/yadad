@@ -33,5 +33,6 @@ describeRegistryContract(myRegistry);
 
 - `registryContractChecks(registry, samples?)` returns the checks as `{ name, run() }` objects, for use outside Vitest. Run them one at a time.
 - `defaultSamples` is the fixture per field type; pass your own `FieldSamples` to override them.
+- The `layout.Calendar` key is optional, so the calendar checks only run when the registry has a calendar; the mock registry's `MockCalendar` passes them.
 
 See the [repo README](../README.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).
