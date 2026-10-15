@@ -31,6 +31,28 @@ const expected: Record<string, Picked[]> = {
   "dashboard-count-unknown-field.json": [
     { path: "/tabs/0/items/0/filter/field", code: "unknown-reference", document: "board", allowed: ["name"] },
   ],
+  "dashboard-stat-unknown-view.json": [
+    { path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["the_table"] },
+  ],
+  "dashboard-stat-unknown-field.json": [
+    { path: "/tabs/0/items/0/measure/field", code: "unknown-reference", document: "board", allowed: ["name", "qty", "price", "day", "done"] },
+    { path: "/tabs/0/items/1/measure/product/1", code: "unknown-reference", document: "board", allowed: ["name", "qty", "price", "day", "done"] },
+    { path: "/tabs/0/items/2/filter/field", code: "unknown-reference", document: "board", allowed: ["name", "qty", "price", "day", "done"] },
+  ],
+  "dashboard-stat-wrong-field-type.json": [
+    { path: "/tabs/0/items/0/measure/field", code: "invalid-value", document: "board", allowed: ["qty", "price"] },
+    { path: "/tabs/0/items/1/measure/field", code: "invalid-value", document: "board", allowed: ["qty", "price"] },
+    { path: "/tabs/0/items/2/measure/field", code: "invalid-value", document: "board", allowed: ["qty", "price", "day"] },
+    { path: "/tabs/0/items/3/measure/product/1", code: "invalid-value", document: "board", allowed: ["qty", "price"] },
+  ],
+  "dashboard-stat-bad-measure.json": [
+    { path: "/tabs/0/items/0/measure/op", code: "invalid-value", document: "board", allowed: ["count", "sum", "countDistinct", "min", "max", "avg"] },
+    { path: "/tabs/0/items/1/measure/product", code: "invalid-value", document: "board" },
+    { path: "/tabs/0/items/2/measure/product", code: "invalid-value", document: "board" },
+    { path: "/tabs/0/items/3/measure/field", code: "unknown-property", document: "board", allowed: ["op"] },
+    { path: "/tabs/0/items/4/measure/field", code: "required", document: "board" },
+    { path: "/tabs/0/items/5/measure/product", code: "unknown-property", document: "board", allowed: ["op", "field"] },
+  ],
   "relative-date-on-number-field.json": [{ path: "/filter/value", code: "invalid-value", document: "thing_table" }],
   "relative-date-not-integer.json": [{ path: "/filter/value/daysFromToday", code: "type", document: "thing_table" }],
   "reference-unknown-entity.json": [{ path: "/fields/0/entity", code: "unknown-reference", document: "entry", allowed: ["exercise", "entry"] }],

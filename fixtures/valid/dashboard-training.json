@@ -1,6 +1,6 @@
 {
   "kind": "dashboard",
-  "specVersion": 0,
+  "specVersion": 2,
   "id": "training",
   "title": "Training log",
   "revision": 1,
@@ -128,6 +128,56 @@
             "op": "eq",
             "field": "exercise",
             "value": "Overhead press"
+          }
+        },
+        {
+          "id": "volume",
+          "x": 0,
+          "y": 2,
+          "w": 2,
+          "h": 2,
+          "widget": "stat",
+          "label": "Total volume (kg)",
+          "view": "sets",
+          "measure": {
+            "op": "sum",
+            "product": [
+              "weight",
+              "reps"
+            ]
+          },
+          "filter": {
+            "op": "neq",
+            "field": "warmup",
+            "value": true
+          }
+        },
+        {
+          "id": "days",
+          "x": 2,
+          "y": 2,
+          "w": 1,
+          "h": 2,
+          "widget": "stat",
+          "label": "Days trained",
+          "view": "sets",
+          "measure": {
+            "op": "countDistinct",
+            "field": "day"
+          }
+        },
+        {
+          "id": "best",
+          "x": 3,
+          "y": 2,
+          "w": 1,
+          "h": 2,
+          "widget": "stat",
+          "label": "Heaviest lift (kg)",
+          "view": "sets",
+          "measure": {
+            "op": "max",
+            "field": "weight"
           }
         }
       ]

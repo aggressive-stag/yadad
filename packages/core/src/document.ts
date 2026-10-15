@@ -155,7 +155,7 @@ export interface QuickFilter {
 }
 
 /** Widget types a dashboard grid item can hold, discriminated on `widget`. */
-export const WIDGET_TYPES = ["view", "count"] as const;
+export const WIDGET_TYPES = ["view", "count", "stat"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 /** Embeds a form or table view, by id. */
@@ -173,7 +173,33 @@ export interface CountWidget {
   readonly filter?: Condition;
 }
 
-export type Widget = ViewWidget | CountWidget;
+/** The aggregate operations a stat measure can use. */
+export const MEASURE_OPS = ["count", "sum", "countDistinct", "min", "max", "avg"] as const;
+export type MeasureOp = (typeof MEASURE_OPS)[number];
+
+/**
+ * What a `stat` computes over the records, discriminated on `op`. `sum` and
+ * `avg` take one number field or the product of two number fields per record
+ * (a typed pair, not a formula). Empty values are skipped, except by `count`.
+ */
+export type Measure =
+  | { readonly op: "count" }
+  | { readonly op: "countDistinct"; readonly field: string }
+  | { readonly op: "min" | "max"; readonly field: string }
+  | { readonly op: "sum" | "avg"; readonly field: string }
+  | { readonly op: "sum" | "avg"; readonly product: readonly [string, string] };
+
+/** Shows one number computed over the records of a table view (its fixed filter applies), optionally narrowed further. */
+export interface StatWidget {
+  readonly widget: "stat";
+  readonly label: string;
+  /** Id of a table view: its entity, data source and fixed filter are used. */
+  readonly view: string;
+  readonly measure: Measure;
+  readonly filter?: Condition;
+}
+
+export type Widget = ViewWidget | CountWidget | StatWidget;
 
 /** A widget placed on the tab's grid: column x, row y (from 0), w columns wide, h rows tall. */
 export type GridItem = { readonly id: string; readonly x: number; readonly y: number; readonly w: number; readonly h: number } & Widget;

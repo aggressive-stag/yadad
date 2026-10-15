@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { describeContract, DOCUMENT_KINDS } from "./contract.js";
-import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
+import { FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 import { ERROR_CODES } from "./contract.js";
 import { validateDocument } from "./validate.js";
 
@@ -20,6 +20,12 @@ describe("contract lists", () => {
   });
   test("widget types match WIDGET_TYPES exactly", () => {
     expect(contract.widgets.map((w) => w.widget)).toEqual([...WIDGET_TYPES]);
+  });
+  test("measure ops match MEASURE_OPS exactly, and the stat widget is listed", () => {
+    expect(contract.measures.map((m) => m.op)).toEqual([...MEASURE_OPS]);
+    expect(contract.widgets.map((w) => w.widget)).toContain("stat");
+    expect(contract.measures.find((m) => m.op === "sum")).toMatchObject({ fields: ["number"], product: true, empty: "0" });
+    expect(contract.measures.find((m) => m.op === "min")).toMatchObject({ fields: ["number", "date"], product: false, empty: "no value" });
   });
   test("document kinds match DOCUMENT_KINDS exactly", () => {
     expect(contract.documentKinds.map((k) => k.kind)).toEqual([...DOCUMENT_KINDS]);

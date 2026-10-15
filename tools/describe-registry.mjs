@@ -85,6 +85,12 @@ for (const widget of contract.widgets) {
   for (const p of widget.properties) lines.push(`    ${prop(p)}`);
 }
 lines.push("");
+lines.push("measures (the `measure` of a stat widget; empty values are skipped):");
+for (const m of contract.measures) {
+  const on = m.fields.length > 0 ? `field: ${m.fields.join(" or ")}${m.product ? "; or product: two number fields" : ""}` : "no field";
+  lines.push(`  ${m.op} (${on}) -- ${m.description} Over no records: ${m.empty}. Example: ${m.example}`);
+}
+lines.push("");
 lines.push(`grid (dashboard tabs): a tab has ${contract.grid.columns.default} columns by default, at most ${contract.grid.columns.max}.`);
 for (const item of contract.grid.items) lines.push(`  item ${item.key}: whole number from ${item.min} to ${item.max}`);
 lines.push("");

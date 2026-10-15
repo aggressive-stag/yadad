@@ -7,9 +7,9 @@
 
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp } from "./condition.js";
-import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, PAGE_SIZE_MAX } from "./contract.js";
-import { FIELD_TYPES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
-import type { Document, DashboardView, EntityDocument, Field, FieldType, FormView, TableView } from "./document.js";
+import { DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
+import { FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
+import type { Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -312,7 +312,12 @@ const isWhole = (v: unknown, min: number, max: number): v is number => typeof v 
 /** Validates one grid item; true when its position is usable for the overlap check. */
 function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns: number): boolean {
   const widget = item["widget"];
-  const keys = widget === "count" ? { required: ["label", "view"], optional: ["filter"] } : { required: ["view"], optional: [] };
+  const keys =
+    widget === "count"
+      ? { required: ["label", "view"], optional: ["filter"] }
+      : widget === "stat"
+        ? { required: ["label", "view", "measure"], optional: ["filter"] }
+        : { required: ["view"], optional: [] };
   checkKeys(errors, item, path, ["id", "x", "y", "w", "h", "widget", ...keys.required], keys.optional);
   checkId(errors, item, path, "id");
   let usable = true;
@@ -325,15 +330,61 @@ function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns:
   if (usable && (item["x"] as number) + (item["w"] as number) > columns) {
     errors.add([...path, "w"], "invalid-value", `The item runs past the tab's ${columns} columns.`, "Reduce x or w.");
   }
-  if (widget !== undefined && widget !== "view" && widget !== "count") {
+  if (widget !== undefined && widget !== "view" && widget !== "count" && widget !== "stat") {
     errors.add([...path, "widget"], "invalid-value", `Unknown widget ${JSON.stringify(widget)}.`, `Use one of: ${WIDGET_TYPES.join(", ")}.`);
   }
   checkId(errors, item, path, "view");
-  if (widget === "count") {
+  if (widget === "count" || widget === "stat") {
     checkNonEmptyString(errors, item, path, "label");
     checkCondition(errors, item["filter"], [...path, "filter"]);
   }
+  if (widget === "stat") checkMeasure(errors, item["measure"], [...path, "measure"]);
   return usable;
+}
+
+const MEASURE_HINT = 'Use { "op": "count" }, { "op": "sum", "field": "<number field>" } or { "op": "sum", "product": ["<number field>", "<number field>"] }.';
+
+/** Shape of a stat's measure: a closed union on `op`. Field ids and types are checked across the set. */
+function checkMeasure(errors: Errors, value: unknown, path: Path): void {
+  if (value === undefined) return; // reported as missing by checkKeys
+  if (!isObject(value)) {
+    errors.add(path, "type", "A measure must be a JSON object.", MEASURE_HINT);
+    return;
+  }
+  const op = value["op"];
+  if (op === undefined) {
+    errors.add([...path, "op"], "required", 'Missing required property "op".', `Add "op": one of ${MEASURE_OPS.join(", ")}.`);
+    return;
+  }
+  if (typeof op !== "string" || !(MEASURE_OPS as readonly string[]).includes(op)) {
+    errors.add([...path, "op"], "invalid-value", `Unknown measure op ${JSON.stringify(op)}.`, `Use one of: ${MEASURE_OPS.join(", ")}.`, MEASURE_OPS);
+    return;
+  }
+  const takesProduct = (MEASURE_PRODUCT_OPS as readonly string[]).includes(op);
+  const keys = ["op", ...(op === "count" ? [] : takesProduct ? ["field", "product"] : ["field"])];
+  for (const key of Object.keys(value)) {
+    if (!keys.includes(key)) errors.add([...path, key], "unknown-property", `"${op}" does not take "${key}".`, `Allowed here: ${keys.join(", ")}.`, keys);
+  }
+  if (op === "count") return;
+  const hasField = "field" in value;
+  const hasProduct = "product" in value;
+  if (hasField && hasProduct) {
+    errors.add([...path, "product"], "invalid-value", `"${op}" takes either "field" or "product", not both.`, "Remove one of them.");
+  } else if (!hasField && !hasProduct) {
+    errors.add([...path, "field"], "required", `Missing required property "field".`, takesProduct ? `Add "field", or "product": ["<number field>", "<number field>"].` : 'Add "field".');
+  }
+  if (hasField) checkId(errors, value, path, "field");
+  if (hasProduct) {
+    const product = value["product"];
+    if (!Array.isArray(product) || product.length !== 2) {
+      errors.add([...path, "product"], "invalid-value", '"product" must list exactly two field ids.', 'Use "product": ["<number field>", "<number field>"].');
+    } else {
+      product.forEach((id: unknown, i) => {
+        if (typeof id !== "string") errors.add([...path, "product", i], "type", "A product operand must be a field id string.", ID_HINT);
+        else if (!ID_PATTERN.test(id)) errors.add([...path, "product", i], "invalid-value", `${JSON.stringify(id)} is not a valid id.`, ID_HINT);
+      });
+    }
+  }
 }
 
 type Rect = { x: number; y: number; w: number; h: number; index: number; name: string };
@@ -905,6 +956,33 @@ function checkConditionFields(condition: Condition | undefined, base: Path, chec
   }
 }
 
+/** Checks that a measure's fields exist on the entity and have a type its op accepts. */
+function checkMeasureFields(errors: DocumentError[], document: string, entity: EntityDocument, measure: Measure, base: Path): void {
+  if (measure.op === "count") return;
+  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const accepted = MEASURE_FIELD_TYPES[measure.op];
+  const check = (fieldId: string, path: Path, types: readonly FieldType[]): void => {
+    const field = entity.fields.find((f) => f.id === fieldId);
+    if (!field) {
+      errors.push(refError(document, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+      return;
+    }
+    if (!types.includes(field.type)) {
+      const allowed = [...new Set(entity.fields.filter((f) => types.includes(f.type)).map((f) => f.id))];
+      errors.push({
+        path: jsonPointer(path),
+        code: "invalid-value",
+        message: `"${measure.op}" needs a ${types.join(" or ")} field; "${fieldId}" is a ${field.type} field.`,
+        hint: allowed.length > 0 ? `Use one of: ${allowed.join(", ")}.` : `Entity "${entity.id}" has no ${types.join(" or ")} field; add one or pick another op.`,
+        document,
+        allowed,
+      });
+    }
+  };
+  if ("product" in measure) measure.product.forEach((id, i) => check(id, [...base, "product", i], ["number"]));
+  else check(measure.field, [...base, "field"], accepted);
+}
+
 /** Checks that a dashboard's widgets point at existing views (and, for counts, valid fields). */
 function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetIndex, embeddable: readonly string[]): void {
   doc.tabs.forEach((tab, i) => {
@@ -918,7 +996,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       }
       const table = idx.tables.get(item.view);
       if (!table) {
-        errors.push(refError(doc.id, [...itemPath, "view"], `Count widget references unknown table view "${item.view}".`, "Point at a table view.", [...idx.tables.keys()]));
+        errors.push(refError(doc.id, [...itemPath, "view"], `${item.widget === "stat" ? "Stat" : "Count"} widget references unknown table view "${item.view}".`, "Point at a table view.", [...idx.tables.keys()]));
         return;
       }
       const entity = idx.entities.get(table.entity);
@@ -931,6 +1009,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
           errors.push(refError(doc.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
         }
       });
+      if (item.widget === "stat") checkMeasureFields(errors, doc.id, entity, item.measure, [...itemPath, "measure"]);
     });
   });
 }

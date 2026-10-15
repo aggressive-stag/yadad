@@ -198,8 +198,15 @@ export interface PanelProps<N> {
 
 export interface CountWidgetProps {
   readonly label: string;
-  /** undefined while loading. */
+  /** undefined while loading, or when a stat has no value (see `text`). */
   readonly value: number | undefined;
+  /**
+   * Set by `stat` widgets: the number already formatted for display (locale
+   * grouping, at most two decimals), or "\u2014" when there is nothing to
+   * show. Show it instead of `value` when present; a component that ignores it
+   * still shows `value`. Counts never set it.
+   */
+  readonly text?: string;
 }
 
 /** Widget components by widget type; "view" widgets render through the renderer itself. */

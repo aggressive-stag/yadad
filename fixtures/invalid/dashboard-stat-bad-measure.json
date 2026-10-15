@@ -1,0 +1,156 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 2,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "price",
+        "type": "number",
+        "label": "Price"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "done",
+        "type": "boolean",
+        "label": "Done"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 2,
+    "id": "the_table",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ]
+  },
+  {
+    "kind": "dashboard",
+    "specVersion": 2,
+    "id": "board",
+    "revision": 1,
+    "tabs": [
+      {
+        "id": "t",
+        "title": "T",
+        "items": [
+          {
+            "id": "s0",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "the_table",
+            "measure": {
+              "op": "median",
+              "field": "qty"
+            }
+          },
+          {
+            "id": "s1",
+            "x": 0,
+            "y": 2,
+            "w": 6,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "the_table",
+            "measure": {
+              "op": "sum",
+              "field": "qty",
+              "product": [
+                "qty",
+                "price"
+              ]
+            }
+          },
+          {
+            "id": "s2",
+            "x": 0,
+            "y": 4,
+            "w": 6,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "the_table",
+            "measure": {
+              "op": "sum",
+              "product": [
+                "qty",
+                "price",
+                "qty"
+              ]
+            }
+          },
+          {
+            "id": "s3",
+            "x": 0,
+            "y": 6,
+            "w": 6,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "the_table",
+            "measure": {
+              "op": "count",
+              "field": "qty"
+            }
+          },
+          {
+            "id": "s4",
+            "x": 0,
+            "y": 8,
+            "w": 6,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "the_table",
+            "measure": {
+              "op": "min"
+            }
+          },
+          {
+            "id": "s5",
+            "x": 0,
+            "y": 10,
+            "w": 6,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "the_table",
+            "measure": {
+              "op": "min",
+              "product": [
+                "qty",
+                "price"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

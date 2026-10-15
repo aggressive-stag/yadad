@@ -4,8 +4,8 @@
 
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
-import type { Document, FieldType, WidgetType } from "./document.js";
-import { FIELD_TYPES, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
+import type { Document, FieldType, MeasureOp, WidgetType } from "./document.js";
+import { FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
 export const DOCUMENT_KINDS = ["entity", "form", "table", "dashboard"] as const;
@@ -66,6 +66,18 @@ interface ConditionOpSpec {
   readonly example: string;
 }
 
+interface MeasureSpec {
+  readonly op: MeasureOp;
+  readonly description: string;
+  /** Field types the op's `field` may have; empty when the op takes no field. */
+  readonly fields: readonly FieldType[];
+  /** Whether `product` (two number fields) may replace `field`. */
+  readonly product: boolean;
+  /** The value over no records: "0", or "no value" (shown as a dash). */
+  readonly empty: "0" | "no value";
+  readonly example: string;
+}
+
 interface WidgetSpec {
   readonly widget: WidgetType;
   readonly description: string;
@@ -84,6 +96,8 @@ export interface ContractDescription {
     readonly relativeDate: { readonly description: string; readonly ops: readonly ConditionOp[]; readonly fieldTypes: readonly FieldType[]; readonly maxDays: number; readonly example: string };
   };
   readonly widgets: readonly WidgetSpec[];
+  /** The ops of a `stat` widget's `measure`. */
+  readonly measures: readonly MeasureSpec[];
   readonly grid: {
     readonly columns: { readonly default: number; readonly max: number };
     readonly items: readonly { readonly key: GridItemKey; readonly min: number; readonly max: number }[];
@@ -139,7 +153,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
   },
   {
     kind: "dashboard",
-    description: "Tabs of widgets (views and counts) laid out on a grid. Refers to other views by id.",
+    description: "Tabs of widgets (views, counts and stats) laid out on a grid. Refers to other views by id.",
     properties: [
       { key: "kind", required: true, description: 'The kind, "dashboard".' },
       { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
@@ -220,6 +234,29 @@ const CONDITION_SHAPES: { readonly [K in ConditionOp]: ConditionShape } = {
   not: { kind: "single", keys: ["condition"] },
 };
 
+/** Field types each measure op accepts (empty for count, which takes no field). */
+export const MEASURE_FIELD_TYPES: { readonly [K in MeasureOp]: readonly FieldType[] } = {
+  count: [],
+  sum: ["number"],
+  avg: ["number"],
+  min: ["number", "date"],
+  max: ["number", "date"],
+  countDistinct: FIELD_TYPES,
+};
+
+/** Ops that also accept `product` (two number fields multiplied per record). */
+export const MEASURE_PRODUCT_OPS: readonly MeasureOp[] = ["sum", "avg"];
+
+/** Result of a measure over no records, shown as a dash when there is no value. */
+const MEASURE_SPECS: { readonly [K in MeasureOp]: MeasureSpec } = {
+  count: { op: "count", description: "The number of records.", fields: [], product: false, empty: "0", example: '{ "op": "count" }' },
+  sum: { op: "sum", description: "The total of a number field, or of the product of two number fields per record. Empty values are skipped.", fields: MEASURE_FIELD_TYPES.sum, product: true, empty: "0", example: '{ "op": "sum", "product": ["weight", "reps"] }' },
+  avg: { op: "avg", description: "The mean of a number field, or of the product of two number fields per record. Empty values are skipped.", fields: MEASURE_FIELD_TYPES.avg, product: true, empty: "no value", example: '{ "op": "avg", "field": "weight" }' },
+  min: { op: "min", description: "The smallest value of a field. Empty values are skipped.", fields: MEASURE_FIELD_TYPES.min, product: false, empty: "no value", example: '{ "op": "min", "field": "weight" }' },
+  max: { op: "max", description: "The largest value of a field. Empty values are skipped.", fields: MEASURE_FIELD_TYPES.max, product: false, empty: "no value", example: '{ "op": "max", "field": "weight" }' },
+  countDistinct: { op: "countDistinct", description: "The number of distinct non-empty values of a field.", fields: MEASURE_FIELD_TYPES.countDistinct, product: false, empty: "0", example: '{ "op": "countDistinct", "field": "day" }' },
+};
+
 const WIDGET_SPECS: Record<WidgetType, WidgetSpec> = {
   view: {
     widget: "view",
@@ -233,6 +270,17 @@ const WIDGET_SPECS: Record<WidgetType, WidgetSpec> = {
       { key: "label", required: true, description: "Shown with the count." },
       { key: "view", required: true, description: "The id of the table view to count." },
       { key: "filter", required: false, description: "A condition that narrows the count further." },
+    ],
+  },
+  stat: {
+    widget: "stat",
+    description:
+      "Shows one number computed over the records of a table view (its fixed filter applies), optionally narrowed further. Empty input gives 0 for count, sum and countDistinct, and no value (shown as a dash) for min, max and avg. At most 5000 records are read; past that the widget says the number is partial.",
+    properties: [
+      { key: "label", required: true, description: "Shown with the number." },
+      { key: "view", required: true, description: "The id of the table view to compute over." },
+      { key: "measure", required: true, description: "What to compute: an object with an \"op\" from `measures`, plus \"field\" (or, for sum and avg, \"product\": [fieldA, fieldB])." },
+      { key: "filter", required: false, description: "A condition that narrows the records further." },
     ],
   },
 };
@@ -286,6 +334,7 @@ export function describeContract(): ContractDescription {
       },
     },
     widgets: WIDGET_TYPES.map((widget) => WIDGET_SPECS[widget]),
+    measures: MEASURE_OPS.map((op) => MEASURE_SPECS[op]),
     grid: {
       columns: { default: GRID_COLUMNS_DEFAULT, max: MAX_GRID_COLUMNS },
       items: GRID_ITEM_KEYS.map(({ key, min }) => ({ key, min, max: GRID_ITEM_MAX })),
