@@ -1,4 +1,4 @@
-import type { DocumentError, EntityDocument, FieldValue, Registry, RowAction, TableView } from "@yadad/core";
+import type { DocumentError, EntityDocument, Field, FieldValue, Registry, RowAction, TableView } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -230,7 +230,8 @@ export function TableViewEditor({ view, entity, registry, context, onSave, onCan
   const [rowTo, setRowTo] = useState<string | undefined>(undefined);
   const pickedTarget = targets.find((t) => t.id === rowTarget) ?? targets[0];
   const pickedFrom = entity.fields.find((f) => f.id === rowFrom) ?? entity.fields[0];
-  const toFields = targetEntity(pickedTarget)?.fields.filter((f) => f.type === pickedFrom?.type) ?? [];
+  const sameKind = (a: Field | undefined, b: Field): boolean => a?.type === b.type && (a.type !== "reference" || (b.type === "reference" && a.entity === b.entity));
+  const toFields = targetEntity(pickedTarget)?.fields.filter((f) => sameKind(pickedFrom, f)) ?? [];
   const pickedTo = toFields.find((f) => f.id === rowTo) ?? toFields[0];
   const action = current.rowAction;
   const describeAction = (a: RowAction): string => {

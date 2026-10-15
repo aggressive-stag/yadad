@@ -897,17 +897,24 @@ function checkRowActionTarget(errors: DocumentError[], view: TableView, entity: 
       const ids = [...new Set(targetEntity.fields.map((f) => f.id))];
       errors.push(refError(view.id, ["rowAction", "bind", i, "to"], `Field "${b.to}" is not on entity "${targetEntity.id}" (the entity of "${target.id}").`, `Use a field id on "${targetEntity.id}".`, ids));
     }
-    if (from && to && from.type !== to.type) {
+    if (from && to && !bindable(from, to)) {
       errors.push({
         path: jsonPointer(["rowAction", "bind", i]),
         code: "invalid-value",
-        message: `Cannot bind "${b.field}" (${from.type}) to "${b.to}" (${to.type}): the field types differ.`,
-        hint: `Bind fields of the same type; pick a ${from.type} field on "${targetEntity.id}".`,
+        message: `Cannot bind "${b.field}" (${describeKind(from)}) to "${b.to}" (${describeKind(to)}): the field types differ.`,
+        hint: `Bind fields of the same type; pick a ${describeKind(from)} field on "${targetEntity.id}".`,
         document: view.id,
       });
     }
   });
 }
+
+/** Row bindings compare equal values: same field type, and for references the same target entity. */
+function bindable(from: Field, to: Field): boolean {
+  return from.type === to.type && (from.type !== "reference" || (to.type === "reference" && from.entity === to.entity));
+}
+
+const describeKind = (field: Field): string => (field.type === "reference" ? `reference to ${field.entity}` : field.type);
 
 /** Walks every row action chain: no view may be revisited, and a chain has at most MAX_ROW_ACTION_DEPTH hops. */
 function checkRowActionChains(errors: DocumentError[], idx: SetIndex): void {

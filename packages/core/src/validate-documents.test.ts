@@ -226,6 +226,21 @@ describe("table rowAction", () => {
     expect(problems(set)).toEqual([{ path: "/rowAction/open", code: "invalid-value", document: "a", allowed: undefined }]);
   });
 
+  test("reference fields bind only when they point at the same entity", () => {
+    const withRef = (to: string): unknown => ({
+      kind: "entity", specVersion: 2, id: "entry", revision: 1,
+      fields: [{ id: "name", type: "text", label: "Name" }, { id: "who", type: "reference", label: "Who", entity: to }],
+    });
+    const bind = { open: "b", bind: [{ field: "who", to: "who" }] };
+    const people = entity("person", [{ id: "name", type: "text" }]);
+    const pets = entity("pet", [{ id: "name", type: "text" }]);
+    expect(validateDocuments([people, pets, withRef("person"), table("a", "entry", { rowAction: bind }), table("b", "entry")]).ok).toBe(true);
+    // A second entity whose "who" points at another entity.
+    const other = { ...(withRef("pet") as object), id: "note" };
+    const mismatch = [people, pets, withRef("person"), other, table("a", "entry", { rowAction: bind }), table("b", "note")];
+    expect(problems(mismatch)).toEqual([{ path: "/rowAction/bind/0", code: "invalid-value", document: "a", allowed: undefined }]);
+  });
+
   test("the target may be a different entity", () => {
     const other = entity("order", [{ id: "name", type: "text" }]);
     expect(validateDocuments([ent, other, table("a", "thing", { rowAction: go("b") }), table("b", "order")]).ok).toBe(true);
