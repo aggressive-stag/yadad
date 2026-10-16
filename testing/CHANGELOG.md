@@ -1,5 +1,12 @@
 # @yadad/testing
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [b7012ca]
+  - @yadad/core@0.9.0
+
 ## 0.3.0
 
 ### Minor Changes
