@@ -1,0 +1,4 @@
+[
+  { "kind": "entity", "specVersion": 4, "id": "e", "revision": 1, "fields": [{ "id": "name", "type": "text", "label": "Name" }] },
+  { "kind": "board", "specVersion": 4, "id": "brd", "entity": "e", "revision": 1, "dataSource": "default", "groupBy": [{ "field": "f1" }, { "field": "f1" }] }
+]

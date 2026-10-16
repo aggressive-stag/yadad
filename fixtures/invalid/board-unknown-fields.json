@@ -1,0 +1,27 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 4,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      { "id": "name", "type": "text", "label": "Name" },
+      { "id": "qty", "type": "number", "label": "Qty" },
+      { "id": "mood", "type": "select", "label": "Mood", "options": { "source": "static", "values": ["Good", "Bad"] } },
+      { "id": "owner", "type": "reference", "label": "Owner", "entity": "e", "display": "name" }
+    ]
+  },
+  {
+    "kind": "board",
+    "specVersion": 4,
+    "id": "brd",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "groupBy": [{ "field": "nope1" }],
+    "titleField": "nope2",
+    "cardFields": ["nope3"],
+    "filter": { "op": "eq", "field": "nope4", "value": 1 },
+    "sort": [{ "field": "nope5", "dir": "asc" }]
+  }
+]

@@ -53,7 +53,7 @@ describe("document level", () => {
   });
 
   test("unsupported spec version", () => {
-    expect(problems({ ...entity, specVersion: 4 })).toEqual([["/specVersion", "unsupported-spec-version"]]);
+    expect(problems({ ...entity, specVersion: 5 })).toEqual([["/specVersion", "unsupported-spec-version"]]);
     expect(problems({ ...entity, specVersion: "0" })).toEqual([["/specVersion", "type"]]);
   });
 

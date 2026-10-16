@@ -1,0 +1,16 @@
+{
+  "kind": "board",
+  "specVersion": 4,
+  "id": "tasks_board",
+  "title": "Tasks board",
+  "entity": "task",
+  "revision": 1,
+  "dataSource": "default",
+  "groupBy": [{ "field": "status" }, { "field": "assignee" }],
+  "titleField": "title",
+  "cardFields": ["due_date", "priority"],
+  "filter": { "op": "eq", "field": "archived", "value": false },
+  "sort": [{ "field": "due_date", "dir": "asc" }],
+  "editable": true,
+  "rowAction": { "open": "task_history", "bind": [{ "field": "status", "to": "status" }] }
+}

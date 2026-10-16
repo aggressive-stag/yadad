@@ -8,7 +8,7 @@ import type { CalendarMode, Document, FieldType, MeasureOp, WidgetType } from ".
 import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
-export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "dashboard"] as const;
+export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard"] as const;
 
 /** Ids for fields, sections, tabs, grid items, columns, documents and views. */
 export const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
@@ -43,6 +43,15 @@ export const CALENDAR_WEEK_STARTS_ON_DEFAULT = 1;
 /** Field types a calendar's title, colour and date fields may have. */
 export const CALENDAR_TITLE_FIELD_TYPES: readonly FieldType[] = ["text", "select"];
 export const CALENDAR_COLOR_FIELD_TYPES: readonly FieldType[] = ["select", "reference"];
+
+/** A board groups by at most this many fields. */
+export const BOARD_GROUP_BY_MAX = 5;
+/** A board shows at most this many card fields under a card's title. */
+export const BOARD_CARD_FIELDS_MAX = 3;
+/** Field types a board's groupBy entries may have. */
+export const BOARD_GROUP_FIELD_TYPES: readonly FieldType[] = ["select", "boolean", "reference"];
+/** Field types a board's titleField may have. */
+export const BOARD_TITLE_FIELD_TYPES: readonly FieldType[] = ["text", "select"];
 
 /** Conditions may nest at most this many levels (and/or/not). */
 export const MAX_CONDITION_DEPTH = 16;
@@ -117,6 +126,13 @@ export interface ContractDescription {
     readonly dateFieldTypes: readonly FieldType[];
     readonly titleFieldTypes: readonly FieldType[];
     readonly colorFieldTypes: readonly FieldType[];
+  };
+  /** Limits and defaults of the `board` view kind. */
+  readonly board: {
+    readonly groupByMax: number;
+    readonly cardFieldsMax: number;
+    readonly groupFieldTypes: readonly FieldType[];
+    readonly titleFieldTypes: readonly FieldType[];
   };
   /** Registry keys a registry may leave out; the renderer reports a view that needs a missing one. */
   readonly optionalRegistryKeys: readonly { readonly key: string; readonly description: string }[];
@@ -197,6 +213,26 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "weekStartsOn", required: false, description: `First day of the week: a whole number from 0 (Sunday) to 6. Defaults to ${CALENDAR_WEEK_STARTS_ON_DEFAULT} (Monday).` },
       { key: "editable", required: false, description: "Whether moving an entry to another day changes its date field. Defaults to false." },
       { key: "rowAction", required: false, description: `Opens a table view from an entry, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A calendar can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
+    ],
+  },
+  {
+    kind: "board",
+    description: "Records of one entity shown as cards in columns, one column per value of a field; with editable, dragging a card to another column changes that field.",
+    properties: [
+      { key: "kind", required: true, description: 'The kind, "board".' },
+      { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
+      { key: "id", required: true, description: "The board's id." },
+      { key: "entity", required: true, description: "The id of the entity whose records are shown." },
+      { key: "revision", required: true, description: "Bumped whenever this document changes." },
+      { key: "dataSource", required: true, description: "Key the host maps to a DataAdapter. Never a URL." },
+      { key: "groupBy", required: true, description: `An array of { field }: the fields the viewer may group by, 1 to ${BOARD_GROUP_BY_MAX} entries, each once, the first is the default. Each field must be a select, boolean or reference field (not a required boolean, which can only be true).` },
+      { key: "title", required: false, description: "Accessible name and heading. Defaults to the entity id." },
+      { key: "titleField", required: false, description: "The id of a text or select field shown as the card's title. Defaults to the entity's first text field; required when the entity has none." },
+      { key: "cardFields", required: false, description: `Up to ${BOARD_CARD_FIELDS_MAX} field ids shown small under the title, each once, not the title field.` },
+      { key: "filter", required: false, description: "A condition every card must always match (relative dates allowed)." },
+      { key: "sort", required: false, description: "Order of cards within a column: an array of { field, dir }. Defaults to the title field, ascending." },
+      { key: "editable", required: false, description: "Whether dragging a card to another column changes the field currently grouping the board. Defaults to false." },
+      { key: "rowAction", required: false, description: `Opens a table view from a card, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A board can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
     ],
   },
   {
@@ -308,8 +344,8 @@ const MEASURE_SPECS: { readonly [K in MeasureOp]: MeasureSpec } = {
 const WIDGET_SPECS: Record<WidgetType, WidgetSpec> = {
   view: {
     widget: "view",
-    description: "Embeds a form, table or calendar view, by id.",
-    properties: [{ key: "view", required: true, description: "The id of the form, table or calendar view to embed. Counts and stats take table views only." }],
+    description: "Embeds a form, table, calendar or board view, by id.",
+    properties: [{ key: "view", required: true, description: "The id of the form, table, calendar or board view to embed. Counts and stats take table views only." }],
   },
   count: {
     widget: "count",
@@ -391,8 +427,15 @@ export function describeContract(): ContractDescription {
       titleFieldTypes: [...CALENDAR_TITLE_FIELD_TYPES],
       colorFieldTypes: [...CALENDAR_COLOR_FIELD_TYPES],
     },
+    board: {
+      groupByMax: BOARD_GROUP_BY_MAX,
+      cardFieldsMax: BOARD_CARD_FIELDS_MAX,
+      groupFieldTypes: [...BOARD_GROUP_FIELD_TYPES],
+      titleFieldTypes: [...BOARD_TITLE_FIELD_TYPES],
+    },
     optionalRegistryKeys: [
       { key: "layout.Calendar", description: "Draws a calendar view (CalendarProps). Optional for now: without it a calendar view renders an error summary instead. It becomes required once the reference component set ships a calendar." },
+      { key: "layout.Board", description: "Draws a board view (BoardProps). Optional for now: without it a board view renders an error summary instead. It becomes required once the reference component set ships a board." },
     ],
     measures: MEASURE_OPS.map((op) => MEASURE_SPECS[op]),
     grid: {

@@ -281,6 +281,63 @@ export interface CalendarProps<N> {
   readonly onMove?: (recordId: string, date: string) => void;
 }
 
+/** One card on a board column (RFC 0005). */
+export interface BoardCard<N> {
+  /** The record id. */
+  readonly id: string;
+  /** Title and card fields, built by the renderer. */
+  readonly content: N;
+  /** Plain-text accessible name: title and card field values. */
+  readonly label: string;
+  /** The board is editable and no move of this card is in flight. */
+  readonly movable: boolean;
+  /** A move of this card is in flight. */
+  readonly pending: boolean;
+}
+
+/** One column of a board: all records sharing one value of the grouping field. */
+export interface BoardColumn<N> {
+  /** The grouping field's raw value for this column (a select or boolean value, or a reference's target id). */
+  readonly value: string | boolean;
+  /** Accessible heading for the column. */
+  readonly label: string;
+  readonly cards: readonly BoardCard<N>[];
+}
+
+/** One field the viewer can group the board by, for the grouping switcher. */
+export interface BoardGroupChoice {
+  readonly field: string;
+  readonly label: string;
+}
+
+/**
+ * Cards of one entity in columns, one column per value of the grouping field.
+ * The renderer owns data, grouping, optimistic state and announcements; the
+ * component owns drawing and every drag (RFC 0005). `layout.Board` is
+ * optional in this version: a registry without it cannot show a board view,
+ * and the renderer says so.
+ */
+export interface BoardProps<N> {
+  /** Accessible name of the whole board (the view's title). */
+  readonly label: string;
+  /** The fields the viewer can group by; one entry means no switcher. */
+  readonly groupChoices: readonly BoardGroupChoice[];
+  /** The field currently grouping the board. */
+  readonly groupedBy: string;
+  readonly columns: readonly BoardColumn<N>[];
+  /** Cards are being fetched; columns are still given. */
+  readonly loading: boolean;
+  /** E.g. an over-cap message; shown above the board and announced politely. */
+  readonly notice?: N;
+  /** For the component's live region; `seq` increases on every message so a repeated text is announced again. */
+  readonly announcement?: { readonly seq: number; readonly text: string };
+  readonly onGroupChange: (field: string) => void;
+  /** Set only when the view has a rowAction. */
+  readonly onOpenCard?: (recordId: string) => void;
+  /** Set only when the view is editable. */
+  readonly onMove?: (recordId: string, value: string | boolean) => void;
+}
+
 /**
  * Exact-key lookup: one entry per field type, enforced by the type system
  * (a mapped type over FieldType, not an index signature), plus layout chrome.
@@ -297,6 +354,8 @@ export interface Registry<N> {
     readonly Panel: Component<PanelProps<N>, N>;
     /** Optional until the reference component set ships a calendar (RFC 0004); then it becomes required. */
     readonly Calendar?: Component<CalendarProps<N>, N>;
+    /** Optional until the reference component set ships a board (RFC 0005); then it becomes required. */
+    readonly Board?: Component<BoardProps<N>, N>;
   };
   readonly widgets: WidgetComponents<N>;
 }

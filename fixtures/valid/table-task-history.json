@@ -1,0 +1,9 @@
+{
+  "kind": "table",
+  "specVersion": 4,
+  "id": "task_history",
+  "entity": "task",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [{ "field": "title" }, { "field": "status" }]
+}

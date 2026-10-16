@@ -39,7 +39,7 @@ describe("contract lists", () => {
     expect(kind?.properties.filter((p) => p.required).map((p) => p.key)).toEqual(["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"]);
     expect(kind?.properties.map((p) => p.key)).toEqual(expect.arrayContaining(["titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "rowAction"]));
     expect(contract.calendar).toMatchObject({ modes: ["month", "week"], defaultModes: ["month", "week"], weekStartsOn: { default: 1, min: 0, max: 6 }, detailFieldsMax: 3 });
-    expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(["layout.Calendar"]);
+    expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(["layout.Calendar", "layout.Board"]);
   });
   test("specVersion matches SPEC_VERSION", () => {
     expect(contract.specVersion).toBe(SPEC_VERSION);

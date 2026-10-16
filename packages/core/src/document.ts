@@ -10,11 +10,12 @@ import type { Condition } from "./condition.js";
  * RFCs 0001-0003 (the `stat` widget, the `reference` field, table
  * `rowAction`); older documents stay valid and `migrate()` stamps them.
  * Version 3 adds the `calendar` view (RFC 0004); older documents stay valid
- * and `migrate()` stamps them.
+ * and `migrate()` stamps them. Version 4 adds the `board` view (RFC 0005);
+ * older documents stay valid and `migrate()` stamps them.
  */
-export const SPEC_VERSION = 3;
+export const SPEC_VERSION = 4;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
@@ -217,6 +218,44 @@ export interface CalendarView {
   readonly rowAction?: RowAction;
 }
 
+/** One field the viewer may group a board by. */
+export interface BoardGroupBy {
+  /** Id of a select, boolean or reference field on the view's entity. */
+  readonly field: string;
+}
+
+/**
+ * Records of one entity shown as cards in columns, one column per value of a
+ * field (RFC 0005). `groupBy` lists the fields the viewer may group by (the
+ * first is the default); with `editable`, dragging a card to another column
+ * changes that field.
+ */
+export interface BoardView {
+  readonly kind: "board";
+  readonly specVersion: SpecVersion;
+  readonly id: string;
+  /** Accessible name and heading. Defaults to the entity id. */
+  readonly title?: string;
+  readonly entity: string;
+  readonly revision: number;
+  /** Key the host maps to a DataAdapter. Never a URL. */
+  readonly dataSource: string;
+  /** Fields the viewer may group by. 1 to BOARD_GROUP_BY_MAX entries, no duplicates; the first is the default. */
+  readonly groupBy: readonly BoardGroupBy[];
+  /** Id of a text or select field shown as the card's title. Defaults to the entity's first text field. */
+  readonly titleField?: string;
+  /** Up to BOARD_CARD_FIELDS_MAX field ids shown small under the title (not the title field), each once. */
+  readonly cardFields?: readonly string[];
+  /** Cards must always match this. */
+  readonly filter?: Condition;
+  /** Order of cards within a column. */
+  readonly sort?: readonly SortSpec[];
+  /** Dragging a card changes the field it is currently grouped by. Defaults to false. */
+  readonly editable?: boolean;
+  /** Activating a card opens a table view scoped to it, as on tables. A board can start a chain, never be a target. */
+  readonly rowAction?: RowAction;
+}
+
 export interface QuickFilter {
   readonly field: string;
 }
@@ -225,7 +264,7 @@ export interface QuickFilter {
 export const WIDGET_TYPES = ["view", "count", "stat"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
-/** Embeds a form, table or calendar view, by id. */
+/** Embeds a form, table, calendar or board view, by id. */
 export interface ViewWidget {
   readonly widget: "view";
   readonly view: string;
@@ -290,6 +329,6 @@ export interface DashboardView {
 }
 
 /** Discriminated on `kind`. */
-export type ViewDocument = FormView | TableView | CalendarView | DashboardView;
+export type ViewDocument = FormView | TableView | CalendarView | BoardView | DashboardView;
 export type Document = EntityDocument | ViewDocument;
 export type DocumentKind = Document["kind"];

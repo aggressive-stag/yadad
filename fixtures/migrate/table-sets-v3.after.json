@@ -1,0 +1,10 @@
+{
+  "kind": "table",
+  "specVersion": 4,
+  "id": "recent_sets",
+  "entity": "workout_set",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [{ "field": "day" }, { "field": "exercise" }, { "field": "weight" }],
+  "filter": { "op": "gte", "field": "day", "value": "2026-10-01" }
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 4,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      { "id": "name", "type": "text", "label": "Name" },
+      { "id": "qty", "type": "number", "label": "Qty" },
+      { "id": "owner", "type": "reference", "label": "Owner", "entity": "e", "display": "name" }
+    ]
+  },
+  {
+    "kind": "board",
+    "specVersion": 4,
+    "id": "brd",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "groupBy": [{ "field": "owner" }],
+    "titleField": "qty"
+  }
+]

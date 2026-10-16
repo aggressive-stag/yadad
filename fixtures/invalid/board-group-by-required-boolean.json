@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 4,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      { "id": "name", "type": "text", "label": "Name" },
+      { "id": "archived", "type": "boolean", "label": "Archived", "required": true }
+    ]
+  },
+  { "kind": "board", "specVersion": 4, "id": "brd", "entity": "e", "revision": 1, "dataSource": "default", "groupBy": [{ "field": "archived" }] }
+]

@@ -7,9 +7,9 @@
 
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp } from "./condition.js";
-import { CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
 import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
-import type { CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView } from "./document.js";
+import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -50,6 +50,8 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
     validateTable(errors, input);
   } else if (input["kind"] === "calendar") {
     validateCalendar(errors, input);
+  } else if (input["kind"] === "board") {
+    validateBoard(errors, input);
   } else if (input["kind"] === "dashboard") {
     validateDashboard(errors, input);
   } else if (input["kind"] === undefined) {
@@ -315,6 +317,56 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
   if (weekStartsOn !== undefined) {
     if (typeof weekStartsOn !== "number") errors.add(["weekStartsOn"], "type", '"weekStartsOn" must be a number.', "Use 0 (Sunday) to 6 (Saturday); 1 is Monday.");
     else if (!isWhole(weekStartsOn, 0, 6)) errors.add(["weekStartsOn"], "invalid-value", `weekStartsOn ${weekStartsOn} is not a whole number from 0 to 6.`, "Use 0 (Sunday) to 6 (Saturday); 1 is Monday.");
+  }
+}
+
+function validateBoard(errors: Errors, doc: JsonObject): void {
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "rowAction"]);
+  checkSpecVersion(errors, doc);
+  checkId(errors, doc, [], "id");
+  checkId(errors, doc, [], "entity");
+  checkRevision(errors, doc);
+  checkNonEmptyString(errors, doc, [], "dataSource");
+  checkNonEmptyString(errors, doc, [], "title");
+  checkId(errors, doc, [], "titleField");
+  checkCondition(errors, doc["filter"], ["filter"]);
+  checkRowAction(errors, doc["rowAction"]);
+  checkSort(errors, doc, "a board's sort");
+  checkBoolean(errors, doc, [], "editable");
+
+  const groupBy = checkArray(errors, doc, [], "groupBy");
+  if (groupBy) {
+    if (groupBy.length === 0) errors.add(["groupBy"], "invalid-value", "A board needs at least one grouping.", 'Add { "field": "<field id>" }.');
+    else if (groupBy.length > BOARD_GROUP_BY_MAX) errors.add(["groupBy"], "invalid-value", `A board allows at most ${BOARD_GROUP_BY_MAX} groupings, but ${groupBy.length} are listed.`, `Remove ${groupBy.length - BOARD_GROUP_BY_MAX}.`);
+    const seen = new Set<string>();
+    groupBy.forEach((g, i) => {
+      const path: Path = ["groupBy", i];
+      if (!isObject(g)) {
+        errors.add(path, "type", "A grouping must be a JSON object.", 'Use { "field": "<field id>" }.');
+        return;
+      }
+      checkKeys(errors, g, path, ["field"], []);
+      checkId(errors, g, path, "field");
+      const field = g["field"];
+      if (typeof field === "string" && ID_PATTERN.test(field)) {
+        if (seen.has(field)) errors.add([...path, "field"], "invalid-value", `Grouping field "${field}" is listed twice.`, "Remove the duplicate.");
+        else seen.add(field);
+      }
+    });
+  }
+
+  const cardFields = checkArray(errors, doc, [], "cardFields");
+  if (cardFields) {
+    if (cardFields.length > BOARD_CARD_FIELDS_MAX) {
+      errors.add(["cardFields"], "invalid-value", `A board shows at most ${BOARD_CARD_FIELDS_MAX} card fields, but ${cardFields.length} are listed.`, `Remove ${cardFields.length - BOARD_CARD_FIELDS_MAX}.`);
+    }
+    const seen = new Set<string>();
+    cardFields.forEach((d, i) => {
+      if (typeof d !== "string") errors.add(["cardFields", i], "type", "A card field must be a field id string.", ID_HINT);
+      else if (!ID_PATTERN.test(d)) errors.add(["cardFields", i], "invalid-value", `${JSON.stringify(d)} is not a valid id.`, ID_HINT);
+      else if (seen.has(d)) errors.add(["cardFields", i], "invalid-value", `Card field "${d}" is listed twice.`, "Remove the duplicate.");
+      else seen.add(d);
+    });
   }
 }
 
@@ -818,11 +870,12 @@ interface SetIndex {
   readonly forms: Map<string, FormView>;
   readonly tables: Map<string, TableView>;
   readonly calendars: Map<string, CalendarView>;
+  readonly boards: Map<string, BoardView>;
   readonly dashboards: Map<string, DashboardView>;
 }
 
 function checkSetReferences(errors: DocumentError[], docs: readonly Document[]): void {
-  const idx: SetIndex = { entities: new Map(), forms: new Map(), tables: new Map(), calendars: new Map(), dashboards: new Map() };
+  const idx: SetIndex = { entities: new Map(), forms: new Map(), tables: new Map(), calendars: new Map(), boards: new Map(), dashboards: new Map() };
   for (const doc of docs) {
     switch (doc.kind) {
       case "entity":
@@ -837,12 +890,15 @@ function checkSetReferences(errors: DocumentError[], docs: readonly Document[]):
       case "calendar":
         putUnique(idx.calendars, doc, "calendar", errors);
         break;
+      case "board":
+        putUnique(idx.boards, doc, "board", errors);
+        break;
       case "dashboard":
         putUnique(idx.dashboards, doc, "dashboard", errors);
         break;
     }
   }
-  const embeddable = [...idx.forms.keys(), ...idx.tables.keys(), ...idx.calendars.keys()];
+  const embeddable = [...idx.forms.keys(), ...idx.tables.keys(), ...idx.calendars.keys(), ...idx.boards.keys()];
   checkRowActionChains(errors, idx);
   for (const doc of docs) {
     switch (doc.kind) {
@@ -855,6 +911,9 @@ function checkSetReferences(errors: DocumentError[], docs: readonly Document[]):
         break;
       case "calendar":
         checkCalendarFields(errors, doc, idx);
+        break;
+      case "board":
+        checkBoardFields(errors, doc, idx);
         break;
       case "dashboard":
         checkDashboard(errors, doc, idx, embeddable);
@@ -929,12 +988,12 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
 }
 
 /** Checks a table's row action: the target is a table, the bound fields exist on both entities and have the same type. */
-function checkRowActionTarget(errors: DocumentError[], view: TableView | CalendarView, entity: EntityDocument, idx: SetIndex): void {
+function checkRowActionTarget(errors: DocumentError[], view: TableView | CalendarView | BoardView, entity: EntityDocument, idx: SetIndex): void {
   const action = view.rowAction;
   if (!action) return;
   const target = idx.tables.get(action.open);
   if (!target) {
-    if (idx.forms.has(action.open) || idx.calendars.has(action.open) || idx.dashboards.has(action.open)) {
+    if (idx.forms.has(action.open) || idx.calendars.has(action.open) || idx.boards.has(action.open) || idx.dashboards.has(action.open)) {
       errors.push({
         path: jsonPointer(["rowAction", "open"]),
         code: "invalid-value",
@@ -1039,6 +1098,21 @@ function checkRowActionChains(errors: DocumentError[], idx: SetIndex): void {
       });
     }
   }
+  // A board can start a chain but is never a target, so it cannot be part of a cycle; only the length counts.
+  for (const board of idx.boards.values()) {
+    const open = board.rowAction?.open;
+    if (open === undefined || !idx.tables.has(open)) continue;
+    const rest = hops(open, [open]);
+    if (rest <= MAX_ROW_ACTION_DEPTH && 1 + rest > MAX_ROW_ACTION_DEPTH) {
+      errors.push({
+        path: jsonPointer(["rowAction", "open"]),
+        code: "invalid-value",
+        message: `Row actions starting at "${board.id}" are ${1 + rest} hops long; the most allowed is ${MAX_ROW_ACTION_DEPTH}.`,
+        hint: `Shorten the chain to at most ${MAX_ROW_ACTION_DEPTH} hops (remove a rowAction).`,
+        document: board.id,
+      });
+    }
+  }
 }
 
 /** Checks a calendar's entity and every field it uses. */
@@ -1109,6 +1183,109 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
     }
   });
   if (view.colorField !== undefined) typed(view.colorField, ["colorField"], "colorField", CALENDAR_COLOR_FIELD_TYPES);
+  checkConditionFields(view.filter, ["filter"], (id, path) => {
+    if (!find(id)) unknown(id, path);
+  });
+  checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
+  checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
+  view.sort?.forEach((key, i) => {
+    if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
+    else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
+  });
+  if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+}
+
+/** Checks a board's entity and every field it uses. */
+function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetIndex): void {
+  const entity = idx.entities.get(view.entity);
+  if (!entity) {
+    errors.push(refError(view.id, ["entity"], `View references unknown entity "${view.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
+    return;
+  }
+  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const find = (id: string): Field | undefined => entity.fields.find((f) => f.id === id);
+  const idsOfType = (types: readonly FieldType[]): string[] => [...new Set(entity.fields.filter((f) => types.includes(f.type)).map((f) => f.id))];
+  const unknown = (id: string, path: Path): void => {
+    errors.push(refError(view.id, path, `Field "${id}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+  };
+  /** A required boolean can only ever be true, so it cannot usefully group a board. */
+  const groupable = (field: Field): boolean => BOARD_GROUP_FIELD_TYPES.includes(field.type) && !(field.type === "boolean" && field.required === true);
+  const groupableIds = entity.fields.filter(groupable).map((f) => f.id);
+
+  view.groupBy.forEach((g, i) => {
+    const path: Path = ["groupBy", i, "field"];
+    const field = find(g.field);
+    if (!field) {
+      unknown(g.field, path);
+      return;
+    }
+    if (!groupable(field)) {
+      const required = field.type === "boolean" && field.required === true;
+      errors.push({
+        path: jsonPointer(path),
+        code: "invalid-value",
+        message: required
+          ? `"${g.field}" is a required boolean field, so it can only be true and cannot group a board.`
+          : `"${g.field}" is a ${field.type} field, but a board's groupBy must be a select, boolean or reference field.`,
+        hint: required
+          ? "Use a different field, or make it optional so it has two values."
+          : groupableIds.length > 0
+            ? `Use one of: ${groupableIds.join(", ")}.`
+            : `Entity "${entity.id}" has no groupable field; add a select, boolean or reference field.`,
+        document: view.id,
+        allowed: groupableIds,
+      });
+    }
+  });
+
+  let title: string | undefined;
+  if (view.titleField !== undefined) {
+    const field = find(view.titleField);
+    if (!field) {
+      unknown(view.titleField, ["titleField"]);
+    } else if (!BOARD_TITLE_FIELD_TYPES.includes(field.type)) {
+      const allowed = idsOfType(BOARD_TITLE_FIELD_TYPES);
+      errors.push({
+        path: jsonPointer(["titleField"]),
+        code: "invalid-value",
+        message: `"${view.titleField}" is a ${field.type} field, but a board's titleField must be a text or select field.`,
+        hint: allowed.length > 0 ? `Use one of: ${allowed.join(", ")}.` : `Entity "${entity.id}" has no text or select field; add one.`,
+        document: view.id,
+        allowed,
+      });
+    } else {
+      title = view.titleField;
+    }
+  } else {
+    title = entity.fields.find((f) => f.type === "text")?.id;
+    if (title === undefined) {
+      const allowed = idsOfType(BOARD_TITLE_FIELD_TYPES);
+      errors.push({
+        path: jsonPointer(["titleField"]),
+        code: "required",
+        message: `Entity "${entity.id}" has no text field to title cards with, so "titleField" is required.`,
+        hint: allowed.length > 0 ? `Set "titleField" to a select field: ${allowed.join(", ")}.` : `Add a text or select field to "${entity.id}" and set "titleField" to it.`,
+        document: view.id,
+        allowed,
+      });
+    }
+  }
+
+  view.cardFields?.forEach((id, i) => {
+    const path: Path = ["cardFields", i];
+    if (!find(id)) unknown(id, path);
+    else if (id === title) {
+      errors.push({
+        path: jsonPointer(path),
+        code: "invalid-value",
+        message: `Card field "${id}" is already shown as the board's title.`,
+        hint: "Remove it or pick another field.",
+        document: view.id,
+        allowed: fieldIds.filter((f) => f !== title),
+      });
+    }
+  });
+
   checkConditionFields(view.filter, ["filter"], (id, path) => {
     if (!find(id)) unknown(id, path);
   });
@@ -1280,15 +1457,19 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
     tab.items.forEach((item, j) => {
       const itemPath: Path = ["tabs", i, "items", j];
       if (item.widget === "view") {
-        if (!idx.forms.has(item.view) && !idx.tables.has(item.view) && !idx.calendars.has(item.view)) {
-          errors.push(refError(doc.id, [...itemPath, "view"], `Widget references unknown view "${item.view}".`, "Point at a form, table or calendar view.", embeddable));
+        if (!idx.forms.has(item.view) && !idx.tables.has(item.view) && !idx.calendars.has(item.view) && !idx.boards.has(item.view)) {
+          errors.push(refError(doc.id, [...itemPath, "view"], `Widget references unknown view "${item.view}".`, "Point at a form, table, calendar or board view.", embeddable));
         }
         return;
       }
       const table = idx.tables.get(item.view);
       if (!table) {
         const what = item.widget === "stat" ? "Stat" : "Count";
-        const message = idx.calendars.has(item.view) ? `${what} widgets work from a table view, but "${item.view}" is a calendar view.` : `${what} widget references unknown table view "${item.view}".`;
+        const message = idx.calendars.has(item.view)
+          ? `${what} widgets work from a table view, but "${item.view}" is a calendar view.`
+          : idx.boards.has(item.view)
+            ? `${what} widgets work from a table view, but "${item.view}" is a board view.`
+            : `${what} widget references unknown table view "${item.view}".`;
         errors.push(refError(doc.id, [...itemPath, "view"], message, "Point at a table view.", [...idx.tables.keys()]));
         return;
       }

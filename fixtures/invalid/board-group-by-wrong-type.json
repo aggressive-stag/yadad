@@ -1,0 +1,13 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 4,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      { "id": "name", "type": "text", "label": "Name" },
+      { "id": "status", "type": "select", "label": "Status", "options": { "source": "static", "values": ["Good", "Bad"] } }
+    ]
+  },
+  { "kind": "board", "specVersion": 4, "id": "brd", "entity": "e", "revision": 1, "dataSource": "default", "groupBy": [{ "field": "name" }] }
+]

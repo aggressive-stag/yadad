@@ -57,6 +57,12 @@ export function fieldReferences(views: Iterable<ViewDocument>, entityId: string,
       view.detailFields?.forEach((f, i) => f === fieldId && at("detailFields", i));
       view.sort?.forEach((s, i) => s.field === fieldId && at("sort", i));
       if (view.filter && conditionFields(view.filter).includes(fieldId)) at("filter");
+    } else if (view.kind === "board") {
+      view.groupBy.forEach((g, i) => g.field === fieldId && at("groupBy", i, "field"));
+      if (view.titleField === fieldId) at("titleField");
+      view.cardFields?.forEach((f, i) => f === fieldId && at("cardFields", i));
+      view.sort?.forEach((s, i) => s.field === fieldId && at("sort", i));
+      if (view.filter && conditionFields(view.filter).includes(fieldId)) at("filter");
     } else {
       view.columns.forEach((c, i) => c.field === fieldId && at("columns", i));
       view.sort?.forEach((s, i) => s.field === fieldId && at("sort", i));

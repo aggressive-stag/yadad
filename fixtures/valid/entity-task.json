@@ -1,0 +1,14 @@
+{
+  "kind": "entity",
+  "specVersion": 4,
+  "id": "task",
+  "revision": 1,
+  "fields": [
+    { "id": "title", "type": "text", "label": "Title" },
+    { "id": "status", "type": "select", "label": "Status", "options": { "source": "static", "values": ["todo", "doing", "done"] } },
+    { "id": "assignee", "type": "select", "label": "Assignee", "options": { "source": "static", "values": ["alice", "bob"] } },
+    { "id": "due_date", "type": "date", "label": "Due date" },
+    { "id": "priority", "type": "select", "label": "Priority", "options": { "source": "static", "values": ["low", "high"] } },
+    { "id": "archived", "type": "boolean", "label": "Archived" }
+  ]
+}

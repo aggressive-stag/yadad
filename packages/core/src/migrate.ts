@@ -34,6 +34,12 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     description: "Version 3 adds the `calendar` view (RFC 0004) and lets a dashboard `view` widget embed it. Every version 2 document stays valid, so this step only stamps the new version.",
     run: (doc) => ({ ...doc, specVersion: 3 }),
   },
+  {
+    from: 3,
+    to: 4,
+    description: "Version 4 adds the `board` view (RFC 0005) and lets a dashboard `view` widget embed it. Every version 3 document stays valid, so this step only stamps the new version.",
+    run: (doc) => ({ ...doc, specVersion: 4 }),
+  },
 ];
 
 function isObject(value: unknown): value is JsonObject {

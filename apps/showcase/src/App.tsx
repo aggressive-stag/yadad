@@ -272,6 +272,7 @@ function describe(viewId: string, documents: DocumentSet): string {
   if (view.kind === "table") return `Table: ${view.title ?? view.id}`;
   if (view.kind === "form") return `Form: ${view.sections[0]?.title ?? view.id}`;
   if (view.kind === "calendar") return `Calendar: ${view.title ?? view.id}`;
+  if (view.kind === "board") return `Board: ${view.title ?? view.id}`;
   return view.id;
 }
 
@@ -283,6 +284,7 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
   const entity = documents.entities.get(view.entity);
   if (!entity) return null;
   if (view.kind === "calendar") return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} />;
+  if (view.kind === "board") return null; // no BoardRenderer yet
   return view.kind === "form" ? (
     <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} {...drafts} />
   ) : (

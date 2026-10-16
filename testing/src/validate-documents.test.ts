@@ -108,8 +108,27 @@ const expected: Record<string, Picked[]> = {
   "dashboard-stat-calendar.json": [{ path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["t"] }],
   "duplicate-id.json": [{ path: "/id", code: "duplicate-id", document: "thing" }],
   "structural-unknown-kind.json": [
-    { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "dashboard"] },
+    { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "board", "dashboard"] },
   ],
+  "board-empty-group-by.json": [{ path: "/groupBy", code: "invalid-value", document: "brd" }],
+  "board-too-many-group-by.json": [{ path: "/groupBy", code: "invalid-value", document: "brd" }],
+  "board-duplicate-group-by.json": [{ path: "/groupBy/1/field", code: "invalid-value", document: "brd" }],
+  "board-too-many-card-fields.json": [{ path: "/cardFields", code: "invalid-value", document: "brd" }],
+  "board-duplicate-card-field.json": [{ path: "/cardFields/1", code: "invalid-value", document: "brd" }],
+  "board-unknown-property.json": [{ path: "/color", code: "unknown-property", document: "brd" }],
+  "board-unknown-entity.json": [{ path: "/entity", code: "unknown-reference", document: "brd", allowed: ["e"] }],
+  "board-unknown-fields.json": [
+    { path: "/groupBy/0/field", code: "unknown-reference", document: "brd", allowed: ["name", "qty", "mood", "owner"] },
+    { path: "/titleField", code: "unknown-reference", document: "brd", allowed: ["name", "qty", "mood", "owner"] },
+    { path: "/cardFields/0", code: "unknown-reference", document: "brd", allowed: ["name", "qty", "mood", "owner"] },
+    { path: "/filter/field", code: "unknown-reference", document: "brd", allowed: ["name", "qty", "mood", "owner"] },
+    { path: "/sort/0/field", code: "unknown-reference", document: "brd", allowed: ["name", "qty", "mood", "owner"] },
+  ],
+  "board-group-by-wrong-type.json": [{ path: "/groupBy/0/field", code: "invalid-value", document: "brd", allowed: ["status"] }],
+  "board-group-by-required-boolean.json": [{ path: "/groupBy/0/field", code: "invalid-value", document: "brd", allowed: [] }],
+  "board-title-field-wrong-type.json": [{ path: "/titleField", code: "invalid-value", document: "brd", allowed: ["name"] }],
+  "board-missing-title-field.json": [{ path: "/titleField", code: "required", document: "brd", allowed: [] }],
+  "board-card-field-repeats-title.json": [{ path: "/cardFields/0", code: "invalid-value", document: "brd", allowed: ["status"] }],
 };
 
 const validFiles = readdirSync(validDir).filter((f) => f.endsWith(".json")).sort();

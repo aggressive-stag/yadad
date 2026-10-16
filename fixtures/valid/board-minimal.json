@@ -1,0 +1,9 @@
+{
+  "kind": "board",
+  "specVersion": 4,
+  "id": "tasks_board_minimal",
+  "entity": "task",
+  "revision": 1,
+  "dataSource": "default",
+  "groupBy": [{ "field": "status" }]
+}
