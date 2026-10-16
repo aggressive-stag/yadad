@@ -10,4 +10,5 @@ export * from "./drag.js";
 export * from "./reorder.js";
 export * from "./form-view-editor.js";
 export * from "./table-view-editor.js";
+export * from "./calendar-view-editor.js";
 export { idFromTitle } from "./ui.js";

@@ -1,5 +1,5 @@
 import { SPEC_VERSION } from "@yadad/core";
-import type { DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { CalendarView, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 
 // Starting points for building an app from nothing. Each is a valid document
 // at revision 1 that the editors can take from there.
@@ -26,6 +26,13 @@ export function blankForm(entity: EntityDocument, id: string, dataSource: string
 export function blankTable(entity: EntityDocument, id: string, dataSource: string): TableView | null {
   if (entity.fields.length === 0) return null;
   return { kind: "table", specVersion: SPEC_VERSION, id, entity: entity.id, revision: 1, dataSource, columns: entity.fields.map((f) => ({ field: f.id })) };
+}
+
+/** A calendar placing the entity's records by its first date field; null while the entity has no date field, since a calendar needs one. */
+export function blankCalendar(entity: EntityDocument, id: string, dataSource: string): CalendarView | null {
+  const dateField = entity.fields.find((f) => f.type === "date")?.id;
+  if (dateField === undefined) return null;
+  return { kind: "calendar", specVersion: SPEC_VERSION, id, entity: entity.id, revision: 1, dataSource, dateField };
 }
 
 /** A dashboard with one empty tab; add widgets with the layout editor. */

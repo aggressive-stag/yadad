@@ -1,5 +1,5 @@
-import { MEASURE_FIELD_TYPES, jsonPointer, validateDocuments } from "@yadad/core";
-import type { Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView } from "@yadad/core";
+import { CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, jsonPointer, validateDocuments } from "@yadad/core";
+import type { CalendarMode, CalendarView, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -362,6 +362,141 @@ export function setRowAction(view: TableView, entity: EntityDocument, context: R
     ...context.tables.filter((t) => t.id !== view.id),
     candidate,
   ];
+  const result = validateDocuments(set);
+  const problem = result.ok ? undefined : result.errors.find((e) => e.path.startsWith(path));
+  if (problem) return { ok: false, error: { path: problem.path, code: problem.code, message: problem.message, hint: problem.hint } };
+  if (JSON.stringify(view.rowAction) === JSON.stringify(action)) return ok([]);
+  return ok(setOptional(view.rowAction !== undefined, path, action as unknown as Json));
+}
+
+// ---- calendar ---------------------------------------------------------
+// A calendar places one entity's records on days by one date field (RFC
+// 0004). Most edits here are single top-level properties, each guarded by a
+// `test` on the view id so a stale document is refused rather than patched.
+
+function guardCalendar(view: CalendarView): PatchOperation {
+  return { op: "test", path: "/id", value: view.id };
+}
+
+/** Sets the calendar's caption; an empty title removes it. */
+export function setCalendarTitle(view: CalendarView, title: string): PatchOperation[] {
+  const trimmed = title.trim();
+  return setOptional(view.title !== undefined, "/title", trimmed === "" ? undefined : trimmed);
+}
+
+/** Date fields of the entity: candidates for the calendar's `dateField`. */
+export function dateFieldsOf(entity: EntityDocument): string[] {
+  return entity.fields.filter((f) => f.type === "date").map((f) => f.id);
+}
+
+/** Replaces the date field that places entries on days. A calendar always has one. */
+export function setCalendarDateField(view: CalendarView, fieldId: string): PatchOperation[] {
+  if (fieldId === view.dateField) return [];
+  return [guardCalendar(view), { op: "replace", path: "/dateField", value: fieldId }];
+}
+
+/** Sets or clears the field shown as an entry's title. Undefined falls back to the entity's first text field. */
+export function setCalendarTitleField(view: CalendarView, fieldId: string | undefined): PatchOperation[] {
+  return [guardCalendar(view), ...setOptional(view.titleField !== undefined, "/titleField", fieldId)];
+}
+
+/** Sets or clears the field that colours entries. */
+export function setCalendarColorField(view: CalendarView, fieldId: string | undefined): PatchOperation[] {
+  return [guardCalendar(view), ...setOptional(view.colorField !== undefined, "/colorField", fieldId)];
+}
+
+/** Fields of the entity that may become the calendar's title, colour or detail fields (not the date field itself). */
+export function fieldsNotInCalendarDetails(entity: EntityDocument, view: CalendarView): string[] {
+  const used = new Set([view.dateField, view.titleField, ...(view.detailFields ?? [])].filter((id): id is string => id !== undefined));
+  return entity.fields.map((f) => f.id).filter((id) => !used.has(id));
+}
+
+function detailIndex(view: CalendarView, fieldId: string): number {
+  return (view.detailFields ?? []).findIndex((id) => id === fieldId);
+}
+
+/** Shows a field under the entry's title. A calendar shows at most CALENDAR_DETAIL_FIELDS_MAX of them. */
+export function addCalendarDetailField(view: CalendarView, fieldId: string): Result {
+  const current = view.detailFields ?? [];
+  if (current.includes(fieldId)) return fail(["detailFields"], `"${fieldId}" is already a detail field.`, "Nothing to add.");
+  if (current.length >= CALENDAR_DETAIL_FIELDS_MAX) return fail(["detailFields"], `A calendar shows at most ${CALENDAR_DETAIL_FIELDS_MAX} detail fields.`, "Remove one before adding another.");
+  return ok([guardCalendar(view), { op: current.length === 0 ? "add" : "add", path: current.length === 0 ? "/detailFields" : "/detailFields/-", value: current.length === 0 ? [fieldId] : fieldId }]);
+}
+
+/** Takes a field out of the detail fields. Removing the last one clears the property. */
+export function removeCalendarDetailField(view: CalendarView, fieldId: string): Result {
+  const i = detailIndex(view, fieldId);
+  if (i < 0) return fail(["detailFields"], `"${fieldId}" is not a detail field.`, "Nothing to remove.");
+  const current = view.detailFields ?? [];
+  if (current.length === 1) return ok([guardCalendar(view), { op: "remove", path: "/detailFields" }]);
+  return ok([guardCalendar(view), { op: "remove", path: `/detailFields/${i}` }]);
+}
+
+/** Moves a detail field one place up (-1) or down (+1) in the row shown under the title. */
+export function moveCalendarDetailField(view: CalendarView, fieldId: string, by: -1 | 1): Result {
+  const i = detailIndex(view, fieldId);
+  if (i < 0) return fail(["detailFields"], `"${fieldId}" is not a detail field.`, "Add it first.");
+  const to = i + by;
+  const current = view.detailFields ?? [];
+  if (to < 0 || to >= current.length) return fail(["detailFields", i], `"${fieldId}" is already ${by < 0 ? "first" : "last"}.`, "Move it the other way.");
+  return ok([guardCalendar(view), { op: "move", from: `/detailFields/${i}`, path: `/detailFields/${to}` }]);
+}
+
+/** Sets or clears the calendar's fixed filter ("entries always match"). */
+export function setCalendarFilter(view: CalendarView, condition: Condition | undefined): Result {
+  return ok([guardCalendar(view), ...setOptional(view.filter !== undefined, "/filter", condition as unknown as Json | undefined)]);
+}
+
+/** Sets the entry order within a day to one key, or clears it (falls back to the title field, ascending). */
+export function setCalendarSort(view: CalendarView, sort: SortSpec | undefined): PatchOperation[] {
+  return [guardCalendar(view), ...setOptional(view.sort !== undefined, "/sort", sort ? [{ field: sort.field, dir: sort.dir }] : undefined)];
+}
+
+/** Turns a period on or off in the viewer's switcher. Refuses to turn off the last one. */
+export function toggleCalendarMode(view: CalendarView, mode: CalendarMode, on: boolean): Result {
+  const current = view.modes ?? CALENDAR_MODES;
+  const has = current.includes(mode);
+  if (on === has) return ok([]);
+  if (!on && current.length === 1) return fail(["modes"], "A calendar needs at least one mode.", "Turn on another mode before turning this one off.");
+  const next = on ? [...current, mode] : current.filter((m) => m !== mode);
+  return ok([guardCalendar(view), ...setOptional(view.modes !== undefined, "/modes", next)]);
+}
+
+/** Makes `mode` the default (first) period, keeping the other modes in their relative order. */
+export function setCalendarDefaultMode(view: CalendarView, mode: CalendarMode): Result {
+  const current = view.modes ?? CALENDAR_MODES;
+  if (!current.includes(mode)) return fail(["modes"], `"${mode}" is not one of this calendar's modes.`, "Turn it on first.");
+  if (current[0] === mode) return ok([]);
+  const next = [mode, ...current.filter((m) => m !== mode)];
+  return ok([guardCalendar(view), ...setOptional(view.modes !== undefined, "/modes", next)]);
+}
+
+/** Sets or clears the first day of the week; undefined falls back to Monday. */
+export function setCalendarWeekStartsOn(view: CalendarView, day: number | undefined): PatchOperation[] {
+  return [guardCalendar(view), ...setOptional(view.weekStartsOn !== undefined, "/weekStartsOn", day)];
+}
+
+/** Lets a drag to another day change the date field, or stops it. */
+export function setCalendarEditable(view: CalendarView, editable: boolean): PatchOperation[] {
+  return [guardCalendar(view), ...setOptional(view.editable !== undefined, "/editable", editable ? true : undefined)];
+}
+
+/** The table views a calendar's row action may open: every table in the context (a calendar never is a target). */
+export function calendarRowActionTargets(context: RowActionContext): readonly TableView[] {
+  return context.tables;
+}
+
+/**
+ * Sets or clears a calendar's row action. The candidate is checked against
+ * the whole set with the document validator, so an unknown target, fields
+ * that are missing or of different types, or a chain over the depth limit
+ * are refused with the validator's own message and hint, and no patch is made.
+ */
+export function setCalendarRowAction(view: CalendarView, entity: EntityDocument, context: RowActionContext, action: RowAction | undefined): Result {
+  const path = "/rowAction";
+  if (action === undefined) return ok(setOptional(view.rowAction !== undefined, path, undefined));
+  const candidate: CalendarView = { ...view, rowAction: action };
+  const set = [entity, ...context.entities.filter((e) => e.id !== entity.id), ...context.tables, candidate];
   const result = validateDocuments(set);
   const problem = result.ok ? undefined : result.errors.find((e) => e.path.startsWith(path));
   if (problem) return { ok: false, error: { path: problem.path, code: problem.code, message: problem.message, hint: problem.hint } };

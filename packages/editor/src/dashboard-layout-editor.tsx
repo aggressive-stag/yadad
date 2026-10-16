@@ -37,7 +37,7 @@ interface PaletteEntry {
 
 function palette(views: readonly ViewDocument[], describeView: (viewId: string) => string, entities: ReadonlyMap<string, EntityDocument> | undefined): PaletteEntry[] {
   return views.flatMap((v): PaletteEntry[] => {
-    if (v.kind === "form") return [{ label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 }];
+    if (v.kind === "form" || v.kind === "calendar") return [{ label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 }];
     if (v.kind === "table") {
       return [
         { label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 },
