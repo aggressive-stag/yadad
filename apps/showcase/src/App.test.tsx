@@ -25,6 +25,14 @@ test("invalid documents are reported", () => {
   expect(html).toContain("broken/specVersion");
 });
 
+test("the bookings calendar page renders its demo", () => {
+  const html = renderToStaticMarkup(<App registry={mockRegistry} roots={[]} />);
+  const section = html.match(/<section aria-label="bookings_calendar">[\s\S]*?<\/section>/)?.[0] ?? "";
+  expect(section).toContain('aria-label="Bookings"');
+  expect(section).toContain('role="grid"');
+  expect(section).toContain("Previous month"); // navigation is available while the range loads
+});
+
 test("saved edits are restored, and edits that no longer validate are reported", () => {
   const saved = [
     { kind: "entity", specVersion: 0, id: "hello", revision: 3, fields: [{ id: "name", type: "text", label: "Restored name" }] },

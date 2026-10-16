@@ -1,12 +1,13 @@
 import { validateDocument } from "@yadad/core";
-import type { DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
+import type { CalendarView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
 import { blankDashboard, blankEntity, blankForm, blankTable, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor } from "@yadad/editor";
-import { DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
+import { CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
 import { createDraftStore, createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
 import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { bookingEntity, bookingsAdapter } from "./bookings";
 import dashboardTraining from "../../../fixtures/valid/dashboard-training.json?raw";
 import entityHello from "../../../fixtures/valid/entity-hello.json?raw";
 import entityWorkoutSet from "../../../fixtures/valid/entity-workout-set.json?raw";
@@ -21,6 +22,53 @@ export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, 
 
 /** Views rendered at the top level of the page, by id. */
 export const defaultRoots: readonly string[] = ["training", "hello_form"];
+
+/** The bookings table the calendar's row action opens for a booking. */
+const bookingsTable: TableView = {
+  kind: "table",
+  specVersion: 3,
+  id: "booking_history",
+  title: "Bookings",
+  entity: "booking",
+  revision: 1,
+  dataSource: "bookings",
+  columns: [{ field: "title" }, { field: "day" }, { field: "client" }, { field: "status" }, { field: "kind" }],
+  quickFilters: [{ field: "status" }, { field: "kind" }],
+};
+
+/**
+ * The calendar page's documents: a bookings calendar with a colour field and
+ * a row action that opens the bookings table scoped to the clicked booking.
+ * They are not fixture files (they need a seeded data source), so they are
+ * written as code, the way a host would build a view around its own data.
+ */
+const bookingsView: CalendarView = {
+  kind: "calendar",
+  specVersion: 3,
+  id: "bookings_calendar",
+  title: "Bookings",
+  entity: "booking",
+  revision: 1,
+  dataSource: "bookings",
+  dateField: "day",
+  titleField: "title",
+  detailFields: ["client", "kind"],
+  colorField: "status",
+  sort: [{ field: "title", dir: "asc" }],
+  modes: ["month", "week"],
+  weekStartsOn: 1,
+  editable: true,
+  rowAction: { open: "booking_history", bind: [{ field: "client", to: "client" }] },
+};
+
+const bookingsDocuments: DocumentSet = {
+  entities: new Map([[bookingEntity.id, bookingEntity]]),
+  views: new Map<string, CalendarView | TableView>([
+    [bookingsView.id, bookingsView],
+    [bookingsTable.id, bookingsTable],
+  ]),
+};
+
 
 export interface AppProps {
   /** Injected by the host: the mock registry, or a real component set. */
@@ -65,8 +113,13 @@ type Mode =
   | { readonly kind: "table"; readonly id: string };
 
 export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset }: AppProps): ReactNode {
-  // The host decides which adapter backs each dataSource key.
-  const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => new Map([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]));
+  // The host decides which adapter backs each dataSource key. The calendar demo keeps its own
+  // seeded bookings on a dedicated data source, with a wrapper that refuses moves into the past.
+  const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => {
+    const map = new Map<string, DataAdapter>([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]);
+    map.set("bookings", bookingsAdapter());
+    return map;
+  });
   // Documents saved from the editors replace the loaded ones, and persist when storage is given.
   const [initial] = useState(() => loadEdited(storage));
   // Unsaved form input survives a reload when the page has storage.
@@ -147,6 +200,10 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
           </section>
         );
       })}
+      {/* The calendar demo: a generic bookings calendar on its own seeded data source. */}
+      <section aria-label="bookings_calendar">
+        <CalendarRenderer entity={bookingEntity} view={bookingsView} registry={registry} dataSources={dataSources} documents={bookingsDocuments} />
+      </section>
     </main>
   );
 }
