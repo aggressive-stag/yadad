@@ -1,6 +1,6 @@
 import { validateDocument } from "@yadad/core";
 import type { CalendarView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
-import { blankDashboard, blankEntity, blankForm, blankTable, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor } from "@yadad/editor";
+import { blankDashboard, blankEntity, blankForm, blankTable, CalendarViewEditor, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor } from "@yadad/editor";
 import { CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
 import { createDraftStore, createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
@@ -21,7 +21,7 @@ import { loadDocumentSet } from "./documents";
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
 
 /** Views rendered at the top level of the page, by id. */
-export const defaultRoots: readonly string[] = ["training", "hello_form"];
+export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar"];
 
 /** The bookings table the calendar's row action opens for a booking. */
 const bookingsTable: TableView = {
@@ -61,13 +61,15 @@ const bookingsView: CalendarView = {
   rowAction: { open: "booking_history", bind: [{ field: "client", to: "client" }] },
 };
 
-const bookingsDocuments: DocumentSet = {
-  entities: new Map([[bookingEntity.id, bookingEntity]]),
-  views: new Map<string, CalendarView | TableView>([
-    [bookingsView.id, bookingsView],
-    [bookingsTable.id, bookingsTable],
-  ]),
-};
+/** Folds the bookings demo documents into a loaded set, as a host would seed its own data source. */
+function withBookings(base: DocumentSet): DocumentSet {
+  const entities = new Map(base.entities);
+  const views = new Map(base.views);
+  entities.set(bookingEntity.id, bookingEntity);
+  views.set(bookingsView.id, bookingsView);
+  views.set(bookingsTable.id, bookingsTable);
+  return { entities, views };
+}
 
 
 export interface AppProps {
@@ -110,7 +112,8 @@ type Mode =
   | { readonly kind: "layout"; readonly id: string }
   | { readonly kind: "fields"; readonly id: string }
   | { readonly kind: "form"; readonly id: string }
-  | { readonly kind: "table"; readonly id: string };
+  | { readonly kind: "table"; readonly id: string }
+  | { readonly kind: "calendar"; readonly id: string };
 
 export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset }: AppProps): ReactNode {
   // The host decides which adapter backs each dataSource key. The calendar demo keeps its own
@@ -127,7 +130,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const [edited, setEdited] = useState<ReadonlyMap<string, Document>>(initial.docs);
   const [mode, setMode] = useState<Mode>({ kind: "view" });
   const loaded = loadDocumentSet(sources);
-  const documents = overlay(loaded.documents, edited);
+  const documents = overlay(withBookings(loaded.documents), edited);
   const [appName, setAppName] = useState("");
   const store = (docs: readonly Document[]) => {
     const next = new Map(edited);
@@ -192,7 +195,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
               <DashboardLayoutEditor dashboard={view} registry={registry} onSave={save} onCancel={close} describeView={(v) => describe(v, documents)} views={[...documents.views.values()]} entities={documents.entities} />
             ) : mode.kind === "fields" && entity && mode.id === entity.id ? (
               <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} onSave={save} onCancel={close} />
-            ) : (mode.kind === "form" || mode.kind === "table") && editing ? (
+            ) : (mode.kind === "form" || mode.kind === "table" || mode.kind === "calendar") && editing ? (
               viewEditor(mode, documents, registry, save, close)
             ) : (
               renderRoot(id, documents, registry, dataSources, draftStore)
@@ -200,30 +203,27 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
           </section>
         );
       })}
-      {/* The calendar demo: a generic bookings calendar on its own seeded data source. */}
-      <section aria-label="bookings_calendar">
-        <CalendarRenderer entity={bookingEntity} view={bookingsView} registry={registry} dataSources={dataSources} documents={bookingsDocuments} />
-      </section>
     </main>
   );
 }
 
-/** The forms and tables a root shows: itself, or the views its dashboard embeds. */
-function viewsOf(rootId: string, documents: DocumentSet): (FormView | TableView)[] {
+/** The forms, tables and calendars a root shows: itself, or the views its dashboard embeds. */
+function viewsOf(rootId: string, documents: DocumentSet): (FormView | TableView | CalendarView)[] {
   const root = documents.views.get(rootId);
   if (!root) return [];
-  if (root.kind === "calendar") return [];
-  if (root.kind !== "dashboard") return [root];
+  if (root.kind !== "dashboard") return root.kind === "calendar" || root.kind === "form" || root.kind === "table" ? [root] : [];
   const ids = [...new Set(root.tabs.flatMap((t) => t.items.filter((i) => i.widget === "view").map((i) => i.view)))];
-  return ids.map((id) => documents.views.get(id)).filter((v): v is FormView | TableView => v !== undefined && (v.kind === "form" || v.kind === "table"));
+  return ids.map((id) => documents.views.get(id)).filter((v): v is FormView | TableView | CalendarView => v !== undefined && (v.kind === "form" || v.kind === "table" || v.kind === "calendar"));
 }
 
-function viewEditor(mode: { readonly kind: "form" | "table"; readonly id: string }, documents: DocumentSet, registry: Registry<ReactNode>, save: (doc: Document) => void, close: () => void): ReactNode {
+function viewEditor(mode: { readonly kind: "form" | "table" | "calendar"; readonly id: string }, documents: DocumentSet, registry: Registry<ReactNode>, save: (doc: Document) => void, close: () => void): ReactNode {
   const view = documents.views.get(mode.id);
   const entity = view && view.kind !== "dashboard" ? documents.entities.get(view.entity) : undefined;
   if (!entity) return null;
+  const tableContext = { tables: [...documents.views.values()].filter((v): v is TableView => v.kind === "table"), entities: [...documents.entities.values()] };
   if (view?.kind === "form") return <FormViewEditor view={view} entity={entity} registry={registry} onSave={save} onCancel={close} />;
-  if (view?.kind === "table") return <TableViewEditor view={view} entity={entity} registry={registry} context={{ tables: [...documents.views.values()].filter((v): v is TableView => v.kind === "table"), entities: [...documents.entities.values()] }} onSave={save} onCancel={close} />;
+  if (view?.kind === "table") return <TableViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
+  if (view?.kind === "calendar") return <CalendarViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
   return null;
 }
 
@@ -271,6 +271,7 @@ function describe(viewId: string, documents: DocumentSet): string {
   if (!view) return viewId;
   if (view.kind === "table") return `Table: ${view.title ?? view.id}`;
   if (view.kind === "form") return `Form: ${view.sections[0]?.title ?? view.id}`;
+  if (view.kind === "calendar") return `Calendar: ${view.title ?? view.id}`;
   return view.id;
 }
 
@@ -279,9 +280,9 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
   if (!view) return null;
   const drafts = draftStore ? { drafts: { store: draftStore } } : {};
   if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} {...drafts} />;
-  if (view.kind === "calendar") return null; // the showcase gets a calendar in a later change
   const entity = documents.entities.get(view.entity);
   if (!entity) return null;
+  if (view.kind === "calendar") return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} />;
   return view.kind === "form" ? (
     <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} {...drafts} />
   ) : (

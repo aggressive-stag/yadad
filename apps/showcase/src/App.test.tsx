@@ -26,7 +26,7 @@ test("invalid documents are reported", () => {
 });
 
 test("the bookings calendar page renders its demo", () => {
-  const html = renderToStaticMarkup(<App registry={mockRegistry} roots={[]} />);
+  const html = renderToStaticMarkup(<App registry={mockRegistry} roots={["bookings_calendar"]} />);
   const section = html.match(/<section aria-label="bookings_calendar">[\s\S]*?<\/section>/)?.[0] ?? "";
   expect(section).toContain('aria-label="Bookings"');
   expect(section).toContain('role="grid"');
