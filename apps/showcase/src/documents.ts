@@ -1,5 +1,5 @@
 import { validateDocument } from "@yadad/core";
-import type { DocumentError, EntityDocument, ViewDocument } from "@yadad/core";
+import type { DocumentError, EntityDocument, ViewDocument, ViewerDocument } from "@yadad/core";
 import type { DocumentSet } from "@yadad/renderer";
 
 export type SourcedError = DocumentError & { readonly source: string };
@@ -11,6 +11,7 @@ export type SourcedError = DocumentError & { readonly source: string };
 export function loadDocumentSet(sources: readonly string[]): { documents: DocumentSet; errors: readonly SourcedError[] } {
   const entities = new Map<string, EntityDocument>();
   const views = new Map<string, ViewDocument>();
+  let viewer: ViewerDocument | undefined;
   const errors: SourcedError[] = [];
   sources.forEach((raw, i) => {
     let json: unknown;
@@ -28,7 +29,8 @@ export function loadDocumentSet(sources: readonly string[]): { documents: Docume
     }
     const doc = result.value;
     if (doc.kind === "entity") entities.set(doc.id, doc);
-    else if (doc.kind !== "viewer") views.set(doc.id, doc); // STUB (RFC 0006): the showcase ignores viewer documents until it supports viewers
+    else if (doc.kind === "viewer") viewer = doc;
+    else views.set(doc.id, doc);
   });
-  return { documents: { entities, views }, errors };
+  return { documents: { entities, views, ...(viewer ? { viewer } : {}) }, errors };
 }

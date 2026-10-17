@@ -25,18 +25,19 @@ export function stateViews(documents: DocumentSet): ViewDocument[] {
 export function renderState(context: StateRenderContext, set: DocumentSet): ReactNode {
   const { view, entity, registry, dataSources, drafts, now } = context;
   const entities = set.entities;
-  // The renderers take no `viewer` prop yet, so viewer states render without one.
+  // The state's viewer goes to the renderer; the "viewer not provided" state leaves the prop out.
+  const viewer = context.omitViewer ? {} : { viewer: context.viewer };
   switch (view.kind) {
     case "form":
-      return entity ? <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} {...(drafts ? { drafts } : {})} /> : null;
+      return entity ? <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} {...(drafts ? { drafts } : {})} {...viewer} /> : null;
     case "table":
-      return entity ? <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} /> : null;
+      return entity ? <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...viewer} /> : null;
     case "calendar":
-      return entity ? <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} /> : null;
+      return entity ? <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...viewer} /> : null;
     case "board":
-      return entity ? <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} /> : null;
+      return entity ? <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...viewer} /> : null;
     case "dashboard":
-      return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} />;
+      return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...viewer} />;
   }
 }
 
@@ -218,7 +219,7 @@ export function StatesPage({ documents, registry, initialView }: StatesPageProps
   });
   const [run, setRun] = useState<CheckRun | undefined>(undefined);
 
-  const docs = useMemo<Document[]>(() => [...documents.entities.values(), ...documents.views.values()], [documents]);
+  const docs = useMemo<Document[]>(() => [...documents.entities.values(), ...documents.views.values(), ...(documents.viewer ? [documents.viewer] : [])], [documents]);
   // The page re-renders with new document objects each time; only a change of content rebuilds the states.
   const docsKey = JSON.stringify(docs);
   const stable = useRef({ docs, documents });

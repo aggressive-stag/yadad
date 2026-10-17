@@ -104,9 +104,8 @@ function withBookings(base: DocumentSet): DocumentSet {
   entities.set(bookingEntity.id, bookingEntity);
   views.set(bookingsView.id, bookingsView);
   views.set(bookingsTable.id, bookingsTable);
-  return { entities, views };
+  return { ...base, entities, views };
 }
-
 
 export interface AppProps {
   /** Injected by the host: the mock registry, or a real component set. */
@@ -319,11 +318,13 @@ function overlay(base: DocumentSet, edited: ReadonlyMap<string, Document>): Docu
   if (edited.size === 0) return base;
   const entities = new Map(base.entities);
   const views = new Map(base.views);
+  let viewer = base.viewer;
   for (const doc of edited.values()) {
     if (doc.kind === "entity") entities.set(doc.id, doc);
-    else if (doc.kind !== "viewer") views.set(doc.id, doc); // STUB (RFC 0006): the showcase ignores viewer documents until it supports viewers
+    else if (doc.kind === "viewer") viewer = doc;
+    else views.set(doc.id, doc);
   }
-  return { entities, views };
+  return { entities, views, ...(viewer ? { viewer } : {}) };
 }
 
 /** The entity behind a dashboard's first view widget, for its "Edit fields" button. */
