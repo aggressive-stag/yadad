@@ -1,9 +1,9 @@
 import { validateDocument } from "@yadad/core";
 import type { BoardView, CalendarView, DashboardView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
-import { blankDashboard, blankEntity, blankForm, blankTable, CalendarViewEditor, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor } from "@yadad/editor";
+import { addWidget, blankBoard, blankDashboard, blankEntity, blankForm, blankTable, BoardViewEditor, CalendarViewEditor, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor, uniqueItemId } from "@yadad/editor";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
-import { createDraftStore, createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
+import { applyPatch, createDraftStore, createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
 import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -147,7 +147,8 @@ type Mode =
   | { readonly kind: "fields"; readonly id: string }
   | { readonly kind: "form"; readonly id: string }
   | { readonly kind: "table"; readonly id: string }
-  | { readonly kind: "calendar"; readonly id: string };
+  | { readonly kind: "calendar"; readonly id: string }
+  | { readonly kind: "board"; readonly id: string };
 
 export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset }: AppProps): ReactNode {
   // The host decides which adapter backs each dataSource key. The calendar demo keeps its own
@@ -183,6 +184,17 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
     const created = newApp(id, title);
     store(created);
     setAppName("");
+  };
+  // "Add a board" makes a board grouped by the entity's first groupable field, puts it on the dashboard and opens its editor.
+  const addBoard = (dashboard: DashboardView, entity: EntityDocument, dataSource: string) => {
+    const boardId = idFromTitle(`${entity.id} board`, [...documents.views.keys()], "board");
+    const board = blankBoard(entity, boardId, dataSource);
+    const tab = dashboard.tabs[0];
+    if (!board || !tab) return;
+    const patched = applyPatch(dashboard, addWidget(dashboard, tab.id, uniqueItemId(dashboard, tab.id, boardId), { widget: "view", view: boardId }, 6, 6));
+    if (!patched.ok) return;
+    store([board, { ...(patched.value as DashboardView), revision: dashboard.revision + 1 }]);
+    setMode({ kind: "board", id: boardId });
   };
   const close = () => setMode({ kind: "view" });
   const { Button, FieldFrame } = registry.layout;
@@ -221,6 +233,9 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
               <div data-showcase-toolbar="">
                 {view.kind === "dashboard" && <Button label="Edit layout" type="button" variant="secondary" disabled={false} onPress={() => setMode({ kind: "layout", id })} />}
                 {entity && <Button label={`Edit ${entity.id} fields`} type="button" variant="secondary" disabled={false} onPress={() => setMode({ kind: "fields", id: entity.id })} />}
+                {view.kind === "dashboard" && entity && !parts.some((v) => v.kind === "board") && blankBoard(entity, "probe", "default") && (
+                  <Button label={`Add a board for ${entity.id}`} type="button" variant="secondary" disabled={false} onPress={() => addBoard(view, entity, parts.find((v) => v.entity === entity.id)?.dataSource ?? "default")} />
+                )}
                 {parts.map((v) => (
                   <Button key={v.id} label={`Edit ${describe(v.id, documents).toLowerCase()}`} type="button" variant="secondary" disabled={false} onPress={() => setMode({ kind: v.kind, id: v.id })} />
                 ))}
@@ -230,7 +245,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
               <DashboardLayoutEditor dashboard={view} registry={registry} onSave={save} onCancel={close} describeView={(v) => describe(v, documents)} views={[...documents.views.values()]} entities={documents.entities} />
             ) : mode.kind === "fields" && entity && mode.id === entity.id ? (
               <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} onSave={save} onCancel={close} />
-            ) : (mode.kind === "form" || mode.kind === "table" || mode.kind === "calendar") && editing ? (
+            ) : (mode.kind === "form" || mode.kind === "table" || mode.kind === "calendar" || mode.kind === "board") && editing ? (
               viewEditor(mode, documents, registry, save, close)
             ) : (
               renderRoot(id, documents, registry, dataSources, draftStore)
@@ -243,15 +258,15 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
 }
 
 /** The forms, tables and calendars a root shows: itself, or the views its dashboard embeds. */
-function viewsOf(rootId: string, documents: DocumentSet): (FormView | TableView | CalendarView)[] {
+function viewsOf(rootId: string, documents: DocumentSet): (FormView | TableView | CalendarView | BoardView)[] {
   const root = documents.views.get(rootId);
   if (!root) return [];
-  if (root.kind !== "dashboard") return root.kind === "calendar" || root.kind === "form" || root.kind === "table" ? [root] : [];
+  if (root.kind !== "dashboard") return root.kind === "calendar" || root.kind === "form" || root.kind === "table" || root.kind === "board" ? [root] : [];
   const ids = [...new Set(root.tabs.flatMap((t) => t.items.filter((i) => i.widget === "view").map((i) => i.view)))];
-  return ids.map((id) => documents.views.get(id)).filter((v): v is FormView | TableView | CalendarView => v !== undefined && (v.kind === "form" || v.kind === "table" || v.kind === "calendar"));
+  return ids.map((id) => documents.views.get(id)).filter((v): v is FormView | TableView | CalendarView | BoardView => v !== undefined && (v.kind === "form" || v.kind === "table" || v.kind === "calendar" || v.kind === "board"));
 }
 
-function viewEditor(mode: { readonly kind: "form" | "table" | "calendar"; readonly id: string }, documents: DocumentSet, registry: Registry<ReactNode>, save: (doc: Document) => void, close: () => void): ReactNode {
+function viewEditor(mode: { readonly kind: "form" | "table" | "calendar" | "board"; readonly id: string }, documents: DocumentSet, registry: Registry<ReactNode>, save: (doc: Document) => void, close: () => void): ReactNode {
   const view = documents.views.get(mode.id);
   const entity = view && view.kind !== "dashboard" ? documents.entities.get(view.entity) : undefined;
   if (!entity) return null;
@@ -259,6 +274,7 @@ function viewEditor(mode: { readonly kind: "form" | "table" | "calendar"; readon
   if (view?.kind === "form") return <FormViewEditor view={view} entity={entity} registry={registry} onSave={save} onCancel={close} />;
   if (view?.kind === "table") return <TableViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
   if (view?.kind === "calendar") return <CalendarViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
+  if (view?.kind === "board") return <BoardViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
   return null;
 }
 

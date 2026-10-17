@@ -51,3 +51,11 @@ test("the tasks board page renders its demo, and its dashboard embed", () => {
   expect(board).toContain("Tasks");
   expect(html).toContain('<section aria-label="tasks_home">');
 });
+
+test("a dashboard whose entity can be grouped offers to add a board, once", () => {
+  const html = renderToStaticMarkup(<App registry={mockRegistry} roots={["training", "tasks_home"]} />);
+  expect(html).toContain(">Add a board for workout_set</button>");
+  // tasks_home already embeds a board, and a board root has its own editor button.
+  expect(html).not.toContain("Add a board for task");
+  expect(html).toContain(">Edit board: tasks</button>");
+});
