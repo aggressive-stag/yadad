@@ -1,0 +1,27 @@
+[
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "label": "B",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": 5,
+        "label": "B",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "Bad-Id",
+        "label": "B",
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  }
+]

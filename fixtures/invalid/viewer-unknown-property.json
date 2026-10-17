@@ -1,0 +1,31 @@
+[
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "role",
+        "label": "Role",
+        "type": "select",
+        "options": {
+          "source": "static",
+          "values": [
+            "viewer",
+            "editor",
+            "owner"
+          ]
+        },
+        "default": "viewer"
+      },
+      {
+        "id": "beta",
+        "label": "Beta",
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "color": "x"
+  }
+]

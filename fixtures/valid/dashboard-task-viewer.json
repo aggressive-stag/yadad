@@ -1,0 +1,46 @@
+{
+  "kind": "dashboard",
+  "specVersion": 5,
+  "id": "task_viewer_dashboard",
+  "title": "Tasks",
+  "revision": 1,
+  "tabs": [
+    {
+      "id": "everyone",
+      "title": "Everyone",
+      "items": [
+        { "id": "board", "x": 0, "y": 0, "w": 8, "h": 8, "widget": "view", "view": "task_viewer_board" },
+        {
+          "id": "open_count",
+          "x": 8,
+          "y": 0,
+          "w": 4,
+          "h": 2,
+          "widget": "count",
+          "label": "Open tasks",
+          "view": "task_history",
+          "filter": { "op": "neq", "field": "status", "value": "done" },
+          "visibleWhen": { "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] }
+        },
+        {
+          "id": "total",
+          "x": 8,
+          "y": 2,
+          "w": 4,
+          "h": 2,
+          "widget": "stat",
+          "label": "Tasks",
+          "view": "task_history",
+          "measure": { "op": "count" },
+          "visibleWhen": { "op": "viewerIn", "fact": "beta", "values": [true] }
+        }
+      ]
+    },
+    {
+      "id": "owners",
+      "title": "Owners",
+      "visibleWhen": { "op": "viewerIn", "fact": "role", "values": ["owner"] },
+      "items": [{ "id": "table", "x": 0, "y": 0, "w": 12, "h": 8, "widget": "view", "view": "task_viewer_table" }]
+    }
+  ]
+}

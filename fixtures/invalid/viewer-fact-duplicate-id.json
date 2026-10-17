@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "beta",
+        "label": "B",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "beta",
+        "label": "C",
+        "type": "boolean",
+        "default": true
+      }
+    ]
+  }
+]

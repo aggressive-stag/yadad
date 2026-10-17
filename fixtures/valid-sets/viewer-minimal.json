@@ -1,0 +1,19 @@
+[
+  { "kind": "entity", "specVersion": 5, "id": "note", "revision": 1, "fields": [{ "id": "title", "type": "text", "label": "Title" }, { "id": "secret", "type": "text", "label": "Secret" }] },
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [{ "id": "beta", "label": "Beta features", "type": "boolean", "default": false }]
+  },
+  {
+    "kind": "form",
+    "specVersion": 5,
+    "id": "note_form",
+    "entity": "note",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [{ "id": "main", "items": [{ "field": "title" }, { "field": "secret", "visibleWhen": { "op": "viewerIn", "fact": "beta", "values": [true] } }] }]
+  }
+]

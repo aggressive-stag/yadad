@@ -1,0 +1,83 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 5,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "status",
+        "type": "select",
+        "label": "Status",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "role",
+        "label": "Role",
+        "type": "select",
+        "options": {
+          "source": "static",
+          "values": [
+            "viewer",
+            "editor",
+            "owner"
+          ]
+        },
+        "default": "viewer"
+      },
+      {
+        "id": "beta",
+        "label": "Beta",
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  },
+  {
+    "kind": "board",
+    "specVersion": 5,
+    "id": "brd",
+    "revision": 1,
+    "entity": "e",
+    "dataSource": "default",
+    "groupBy": [
+      {
+        "field": "status"
+      }
+    ],
+    "filter": {
+      "op": "not",
+      "condition": {
+        "op": "viewerIn",
+        "fact": "role",
+        "values": [
+          "owner"
+        ]
+      }
+    }
+  }
+]

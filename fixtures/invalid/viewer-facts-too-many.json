@@ -1,0 +1,64 @@
+[
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "f0",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f1",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f2",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f3",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f4",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f5",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f6",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f7",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "f8",
+        "label": "F",
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  }
+]

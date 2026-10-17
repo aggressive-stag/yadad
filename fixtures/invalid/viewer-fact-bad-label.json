@@ -1,0 +1,21 @@
+[
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "a",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "b",
+        "label": 5,
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  }
+]

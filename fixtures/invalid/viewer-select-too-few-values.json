@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "a",
+        "label": "A",
+        "type": "select",
+        "options": {
+          "source": "static",
+          "values": [
+            "x"
+          ]
+        },
+        "default": "x"
+      }
+    ]
+  }
+]

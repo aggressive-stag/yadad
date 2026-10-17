@@ -1,0 +1,17 @@
+{
+  "kind": "calendar",
+  "specVersion": 5,
+  "id": "task_viewer_calendar",
+  "entity": "task",
+  "revision": 1,
+  "dataSource": "default",
+  "dateField": "due_date",
+  "titleField": "title",
+  "editable": true,
+  "editableWhen": { "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] },
+  "rowAction": {
+    "open": "task_history",
+    "bind": [{ "field": "status", "to": "status" }],
+    "visibleWhen": { "op": "not", "condition": { "op": "viewerIn", "fact": "role", "values": ["viewer"] } }
+  }
+}

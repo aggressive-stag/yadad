@@ -1,0 +1,27 @@
+[
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "a",
+        "label": "A",
+        "type": "boolean"
+      },
+      {
+        "id": "b",
+        "label": "B",
+        "type": "select",
+        "options": {
+          "source": "static",
+          "values": [
+            "x",
+            "y"
+          ]
+        }
+      }
+    ]
+  }
+]

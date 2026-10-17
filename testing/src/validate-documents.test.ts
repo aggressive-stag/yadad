@@ -108,7 +108,7 @@ const expected: Record<string, Picked[]> = {
   "dashboard-stat-calendar.json": [{ path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["t"] }],
   "duplicate-id.json": [{ path: "/id", code: "duplicate-id", document: "thing" }],
   "structural-unknown-kind.json": [
-    { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "board", "dashboard"] },
+    { path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] },
   ],
   "board-empty-group-by.json": [{ path: "/groupBy", code: "invalid-value", document: "brd" }],
   "board-too-many-group-by.json": [{ path: "/groupBy", code: "invalid-value", document: "brd" }],
@@ -129,6 +129,170 @@ const expected: Record<string, Picked[]> = {
   "board-title-field-wrong-type.json": [{ path: "/titleField", code: "invalid-value", document: "brd", allowed: ["name"] }],
   "board-missing-title-field.json": [{ path: "/titleField", code: "required", document: "brd", allowed: [] }],
   "board-card-field-repeats-title.json": [{ path: "/cardFields/0", code: "invalid-value", document: "brd", allowed: ["status"] }],
+  "viewer-bad-header-values.json": [
+    { path: "/specVersion", code: "type", document: "Bad" },
+    { path: "/id", code: "invalid-value", document: "Bad" },
+    { path: "/revision", code: "invalid-value", document: "Bad" },
+  ],
+  "viewer-boolean-with-options.json": [
+    { path: "/facts/0/options", code: "unknown-property", document: "viewer" },
+  ],
+  "viewer-clear-when-hidden.json": [
+    { path: "/sections/0/items/0/clearWhenHidden", code: "invalid-value", document: "f" },
+  ],
+  "viewer-default-missing.json": [
+    { path: "/facts/0/default", code: "required", document: "viewer" },
+    { path: "/facts/1/default", code: "required", document: "viewer" },
+  ],
+  "viewer-default-not-in-values.json": [
+    { path: "/facts/0/default", code: "invalid-value", document: "viewer", allowed: ["x","y"] },
+  ],
+  "viewer-default-wrong-type.json": [
+    { path: "/facts/0/default", code: "type", document: "viewer" },
+    { path: "/facts/1/default", code: "type", document: "viewer" },
+  ],
+  "viewer-editable-when-not-editable.json": [
+    { path: "/columns/0/editableWhen", code: "invalid-value", document: "t" },
+    { path: "/columns/1/editableWhen", code: "invalid-value", document: "t" },
+    { path: "/editableWhen", code: "invalid-value", document: "cal" },
+    { path: "/editableWhen", code: "invalid-value", document: "brd" },
+  ],
+  "viewer-fact-bad-id.json": [
+    { path: "/facts/0/id", code: "required", document: "viewer" },
+    { path: "/facts/1/id", code: "type", document: "viewer" },
+    { path: "/facts/2/id", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-fact-bad-label.json": [
+    { path: "/facts/0/label", code: "required", document: "viewer" },
+    { path: "/facts/1/label", code: "type", document: "viewer" },
+  ],
+  "viewer-fact-bad-type.json": [
+    { path: "/facts/0/type", code: "required", document: "viewer" },
+    { path: "/facts/1/type", code: "invalid-value", document: "viewer", allowed: ["select","boolean"] },
+  ],
+  "viewer-fact-duplicate-id.json": [
+    { path: "/facts/1/id", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-fact-not-object.json": [
+    { path: "/facts/0", code: "type", document: "viewer" },
+  ],
+  "viewer-fact-unknown-property.json": [
+    { path: "/facts/0/color", code: "unknown-property", document: "viewer" },
+  ],
+  "viewer-facts-empty.json": [
+    { path: "/facts", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-facts-not-array.json": [
+    { path: "/facts", code: "type", document: "viewer" },
+  ],
+  "viewer-facts-too-many.json": [
+    { path: "/facts", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-filter-board.json": [
+    { path: "/filter/condition", code: "invalid-value", document: "brd" },
+  ],
+  "viewer-filter-calendar.json": [
+    { path: "/filter/conditions/1", code: "invalid-value", document: "cal" },
+  ],
+  "viewer-filter-table.json": [
+    { path: "/filter", code: "invalid-value", document: "t" },
+  ],
+  "viewer-filter-widgets.json": [
+    { path: "/tabs/0/items/0/filter", code: "invalid-value", document: "dash" },
+    { path: "/tabs/0/items/1/filter", code: "invalid-value", document: "dash" },
+  ],
+  "viewer-leaf-bad-fact.json": [
+    { path: "/sections/0/items/0/visibleWhen/conditions/0/fact", code: "required", document: "f" },
+    { path: "/sections/0/items/0/visibleWhen/conditions/1/fact", code: "type", document: "f" },
+    { path: "/sections/0/items/0/visibleWhen/conditions/2/fact", code: "invalid-value", document: "f" },
+  ],
+  "viewer-leaf-bad-op.json": [
+    { path: "/sections/0/items/0/visibleWhen/op", code: "invalid-value", document: "f", allowed: ["eq","neq","gt","gte","lt","lte","in","contains","empty","notEmpty","and","or","not","viewerIn"] },
+  ],
+  "viewer-leaf-bad-value-entries.json": [
+    { path: "/sections/0/items/0/visibleWhen/conditions/0/values/0", code: "type", document: "f" },
+    { path: "/sections/0/items/0/visibleWhen/conditions/1/values/1", code: "invalid-value", document: "f" },
+  ],
+  "viewer-leaf-bad-values.json": [
+    { path: "/sections/0/items/0/visibleWhen/conditions/0/values", code: "required", document: "f" },
+    { path: "/sections/0/items/0/visibleWhen/conditions/1/values", code: "type", document: "f" },
+    { path: "/sections/0/items/0/visibleWhen/conditions/2/values", code: "invalid-value", document: "f" },
+    { path: "/sections/0/items/0/visibleWhen/conditions/3/values", code: "invalid-value", document: "f" },
+  ],
+  "viewer-leaf-extra-keys.json": [
+    { path: "/sections/0/items/0/visibleWhen/field", code: "unknown-property", document: "f", allowed: ["op","fact","values"] },
+    { path: "/sections/0/items/0/visibleWhen/value", code: "unknown-property", document: "f", allowed: ["op","fact","values"] },
+    { path: "/sections/0/items/0/visibleWhen/conditions", code: "unknown-property", document: "f", allowed: ["op","fact","values"] },
+  ],
+  "viewer-missing-properties.json": [
+    { path: "/id", code: "required", document: undefined },
+    { path: "/revision", code: "required", document: undefined },
+    { path: "/facts", code: "required", document: undefined },
+  ],
+  "viewer-no-viewer-document.json": [
+    { path: "/sections/0/items/0/visibleWhen/fact", code: "unknown-reference", document: "f", allowed: [] },
+  ],
+  "viewer-record-leaf-board.json": [
+    { path: "/rowAction/visibleWhen", code: "invalid-value", document: "brd" },
+    { path: "/editableWhen", code: "invalid-value", document: "brd" },
+  ],
+  "viewer-record-leaf-calendar.json": [
+    { path: "/rowAction/visibleWhen", code: "invalid-value", document: "cal" },
+    { path: "/editableWhen", code: "invalid-value", document: "cal" },
+  ],
+  "viewer-record-leaf-dashboard.json": [
+    { path: "/tabs/0/visibleWhen", code: "invalid-value", document: "dash" },
+    { path: "/tabs/0/items/0/visibleWhen/condition", code: "invalid-value", document: "dash" },
+  ],
+  "viewer-record-leaf-table.json": [
+    { path: "/rowAction/visibleWhen", code: "invalid-value", document: "t" },
+    { path: "/columns/0/visibleWhen", code: "invalid-value", document: "t" },
+    { path: "/columns/0/editableWhen/conditions/1", code: "invalid-value", document: "t" },
+  ],
+  "viewer-second-document.json": [
+    { path: "", code: "invalid-value", document: "viewer_two" },
+  ],
+  "viewer-select-blank-value.json": [
+    { path: "/facts/0/options/values/1", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-select-duplicate-value.json": [
+    { path: "/facts/0/options/values/2", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-select-missing-options.json": [
+    { path: "/facts/0/options", code: "required", document: "viewer" },
+  ],
+  "viewer-select-too-few-values.json": [
+    { path: "/facts/0/options/values", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-select-too-many-values.json": [
+    { path: "/facts/0/options/values", code: "invalid-value", document: "viewer" },
+  ],
+  "viewer-unknown-fact.json": [
+    { path: "/sections/0/items/0/visibleWhen/fact", code: "unknown-reference", document: "f", allowed: ["role","beta"] },
+    { path: "/sections/0/items/0/requiredWhen/fact", code: "unknown-reference", document: "f", allowed: ["role","beta"] },
+    { path: "/columns/0/visibleWhen/fact", code: "unknown-reference", document: "t", allowed: ["role","beta"] },
+    { path: "/editableWhen/fact", code: "unknown-reference", document: "cal", allowed: ["role","beta"] },
+    { path: "/tabs/0/visibleWhen/fact", code: "unknown-reference", document: "dash", allowed: ["role","beta"] },
+    { path: "/tabs/0/items/0/visibleWhen/fact", code: "unknown-reference", document: "dash", allowed: ["role","beta"] },
+  ],
+  "viewer-unknown-property.json": [
+    { path: "/color", code: "unknown-property", document: "viewer" },
+  ],
+  "viewer-value-not-in-list.json": [
+    { path: "/sections/0/items/0/visibleWhen/values/1", code: "invalid-value", document: "f", allowed: ["viewer","editor","owner"] },
+  ],
+  "viewer-value-wrong-type.json": [
+    { path: "/sections/0/items/0/visibleWhen/conditions/0/values/0", code: "type", document: "f" },
+    { path: "/sections/0/items/0/visibleWhen/conditions/1/values/0", code: "type", document: "f" },
+  ],
+};
+
+const validSetDir = new URL("../../fixtures/valid-sets/", import.meta.url);
+
+/** The exact warnings (and no errors) each whole-set valid fixture must yield. */
+const expectedSetWarnings: Record<string, { path: string; code: string; document: string | undefined }[]> = {
+  "viewer-minimal.json": [],
+  "viewer-unread-fact.json": [{ path: "/facts/1", code: "empty", document: "viewer" }],
 };
 
 const validFiles = readdirSync(validDir).filter((f) => f.endsWith(".json")).sort();
@@ -155,4 +319,16 @@ test("fixtures/invalid contains exactly the expected files", () => {
 test.each(invalidFiles)("fixtures/invalid/%s yields exactly its expected errors", (file) => {
   const set = JSON.parse(readFileSync(new URL(file, invalidDir), "utf8"));
   expect(problems(set)).toEqual(expected[file]);
+});
+
+const validSetFiles = readdirSync(validSetDir).filter((f) => f.endsWith(".json")).sort();
+
+test("fixtures/valid-sets contains exactly the expected files", () => {
+  expect(validSetFiles).toEqual(Object.keys(expectedSetWarnings).sort());
+});
+
+test.each(validSetFiles)("fixtures/valid-sets/%s validates with exactly its expected warnings", (file) => {
+  const result = validateDocuments(JSON.parse(readFileSync(new URL(file, validSetDir), "utf8")));
+  expect(result.ok).toBe(true);
+  expect(result.warnings.map((w) => ({ path: w.path, code: w.code, document: w.document }))).toEqual(expectedSetWarnings[file]);
 });

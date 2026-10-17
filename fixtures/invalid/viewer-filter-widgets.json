@@ -1,0 +1,124 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 5,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "status",
+        "type": "select",
+        "label": "Status",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "viewer",
+    "specVersion": 5,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "role",
+        "label": "Role",
+        "type": "select",
+        "options": {
+          "source": "static",
+          "values": [
+            "viewer",
+            "editor",
+            "owner"
+          ]
+        },
+        "default": "viewer"
+      },
+      {
+        "id": "beta",
+        "label": "Beta",
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 5,
+    "id": "t",
+    "revision": 1,
+    "entity": "e",
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ]
+  },
+  {
+    "kind": "dashboard",
+    "specVersion": 5,
+    "id": "dash",
+    "revision": 1,
+    "tabs": [
+      {
+        "id": "tab",
+        "title": "Tab",
+        "items": [
+          {
+            "id": "c",
+            "x": 0,
+            "y": 0,
+            "w": 4,
+            "h": 2,
+            "widget": "count",
+            "label": "C",
+            "view": "t",
+            "filter": {
+              "op": "viewerIn",
+              "fact": "role",
+              "values": [
+                "owner"
+              ]
+            }
+          },
+          {
+            "id": "s",
+            "x": 4,
+            "y": 0,
+            "w": 4,
+            "h": 2,
+            "widget": "stat",
+            "label": "S",
+            "view": "t",
+            "measure": {
+              "op": "count"
+            },
+            "filter": {
+              "op": "viewerIn",
+              "fact": "role",
+              "values": [
+                "owner"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,24 @@
+{
+  "kind": "table",
+  "specVersion": 5,
+  "id": "task_viewer_table",
+  "entity": "task",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [
+    { "field": "title", "editable": true, "editableWhen": { "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] } },
+    { "field": "status", "editable": true },
+    { "field": "assignee", "visibleWhen": { "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] } },
+    {
+      "field": "priority",
+      "visibleWhen": { "op": "viewerIn", "fact": "beta", "values": [true] },
+      "editable": true,
+      "editableWhen": { "op": "and", "conditions": [{ "op": "viewerIn", "fact": "beta", "values": [true] }, { "op": "viewerIn", "fact": "role", "values": ["owner"] }] }
+    }
+  ],
+  "rowAction": {
+    "open": "task_history",
+    "bind": [{ "field": "status", "to": "status" }],
+    "visibleWhen": { "op": "or", "conditions": [{ "op": "viewerIn", "fact": "role", "values": ["editor"] }, { "op": "viewerIn", "fact": "beta", "values": [true] }] }
+  }
+}

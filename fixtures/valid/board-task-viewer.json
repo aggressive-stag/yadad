@@ -1,0 +1,16 @@
+{
+  "kind": "board",
+  "specVersion": 5,
+  "id": "task_viewer_board",
+  "entity": "task",
+  "revision": 1,
+  "dataSource": "default",
+  "groupBy": [{ "field": "status" }],
+  "editable": true,
+  "editableWhen": { "op": "viewerIn", "fact": "role", "values": ["owner"] },
+  "rowAction": {
+    "open": "task_history",
+    "bind": [{ "field": "status", "to": "status" }],
+    "visibleWhen": { "op": "viewerIn", "fact": "beta", "values": [true] }
+  }
+}

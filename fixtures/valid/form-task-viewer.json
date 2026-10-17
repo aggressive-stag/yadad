@@ -1,0 +1,34 @@
+{
+  "kind": "form",
+  "specVersion": 5,
+  "id": "task_viewer_form",
+  "entity": "task",
+  "revision": 1,
+  "dataSource": "default",
+  "sections": [
+    {
+      "id": "main",
+      "title": "Task",
+      "items": [
+        { "field": "title" },
+        {
+          "field": "status",
+          "visibleWhen": {
+            "op": "and",
+            "conditions": [
+              { "op": "notEmpty", "field": "title" },
+              { "op": "viewerIn", "fact": "role", "values": ["owner"] }
+            ]
+          }
+        },
+        { "field": "assignee", "visibleWhen": { "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] } },
+        { "field": "priority", "requiredWhen": { "op": "viewerIn", "fact": "beta", "values": [true] } },
+        {
+          "field": "due_date",
+          "visibleWhen": { "op": "not", "condition": { "op": "viewerIn", "fact": "role", "values": ["viewer"] } }
+        },
+        { "field": "archived", "visibleWhen": { "op": "eq", "field": "status", "value": "done" }, "clearWhenHidden": true }
+      ]
+    }
+  ]
+}
