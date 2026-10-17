@@ -1,5 +1,12 @@
 # @yadad/testing
 
+## 0.6.2
+
+### Patch Changes
+
+- b69d9e0: `checkViewStates` reports `mode-ignored` and `anchor-ignored` when a calendar state is in one mode or on one range but the rendered calendar shows another.
+- 347d075: `checkViewStates` reports `group-by-ignored` when a board state is grouped by one field but the rendered board uses another.
+
 ## 0.6.1
 
 ### Patch Changes
