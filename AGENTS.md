@@ -4,7 +4,7 @@ Rules for any AI coding agent working in this repository. Read `ARCHITECTURE.md`
 
 ## Setup and commands
 
-Use the pnpm version pinned in `packageManager` (plain `pnpm` works when it is on your `PATH`; otherwise `corepack pnpm`). Node 22.12 or newer.
+Use the pnpm version pinned in `packageManager` (plain `pnpm` works when it is on your `PATH`; otherwise `corepack pnpm`). Node 22.18 or newer.
 
 ```sh
 pnpm install

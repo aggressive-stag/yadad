@@ -1,4 +1,3 @@
-/* global URL, console, process */
 // Prints everything a yadad document can contain, from describeContract() in
 // @yadad/core: document kinds and their properties, field types and their
 // type-specific properties, condition ops and their exact shapes, widget
@@ -9,6 +8,7 @@
 // Runs against the TypeScript source with a small resolution hook, so it
 // works from a fresh clone after `pnpm install` with no build step.
 import { registerHooks } from "node:module";
+import type { describeContract } from "../packages/core/src/index.ts";
 import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, isAbsolute, join } from "node:path";
@@ -20,7 +20,7 @@ const coreUrl = pathToFileURL(coreSrc).href;
 
 // Inside @yadad/core source, `./x.js` points at `./x.ts`.
 registerHooks({
-  resolve(specifier, context, nextResolve) {
+  resolve(specifier: string, context, nextResolve) {
     let spec = specifier;
     if (spec.startsWith("file://")) spec = fileURLToPath(spec);
     if (spec.endsWith(".js")) {
@@ -39,17 +39,17 @@ registerHooks({
   },
 });
 
-const { describeContract } = await import(pathToFileURL(join(coreSrc, "index.js")).href);
-const contract = describeContract();
+const core = (await import(pathToFileURL(join(coreSrc, "index.js")).href)) as { describeContract: typeof describeContract };
+const contract = core.describeContract();
 
 if (process.argv.includes("--json")) {
   console.log(JSON.stringify(contract, null, 2));
   process.exit(0);
 }
 
-const prop = (p) => `${p.required ? "required " : "optional "} ${p.key} -- ${p.description}`;
+const prop = (p: { required: boolean; key: string; description: string }): string => `${p.required ? "required " : "optional "} ${p.key} -- ${p.description}`;
 
-const lines = [];
+const lines: string[] = [];
 lines.push(`yadad document contract (specVersion ${contract.specVersion})`);
 lines.push("");
 lines.push("ids must match " + contract.id.pattern + " -- " + contract.id.hint);
