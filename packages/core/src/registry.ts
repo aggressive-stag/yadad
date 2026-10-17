@@ -297,10 +297,15 @@ export interface BoardCard<N> {
 
 /** One column of a board: all records sharing one value of the grouping field. */
 export interface BoardColumn<N> {
-  /** The grouping field's raw value for this column (a select or boolean value, or a reference's target id). */
-  readonly value: string | boolean;
+  /** Stable column id: "v:<value>" for a value column, "empty" or "other". */
+  readonly id: string;
   /** Accessible heading for the column. */
   readonly label: string;
+  /** Cards in `cards` (the loaded cards). */
+  readonly count: number;
+  /** False for "other"; always true otherwise. */
+  readonly droppable: boolean;
+  /** All of the column's cards, in sort order. */
   readonly cards: readonly BoardCard<N>[];
 }
 
@@ -322,8 +327,9 @@ export interface BoardProps<N> {
   readonly label: string;
   /** The fields the viewer can group by; one entry means no switcher. */
   readonly groupChoices: readonly BoardGroupChoice[];
-  /** The field currently grouping the board. */
-  readonly groupedBy: string;
+  /** The choice in use. */
+  readonly groupField: string;
+  /** In display order; empty while columns are loading or failed. */
   readonly columns: readonly BoardColumn<N>[];
   /** Cards are being fetched; columns are still given. */
   readonly loading: boolean;
@@ -331,11 +337,11 @@ export interface BoardProps<N> {
   readonly notice?: N;
   /** For the component's live region; `seq` increases on every message so a repeated text is announced again. */
   readonly announcement?: { readonly seq: number; readonly text: string };
-  readonly onGroupChange: (field: string) => void;
+  readonly onGroupBy: (field: string) => void;
   /** Set only when the view has a rowAction. */
   readonly onOpenCard?: (recordId: string) => void;
   /** Set only when the view is editable. */
-  readonly onMove?: (recordId: string, value: string | boolean) => void;
+  readonly onMove?: (recordId: string, columnId: string) => void;
 }
 
 /**
