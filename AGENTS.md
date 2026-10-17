@@ -18,7 +18,7 @@ Read order: `ARCHITECTURE.md`, then this file, then your task card. (A maintaine
 
 1. Read your task card (the owner tells you where it is). It names the package, the files you may change, the fixtures that must pass, and "done when". Ignore the PR, CODEOWNERS, task-code and review ceremony in `docs/BUILD_PLAN.md` and `docs/TASKS.md`: it is stale.
 2. Read the `AGENTS.md` in the package you are changing.
-3. Run `pnpm describe-registry` (once it exists) to see which field types, options and widgets exist. Use only those.
+3. Run `pnpm describe-registry` to see which field types, options and widgets exist. Use only those.
 
 ## Hard rules
 
@@ -56,7 +56,7 @@ You land and release your own work. Nobody reviews or merges it for you, and fin
 
 ## CI gates (all must pass)
 
-typecheck → dependency-cruiser → unit tests + fixture validation → size-limit → API report diff → changeset present.
+typecheck → lint → dependency-cruiser → unit tests + fixture validation → changeset present. size-limit and the API report diff join once configured.
 
 ## When in doubt
 
