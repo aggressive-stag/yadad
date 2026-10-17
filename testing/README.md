@@ -48,16 +48,18 @@ You pass a `render` function that returns your renderer for the state, so the wi
 ```tsx
 // @vitest-environment jsdom
 import { checkViewStates, problems } from "@yadad/testing/state-checks";
+import type { CheckViewStatesOptions } from "@yadad/testing/state-checks";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import { documents, entities, set } from "./my-documents"; // validated documents; a DocumentSet for tables, calendars, boards, dashboards
 
-const render = (_state, { view, entity, registry, dataSources, drafts, now }) => {
+const render: CheckViewStatesOptions["render"] = (_state, { view, entity, registry, dataSources, drafts, now, viewer, omitViewer }) => {
+  const who = omitViewer ? {} : { viewer }; // a view that reads viewer facts: pass the state's viewer, or none on the "viewer not provided" state
   switch (view.kind) {
-    case "form": return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} {...(drafts ? { drafts } : {})} />;
-    case "table": return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} />;
-    case "calendar": return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} />;
-    case "board": return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} />;
-    case "dashboard": return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} />;
+    case "form": return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...(drafts ? { drafts } : {})} {...who} />;
+    case "table": return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...who} />;
+    case "calendar": return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...who} />;
+    case "board": return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...who} />;
+    case "dashboard": return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...who} />;
   }
 };
 
@@ -79,6 +81,11 @@ Checks per state, each a named problem:
 | `required-marker` | a field's required marker (`required`, `aria-required` or a `*` in its label) disagrees with `required` and `requiredWhen` |
 | `accessible-name` | a button, link, input or other interactive element has no accessible name (axe) |
 | `error-message` | a source that fails to load shows no message |
+| `group-by-ignored` | a board state is grouped by one field but the rendered board uses another |
+| `mode-ignored` / `anchor-ignored` | a calendar state is in one mode, or on one month or week, but the rendered calendar shows another |
+| `viewer-visibility` | a dashboard tab or table column is shown, or missing, against what the state's viewer may see |
+| `editable-offered` | an inline edit, move or open handler is offered where the viewer condition is false or the record is locked |
+| `editable-missing` | the reverse: it is withheld where the viewer may use it |
 
 `problems(results)` flattens the results into one line per problem, `"<state label> [<state id>]: <check>: <message>"`, so a failing `expect(problems(...)).toEqual([])` lists every failing state. `skip: ["accessible-name"]` leaves a check out. `limit` caps the data states (24 by default); lower `manyRecords` to keep the "many records" states fast.
 
@@ -95,6 +102,6 @@ describeRegistryContract(myRegistry);
 
 - `registryContractChecks(registry, samples?)` returns the checks as `{ name, run() }` objects, for use outside Vitest. Run them one at a time.
 - `defaultSamples` is the fixture per field type; pass your own `FieldSamples` to override them.
-- The `layout.Calendar` key is optional, so the calendar checks only run when the registry has a calendar; the mock registry's `MockCalendar` passes them.
+- The `layout.Calendar` and `layout.Board` keys are optional, so their checks only run when the registry has them; the mock registry's calendar and board (a plain board with a "Move to…" action and no drag) pass them.
 
 See the [repo README](../README.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).
