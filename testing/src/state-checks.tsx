@@ -4,8 +4,8 @@
 // `render` function that wires its own.
 
 import { act, render as mount } from "@testing-library/react";
-import type { DataAdapter, Document, EntityDocument, FormView, Registry, ResolvedViewer, ViewDocument } from "@yadad/core";
-import { createDraftStore, evaluateFormRules, viewStates } from "@yadad/runtime";
+import type { BoardProps, CalendarProps, DataAdapter, Document, EntityDocument, FormView, Registry, ResolvedViewer, TableProps, TabsProps, ViewDocument } from "@yadad/core";
+import { canUpdate, columnEditable, createDraftStore, evaluateFormRules, rowActionVisible, viewEditable, viewStates, visibleColumns, visibleTabs } from "@yadad/runtime";
 import type { DraftStore, ViewStatesOptions } from "@yadad/runtime";
 import axe from "axe-core";
 import type { ReactNode } from "react";
@@ -23,7 +23,10 @@ export type StateCheck =
   | "field-missing"
   | "required-marker"
   | "accessible-name"
-  | "error-message";
+  | "error-message"
+  | "viewer-visibility"
+  | "editable-offered"
+  | "editable-missing";
 
 export interface StateProblem {
   readonly check: StateCheck;
@@ -155,6 +158,8 @@ async function checkState(
 ): Promise<StateProblem[]> {
   const found: StateProblem[] = [];
   const adapter = state.adapter();
+  const seen: Seen = { tables: [], tabs: [], calendars: [], boards: [] };
+  const observed = observe(registry, seen);
   const dataSources = new Map<string, DataAdapter>([...keys].map((k) => [k, adapter]));
   const drafts = draftsFor(state, entity);
   const logged: string[] = [];
@@ -165,7 +170,7 @@ async function checkState(
   try {
     let container: HTMLElement;
     try {
-      const element = options.render(state, { view, entity, documents, registry, adapter, dataSources, drafts, now: options.now, viewer: state.viewer, omitViewer: state.omitViewer === true });
+      const element = options.render(state, { view, entity, documents, registry: observed, adapter, dataSources, drafts, now: options.now, viewer: state.viewer, omitViewer: state.omitViewer === true });
       const mounted = mount(element);
       unmount = mounted.unmount;
       container = mounted.container;
@@ -183,6 +188,7 @@ async function checkState(
     }
     for (const line of logged) found.push({ check: "console-error", message: line });
     if (view.kind === "form" && entity) found.push(...formChecks(container, view, entity, state));
+    found.push(...viewerChecks(container, view, state, seen));
     if (!skip.has("accessible-name")) found.push(...(await nameChecks(container)));
     if (!skip.has("error-message") && state.source === "error") found.push(...errorChecks(container, adapter));
   } finally {
@@ -226,6 +232,8 @@ async function openTab(container: HTMLElement, view: ViewDocument, state: Source
   if (view.kind !== "dashboard" || state.render.kind !== "dashboard") return;
   const tabId = state.render.tab;
   if (view.tabs[0]?.id === tabId) return;
+  // A tab this viewer may not see is not listed, so there is nothing to open: the check below sees that it is absent.
+  if (!visibleTabs(view, state.viewer).some((t) => t.id === tabId)) return;
   const title = view.tabs.find((t) => t.id === tabId)?.title;
   const button = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((b) => b.textContent?.trim() === title);
   if (!button) throw new Error(`no tab named "${title ?? tabId}" to open`);
@@ -254,7 +262,7 @@ function formChecks(container: HTMLElement, view: FormView, entity: EntityDocume
   const out: StateProblem[] = [];
   if (state.render.kind !== "form") return out;
   const items = view.sections.flatMap((s) => s.items);
-  const rules = evaluateFormRules(view, state.render.values);
+  const rules = evaluateFormRules(view, state.render.values, state.viewer);
   const shown = shownFields(container, entity, items.map((i) => i.field));
   for (const item of items) {
     const field = entity.fields.find((f) => f.id === item.field);
@@ -284,4 +292,99 @@ function errorChecks(container: HTMLElement, adapter: StateAdapter): StateProble
   const text = container.textContent ?? "";
   if (adapter.options.message !== "" && text.includes(adapter.options.message)) return [];
   return [{ check: "error-message", message: `the data source failed ("${adapter.options.message}") but no message is visible` }];
+}
+
+/** What the registry's layout components were given, in the order they rendered. */
+interface Seen {
+  readonly tables: TableProps<ReactNode>[];
+  readonly tabs: TabsProps<ReactNode>[];
+  readonly calendars: CalendarProps<ReactNode>[];
+  readonly boards: BoardProps<ReactNode>[];
+}
+
+/** The registry with its layout components wrapped to record their props. It knows no component. */
+function observe(registry: Registry<ReactNode>, seen: Seen): Registry<ReactNode> {
+  const layout = registry.layout;
+  const { Table, Tabs, Calendar, Board } = layout;
+  return {
+    ...registry,
+    layout: {
+      ...layout,
+      Table: (props) => (seen.tables.push(props), Table(props)),
+      Tabs: (props) => (seen.tabs.push(props), Tabs(props)),
+      ...(Calendar ? { Calendar: (props: CalendarProps<ReactNode>) => (seen.calendars.push(props), Calendar(props)) } : {}),
+      ...(Board ? { Board: (props: BoardProps<ReactNode>) => (seen.boards.push(props), Board(props)) } : {}),
+    },
+  };
+}
+
+const buttonsNamed = (container: HTMLElement, match: (text: string) => boolean): number => [...container.querySelectorAll("button")].filter((b) => match(b.textContent?.trim() ?? "")).length;
+
+const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x) => b.includes(x));
+
+/**
+ * What the viewer may see and do, against what the registry was given (RFC 0006):
+ * tabs and table columns shown only when allowed; an inline editor, a move or an
+ * open handler offered only when the viewer condition holds and the record is
+ * not locked, and offered whenever both do.
+ */
+function viewerChecks(container: HTMLElement, view: ViewDocument, state: SourceViewState, seen: Seen): StateProblem[] {
+  const out: StateProblem[] = [];
+  const viewer = state.viewer;
+  const refusedId = (id: string): boolean => {
+    const render = state.render;
+    const record = render.kind === "table" || render.kind === "calendar" || render.kind === "board" ? render.records.find((r) => r.id === id) : undefined;
+    return record !== undefined && !canUpdate(record);
+  };
+  if (view.kind === "dashboard") {
+    const tabs = seen.tabs.at(-1)?.tabs.map((t) => t.id);
+    const expected = visibleTabs(view, viewer).map((t) => t.id);
+    if (tabs && !same(tabs, expected)) out.push({ check: "viewer-visibility", message: `tabs shown are [${tabs.join(", ")}] but this viewer may see [${expected.join(", ")}]` });
+  }
+  if (view.kind === "table") {
+    const table = seen.tables.at(-1);
+    const shown = visibleColumns(view, viewer);
+    // a trailing "_actions" column is the renderer's own (edit and open buttons), not a document column
+    const headers = table?.columns.map((c) => c.id).filter((id) => !id.startsWith("_")) ?? [];
+    if (table && shown.length > 0 && !same(headers, shown.map((c) => c.field))) {
+      out.push({ check: "viewer-visibility", message: `columns shown are [${headers.join(", ")}] but this viewer may see [${shown.map((c) => c.field).join(", ")}]` });
+    }
+    if (table && shown.length === 0) out.push({ check: "viewer-visibility", message: "a table is rendered although this viewer may see none of its columns" });
+    if (table) {
+      const anyColumn = shown.some((c) => columnEditable(c, viewer));
+      const expected = anyColumn ? table.rows.filter((r) => !refusedId(r.id)).length : 0;
+      const edits = buttonsNamed(container, (t) => t === "Edit");
+      if (edits > expected) out.push({ check: "editable-offered", message: `${edits} rows offer an inline edit but this viewer or the record may edit in ${expected}` });
+      if (edits < expected) out.push({ check: "editable-missing", message: `${edits} rows offer an inline edit but ${expected} may be edited` });
+      if (view.rowAction) {
+        const opens = buttonsNamed(container, (t) => t.startsWith("Open "));
+        const want = rowActionVisible(view.rowAction, viewer) ? table.rows.length : 0;
+        if (opens > want) out.push({ check: "editable-offered", message: `${opens} rows open another view but this viewer may not` });
+        if (opens < want) out.push({ check: "editable-missing", message: `${opens} of ${want} rows open another view although this viewer may` });
+      }
+    }
+  }
+  if (view.kind === "calendar" || view.kind === "board") {
+    const editable = viewEditable(view, viewer);
+    const calendar = seen.calendars.at(-1);
+    const board = seen.boards.at(-1);
+    const items: readonly { readonly id: string; readonly movable: boolean }[] = calendar ? calendar.days.flatMap((d) => d.entries) : board ? board.columns.flatMap((c) => c.cards) : [];
+    const onMove = calendar ? calendar.onMove : board?.onMove;
+    const onOpen = calendar ? calendar.onOpenEntry : board?.onOpenCard;
+    if (calendar || board) {
+      if (!editable && onMove) out.push({ check: "editable-offered", message: "onMove is passed but this viewer may not move" });
+      if (editable && !onMove) out.push({ check: "editable-missing", message: "onMove is not passed although this viewer may move" });
+      for (const item of items) {
+        const expected = editable && !refusedId(item.id);
+        if (item.movable && !expected) out.push({ check: "editable-offered", message: `"${item.id}" is movable but ${editable ? "the record is locked" : "this viewer may not move"}` });
+        if (!item.movable && expected) out.push({ check: "editable-missing", message: `"${item.id}" is not movable although it may be moved` });
+      }
+      if (view.rowAction) {
+        const want = rowActionVisible(view.rowAction, viewer);
+        if (want && !onOpen) out.push({ check: "editable-missing", message: "entries do not open another view although this viewer may" });
+        if (!want && onOpen) out.push({ check: "editable-offered", message: "entries open another view but this viewer may not" });
+      }
+    }
+  }
+  return out;
 }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Document, EntityDocument, ViewDocument } from "@yadad/core";
+import type { Document, EntityDocument, ViewDocument, ViewerDocument } from "@yadad/core";
 import { validateDocument } from "@yadad/core";
 import { mockRegistry } from "@yadad/testing";
 import { checkViewStates, problems } from "@yadad/testing/state-checks";
@@ -28,21 +28,23 @@ const documents: Document[] = readdirSync(dir)
 
 const entities = new Map(documents.filter((d): d is EntityDocument => d.kind === "entity").map((d) => [d.id, d]));
 const views = new Map(documents.filter((d): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer").map((d) => [d.id, d]));
-const set: DocumentSet = { entities, views };
+const viewerDocument = documents.find((d): d is ViewerDocument => d.kind === "viewer");
+const set: DocumentSet = { entities, views, ...(viewerDocument ? { viewer: viewerDocument } : {}) };
 
 /** The one-line wiring per view kind: this is what a host app writes. */
-const render: CheckViewStatesOptions["render"] = (_state, { view, entity, registry, dataSources, drafts, now }) => {
+const render: CheckViewStatesOptions["render"] = (_state, { view, entity, registry, dataSources, drafts, now, viewer, omitViewer }) => {
+  const v = omitViewer ? {} : { viewer };
   switch (view.kind) {
     case "form":
-      return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} {...(drafts ? { drafts } : {})} />;
+      return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...(drafts ? { drafts } : {})} {...v} />;
     case "table":
-      return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} />;
+      return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...v} />;
     case "calendar":
-      return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} />;
+      return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...v} />;
     case "board":
-      return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} />;
+      return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...v} />;
     case "dashboard":
-      return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} />;
+      return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...v} />;
   }
 };
 
