@@ -56,6 +56,14 @@ module.exports = {
       ["core", "runtime", "editor"],
       "editor imports core and runtime only; it asks the registry about components.",
     ),
+    {
+      name: "testing-imports-core-runtime-only",
+      comment:
+        "testing imports core and runtime only. The renderer's and editor's tests import testing, so testing importing them would be a cycle.",
+      severity: "error",
+      from: { path: "^testing/" },
+      to: { path: "^(packages/(?!(core|runtime)/)|apps/|@yadad/(?!(core|runtime|testing)(/|$)))" },
+    },
     ...direction("theme-imports-nothing", "theme", ["theme"], "theme imports nothing from the workspace."),
     {
       name: "no-react-in-core-or-runtime",

@@ -27,6 +27,7 @@ const EXPECTED = [
   ["renderer-imports-core-runtime-only-in-tests", "packages/renderer/src/index.test.ts", "packages/theme/src/index.ts"],
   ["editor-imports-core-runtime-only-in-tests", "packages/editor/src/index.test.ts", "packages/theme/src/index.ts"],
   ["theme-imports-nothing-in-tests", "packages/theme/src/index.test.ts", "packages/core/src/index.ts"],
+  ["testing-imports-core-runtime-only", "testing/src/uses-renderer.ts", "packages/renderer/src/index.ts"],
   ["runtime-imports-core-only", "packages/runtime/src/uses-testing.ts", "testing/src/index.ts"],
 ].map((v) => v.join(" | "));
 
