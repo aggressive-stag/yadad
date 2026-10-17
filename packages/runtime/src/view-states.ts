@@ -24,7 +24,7 @@ import { combineAxes } from "./combine-axes.js";
 import type { AxisSelection } from "./combine-axes.js";
 import { dateFromToday, evaluateCondition } from "./condition.js";
 import { validateRecord } from "./record.js";
-import { findViewerDocument, resolveViewer, viewerLeavesRead } from "./viewer.js";
+import { findViewerDocument, resolveViewer, viewerLeavesRead, visibleTabs } from "./viewer.js";
 
 /** The most states `viewStates` returns when `limit` is not given. */
 export const VIEW_STATES_DEFAULT_LIMIT = 24;
@@ -656,7 +656,7 @@ function buildViewerPlan(view: ViewDocument, ctx: Context): ViewerPlan {
       label: "Permissions",
       kind: "permission",
       values: [
-        { id: "unrestricted", label: "no record locked" },
+        { id: "unrestricted", label: "records open" },
         { id: RECORD_LOCKED, label: "1 record locked" },
       ],
     });
@@ -672,6 +672,11 @@ function buildViewerPlan(view: ViewDocument, ctx: Context): ViewerPlan {
       return { facts };
     },
   };
+}
+
+/** True when a render has a record to lock: "1 record locked" is impossible next to "no records". */
+function hasRecordToLock(render: ViewStateRender): boolean {
+  return (render.kind === "table" || render.kind === "calendar" || render.kind === "board") && render.records.length > 0;
 }
 
 /** In the record-locked state the first record of a table, calendar or board cannot be updated. */
@@ -707,6 +712,8 @@ function assemble(view: ViewDocument, plan: Plan, limit: number, viewer: ViewerP
   const skipped = [...plan.skipped];
   const stateFor = (id: string, label: string, selection: AxisSelection, extra?: { omitViewer: true }): void => {
     const built = plan.build(selection);
+    // An impossible combination ("no records" with "1 record locked") is left out, not reported.
+    if (built.ok && selection[PERMISSION_AXIS] === RECORD_LOCKED && !hasRecordToLock(built.render)) return;
     if (built.ok) states.push({ id, label, values: selection, render: lockRecords(built.render, selection), viewer: viewer.viewerFor(selection), ...extra });
     else if (!skipped.some((s) => s.id === "view")) skipped.push({ id, reason: built.reason });
   };
@@ -779,6 +786,11 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
     };
   };
   let firstPick: { tab: DashboardView["tabs"][number]; widgets: TabWidgets; picked: AxisSelection } | undefined;
+  /** A state for a tab only exists when that viewer can see the tab; a viewer who sees no tab gets one state, on the first tab. */
+  const tabShownFor = (tab: DashboardView["tabs"][number], picked: AxisSelection): boolean => {
+    const seen = visibleTabs(view, viewer.viewerFor(picked));
+    return seen.length === 0 ? tab === view.tabs[0] : seen.some((t) => t.id === tab.id);
+  };
   tabs.forEach((tab, index) => {
     const widgets = tabWidgets[index] ?? [];
     const allot = Math.max(1, Math.floor(remaining / (tabs.length - index)));
@@ -786,14 +798,24 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
     if (!combined.complete) complete = false;
     if (combined.strategy === "pairwise") strategy = "pairwise";
     for (const picked of combined.selections) {
+      // Left out: a tab this viewer cannot see (the dashboard shows the first visible tab, so the state would repeat it), and a
+      // locked record when no widget shows a record.
+      if (!tabShownFor(tab, picked)) continue;
+      const state = stateOf(tab, widgets, picked);
+      if (picked[PERMISSION_AXIS] === RECORD_LOCKED && !(state.render.kind === "dashboard" && state.render.widgets.some((w) => hasRecordToLock(w.state.render)))) continue;
       firstPick ??= { tab, widgets, picked };
-      states.push(stateOf(tab, widgets, picked));
+      states.push(state);
     }
     remaining -= combined.selections.length;
   });
   if (reserve === 1 && viewer.defaults !== undefined && firstPick) {
     const picked: AxisSelection = { ...firstPick.picked, ...viewer.defaults, ...(viewer.axes.some((a) => a.id === PERMISSION_AXIS) ? { [PERMISSION_AXIS]: "unrestricted" } : {}) };
-    states.push(stateOf(firstPick.tab, firstPick.widgets, picked, { id: VIEWER_NOT_PROVIDED_STATE, label: "viewer not provided", omitViewer: true }));
+    // The default viewer may not see the tab the first state is on: use the first tab it sees.
+    const shown = visibleTabs(view, viewer.viewerFor(picked))[0];
+    const index = shown ? view.tabs.findIndex((t) => t.id === shown.id) : -1;
+    const tab = index >= 0 ? (view.tabs[index] ?? firstPick.tab) : firstPick.tab;
+    const widgets = index >= 0 ? (tabWidgets[index] ?? firstPick.widgets) : firstPick.widgets;
+    states.push(stateOf(tab, widgets, picked, { id: VIEWER_NOT_PROVIDED_STATE, label: "viewer not provided", omitViewer: true }));
   }
   for (const result of cache.values()) if (result && !result.complete) complete = false;
   return { view: view.id, axes: allAxes, states, skipped, strategy, complete };

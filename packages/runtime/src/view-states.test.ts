@@ -521,6 +521,43 @@ describe("permission axis", () => {
   });
 });
 
+describe("impossible viewer combinations", () => {
+  const editableTable: TableView = { ...table(), columns: [{ field: "title", editable: true }, { field: "status" }] };
+
+  it("never lists a locked record next to no records", () => {
+    const r = viewStates(editableTable, [...withViewer, editableTable], { now: NOW });
+    const locked = r.states.filter((s) => s.values["permission"] === "record-locked");
+    expect(locked.length).toBeGreaterThan(0);
+    expect(locked.every((s) => s.render.kind === "table" && s.render.records.length > 0 && s.render.records[0]?.can?.update === false)).toBe(true);
+    expect(r.states.some((s) => s.values["records"] === "none" && s.values["permission"] === "record-locked")).toBe(false);
+  });
+
+  const two: DashboardView = {
+    ...base,
+    kind: "dashboard",
+    id: "dash2",
+    tabs: [
+      { id: "all", title: "All", items: [{ id: "tasks", x: 0, y: 0, w: 12, h: 4, widget: "view", view: "task-table" }] },
+      { id: "owners", title: "Owners", visibleWhen: roleIn("owner"), items: [{ id: "tasks2", x: 0, y: 0, w: 12, h: 4, widget: "view", view: "task-table" }] },
+    ],
+  };
+
+  it("never lists a dashboard tab for a viewer who cannot see it", () => {
+    const r = viewStates(two, [...withViewer, editableTable, two], { now: NOW });
+    const roles = r.states.filter((s) => s.values["tab"] === "owners").map((s) => factValues(s)["role"]);
+    expect(roles.length).toBeGreaterThan(0);
+    expect(roles.every((role) => role === "owner")).toBe(true);
+  });
+
+  it("gives a viewer who sees no tab one state, on the first tab", () => {
+    const hidden: DashboardView = { ...two, tabs: two.tabs.map((t) => ({ ...t, visibleWhen: roleIn("owner") })) };
+    const r = viewStates(hidden, [...withViewer, editableTable, hidden], { now: NOW });
+    const asViewer = r.states.filter((s) => factValues(s)["role"] === "viewer" && !s.omitViewer);
+    expect(asViewer.every((s) => s.values["tab"] === "all")).toBe(true);
+    expect(r.states.filter((s) => s.omitViewer)).toHaveLength(1);
+  });
+});
+
 describe("viewer axes on a dashboard", () => {
   const editable: TableView = { ...table(), columns: [{ field: "title", editable: true }, { field: "status", visibleWhen: roleIn("owner") }] };
   const dash: DashboardView = {
