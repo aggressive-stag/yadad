@@ -1,6 +1,6 @@
 # RFC 0005: Board view
 
-- Status: Accepted (2026-10-15)
+- Status: Accepted (2026-10-15); Slice 1 implemented (2026-10-17) — `core`, `runtime`, `renderer`/`testing`, `showcase` and `editor` (the board panel) are all done. Only the components-repo `layout.Board` component remains outside this repo.
 - Touches: `core` (new view kind, validator, `describeContract`, registry types), `runtime` (column building, card query, grouping, move), `renderer` (board renderer, dashboard `view` widget), `testing` (mock registry and contract kit), `editor` (board panel), `apps/showcase`, registry contract (one optional `layout` key); the components repo (the component itself)
 - Bumps `specVersion` from 3 to **4** with an identity `migrate()` step (additive) and a before/after fixture pair.
 
