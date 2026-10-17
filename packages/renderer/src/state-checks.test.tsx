@@ -32,7 +32,7 @@ const viewerDocument = documents.find((d): d is ViewerDocument => d.kind === "vi
 const set: DocumentSet = { entities, views, ...(viewerDocument ? { viewer: viewerDocument } : {}) };
 
 /** The one-line wiring per view kind: this is what a host app writes. */
-const render: CheckViewStatesOptions["render"] = (_state, { view, entity, registry, dataSources, drafts, now, viewer, omitViewer }) => {
+const render: CheckViewStatesOptions["render"] = (state, { view, entity, registry, dataSources, drafts, now, viewer, omitViewer }) => {
   const v = omitViewer ? {} : { viewer };
   switch (view.kind) {
     case "form":
@@ -42,7 +42,7 @@ const render: CheckViewStatesOptions["render"] = (_state, { view, entity, regist
     case "calendar":
       return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...v} />;
     case "board":
-      return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...v} />;
+      return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...(state.render.kind === "board" ? { groupBy: state.render.groupBy } : {})} {...v} />;
     case "dashboard":
       return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...v} />;
   }

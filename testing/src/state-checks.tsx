@@ -26,7 +26,8 @@ export type StateCheck =
   | "error-message"
   | "viewer-visibility"
   | "editable-offered"
-  | "editable-missing";
+  | "editable-missing"
+  | "group-by-ignored";
 
 export interface StateProblem {
   readonly check: StateCheck;
@@ -189,6 +190,7 @@ async function checkState(
     for (const line of logged) found.push({ check: "console-error", message: line });
     if (view.kind === "form" && entity) found.push(...formChecks(container, view, entity, state));
     found.push(...viewerChecks(container, view, state, seen));
+    found.push(...groupChecks(state, seen));
     if (!skip.has("accessible-name")) found.push(...(await nameChecks(container)));
     if (!skip.has("error-message") && state.source === "error") found.push(...errorChecks(container, adapter));
   } finally {
@@ -316,6 +318,14 @@ function observe(registry: Registry<ReactNode>, seen: Seen): Registry<ReactNode>
       ...(Board ? { Board: (props: BoardProps<ReactNode>) => (seen.boards.push(props), Board(props)) } : {}),
     },
   };
+}
+
+/** A board state names the field it is grouped by; the board the renderer drew must use it. */
+function groupChecks(state: SourceViewState, seen: Seen): StateProblem[] {
+  const board = seen.boards.at(-1);
+  if (state.render.kind !== "board" || !board || state.render.groupBy === "") return [];
+  if (board.groupField === state.render.groupBy) return [];
+  return [{ check: "group-by-ignored", message: `this state is grouped by "${state.render.groupBy}" but the board is grouped by "${board.groupField}"` }];
 }
 
 const buttonsNamed = (container: HTMLElement, match: (text: string) => boolean): number => [...container.querySelectorAll("button")].filter((b) => match(b.textContent?.trim() ?? "")).length;

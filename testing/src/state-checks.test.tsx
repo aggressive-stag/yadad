@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { CalendarProps, CalendarView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewerDocument } from "@yadad/core";
+import type { BoardProps, BoardView, CalendarProps, CalendarView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewerDocument } from "@yadad/core";
 import { evaluateFormRules, viewEditable } from "@yadad/runtime";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -230,6 +230,38 @@ describe("checkViewStates", () => {
 
     test("moving withheld from a viewer who may move is reported", async () => {
       expect(checks(await go({ neverMovable: true }))).toContain("editable-missing");
+    });
+  });
+
+  describe("board grouping", () => {
+    const grouped: EntityDocument = { ...entity, fields: [...entity.fields, { id: "owner", type: "select", label: "Owner", options: { source: "static", values: ["ann", "bo"] } }] };
+    const board: BoardView = { ...base, kind: "board", id: "task_board", titleField: "title", groupBy: [{ field: "kind" }, { field: "owner" }] };
+    const set: Document[] = [grouped, board];
+    const registryFor = (): Registry<ReactNode> => ({ ...mockRegistry, layout: { ...mockRegistry.layout, Board: () => <div data-testid="stub-board" /> } });
+    const go = (follow: boolean) =>
+      checkViewStates({
+        view: board,
+        documents: set,
+        now: NOW,
+        registry: registryFor(),
+        skip: ["error-message", "accessible-name"],
+        render: ((state: { render: { kind: string; groupBy?: string } }, ctx: { registry: Registry<ReactNode> }): ReactNode => {
+          const Board = ctx.registry.layout.Board!;
+          const groupField = follow ? (state.render.groupBy ?? "kind") : "kind";
+          return <Board {...({ label: "b", groupChoices: [], groupField, columns: [], loading: false, onGroupBy: () => undefined } as unknown as BoardProps<ReactNode>)} />;
+        }) as never,
+      });
+
+    test("a board that follows the state's grouping passes", async () => {
+      const results = await go(true);
+      expect(results.some((r) => r.label.includes("grouped by owner"))).toBe(true);
+      expect(problems(results)).toEqual([]);
+    });
+
+    test("a board that ignores the state's grouping is reported", async () => {
+      const results = await go(false);
+      expect(checks(results)).toEqual(["group-by-ignored"]);
+      expect(results.filter((r) => r.problems.length > 0).every((r) => r.label.includes("grouped by owner"))).toBe(true);
     });
   });
 });
