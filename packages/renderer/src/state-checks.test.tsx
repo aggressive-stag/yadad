@@ -40,7 +40,7 @@ const render: CheckViewStatesOptions["render"] = (state, { view, entity, registr
     case "table":
       return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...v} />;
     case "calendar":
-      return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...v} />;
+      return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...(state.render.kind === "calendar" ? { initialMode: state.render.mode, initialAnchor: state.render.anchor } : {})} {...v} />;
     case "board":
       return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...(state.render.kind === "board" ? { groupBy: state.render.groupBy } : {})} {...v} />;
     case "dashboard":

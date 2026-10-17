@@ -179,11 +179,15 @@ describe("checkViewStates", () => {
       readonly alwaysMovable?: boolean;
       readonly neverMovable?: boolean;
       readonly ignoreLock?: boolean;
+      /** Draw the first mode and the days around today whatever the state says. */
+      readonly ignoreMode?: boolean;
+      /** Keep the state's mode but draw the days around today. */
+      readonly ignoreAnchor?: boolean;
     }
 
     /** A calendar stand-in: the registry's Calendar records what the "renderer" gave it. */
     const registryFor = (): Registry<ReactNode> => ({ ...mockRegistry, layout: { ...mockRegistry.layout, Calendar: () => <div data-testid="stub-calendar" /> } });
-    const render = (behaviour: Behaviour) => (state: { viewer: never; render: { kind: string; records?: { id: string; can?: { update?: boolean } }[] } }, ctx: { registry: Registry<ReactNode> }): ReactNode => {
+    const render = (behaviour: Behaviour) => (state: { viewer: never; render: { kind: string; mode?: string; range?: { first: string; last: string }; records?: { id: string; can?: { update?: boolean } }[] } }, ctx: { registry: Registry<ReactNode> }): ReactNode => {
       const Calendar = ctx.registry.layout.Calendar!;
       const editable = viewEditable(calendar, state.viewer) && !behaviour.neverMovable || behaviour.alwaysMovable === true;
       const entries = (state.render.records ?? []).map((r) => ({
@@ -193,13 +197,17 @@ describe("checkViewStates", () => {
         movable: editable && (behaviour.ignoreLock === true || r.can?.update !== false),
         pending: false,
       }));
+      const today = { first: "2026-09-28", last: "2026-11-08" };
+      const range = behaviour.ignoreMode === true || behaviour.ignoreAnchor === true || !state.render.range ? today : state.render.range;
+      const mode = behaviour.ignoreMode === true ? "month" : (state.render.mode ?? "month");
+      const dayAt = (date: string, here: typeof entries) => ({ date, dayOfMonth: 1, weekday: 1, label: "d", inMonth: true, isToday: false, entries: here });
       const props = {
         label: "c",
         title: "c",
-        mode: "month",
+        mode,
         modes: [],
         weekdays: [],
-        days: [{ date: "2026-10-17", dayOfMonth: 17, weekday: 6, label: "d", inMonth: true, isToday: true, entries }],
+        days: [dayAt(range.first, entries), dayAt(range.last, [])],
         loading: false,
         announcement: "",
         onModeChange: () => undefined,
@@ -218,6 +226,22 @@ describe("checkViewStates", () => {
       expect(results.some((r) => r.label.includes("role = owner"))).toBe(true);
       expect(results.some((r) => r.label.includes("record locked"))).toBe(true);
       expect(problems(results)).toEqual([]);
+    });
+
+    test("a calendar that opens on the state's mode and anchor passes, and the states differ", async () => {
+      const results = await go({});
+      expect(results.some((r) => r.label.includes("week view"))).toBe(true);
+      expect(problems(results)).toEqual([]);
+    });
+
+    test("a calendar that ignores the state's mode is reported", async () => {
+      const results = await go({ ignoreMode: true });
+      expect(checks(results)).toEqual(["mode-ignored"]);
+      expect(results.filter((r) => r.problems.length > 0).every((r) => r.label.includes("week view"))).toBe(true);
+    });
+
+    test("a calendar that ignores the state's anchor is reported", async () => {
+      expect(checks(await go({ ignoreAnchor: true }))).toEqual(["anchor-ignored"]);
     });
 
     test("moving offered to a viewer who may not move is reported", async () => {

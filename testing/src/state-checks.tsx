@@ -27,7 +27,9 @@ export type StateCheck =
   | "viewer-visibility"
   | "editable-offered"
   | "editable-missing"
-  | "group-by-ignored";
+  | "group-by-ignored"
+  | "mode-ignored"
+  | "anchor-ignored";
 
 export interface StateProblem {
   readonly check: StateCheck;
@@ -191,6 +193,7 @@ async function checkState(
     if (view.kind === "form" && entity) found.push(...formChecks(container, view, entity, state));
     found.push(...viewerChecks(container, view, state, seen));
     found.push(...groupChecks(state, seen));
+    found.push(...calendarChecks(state, seen));
     if (!skip.has("accessible-name")) found.push(...(await nameChecks(container)));
     if (!skip.has("error-message") && state.source === "error") found.push(...errorChecks(container, adapter));
   } finally {
@@ -326,6 +329,18 @@ function groupChecks(state: SourceViewState, seen: Seen): StateProblem[] {
   if (state.render.kind !== "board" || !board || state.render.groupBy === "") return [];
   if (board.groupField === state.render.groupBy) return [];
   return [{ check: "group-by-ignored", message: `this state is grouped by "${state.render.groupBy}" but the board is grouped by "${board.groupField}"` }];
+}
+
+/** A calendar state names a mode and the range it shows; the calendar the renderer drew must open on both. */
+function calendarChecks(state: SourceViewState, seen: Seen): StateProblem[] {
+  const calendar = seen.calendars.at(-1);
+  if (state.render.kind !== "calendar" || !calendar) return [];
+  const { mode, range, anchor } = state.render;
+  if (calendar.mode !== mode) return [{ check: "mode-ignored", message: `this state is in ${mode} mode but the calendar is in ${calendar.mode} mode` }];
+  const first = calendar.days.at(0)?.date;
+  const last = calendar.days.at(-1)?.date;
+  if (first === range.first && last === range.last) return [];
+  return [{ check: "anchor-ignored", message: `this state is anchored on ${anchor} (${range.first} to ${range.last}) but the calendar shows ${first ?? "nothing"} to ${last ?? "nothing"}` }];
 }
 
 const buttonsNamed = (container: HTMLElement, match: (text: string) => boolean): number => [...container.querySelectorAll("button")].filter((b) => match(b.textContent?.trim() ?? "")).length;
