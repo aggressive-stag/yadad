@@ -13,6 +13,7 @@ main > section { overflow-x: auto; }
 main > section + section { margin-block-start: var(--yadad-space-4); }
 [data-showcase-toolbar] { align-items: center; display: flex; flex-wrap: wrap; gap: var(--yadad-space-2); margin-block-end: var(--yadad-space-3); }
 nav button[aria-current="page"] { font-weight: 700; text-decoration: underline; }
+[data-view-as] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yadad-space-3); margin: 0 0 var(--yadad-space-3); padding: var(--yadad-space-2); border: 1px solid var(--yadad-color-border, #ccc); border-radius: 0.5rem; }
 [data-state-filters] { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr)); gap: var(--yadad-space-2) var(--yadad-space-3); margin: 0 0 var(--yadad-space-3); padding: 0; border: 0; min-width: 0; }
 [data-state-filters] legend { padding: 0; font-weight: 600; margin-block-end: var(--yadad-space-1, 0.25rem); }
 [data-state-filters] label { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }

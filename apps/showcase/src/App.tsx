@@ -1,14 +1,16 @@
 import { validateDocument } from "@yadad/core";
-import type { BoardView, CalendarView, DashboardView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
+import type { ResolvedViewer, ViewerDocument, ViewerFactValue, BoardView, CalendarView, DashboardView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
 import { addWidget, blankBoard, blankDashboard, blankEntity, blankForm, blankTable, BoardViewEditor, CalendarViewEditor, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor, uniqueItemId } from "@yadad/editor";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
-import { applyPatch, createDraftStore, createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
+import { applyPatch, createDraftStore, createKeyValueAdapter, createMemoryAdapter, resolveViewer } from "@yadad/runtime";
 import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
-import { useState } from "react";
+
+import { Fragment, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { bookingEntity, bookingsAdapter } from "./bookings";
 import { personEntity, taskEntity, tasksAdapter } from "./tasks";
+import { teamAdapter, teamViewer, teamViews } from "./team";
 import dashboardTraining from "../../../fixtures/valid/dashboard-training.json?raw";
 import entityHello from "../../../fixtures/valid/entity-hello.json?raw";
 import entityWorkoutSet from "../../../fixtures/valid/entity-workout-set.json?raw";
@@ -24,7 +26,7 @@ import { StatesPage } from "./states";
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
 
 /** Views rendered at the top level of the page, by id. */
-export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_home"];
+export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_home", "team_home"];
 
 /** The bookings table the calendar's row action opens for a booking. */
 const bookingsTable: TableView = {
@@ -104,7 +106,8 @@ function withBookings(base: DocumentSet): DocumentSet {
   entities.set(bookingEntity.id, bookingEntity);
   views.set(bookingsView.id, bookingsView);
   views.set(bookingsTable.id, bookingsTable);
-  return { ...base, entities, views };
+  for (const view of teamViews) views.set(view.id, view);
+  return { ...base, entities, views, viewer: base.viewer ?? teamViewer };
 }
 
 export interface AppProps {
@@ -160,10 +163,12 @@ type Mode =
 export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset, initialPage = "views", initialStatesView }: AppProps): ReactNode {
   // The host decides which adapter backs each dataSource key. The calendar demo keeps its own
   // seeded bookings on a dedicated data source, with a wrapper that refuses moves into the past.
+  const roleRef = useRef("viewer");
   const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => {
     const map = new Map<string, DataAdapter>([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]);
     map.set("bookings", bookingsAdapter());
     map.set("tasks", tasksAdapter());
+    map.set("team", teamAdapter(() => roleRef.current));
     return map;
   });
   // Documents saved from the editors replace the loaded ones, and persist when storage is given.
@@ -176,6 +181,11 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const loaded = loadDocumentSet(sources);
   const documents = overlay(withBookings(loaded.documents), edited);
   const [appName, setAppName] = useState("");
+  // "View as": what the host knows about the viewer. The renderers get the resolved facts; the data source reads the role.
+  const [viewerInput, setViewerInput] = useState<readonly ViewerFactValue[]>([]);
+  const viewer = resolveViewer(documents.viewer, viewerInput).viewer;
+  roleRef.current = String(viewer.facts.find((f) => f.fact === "role")?.value ?? "viewer");
+  const viewerKey = JSON.stringify(viewer.facts);
   const store = (docs: readonly Document[]) => {
     const next = new Map(edited);
     for (const doc of docs) next.set(docKey(doc), doc);
@@ -236,6 +246,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
         </FieldFrame>
         <Button label="Start a new app" type="button" variant="secondary" disabled={appName.trim() === ""} onPress={createApp} />
       </div>
+      {page === "views" && documents.viewer && <ViewAs document={documents.viewer} viewer={viewer} onChange={(fact, value) => setViewerInput([...viewer.facts.filter((f) => f.fact !== fact), { fact, value }])} />}
       {page === "states" && <StatesPage documents={documents} registry={registry} {...(initialStatesView ? { initialView: initialStatesView } : {})} />}
       {page === "views" && allRoots.map((id) => {
         const view = documents.views.get(id);
@@ -264,7 +275,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
             ) : (mode.kind === "form" || mode.kind === "table" || mode.kind === "calendar" || mode.kind === "board") && editing ? (
               viewEditor(mode, documents, registry, save, close)
             ) : (
-              renderRoot(id, documents, registry, dataSources, draftStore)
+              <Fragment key={viewerKey}>{renderRoot(id, documents, registry, dataSources, draftStore, viewer)}</Fragment>
             )}
           </section>
         );
@@ -348,18 +359,49 @@ function describe(viewId: string, documents: DocumentSet): string {
   return view.id;
 }
 
-function renderRoot(id: string, documents: DocumentSet, registry: Registry<ReactNode>, dataSources: ReadonlyMap<string, DataAdapter>, draftStore: DraftStore | undefined): ReactNode {
+function renderRoot(id: string, documents: DocumentSet, registry: Registry<ReactNode>, dataSources: ReadonlyMap<string, DataAdapter>, draftStore: DraftStore | undefined, viewer: ResolvedViewer): ReactNode {
   const view = documents.views.get(id);
   if (!view) return null;
   const drafts = draftStore ? { drafts: { store: draftStore } } : {};
-  if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} {...drafts} />;
+  if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} viewer={viewer} {...drafts} />;
   const entity = documents.entities.get(view.entity);
   if (!entity) return null;
-  if (view.kind === "calendar") return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} />;
-  if (view.kind === "board") return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} />;
+  if (view.kind === "calendar") return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} viewer={viewer} />;
+  if (view.kind === "board") return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} viewer={viewer} />;
   return view.kind === "form" ? (
-    <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} {...drafts} />
+    <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} {...drafts} />
   ) : (
-    <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} />
+    <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} viewer={viewer} />
+  );
+}
+
+/**
+ * "View as": one control per viewer fact, native selects so it works from the keyboard.
+ * A host would build the viewer from its session; this lets you switch live.
+ */
+function ViewAs({ document: doc, viewer, onChange }: { readonly document: ViewerDocument; readonly viewer: ResolvedViewer; readonly onChange: (fact: string, value: string | boolean) => void }): ReactNode {
+  return (
+    <fieldset data-view-as="">
+      <legend>View as</legend>
+      {doc.facts.map((fact) => {
+        const value = viewer.facts.find((f) => f.fact === fact.id)?.value;
+        return fact.type === "select" ? (
+          <label key={fact.id}>
+            {fact.label}{" "}
+            <select value={String(value)} onChange={(e) => onChange(fact.id, e.target.value)}>
+              {fact.options.values.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label key={fact.id}>
+            <input type="checkbox" checked={value === true} onChange={(e) => onChange(fact.id, e.target.checked)} /> {fact.label}
+          </label>
+        );
+      })}
+    </fieldset>
   );
 }

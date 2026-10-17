@@ -67,3 +67,10 @@ test("the States page lists the states of a view with their labels", () => {
   expect(html).toMatch(/Showing \d+ of \d+ states/);
   expect(html).not.toContain('<section aria-label="hello_form">');
 });
+
+test("the team page has a View as control and renders for the default (least privileged) viewer", () => {
+  const html = renderToStaticMarkup(<App registry={mockRegistry} roots={["team_home"]} />);
+  expect(html).toContain("<legend>View as</legend>");
+  expect(html).toContain("<option value=\"owner\"");
+  expect(html).not.toContain("document-errors");
+});
