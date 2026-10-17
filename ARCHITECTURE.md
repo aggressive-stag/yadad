@@ -19,7 +19,7 @@ Positioning: Puck is a visual page builder for content. This engine is for data-
 | Repo | Contains | Depends on | Role |
 | --- | --- | --- | --- |
 | `yadad` (this repo) | Schema format, runtime, renderer, editor, theme, fixtures, test kit, showcase | React (renderer/editor only) | The open-source project. Gets the README, docs and polish. |
-| `yadad-components` | Styled field and widget components, registry definitions | `@yadad/core` as a peer dependency (a published version range); `@yadad/testing` as a dev dependency | Reference component set. Users can bring their own instead. |
+| `yadad-components` | Styled field, layout and widget components (including `layout.Calendar` and `layout.Board`), the base registry | `@yadad/core` as a peer dependency (a published version range); `@yadad/testing` as a dev dependency | Reference component set. Users can bring their own instead. |
 
 The engine never imports from the components repo. Components implement the engine's contract and are handed to the engine through an injected registry. Separate repos make that boundary physical. The components repo is mirrored on the same GitLab instance and publishes to the same npm registry (D17).
 
@@ -230,7 +230,7 @@ interface Registry<N> {
 }
 ```
 
-Table inline editing reuses `Input` (there is no separate `CellEditor`), and the editor's property panels come from an exhaustive per-field-type map in the `editor` package rendered with the registry's own inputs (there is no `optionsSchema` yet). A `describeRegistry()` catalog of the field types, options and widgets a document can use is the planned agent-facing surface (AGENTS.md).
+Table inline editing reuses `Input` (there is no separate `CellEditor`), and the editor's property panels come from an exhaustive per-field-type map in the `editor` package rendered with the registry's own inputs (there is no `optionsSchema` yet). `describeContract()` and `pnpm describe-registry` (section 7) are the agent-facing catalog of the field types, options and widgets a document can use.
 
 What we own vs depend on:
 
@@ -280,7 +280,7 @@ Interface, `Query` and the typed adapter errors in `core`. The memory, key-value
 5. **Migration tests:** once a `specVersion` bump ships a migration, every historical fixture migrates to the current `specVersion` and validates.
 6. **Runtime unit tests** for the condition evaluator and form state.
 7. **Cross-language check:** a small pytest job validates the record fixtures against the generated JSON Schemas — planned, once the schemas exist.
-8. **Visual checks:** the components repo has a vite gallery for manual browser checks; automated Playwright screenshot tests are the plan.
+8. **Visual checks:** the components repo has a vite gallery for manual browser checks, plus rerunnable Playwright checks (keyboard, phone touch) that drive it; screenshot comparison tests are not set up.
 
 ## 13. The state grid
 
