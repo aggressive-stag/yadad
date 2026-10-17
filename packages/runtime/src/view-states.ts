@@ -157,8 +157,6 @@ const SAMPLE_TEXT = "Sample text";
 const SAMPLE_REFERENCE = "ref-1";
 const LONG_TEXT = `${"A long line of text that keeps going and wraps onto further lines. ".repeat(4)}${"Unbroken".repeat(10)}`;
 
-const isBlank = (value: FieldValue | undefined): boolean => value === undefined || value === null || (typeof value === "string" && value.trim() === "");
-
 function problemOf(field: Field, value: FieldValue): string | undefined {
   const entity: EntityDocument = { kind: "entity", specVersion: 4, id: "check", revision: 1, fields: [field] };
   const path = jsonPointer([field.id]);

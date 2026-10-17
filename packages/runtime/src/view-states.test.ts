@@ -203,10 +203,13 @@ describe("collection views", () => {
   it("filter boundaries decide which records match", () => {
     const t = table({ op: "gte", field: "amount", value: 10 });
     const r = viewStates(t, [entity, t], { now: NOW, limit: 100 });
-    const byAmount = (n: number) => r.states.find((s) => s.values["field:amount"] === `v:${n}` && s.values["records"] === "one");
-    expect(byAmount(9)?.render.kind === "table" && byAmount(9)?.render.matching).toEqual([]);
-    expect(byAmount(10)?.render.kind === "table" && byAmount(10)?.render.matching).toEqual(["rec-1"]);
-    expect(byAmount(11)?.render.kind === "table" && byAmount(11)?.render.matching).toEqual(["rec-1"]);
+    const matching = (n: number): readonly string[] | undefined => {
+      const render = r.states.find((s) => s.values["field:amount"] === `v:${n}` && s.values["records"] === "one")?.render;
+      return render?.kind === "table" ? render.matching : undefined;
+    };
+    expect(matching(9)).toEqual([]);
+    expect(matching(10)).toEqual(["rec-1"]);
+    expect(matching(11)).toEqual(["rec-1"]);
   });
 
   it("calendar: each mode, with records on the first and last visible day", () => {
