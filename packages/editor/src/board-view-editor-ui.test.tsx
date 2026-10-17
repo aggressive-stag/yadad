@@ -45,6 +45,7 @@ describe("BoardViewEditor", () => {
     fireEvent.change(screen.getByLabelText("Title field"), { target: { value: "Notes" } });
     fireEvent.click(screen.getByLabelText("Dragging a card to another column moves it"));
     press("Apply settings");
+    expect(screen.getByText("Board settings applied.")).toBeTruthy();
     expect(button("Save board").disabled).toBe(false);
     press("Save board");
     expect(saved[0]).toMatchObject({ revision: 4, titleField: "notes", editable: true });

@@ -211,12 +211,15 @@ export function BoardViewEditor({ view, entity, registry, context, onSave, onCan
   const sortIds = entity.fields.filter((f) => f.type !== "reference").map((f) => f.id);
   const entityIds = sortIds;
   const applySettings = () =>
-    run([
-      ...setBoardTitle(current, settings.title),
-      ...setBoardTitleField(current, entity, settings.titleField),
-      ...setBoardEditable(current, settings.editable),
-      ...setBoardSort(current, settings.sortField ? { field: settings.sortField, dir: settings.sortDir } : undefined),
-    ]);
+    run(
+      [
+        ...setBoardTitle(current, settings.title),
+        ...setBoardTitleField(current, entity, settings.titleField),
+        ...setBoardEditable(current, settings.editable),
+        ...setBoardSort(current, settings.sortField ? { field: settings.sortField, dir: settings.sortDir } : undefined),
+      ],
+      () => announce("Board settings applied."),
+    );
 
   const sortPicker = choiceField("sort_field", "Order within a column", [NO_SORT, ...sortIds.map(label)]);
   const dirPicker = choiceField("sort_dir", "Direction", Object.keys(DIRECTIONS));
