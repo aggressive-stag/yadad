@@ -26,10 +26,25 @@ const http = createHttpAdapter({
 ## Logic
 
 - `evaluateCondition(condition, values, now?, viewer?)`, `evaluateFormRules(view, values, viewer?)` and `applyFormRules(entity, view, values, viewer?)`: visibility and required-ness. Hidden fields keep their values unless the item sets `clearWhenHidden`. Relative dates (`{ daysFromToday: n }`) resolve to local `"YYYY-MM-DD"` before evaluation and before any adapter call.
-- `resolveViewer(viewerDocument, [{ fact, value }])` builds the `ResolvedViewer` the renderers take: every declared fact once, the host's value when valid and the declared default otherwise, with `issues` for what it ignored. `evaluateViewerCondition`, `visibleColumns`, `columnEditable`, `viewEditable`, `rowActionVisible`, `visibleTabs`, `visibleItems` and `canUpdate` answer what a viewer may see and do; `findViewerDocument` and `viewerFactsRead` find the facts a set declares and a view reads. A `viewerIn` leaf is false without a viewer.
+- `resolveViewer(viewerDocument, [{ fact, value }])` returns `{ viewer, issues }`: the `ResolvedViewer` the renderers take (every declared fact once, the host's value when valid and the declared default otherwise) and `issues` for what it ignored. `evaluateViewerCondition`, `visibleColumns`, `columnEditable`, `viewEditable`, `rowActionVisible`, `visibleTabs`, `visibleItems` and `canUpdate` answer what a viewer may see and do; `findViewerDocument` and `viewerFactsRead` find the facts a set declares and a view reads. A `viewerIn` leaf is false without a viewer.
 - `validateRecord(entity, values)`: record validation against the entity's field rules.
 - `submitForm(entity, values, adapter)` and `submitEdit(entity, record, patch, adapter)`: validate, then write.
 - `applyPatch(doc, operations)`: JSON Patch against a document.
+
+## Calendars and boards
+
+The logic behind the calendar and board renderers is plain functions you can use or test without React:
+
+```ts
+import { boardColumns, boardQuery, moveCard, visibleDays } from "@yadad/runtime";
+
+visibleDays("2026-10-17", "month", 1, "2026-10-17"); // anchor, mode, weekStartsOn, today: 42 days for a month, 7 for a week
+const columns = boardColumns(statusField);    // one column per select option, or per boolean value; reference columns come from loadBoardTargets
+const plan = moveCard(board, entity, statusField, record, columns[1]); // what to send when a card lands in another column
+```
+
+- **Calendar.** `visibleDays`, `visibleRange`, `shiftAnchor`, `calendarToday`, `periodTitle`, `weekdayLabels`, `dayLabel`; `rangeCondition`, `calendarQuery` and `loadCalendarRange` (pages through `find`, capped at `CALENDAR_MAX_RECORDS`); `groupByDay`, `moveDay` and `colorSlot`. Invalid dates or `weekStartsOn` throw `RangeError`.
+- **Board.** `boardColumns`, `groupByColumn`, `boardColumnCounts`, `boardQuery`, `loadBoardCards` (capped at `BOARD_MAX_CARDS`), `loadBoardTargets` (reference columns) and `moveCard`.
 
 ## View states
 
@@ -57,7 +72,7 @@ The view kind adds axes: forms a `fill` axis (other fields empty or filled); tab
 
 A view that reads viewer facts (a `viewerIn` leaf in it, in the views it embeds or in the views its row actions open) gets one axis per fact, `viewer:<factId>`: a select fact takes the values the conditions name plus one value none names (the default if it is unnamed), a boolean takes true and false. Facts nothing reads are not axes and take their default. A view with an edit surface (an editable table column, calendar or board, or a dashboard embedding one) gets a `permission` axis, `unrestricted` or `record-locked`; in the latter the first record carries `can: { update: false }`. Each state has a `viewer` (a `ResolvedViewer`), and a view that reads a fact gets one extra state, `viewer-not-provided`, with `omitViewer: true`: render it without the `viewer` prop and it must look like the state of all defaults. That state counts towards `limit`.
 
-States are all combinations of the axes when they fit in `limit` (default 24), otherwise a deterministic pairwise cover: every pair of values from two axes appears in at least one state. `complete` is false when `limit` was too small even for that. A state that cannot be built (for example a record that would not validate) is left out and listed under `skipped` with a reason. `combineAxes(axes, limit)` is the generic combiner, exported for your own axes.
+States that cannot exist are left out: a locked record when there are no records, and a dashboard tab for a viewer who cannot see it (a viewer who sees no tab gets one state, on the first tab). States are all combinations of the axes when they fit in `limit` (default 24), otherwise a deterministic pairwise cover: every pair of values from two axes appears in at least one state. `complete` is false when `limit` was too small even for that. A state that cannot be built (for example a record that would not validate) is left out and listed under `skipped` with a reason. `combineAxes(axes, limit)` is the generic combiner, exported for your own axes.
 
 ## Drafts
 
