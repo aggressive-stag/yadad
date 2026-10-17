@@ -150,6 +150,14 @@ function Detail({ state, result, shared, onClose }: { readonly state: SourceView
   const [width, setWidth] = useState<"desktop" | "phone">("desktop");
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
+  // Escape closes the full-size view like the Back button does (focus returns to the tile).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const problems = result?.problems ?? [];
   return (
     <section aria-label="State at full size" data-state-detail="">
