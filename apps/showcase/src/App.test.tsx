@@ -59,3 +59,11 @@ test("a dashboard whose entity can be grouped offers to add a board, once", () =
   expect(html).not.toContain("Add a board for task");
   expect(html).toContain(">Edit board: tasks</button>");
 });
+
+test("the States page lists the states of a view with their labels", () => {
+  const html = renderToStaticMarkup(<App registry={mockRegistry} initialPage="states" initialStatesView="hello_form" />);
+  expect(html).toContain("Filter by axis");
+  expect(html).toContain("data-state-open");
+  expect(html).toMatch(/Showing \d+ of \d+ states/);
+  expect(html).not.toContain('<section aria-label="hello_form">');
+});

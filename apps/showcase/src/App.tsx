@@ -17,6 +17,7 @@ import formLogSet from "../../../fixtures/valid/form-log-set.json?raw";
 import tableExerciseHistory from "../../../fixtures/valid/table-exercise-history.json?raw";
 import tableSets from "../../../fixtures/valid/table-sets.json?raw";
 import { loadDocumentSet } from "./documents";
+import { StatesPage } from "./states";
 
 /** The fixture documents, as raw JSON. Edit those files and the page follows. */
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
@@ -115,7 +116,13 @@ export interface AppProps {
   readonly storage?: DraftStorage;
   /** Shown as a "Reset saved data" button when given. */
   readonly onReset?: () => void;
+  /** Which page to open on: the live views (default) or the grid of every state. */
+  readonly initialPage?: Page;
+  /** The view the States page starts on. */
+  readonly initialStatesView?: string;
 }
+
+export type Page = "views" | "states";
 
 const PREFIX = "yadad-showcase";
 const DOCUMENTS_KEY = `${PREFIX}:documents`;
@@ -150,7 +157,7 @@ type Mode =
   | { readonly kind: "calendar"; readonly id: string }
   | { readonly kind: "board"; readonly id: string };
 
-export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset }: AppProps): ReactNode {
+export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset, initialPage = "views", initialStatesView }: AppProps): ReactNode {
   // The host decides which adapter backs each dataSource key. The calendar demo keeps its own
   // seeded bookings on a dedicated data source, with a wrapper that refuses moves into the past.
   const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => {
@@ -165,6 +172,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const [draftStore] = useState(() => (storage ? createDraftStore(storage, PREFIX) : undefined));
   const [edited, setEdited] = useState<ReadonlyMap<string, Document>>(initial.docs);
   const [mode, setMode] = useState<Mode>({ kind: "view" });
+  const [page, setPage] = useState<Page>(initialPage);
   const loaded = loadDocumentSet(sources);
   const documents = overlay(withBookings(loaded.documents), edited);
   const [appName, setAppName] = useState("");
@@ -203,6 +211,13 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   return (
     <main>
       <h1>yadad showcase</h1>
+      <nav aria-label="Pages" data-showcase-toolbar="">
+        {(["views", "states"] as const).map((p) => (
+          <button key={p} type="button" aria-current={page === p ? "page" : undefined} onClick={() => { setPage(p); try { window.history.replaceState(null, "", p === "states" ? "#states" : "#"); } catch { /* no history in this environment */ } }}>
+            {p === "views" ? "Views" : "States"}
+          </button>
+        ))}
+      </nav>
       {onReset && <Button label="Reset saved data" type="button" variant="secondary" disabled={false} onPress={onReset} />}
       {initial.dropped.length > 0 && <p role="status">Some saved edits no longer validate and were ignored: {initial.dropped.join(", ")}.</p>}
       {loaded.errors.length > 0 && (
@@ -221,7 +236,8 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
         </FieldFrame>
         <Button label="Start a new app" type="button" variant="secondary" disabled={appName.trim() === ""} onPress={createApp} />
       </div>
-      {allRoots.map((id) => {
+      {page === "states" && <StatesPage documents={documents} registry={registry} {...(initialStatesView ? { initialView: initialStatesView } : {})} />}
+      {page === "views" && allRoots.map((id) => {
         const view = documents.views.get(id);
         const entityId = view?.kind === "dashboard" ? firstEntity(view.id, documents) : view?.entity;
         const entity = entityId ? documents.entities.get(entityId) : undefined;

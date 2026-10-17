@@ -39,7 +39,12 @@ export default defineConfig({
   plugins: [registryPlugin()],
   // A registry from another repo brings its own React; use the showcase's.
   // Workspace packages build from source; a registry from another repo shares the showcase's React.
-  resolve: { conditions: ["@yadad/source", ...defaultClientConditions], dedupe: ["react", "react-dom"] },
+  resolve: {
+    conditions: ["@yadad/source", ...defaultClientConditions],
+    dedupe: ["react", "react-dom"],
+    // The States page runs the state checks in the browser; they only need vitest's `vi.spyOn`.
+    alias: { vitest: resolve(import.meta.dirname, "src/vitest-shim.ts") },
+  },
   server: {
     // AGENTS.md: a random dev-server port, so parallel worktrees never collide.
     port: 20000 + Math.floor(Math.random() * 20000),
