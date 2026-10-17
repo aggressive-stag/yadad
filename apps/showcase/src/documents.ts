@@ -28,7 +28,7 @@ export function loadDocumentSet(sources: readonly string[]): { documents: Docume
     }
     const doc = result.value;
     if (doc.kind === "entity") entities.set(doc.id, doc);
-    else views.set(doc.id, doc);
+    else if (doc.kind !== "viewer") views.set(doc.id, doc); // STUB (RFC 0006): the showcase ignores viewer documents until it supports viewers
   });
   return { documents: { entities, views }, errors };
 }

@@ -55,6 +55,8 @@ export function describeCondition(condition: Condition, label: (fieldId: string)
       return `${label(condition.field)} is empty`;
     case "notEmpty":
       return `${label(condition.field)} is filled in`;
+    case "viewerIn":
+      return `the viewer's ${condition.fact} is one of ${condition.values.map(show).join(", ")}`;
     default:
       return `${label(condition.field)} ${OP_WORDS[condition.op]} ${describeComparisonValue(condition.value)}`;
   }

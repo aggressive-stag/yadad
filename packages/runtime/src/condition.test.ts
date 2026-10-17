@@ -144,3 +144,14 @@ describe("ordering comparisons and empty values", () => {
     }
   });
 });
+
+describe("viewerIn (stub until the viewer runtime lands)", () => {
+  test("is false without a viewer, the RFC 0006 answer for no viewer", () => {
+    expect(is({ op: "viewerIn", fact: "role", values: ["owner"] })).toBe(false);
+    expect(is({ op: "not", condition: { op: "viewerIn", fact: "role", values: ["owner"] } })).toBe(true);
+  });
+  test("resolveRelativeDates leaves a viewer leaf alone", () => {
+    const c: Condition = { op: "viewerIn", fact: "beta", values: [true] };
+    expect(resolveRelativeDates(c)).toBe(c);
+  });
+});

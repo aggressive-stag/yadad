@@ -285,7 +285,7 @@ function overlay(base: DocumentSet, edited: ReadonlyMap<string, Document>): Docu
   const views = new Map(base.views);
   for (const doc of edited.values()) {
     if (doc.kind === "entity") entities.set(doc.id, doc);
-    else views.set(doc.id, doc);
+    else if (doc.kind !== "viewer") views.set(doc.id, doc); // STUB (RFC 0006): the showcase ignores viewer documents until it supports viewers
   }
   return { entities, views };
 }

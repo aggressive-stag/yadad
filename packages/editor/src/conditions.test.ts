@@ -177,3 +177,12 @@ describe("relative dates", () => {
     expect(describeRelativeDate(1)).toBe("tomorrow");
   });
 });
+
+describe("viewerIn (stub until the editor supports viewers)", () => {
+  const leaf: Condition = { op: "viewerIn", fact: "role", values: ["editor", "owner"] };
+  test("is not editable in the builder (parseGroup gives up, so it is shown intact) and reads in words", () => {
+    expect(parseGroup(leaf)).toBeUndefined();
+    expect(parseGroup({ op: "and", conditions: [leaf, { op: "notEmpty", field: "a" }] })).toBeUndefined();
+    expect(describeCondition(leaf, (id) => id)).toBe("the viewer's role is one of editor, owner");
+  });
+});

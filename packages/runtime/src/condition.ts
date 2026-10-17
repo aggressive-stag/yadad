@@ -81,6 +81,10 @@ export function evaluateCondition(condition: Condition, values: RecordValues, no
       const v = values[condition.field];
       return typeof v === "string" && v.toLowerCase().includes(condition.value.toLowerCase());
     }
+    case "viewerIn":
+      // STUB (RFC 0006, card viewer-core): no viewer is passed yet, and the RFC's answer for no viewer is false.
+      // The runtime card replaces this with a lookup in the resolved viewer.
+      return false;
     case "eq":
       return values[condition.field] === resolveValue(condition.value, now);
     case "neq":
