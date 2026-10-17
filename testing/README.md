@@ -20,6 +20,25 @@ import { mockRegistry } from "@yadad/testing";
 render(<FormRenderer entity={entity} view={form} registry={mockRegistry} dataSources={dataSources} />);
 ```
 
+## Source states
+
+A screen has states that come from the data source: still loading, failed to load, a save refused, a conflict. `createStateAdapter(seed, options)` returns a `DataAdapter` seeded with a view state's records (from `viewStates` in `@yadad/runtime`) or with a list of records, and puts it in one of them.
+
+```ts
+import { createStateAdapter } from "@yadad/testing";
+
+const adapter = createStateAdapter(state, { source: "refused", status: 400, field: "title", message: "Title is taken." });
+adapter.configure({ source: "ready" }); // switch while the test runs
+```
+
+- `source: "ready"` (default) works like the memory adapter.
+- `"loading"`: `find` and `findOne` never settle.
+- `"error"`: reads reject with an `Error` carrying `message`.
+- `"refused"`: writes throw a `RecordValidationError` with one field error (400, the default, pointing at `field`) or a `ForbiddenError` (`status: 403`).
+- `"conflict"`: writes throw a `RecordConflictError` (409) carrying the stored record.
+
+`sourceStates(viewStates(view, documents, { now }), documents)` adds a `source` axis to the view's data states. Every data state stays once with `source: "ready"`; each other source that makes sense for the view (a save can only be refused or conflict where the view writes) gets one state. Each state has `adapter()`, a fresh adapter seeded with its records and put in its source state.
+
 ## Contract kit
 
 Import it from `@yadad/testing/contract-kit` in a Vitest file. For every field type, the kit checks that your component renders with fixture options, emits the right JSON type on change, shows an error it is given, and passes axe; the layout components get their own checks.
