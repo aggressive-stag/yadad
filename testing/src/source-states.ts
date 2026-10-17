@@ -101,6 +101,8 @@ export function sourceStates(result: ViewStatesResult, documents: readonly Docum
       label: source === "ready" ? base.label : `${LABELS[source]} · ${base.label}`,
       values: { ...base.values, source },
       render: base.render,
+      viewer: base.viewer,
+      ...(base.omitViewer ? { omitViewer: true as const } : {}),
       source,
       base,
       adapter: (options = {}) => createStateAdapter(base, { source, ...(first !== undefined ? { field: first } : {}), ...options }),

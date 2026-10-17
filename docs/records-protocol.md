@@ -78,7 +78,7 @@ What the schema says: one property per field; `additionalProperties: false` (unk
 - `offset` (default 0, minimum 0) and `limit` (default 50, minimum 0, maximum 500). `limit=0` is legal: `items` is empty and `total` is still the real count (a count widget uses this). A `limit` above 500, a negative or non-integer `offset` or `limit` is a `400`.
 - `total` counts every record matching `filter`, ignoring `offset` and `limit`.
 
-The server must translate conditions by whitelist: every op and field id is checked against what it knows and mapped to its storage. It never builds a query from strings in the request. An unknown op or field is a `400`.
+The server must translate conditions by whitelist: every op and field id is checked against what it knows and mapped to its storage. It never builds a query from strings in the request. An unknown op or field is a `400`. `viewerIn` is a condition op for documents, not for the wire: the client adapters refuse a filter that contains one, and a server treats it as an unknown op (`400`). Scoping records to the signed-in user belongs on the server.
 
 ### Writes
 
@@ -118,7 +118,7 @@ Every non-2xx response has the same body shape as document errors in `@yadad/cor
 | --- | --- | --- |
 | `400` | Bad filter, sort, paging, unknown field, invalid value | — |
 | `401` | Not signed in | — |
-| `403` | Signed in but not allowed | — |
+| `403` | Signed in but not allowed, e.g. a write to a record whose `can` says `false` | — |
 | `404` | Unknown entity, or no such record for this user (another user's record is also a `404`) | — |
 | `409` | `baseVersion` is stale | `"current": Record` (or `null` if it was deleted) so the client can show or merge it |
 
@@ -134,6 +134,22 @@ Compact request and response pairs for each endpoint, for an entity `set` (field
 GET /api/records/set?filter=%7B%22op%22%3A%22gte%22%2C%22field%22%3A%22weight%22%2C%22value%22%3A100%7D&sort=%5B%7B%22field%22%3A%22day%22%2C%22dir%22%3A%22desc%22%7D%5D&offset=0&limit=2
 
 200 { "items": [ { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "7", "values": { "weight": 100, "reps": 5, "day": "2026-10-05" } } ], "total": 1 }
+```
+
+**List with per-record permissions.** The second record is locked for this user, so the server states `can` on it (the first states nothing):
+
+```
+GET /api/records/set?limit=2
+
+200 { "items": [
+  { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "7", "values": { "weight": 100, "reps": 5, "day": "2026-10-05" } },
+  { "id": "s14", "entityId": "set", "entityRevision": 3, "version": "2", "values": { "weight": 90, "reps": 8, "day": "2026-10-07" }, "can": { "update": false, "delete": false } }
+], "total": 2 }
+
+PATCH /api/records/set/s14
+{ "values": { "reps": 9 }, "entityRevision": 3, "baseVersion": "2" }
+
+403 { "errors": [ { "path": "", "code": "forbidden", "message": "You are not allowed to update this record.", "hint": "Ask the owner." } ] }
 ```
 
 **Count only** (`limit=0`): `GET /api/records/set?limit=0` returns `200 { "items": [], "total": 41 }`.

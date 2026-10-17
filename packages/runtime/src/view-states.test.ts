@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BoardView, CalendarView, Condition, DashboardView, Document, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { BoardView, CalendarView, Condition, DashboardView, Document, EntityDocument, FormView, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
 import { combineAxes } from "./combine-axes.js";
 import type { CombinableAxis } from "./combine-axes.js";
 import { validateRecord } from "./record.js";
@@ -405,5 +405,150 @@ describe("combineAxes with one axis", () => {
   it("keeps the values in order, cut at the limit", () => {
     const one: CombinableAxis = { id: "a", values: [{ id: "x" }, { id: "y" }, { id: "z" }] };
     expect(combineAxes([one], 2)).toMatchObject({ selections: [{ a: "x" }, { a: "y" }], complete: false });
+  });
+});
+
+// --- viewer axes (RFC 0006) ---
+
+const viewerDoc: ViewerDocument = {
+  kind: "viewer",
+  specVersion: 5,
+  id: "viewer",
+  revision: 1,
+  facts: [
+    { id: "role", label: "Role", type: "select", options: { source: "static", values: ["viewer", "editor", "owner"] }, default: "viewer" },
+    { id: "beta", label: "Beta", type: "boolean", default: false },
+    { id: "region", label: "Region", type: "select", options: { source: "static", values: ["eu", "us"] }, default: "eu" },
+  ],
+};
+const roleIn = (...values: string[]): ViewerCondition => ({ op: "viewerIn", fact: "role", values });
+const withViewer: Document[] = [...docs, viewerDoc];
+const factValues = (state: { viewer: { facts: readonly { fact: string; value: string | boolean }[] } }): Record<string, string | boolean> =>
+  Object.fromEntries(state.viewer.facts.map((f) => [f.fact, f.value]));
+
+describe("viewer axes", () => {
+  it("views that read no fact and have no edit surface are unchanged, with an empty or default viewer", () => {
+    const plain = viewStates(table(), withViewer, { now: NOW });
+    expect(plain.axes.map((a) => a.id)).toEqual(["records"]);
+    expect(plain.states.some((s) => s.omitViewer)).toBe(false);
+    expect(plain.states.every((s) => s.viewer.facts.length === 3)).toBe(true);
+    expect(viewStates(table(), docs, { now: NOW }).states.every((s) => s.viewer.facts.length === 0)).toBe(true);
+  });
+
+  it("a form gets one axis per fact it reads: named select values plus one everyone-else value", () => {
+    const f = form({ op: "and", conditions: [roleIn("owner"), { op: "viewerIn", fact: "beta", values: [true] }] });
+    const r = viewStates(f, withViewer, { now: NOW });
+    expect(r.axes.map((a) => a.id)).toEqual(["fill", "viewer:role", "viewer:beta"]);
+    expect(labels(axis(r, "viewer:role"))).toEqual(["role = viewer", "role = owner"]); // 3 roles, 1 named: 2 values
+    expect(ids(axis(r, "viewer:beta"))).toEqual(["true", "false"]);
+    expect(r.axes.some((a) => a.id === "viewer:region")).toBe(false);
+    expect(axis(r, "viewer:role").kind).toBe("viewer");
+  });
+
+  it("each state carries the viewer it picks; facts nothing reads take their default", () => {
+    const r = viewStates(form(roleIn("owner")), withViewer, { now: NOW });
+    const owner = r.states.find((s) => s.values["viewer:role"] === "owner");
+    expect(owner && factValues(owner)).toEqual({ role: "owner", beta: false, region: "eu" });
+    const other = r.states.find((s) => s.values["viewer:role"] === "viewer");
+    expect(other && factValues(other)).toEqual({ role: "viewer", beta: false, region: "eu" });
+  });
+
+  it("the everyone-else value is the default when no leaf names it, else the first unnamed value", () => {
+    expect(ids(axis(viewStates(form(roleIn("viewer")), withViewer, { now: NOW }), "viewer:role"))).toEqual(["viewer", "editor"]);
+    expect(ids(axis(viewStates(form(roleIn("editor", "owner")), withViewer, { now: NOW }), "viewer:role"))).toEqual(["viewer", "editor", "owner"]);
+    expect(ids(axis(viewStates(form(roleIn("viewer", "editor", "owner")), withViewer, { now: NOW }), "viewer:role"))).toEqual(["viewer", "editor", "owner"]);
+  });
+
+  it("adds exactly one 'viewer not provided' state, rendered with the viewer omitted, equal to the all-defaults state", () => {
+    const r = viewStates(form(roleIn("owner")), withViewer, { now: NOW });
+    const extra = r.states.filter((s) => s.omitViewer);
+    expect(extra.map((s) => s.id)).toEqual(["viewer-not-provided"]);
+    expect(extra[0]?.label).toBe("viewer not provided");
+    expect(extra[0] && factValues(extra[0])).toEqual({ role: "viewer", beta: false, region: "eu" });
+    // The same render as the state with the same other axes and every viewer axis at its default.
+    const twin = r.states.find((s) => !s.omitViewer && s.values["viewer:role"] === "viewer" && s.values["fill"] === extra[0]?.values["fill"]);
+    expect(twin?.render).toEqual(extra[0]?.render);
+    expect(twin && factValues(twin)).toEqual(extra[0] && factValues(extra[0]));
+  });
+
+  it("no 'viewer not provided' state without a viewer document or without a fact read", () => {
+    expect(viewStates(form(), withViewer, { now: NOW }).states.some((s) => s.omitViewer)).toBe(false);
+    expect(viewStates(form(roleIn("owner")), docs, { now: NOW }).states.some((s) => s.omitViewer)).toBe(false);
+  });
+
+  it("the extra state counts towards the limit", () => {
+    const r = viewStates(form(roleIn("owner")), withViewer, { now: NOW, limit: 3 });
+    expect(r.states).toHaveLength(3);
+    expect(r.states[2]?.id).toBe("viewer-not-provided");
+    expect(r.complete).toBe(false);
+  });
+});
+
+describe("permission axis", () => {
+  const editableTable: TableView = { ...table(), columns: [{ field: "title", editable: true }, { field: "status" }] };
+  const editableBoard: BoardView = { ...board, editable: true };
+
+  it("forms and read-only views have none; editable tables, calendars and boards have it", () => {
+    expect(viewStates(form(), withViewer, { now: NOW }).axes.some((a) => a.id === "permission")).toBe(false);
+    expect(viewStates(table(), withViewer, { now: NOW }).axes.some((a) => a.id === "permission")).toBe(false);
+    for (const v of [editableTable, editableBoard, { ...calendar, editable: true }]) {
+      const a = axis(viewStates(v, [...withViewer, v], { now: NOW }), "permission");
+      expect(ids(a)).toEqual(["unrestricted", "record-locked"]);
+      expect(a.kind).toBe("permission");
+    }
+  });
+
+  it("record-locked marks the first record only; the others state nothing", () => {
+    const r = viewStates(editableTable, [...withViewer, editableTable], { now: NOW });
+    const locked = r.states.filter((s) => s.values["permission"] === "record-locked" && s.render.kind === "table" && s.render.records.length > 1);
+    expect(locked.length).toBeGreaterThan(0);
+    for (const s of locked) {
+      if (s.render.kind !== "table") continue;
+      expect(s.render.records[0]?.can).toEqual({ update: false });
+      expect(s.render.records.slice(1).every((rec) => rec.can === undefined)).toBe(true);
+    }
+    const open = r.states.filter((s) => s.values["permission"] === "unrestricted");
+    expect(open.every((s) => s.render.kind === "table" && s.render.records.every((rec) => rec.can === undefined))).toBe(true);
+  });
+
+  it("combines with viewer axes, and the not-provided state is unrestricted", () => {
+    const v: TableView = { ...editableTable, columns: [{ field: "title", editable: true, editableWhen: roleIn("editor", "owner") }] };
+    const r = viewStates(v, [...withViewer, v], { now: NOW });
+    expect(r.axes.map((a) => a.id)).toEqual(["records", "viewer:role", "permission"]);
+    const extra = r.states.find((s) => s.omitViewer);
+    expect(extra?.values["permission"]).toBe("unrestricted");
+    expect(extra?.render.kind === "table" && extra.render.records.every((rec) => rec.can === undefined)).toBe(true);
+  });
+});
+
+describe("viewer axes on a dashboard", () => {
+  const editable: TableView = { ...table(), columns: [{ field: "title", editable: true }, { field: "status", visibleWhen: roleIn("owner") }] };
+  const dash: DashboardView = {
+    ...base,
+    kind: "dashboard",
+    id: "dash",
+    tabs: [
+      { id: "main", title: "Main", visibleWhen: { op: "viewerIn", fact: "beta", values: [true] }, items: [{ id: "tasks", x: 0, y: 0, w: 12, h: 4, widget: "view", view: "task-table" }] },
+    ],
+  };
+  const all: Document[] = [...withViewer, editable, dash].filter((d) => d.id !== "task-table" || d === editable);
+
+  it("owns the viewer axes of the whole tree and applies them to every widget state", () => {
+    const r = viewStates(dash, all, { now: NOW, embeddedLimit: 2 });
+    expect(r.axes.map((a) => a.id)).toEqual(["tab", "widget:tasks", "viewer:role", "viewer:beta", "permission"]);
+    for (const s of r.states) {
+      for (const w of s.render.kind === "dashboard" ? s.render.widgets : []) {
+        expect(w.state.viewer).toEqual(s.viewer);
+        expect(w.state.values["viewer:role"]).toBeUndefined();
+      }
+    }
+    const extra = r.states.filter((s) => s.omitViewer);
+    expect(extra).toHaveLength(1);
+    expect(extra[0] && factValues(extra[0])).toEqual({ role: "viewer", beta: false, region: "eu" });
+  });
+
+  it("embedded views contribute no viewer axes of their own", () => {
+    const r = viewStates(dash, all, { now: NOW });
+    expect(r.axes.filter((a) => a.kind === "viewer")).toHaveLength(2);
   });
 });

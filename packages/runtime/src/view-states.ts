@@ -12,6 +12,7 @@ import type {
   FieldValue,
   FormView,
   RecordValues,
+  ResolvedViewer,
   Scalar,
   TableView,
   ViewDocument,
@@ -23,6 +24,7 @@ import { combineAxes } from "./combine-axes.js";
 import type { AxisSelection } from "./combine-axes.js";
 import { dateFromToday, evaluateCondition } from "./condition.js";
 import { validateRecord } from "./record.js";
+import { findViewerDocument, resolveViewer, viewerLeavesRead } from "./viewer.js";
 
 /** The most states `viewStates` returns when `limit` is not given. */
 export const VIEW_STATES_DEFAULT_LIMIT = 24;
@@ -32,7 +34,7 @@ export const VIEW_STATES_DEFAULT_EMBEDDED_LIMIT = 3;
 export const TABLE_DEFAULT_PAGE_SIZE = 25;
 
 /** What an axis varies. New kinds are added to this union as new axes appear. */
-export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget";
+export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission";
 
 export interface StateAxisValue {
   /** Stable within its axis. */
@@ -45,8 +47,8 @@ export interface StateAxisValue {
  * One dimension a view varies along, as data: a stable id, a label and the
  * values it takes. A state picks one value id per axis (`ViewState.values`).
  * Field axes are called "field:<fieldId>", embedded dashboard views
- * "widget:<gridItemId>"; the others are "fill", "records", "mode", "group"
- * and "tab".
+ * "widget:<gridItemId>", viewer facts "viewer:<factId>"; the others are
+ * "fill", "records", "mode", "group", "tab" and "permission".
  */
 export interface StateAxis {
   readonly id: string;
@@ -113,6 +115,14 @@ export interface ViewState {
   /** The chosen value id per axis id. An axis that does not apply to this state is absent. */
   readonly values: Readonly<Record<string, string>>;
   readonly render: ViewStateRender;
+  /**
+   * The viewer this state renders for: every fact of the set's viewer document
+   * at the value the state picks (the declared default for facts the view does
+   * not read). `{ facts: [] }` when the set has no viewer document.
+   */
+  readonly viewer: ResolvedViewer;
+  /** True only on the "viewer not provided" state: render it with the `viewer` prop omitted; it must look like the state of all defaults. */
+  readonly omitViewer?: true;
 }
 
 /** A state or axis value that could not be built, and why. */
@@ -279,8 +289,7 @@ function collectProbes(conditions: readonly Condition[], now: Date, into: Map<st
         probesOf(condition.field).contains.push(condition.value);
         return;
       case "viewerIn":
-        // STUB (RFC 0006, card viewer-core): a viewer leaf compares no record field, so it adds no probes.
-        // The viewer-axes card (viewStates) replaces this with one axis per fact the view reads.
+        // A viewer leaf compares no record field, so it adds no probes; its fact becomes a viewer axis (buildViewerPlan).
         return;
       default:
         probesOf(condition.field).thresholds.push(isRelativeDate(condition.value) ? dateFromToday(condition.value.daysFromToday, now) : condition.value);
@@ -579,6 +588,101 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
   };
 }
 
+// --- viewer axes ---
+
+const VIEWER_AXIS = "viewer:";
+const PERMISSION_AXIS = "permission";
+const RECORD_LOCKED = "record-locked";
+/** Id of the extra state that renders with the viewer omitted. */
+export const VIEWER_NOT_PROVIDED_STATE = "viewer-not-provided";
+
+interface ViewerPlan {
+  /** One axis per viewer fact the view reads, then the permission axis when the view has an edit surface. */
+  readonly axes: StateAxis[];
+  /** The viewer a selection stands for. */
+  viewerFor(selection: AxisSelection): ResolvedViewer;
+  /** Per viewer axis, the value id of the fact's default. Undefined when the view reads no fact (no "viewer not provided" state). */
+  readonly defaults: AxisSelection | undefined;
+}
+
+/** Whether a view lets the viewer change records: an editable table column, calendar or board, or a dashboard embedding one. */
+function hasEditSurface(view: ViewDocument, ctx: Context): boolean {
+  switch (view.kind) {
+    case "form":
+      return false;
+    case "table":
+      return view.columns.some((c) => c.editable === true);
+    case "calendar":
+    case "board":
+      return view.editable === true;
+    case "dashboard":
+      return view.tabs.some((tab) =>
+        tab.items.some((item) => {
+          if (item.widget !== "view") return false;
+          const target = findView(ctx, item.view);
+          return target !== undefined && target.kind !== "dashboard" && hasEditSurface(target, ctx);
+        }),
+      );
+  }
+}
+
+function buildViewerPlan(view: ViewDocument, ctx: Context): ViewerPlan {
+  const document = findViewerDocument(ctx.documents);
+  const leaves = viewerLeavesRead(view, ctx.documents);
+  const axes: StateAxis[] = [];
+  const valueIds = new Map<string, Map<string, string | boolean>>();
+  const defaults: Record<string, string> = {};
+  for (const fact of document?.facts ?? []) {
+    const named = leaves.filter((l) => l.fact === fact.id).flatMap((l) => l.values);
+    if (named.length === 0) continue;
+    const choices: (string | boolean)[] = [];
+    if (fact.type === "boolean") {
+      choices.push(true, false);
+    } else {
+      // Values a leaf names, plus one that none names (the "everyone else" class): the default when unnamed, else the first unnamed.
+      const everyoneElse = named.includes(fact.default) ? fact.options.values.find((v) => !named.includes(v)) : fact.default;
+      choices.push(...fact.options.values.filter((v) => named.includes(v) || v === everyoneElse));
+    }
+    if (choices.length < 2) continue;
+    const id = `${VIEWER_AXIS}${fact.id}`;
+    valueIds.set(id, new Map(choices.map((c) => [String(c), c])));
+    defaults[id] = String(fact.default);
+    axes.push({ id, label: fact.label, kind: "viewer", values: choices.map((c) => ({ id: String(c), label: `${fact.id} = ${String(c)}` })) });
+  }
+  const reads = axes.length > 0;
+  if (hasEditSurface(view, ctx)) {
+    axes.push({
+      id: PERMISSION_AXIS,
+      label: "Permissions",
+      kind: "permission",
+      values: [
+        { id: "unrestricted", label: "no record locked" },
+        { id: RECORD_LOCKED, label: "1 record locked" },
+      ],
+    });
+  }
+  return {
+    axes,
+    defaults: reads ? defaults : undefined,
+    viewerFor(selection) {
+      const facts = (document?.facts ?? []).map((fact) => {
+        const picked = valueIds.get(`${VIEWER_AXIS}${fact.id}`)?.get(selection[`${VIEWER_AXIS}${fact.id}`] ?? "");
+        return { fact: fact.id, value: picked ?? fact.default };
+      });
+      return { facts };
+    },
+  };
+}
+
+/** In the record-locked state the first record of a table, calendar or board cannot be updated. */
+function lockRecords(render: ViewStateRender, selection: AxisSelection): ViewStateRender {
+  if (selection[PERMISSION_AXIS] !== RECORD_LOCKED) return render;
+  if (render.kind !== "table" && render.kind !== "calendar" && render.kind !== "board") return render;
+  const [first, ...rest] = render.records;
+  if (!first) return render;
+  return { ...render, records: [{ ...first, can: { update: false } }, ...rest] };
+}
+
 // --- assembling states ---
 
 const stateId = (axes: readonly StateAxis[], selection: AxisSelection): string => {
@@ -594,20 +698,28 @@ const stateLabel = (axes: readonly StateAxis[], selection: AxisSelection): strin
   return parts.length === 0 ? "default" : parts.join(" · ");
 };
 
-function assemble(view: ViewDocument, plan: Plan, limit: number): ViewStatesResult {
-  const combined = combineAxes(plan.axes, limit);
+function assemble(view: ViewDocument, plan: Plan, limit: number, viewer: ViewerPlan): ViewStatesResult {
+  const axes = [...plan.axes, ...viewer.axes];
+  // The "viewer not provided" state is one more state: it takes one place of the limit.
+  const reserve = viewer.defaults !== undefined && limit > 1 ? 1 : 0;
+  const combined = combineAxes(axes, limit - reserve);
   const states: ViewState[] = [];
   const skipped = [...plan.skipped];
-  for (const selection of combined.selections) {
-    const id = stateId(plan.axes, selection);
+  const stateFor = (id: string, label: string, selection: AxisSelection, extra?: { omitViewer: true }): void => {
     const built = plan.build(selection);
-    if (built.ok) states.push({ id, label: stateLabel(plan.axes, selection), values: selection, render: built.render });
+    if (built.ok) states.push({ id, label, values: selection, render: lockRecords(built.render, selection), viewer: viewer.viewerFor(selection), ...extra });
     else if (!skipped.some((s) => s.id === "view")) skipped.push({ id, reason: built.reason });
+  };
+  for (const selection of combined.selections) stateFor(stateId(axes, selection), stateLabel(axes, selection), selection);
+  const first = combined.selections[0];
+  if (reserve === 1 && viewer.defaults !== undefined && first) {
+    const selection: AxisSelection = { ...first, ...viewer.defaults, ...(viewer.axes.some((a) => a.id === PERMISSION_AXIS) ? { [PERMISSION_AXIS]: "unrestricted" } : {}) };
+    stateFor(VIEWER_NOT_PROVIDED_STATE, "viewer not provided", selection, { omitViewer: true });
   }
-  return { view: view.id, axes: plan.axes, states, skipped, strategy: combined.strategy, complete: combined.complete };
+  return { view: view.id, axes, states, skipped, strategy: combined.strategy, complete: combined.complete };
 }
 
-function dashboardStates(view: DashboardView, ctx: Context, limit: number): ViewStatesResult {
+function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewer: ViewerPlan): ViewStatesResult {
   const embeddedLimit = ctx.options.embeddedLimit ?? VIEW_STATES_DEFAULT_EMBEDDED_LIMIT;
   const skipped: SkippedState[] = [];
   const cache = new Map<string, ViewStatesResult | undefined>();
@@ -616,7 +728,7 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number): View
       const target = findView(ctx, id);
       if (!target) skipped.push({ id: `view:${id}`, reason: `view "${id}" is not among the documents` });
       else if (target.kind === "dashboard") skipped.push({ id: `view:${id}`, reason: `dashboard "${id}" cannot be embedded in a dashboard` });
-      cache.set(id, target && target.kind !== "dashboard" ? viewStatesIn(target, ctx, embeddedLimit) : undefined);
+      cache.set(id, target && target.kind !== "dashboard" ? viewStatesIn(target, ctx, embeddedLimit, true) : undefined);
     }
     return cache.get(id);
   };
@@ -644,37 +756,57 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number): View
   const states: ViewState[] = [];
   let complete = view.tabs.length <= limit;
   let strategy: "full" | "pairwise" = "full";
-  let remaining = limit;
+  // The "viewer not provided" state is one more state: it takes one place of the limit.
+  const reserve = viewer.defaults !== undefined && limit > 1 ? 1 : 0;
+  let remaining = limit - reserve;
   const tabs = view.tabs.slice(0, limit);
+  const allAxes = [...axes, ...viewer.axes];
+  type TabWidgets = (typeof tabWidgets)[number];
+  const stateOf = (tab: DashboardView["tabs"][number], widgets: TabWidgets, picked: AxisSelection, override?: { id: string; label: string; omitViewer: true }): ViewState => {
+    const selection: Record<string, string> = { tab: tab.id, ...picked };
+    // Embedded states are built without viewer axes; the dashboard's viewer and locked record apply to each.
+    const widgetStates = widgets.flatMap((w) => {
+      const state = w.result.states.find((s) => s.id === picked[w.axis.id]);
+      return state ? [{ item: w.item, view: w.view, state: { ...state, render: lockRecords(state.render, picked), viewer: viewer.viewerFor(picked) } }] : [];
+    });
+    return {
+      id: override?.id ?? stateId(allAxes, selection),
+      label: override?.label ?? stateLabel(allAxes, selection),
+      values: selection,
+      render: { kind: "dashboard", view: view.id, tab: tab.id, widgets: widgetStates, now: ctx.now },
+      viewer: viewer.viewerFor(picked),
+      ...(override ? { omitViewer: override.omitViewer } : {}),
+    };
+  };
+  let firstPick: { tab: DashboardView["tabs"][number]; widgets: TabWidgets; picked: AxisSelection } | undefined;
   tabs.forEach((tab, index) => {
     const widgets = tabWidgets[index] ?? [];
     const allot = Math.max(1, Math.floor(remaining / (tabs.length - index)));
-    const combined = combineAxes(widgets.map((w) => w.axis), allot);
+    const combined = combineAxes([...widgets.map((w) => w.axis), ...viewer.axes], allot);
     if (!combined.complete) complete = false;
     if (combined.strategy === "pairwise") strategy = "pairwise";
     for (const picked of combined.selections) {
-      const selection: Record<string, string> = { tab: tab.id, ...picked };
-      const widgetStates = widgets.flatMap((w) => {
-        const state = w.result.states.find((s) => s.id === picked[w.axis.id]);
-        return state ? [{ item: w.item, view: w.view, state }] : [];
-      });
-      states.push({
-        id: stateId(axes, selection),
-        label: stateLabel(axes, selection),
-        values: selection,
-        render: { kind: "dashboard", view: view.id, tab: tab.id, widgets: widgetStates, now: ctx.now },
-      });
+      firstPick ??= { tab, widgets, picked };
+      states.push(stateOf(tab, widgets, picked));
     }
     remaining -= combined.selections.length;
   });
+  if (reserve === 1 && viewer.defaults !== undefined && firstPick) {
+    const picked: AxisSelection = { ...firstPick.picked, ...viewer.defaults, ...(viewer.axes.some((a) => a.id === PERMISSION_AXIS) ? { [PERMISSION_AXIS]: "unrestricted" } : {}) };
+    states.push(stateOf(firstPick.tab, firstPick.widgets, picked, { id: VIEWER_NOT_PROVIDED_STATE, label: "viewer not provided", omitViewer: true }));
+  }
   for (const result of cache.values()) if (result && !result.complete) complete = false;
-  return { view: view.id, axes, states, skipped, strategy, complete };
+  return { view: view.id, axes: allAxes, states, skipped, strategy, complete };
 }
 
-function viewStatesIn(view: ViewDocument, ctx: Context, limit: number): ViewStatesResult {
-  if (view.kind === "dashboard") return dashboardStates(view, ctx, limit);
+/** `embedded` views (inside a dashboard) get no viewer axes: the dashboard owns them and applies its viewer to every widget. */
+function viewStatesIn(view: ViewDocument, ctx: Context, limit: number, embedded = false): ViewStatesResult {
+  const viewer: ViewerPlan = embedded
+    ? { axes: [], defaults: undefined, viewerFor: () => resolveViewer(findViewerDocument(ctx.documents)).viewer }
+    : buildViewerPlan(view, ctx);
+  if (view.kind === "dashboard") return dashboardStates(view, ctx, limit, viewer);
   const plan = view.kind === "form" ? planForm(view, ctx) : planCollection(view, ctx);
-  return assemble(view, plan, limit);
+  return assemble(view, plan, limit, viewer);
 }
 
 /**
