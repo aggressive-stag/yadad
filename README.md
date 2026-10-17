@@ -16,10 +16,10 @@ Yet another drag and drop: a schema-driven React engine for data-bound apps. You
 
 ## Quick start
 
-The packages are published to the project's GitLab npm registry. Point the `@yadad` scope at it, then install (React 19 is a peer dependency):
+The packages (the engine and `@yadad/components`) are published to the project's GitLab npm registry, not to npmjs.com. Point the `@yadad` scope at the registry's instance-level npm endpoint, `https://<gitlab-host>/api/v4/packages/npm/`, where `<gitlab-host>` is the GitLab instance that hosts the project. One scope entry serves every `@yadad/*` package. Add an auth token for that host if the instance requires one. React 19 is a peer dependency.
 
 ```sh
-echo "@yadad:registry=<registry URL>" >> .npmrc
+echo "@yadad:registry=https://<gitlab-host>/api/v4/packages/npm/" >> .npmrc
 npm install @yadad/core @yadad/runtime @yadad/renderer @yadad/theme @yadad/components react react-dom
 ```
 
@@ -89,7 +89,7 @@ A screen is more than the one state you looked at. `viewStates` in `@yadad/runti
 ## Key concepts
 
 - **Entity and view documents.** An entity owns fields, types and validation. Views show an entity: a `form` (sections of fields), a `table` (columns, sorting, paging, filters), a `calendar` (records on the days of a month or week by a date field), a `board` (records as cards in columns, one per value of a select, boolean or reference field) or a `dashboard` (tabs of form, table, calendar, board, count and stat widgets on a 12-column grid). A `viewer` document is not a view; it declares facts about who is looking. `pnpm describe-registry` prints everything a document may contain.
-- **Registry.** The engine never imports a component. You inject a `Registry`, which maps each field type, layout piece and widget to a React component by exact key. [`yadad-components`](https://github.com/aggressive-stag/yadad-components) is the reference set (`@yadad/components`); bring your own if you prefer.
+- **Registry.** The engine never imports a component. You inject a `Registry`, which maps each field type, layout piece and widget to a React component by exact key. [`yadad-components`](https://github.com/aggressive-stag/yadad-components) is the reference set (`@yadad/components`): every field type, the layout pieces including the optional `layout.Calendar` and `layout.Board`, and the `count` widget. Bring your own if you prefer.
 - **Data adapters.** A view names a `dataSource` key, never a URL; the host maps the key to a `DataAdapter`. Records carry a `version`, and a stale write is a conflict.
 - **Conditions.** A JSON AST (`eq`, `gt`, `in`, `and`, `not`, ...) drives `visibleWhen`, `requiredWhen` and filters; there are no string expressions. Date comparisons accept a relative date, `{ "daysFromToday": n }` (0 is today, -7 a week ago), resolved from the viewer's local date.
 - **Viewer facts.** A `viewer` document lists facts (`select` or `boolean`, each with a default). The host resolves them for the current user with `resolveViewer` and passes the result to a renderer's `viewer` prop. A `viewerIn` condition on a column, form field, tab, widget, row action or `editableWhen` shows or allows it only for matching viewers; hidden things are not rendered, not greyed out. A record may also carry `can: { update?, delete? }`, which can only take rights away. The server still decides: a refused write is a 403. See [ARCHITECTURE.md](ARCHITECTURE.md) and [RFC 0006](rfcs/0006-viewer.md).
@@ -106,4 +106,4 @@ A screen is more than the one state you looked at. `viewStates` in `@yadad/runti
 
 ## Contributing
 
-Clone the repo, run `pnpm install`, and read [AGENTS.md](AGENTS.md) for the workflow, the rules each package follows and the checks every change must pass. Commits follow the Angular format.
+Clone the repo (Node 22.18 or newer; its scripts are TypeScript run by Node directly), run `pnpm install`, and read [AGENTS.md](AGENTS.md) for the workflow, the rules each package follows and the checks every change must pass. Commits follow the Angular format.
