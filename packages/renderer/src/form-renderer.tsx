@@ -1,13 +1,15 @@
 import { conditionFields, jsonPointer } from "@yadad/core";
-import type { DataAdapter, DataRecord, EntityDocument, FieldValue, FormItem, FormView, ReferenceField, Registry } from "@yadad/core";
+import type { DataAdapter, DataRecord, EntityDocument, FieldValue, FormItem, FormView, ReferenceField, Registry, ResolvedViewer } from "@yadad/core";
 import { applyFormRules, emptyFormState, evaluateFormRules, restoreDraft, setFieldValue, submitForm } from "@yadad/runtime";
 import type { DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
+import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
 import { renderInput } from "./fields.js";
 import type { CommonInputProps } from "./fields.js";
 import { useReferences } from "./references.js";
+import { useViewerSetup } from "./viewer.js";
 
 export interface FormRendererProps {
   readonly entity: EntityDocument;
@@ -27,6 +29,18 @@ export interface FormRendererProps {
    * 400 ms) and restored on the next load, until it is saved or discarded.
    */
   readonly drafts?: { readonly store: DraftStore; readonly debounceMs?: number };
+  /**
+   * Who is viewing (RFC 0006), from `resolveViewer`. Fields hidden for this
+   * viewer are not shown, validated or saved. Needed when the form reads a
+   * viewer fact; a form that reads none works without it.
+   */
+  readonly viewer?: ResolvedViewer;
+  /**
+   * The document set, used only to find the viewer document: without a
+   * `viewer`, the form uses that document's defaults. A form that reads a
+   * viewer fact and has neither shows an error.
+   */
+  readonly documents?: DocumentSet;
 }
 
 /**
@@ -34,8 +48,9 @@ export interface FormRendererProps {
  * the Save button) comes from the injected registry; saving goes through
  * runtime and the data adapter.
  */
-export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts }: FormRendererProps): ReactNode {
+export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents }: FormRendererProps): ReactNode {
   const formId = useId();
+  const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const store = drafts?.store;
   const [initial] = useState(() => {
     const draft = store?.load(view.id);
@@ -52,12 +67,12 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
     if (!store || !typed.current) return;
     const timer = setTimeout(() => {
       // Store what the form would save, so hidden clearWhenHidden values are not kept.
-      const values = applyFormRules(entity, view, state.values).values;
+      const values = applyFormRules(entity, view, state.values, viewer).values;
       if (Object.keys(values).length === 0) store.clear(view.id);
       else store.save(view.id, undefined, { values, entityRevision: entity.revision, savedAt: Date.now() });
     }, debounceMs);
     return () => clearTimeout(timer);
-  }, [store, debounceMs, entity, view, state.values]);
+  }, [store, debounceMs, entity, view, state.values, viewer]);
 
   const adapter = dataSources.get(view.dataSource);
   const shownRefs = view.sections.flatMap((s) => s.items.flatMap((i) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === i.field)));
@@ -76,11 +91,11 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
       ];
     }),
   );
-  const setupErrors = checkViewSetup(entity, view, adapter, refs);
+  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...(viewerError ? [viewerError] : [])];
   const { FieldFrame, Section, Button, ErrorSummary } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const rules = evaluateFormRules(view, state.values);
+  const rules = evaluateFormRules(view, state.values, viewer);
   // Errors for fields not on screen (hidden or not in this view) go in the summary.
   const shown = new Set(view.sections.flatMap((s) => s.items.map((i) => i.field)).filter((id) => !rules.hidden.has(id)));
   const formErrors = state.errors.filter((e) => !entity.fields.some((f) => shown.has(f.id) && e.path === jsonPointer([f.id])));
@@ -88,7 +103,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
   async function save(): Promise<void> {
     if (!adapter || saving) return;
     setSaving(true);
-    const effective = applyFormRules(entity, view, state.values);
+    const effective = applyFormRules(entity, view, state.values, viewer);
     const result = await submitForm(effective.entity, effective.values, adapter);
     setSaving(false);
     if (result.ok) {
