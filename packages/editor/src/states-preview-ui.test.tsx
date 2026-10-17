@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { SPEC_VERSION } from "@yadad/core";
 import type { Document, EntityDocument, FormView } from "@yadad/core";
 import type { ViewState } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
@@ -88,6 +89,38 @@ describe("StatesPreview", () => {
     const result = compareStates(form, [state("a"), state("b")], form, [state("a")]);
     expect(result.removed).toEqual([{ id: "b", label: "b" }]);
     expect(result.changes.get("a")).toBe("unchanged");
+  });
+
+  test("compareStates matches by shared axis values: an added axis is not a full replacement", () => {
+    const state = (values: Record<string, string>): ViewState => ({
+      id: Object.entries(values).map(([k, v]) => `${k}=${v}`).join("|"),
+      label: Object.entries(values).map(([k, v]) => `${k} = ${v}`).join(" · "),
+      values,
+      render: { kind: "form", view: "v", values: {}, now },
+      viewer: { facts: [] },
+    });
+    const savedStates = [state({ status: "open" }), state({ status: "done" })];
+    const editedStates = [state({ status: "open", role: "owner" }), state({ status: "open", role: "other" }), state({ status: "done", role: "owner" }), state({ status: "done", role: "other" })];
+    const result = compareStates(form, savedStates, form, editedStates);
+    expect([...result.changes.values()]).toEqual(["unchanged", "unchanged", "unchanged", "unchanged"]);
+    expect(result.removed).toEqual([]);
+    // A state with a value no saved state has is new; a saved state nothing matches is removed.
+    const other = compareStates(form, savedStates, form, [state({ status: "archived", role: "owner" })]);
+    expect([...other.changes.values()]).toEqual(["new"]);
+    expect(other.removed.map((r) => r.id)).toEqual(["status=open", "status=done"]);
+  });
+
+  test("adding a viewer condition marks states changed or unchanged, never all new, and lists none as gone", () => {
+    const viewerDoc: Document = { kind: "viewer", specVersion: SPEC_VERSION, id: "viewer", revision: 1, facts: [{ id: "role", label: "Role", type: "select", options: { source: "static", values: ["viewer", "owner"] }, default: "viewer" }] };
+    const edited: FormView = { ...form, sections: [{ id: "main", items: [{ field: "title" }, { field: "status" }, { field: "note", visibleWhen: { op: "viewerIn", fact: "role", values: ["owner"] } }] }] };
+    render(<StatesPreview view={edited} saved={form} documents={[entity, viewerDoc]} now={now} renderState={renderState} />);
+    const marks = [...document.querySelectorAll("[data-yadad-state]")].map((li) => li.getAttribute("data-change"));
+    expect(marks.length).toBeGreaterThan(0);
+    // Only the "viewer not provided" state, which the saved revision cannot have, is new.
+    const fresh = [...document.querySelectorAll("[data-change='new']")].map((li) => li.getAttribute("data-yadad-state"));
+    expect(fresh).toEqual(["viewer-not-provided"]);
+    expect(marks).toContain("changed");
+    expect(screen.getByRole("status").textContent).not.toMatch(/no longer apply/);
   });
 
   test("shows the host's check problems per state, and drops an answer for an older document", async () => {

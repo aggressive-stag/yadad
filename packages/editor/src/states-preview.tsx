@@ -76,30 +76,63 @@ function formFields(view: FormView, state: ViewState): string {
   return JSON.stringify({ shown: shown.map((i) => i.field), required: required.map((i) => i.field) });
 }
 
-/** What makes a state look different: its label and values, and what the view shows in it. Never pixels. */
-function signature(view: ViewDocument, state: ViewState): string {
-  const base = { label: state.label, values: state.values };
+/**
+ * What makes a state look different: its label and values, and what the view
+ * shows in it. Never pixels. When the two states have different axes (a
+ * condition added an axis), only the axis values they share are compared and
+ * the label, which names every axis, is left out.
+ */
+function signature(view: ViewDocument, state: ViewState, shared?: ReadonlySet<string>): string {
+  const values = shared ? Object.fromEntries(Object.entries(state.values).filter(([axis]) => shared.has(axis))) : state.values;
+  const base = shared ? { values } : { label: state.label, values };
   if (view.kind === "form") return JSON.stringify({ ...base, fields: formFields(view, state) });
   const render = state.render;
   if (render.kind === "table" || render.kind === "calendar" || render.kind === "board") return JSON.stringify({ ...base, matching: render.matching, kind: render });
   return JSON.stringify(base);
 }
 
+/** The axis ids two states both have a value for, when every one of them has the same value; undefined when any differs. */
+function sharedAxes(a: ViewState, b: ViewState): string[] | undefined {
+  const shared: string[] = [];
+  for (const [axis, value] of Object.entries(a.values)) {
+    if (!(axis in b.values)) continue;
+    if (b.values[axis] !== value) return undefined;
+    shared.push(axis);
+  }
+  return shared;
+}
+
 /**
- * Compares the states of the edited view with those of the saved revision. A
- * state is new when the saved revision has no state with its id, changed when
- * its label, axis values or (for a form) the fields it shows or requires
- * differ, and removed when only the saved revision has it.
+ * Compares the states of the edited view with those of the saved revision.
+ * State ids encode every axis value, so adding a condition (a new axis)
+ * changes every id; states are therefore matched by the axis values they
+ * share, preferring the same id and then the most shared axes. A matched
+ * state is changed when its label, axis values or (for a form) the fields it
+ * shows or requires differ; one with no match is new, and a saved state no
+ * edited state matches is removed.
  */
 export function compareStates(saved: ViewDocument, savedStates: readonly ViewState[], edited: ViewDocument, editedStates: readonly ViewState[]): StateComparison {
-  const before = new Map(savedStates.map((s) => [s.id, s]));
+  const matched = new Set<string>();
   const changes = new Map<string, StateChange>();
   for (const state of editedStates) {
-    const old = before.get(state.id);
-    changes.set(state.id, old === undefined ? "new" : signature(saved, old) === signature(edited, state) ? "unchanged" : "changed");
+    let best: { readonly old: ViewState; readonly shared: string[] } | undefined;
+    for (const old of savedStates) {
+      if ((old.omitViewer === true) !== (state.omitViewer === true)) continue;
+      const shared = old.id === state.id ? Object.keys(state.values) : sharedAxes(state, old);
+      if (!shared || (old.id !== state.id && shared.length === 0 && Object.keys(state.values).length > 0)) continue;
+      const better = !best || (old.id === state.id && best.old.id !== state.id) || (best.old.id !== state.id && (shared.length > best.shared.length || (shared.length === best.shared.length && matched.has(best.old.id) && !matched.has(old.id))));
+      if (better) best = { old, shared };
+    }
+    if (!best) {
+      changes.set(state.id, "new");
+      continue;
+    }
+    matched.add(best.old.id);
+    const sameAxes = Object.keys(best.old.values).length === Object.keys(state.values).length && best.shared.length === Object.keys(state.values).length;
+    const shared = sameAxes ? undefined : new Set(best.shared);
+    changes.set(state.id, signature(saved, best.old, shared) === signature(edited, state, shared) ? "unchanged" : "changed");
   }
-  const kept = new Set(editedStates.map((s) => s.id));
-  return { changes, removed: savedStates.filter((s) => !kept.has(s.id)).map((s) => ({ id: s.id, label: s.label })) };
+  return { changes, removed: savedStates.filter((s) => !matched.has(s.id)).map((s) => ({ id: s.id, label: s.label })) };
 }
 
 type Built = { readonly ok: true; readonly result: ViewStatesResult } | { readonly ok: false; readonly error: string };
