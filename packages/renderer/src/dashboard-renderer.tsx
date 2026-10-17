@@ -8,11 +8,12 @@ import type {
   GridItem,
   Measure,
   Registry,
+  ResolvedViewer,
   StatWidget,
   TableView,
 } from "@yadad/core";
 import { conditionFields, jsonPointer } from "@yadad/core";
-import { aggregate } from "@yadad/runtime";
+import { aggregate, visibleItems, visibleTabs } from "@yadad/runtime";
 import type { AggregateResult } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
@@ -22,6 +23,7 @@ import { CalendarRenderer } from "./calendar-renderer.js";
 import { FormRenderer } from "./form-renderer.js";
 import type { FormRendererProps } from "./form-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
+import { useViewerSetup } from "./viewer.js";
 
 export type { DocumentSet } from "./document-set.js";
 
@@ -35,6 +37,14 @@ export interface DashboardRendererProps {
   readonly stackBelow?: number;
   /** Passed to every embedded form: opt-in drafts of unsaved input. */
   readonly drafts?: FormRendererProps["drafts"];
+  /**
+   * Who is viewing (RFC 0006), from `resolveViewer`. Tabs and widgets the viewer
+   * may not see are not rendered, and the viewer is passed unchanged to every
+   * view the dashboard embeds. Without it, the document set's viewer document
+   * is used at its defaults; a dashboard that reads a viewer fact and cannot
+   * find the document shows an error.
+   */
+  readonly viewer?: ResolvedViewer;
 }
 
 const DEFAULT_COLUMNS = 12;
@@ -66,16 +76,18 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables, counts and stats.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp }: DashboardRendererProps): ReactNode {
+  const { viewer, error: viewerError } = useViewerSetup(viewerProp, dashboard, documents);
+  const tabs = useMemo(() => visibleTabs(dashboard, viewer), [dashboard, viewer]);
   const [rootRef, width] = useWidth();
-  const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
+  const [selected, setSelected] = useState(tabs[0]?.id ?? "");
   const [reloadKey, setReloadKey] = useState(0);
   const { Tabs, Panel, ErrorSummary } = registry.layout;
 
-  const setupErrors = checkDashboard(dashboard, documents, dataSources);
+  const setupErrors = [...checkDashboard(dashboard, documents, dataSources), ...(viewerError ? [viewerError] : [])];
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const tab = dashboard.tabs.find((t) => t.id === selected) ?? dashboard.tabs[0];
+  const tab = tabs.find((t) => t.id === selected) ?? tabs[0];
   if (!tab) return null;
   const stacked = width !== undefined && width < stackBelow;
   const columns = stacked ? 1 : (tab.columns ?? DEFAULT_COLUMNS);
@@ -88,17 +100,17 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return view.kind === "table" ? <CountLoader widget={item} view={view} entity={entity} registry={registry} dataSources={dataSources} reloadKey={reloadKey} /> : null;
     }
     if (view.kind === "form") {
-      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} />;
+      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} />;
     }
     if (view.kind === "table") {
-      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
+      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />;
     }
     if (view.kind === "calendar") {
-      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
+      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />;
     }
     if (view.kind === "board") {
       // The group-by choice is uncontrolled inside a cell (RFC 0005).
-      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
+      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />;
     }
     return null;
   };
@@ -115,7 +127,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
         gap: "var(--yadad-grid-gap, 1rem)",
       }}
     >
-      {[...tab.items].sort(readingOrder).map((item) => (
+      {[...visibleItems(tab, viewer)].sort(readingOrder).map((item) => (
         <div
           key={`${tab.id}/${item.id}`}
           data-yadad-grid-item={item.id}
@@ -133,7 +145,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
 
   return (
     <div ref={rootRef} data-yadad-dashboard={dashboard.id}>
-      <Tabs label={dashboard.title ?? dashboard.id} tabs={dashboard.tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={setSelected} panel={grid} />
+      <Tabs label={dashboard.title ?? dashboard.id} tabs={tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={setSelected} panel={grid} />
     </div>
   );
 }
