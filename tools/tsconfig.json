@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "../node_modules/.cache/tools-tsc",
+    "tsBuildInfoFile": "../node_modules/.cache/tools-tsc/tsbuildinfo",
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": false,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts", "../.dependency-cruiser.ts", "../eslint.config.ts"],
+  "exclude": ["forbidden-import-fixture/apps", "forbidden-import-fixture/packages", "forbidden-import-fixture/testing", "forbidden-import-fixture/yadad-components"],
+  "references": [{ "path": "../packages/core" }]
+}

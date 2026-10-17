@@ -7,6 +7,7 @@
     { "path": "packages/editor" },
     { "path": "packages/theme" },
     { "path": "testing" },
-    { "path": "apps/showcase" }
+    { "path": "apps/showcase" },
+    { "path": "tools" }
   ]
 }
