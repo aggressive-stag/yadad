@@ -278,6 +278,10 @@ function collectProbes(conditions: readonly Condition[], now: Date, into: Map<st
       case "contains":
         probesOf(condition.field).contains.push(condition.value);
         return;
+      case "viewerIn":
+        // STUB (RFC 0006, card viewer-core): a viewer leaf compares no record field, so it adds no probes.
+        // The viewer-axes card (viewStates) replaces this with one axis per fact the view reads.
+        return;
       default:
         probesOf(condition.field).thresholds.push(isRelativeDate(condition.value) ? dateFromToday(condition.value.daysFromToday, now) : condition.value);
     }
