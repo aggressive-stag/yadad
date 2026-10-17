@@ -33,7 +33,8 @@ export function renderState(state: SourceViewState, context: StateRenderContext,
     case "table":
       return entity ? <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...viewer} /> : null;
     case "calendar":
-      return entity ? <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...viewer} /> : null;
+      // The state names the mode and the day the calendar opens on; the viewer may still navigate from there.
+      return entity && state.render.kind === "calendar" ? <CalendarRenderer key={state.id} initialMode={state.render.mode} initialAnchor={state.render.anchor} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...viewer} /> : null;
     case "board":
       // The state names the field the board is grouped by; the renderer's `groupBy` prop takes it, and the viewer may still switch.
       return entity && state.render.kind === "board" ? <StateBoard key={state.id} initial={state.render.groupBy} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} set={set} viewer={viewer} /> : null;
