@@ -1,4 +1,4 @@
-import type { Document, EntityDocument, Registry, ViewDocument } from "@yadad/core";
+import type { Document, EntityDocument, Registry, ViewDocument, ViewerDocument } from "@yadad/core";
 import { StatesPreview } from "@yadad/editor";
 import type { StatesPreviewProps } from "@yadad/editor";
 import type { DocumentSet } from "@yadad/renderer";
@@ -11,9 +11,11 @@ import { contextFor, enqueueChecks, QUICK_MANY, renderState } from "./states";
 
 /** The documents as a renderer's set. */
 function setOf(docs: readonly Document[]): DocumentSet {
+  const viewer = docs.find((d): d is ViewerDocument => d.kind === "viewer");
   return {
     entities: new Map(docs.filter((d): d is EntityDocument => d.kind === "entity").map((d) => [d.id, d])),
     views: new Map(docs.filter((d): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer").map((d) => [d.id, d])),
+    ...(viewer ? { viewer } : {}),
   };
 }
 
@@ -29,7 +31,7 @@ export function WithStatesPreview({ view, documents, registry, editor }: { reado
     d.setHours(10, 0, 0, 0);
     return d;
   });
-  const docs = useMemo<Document[]>(() => [...documents.entities.values(), ...documents.views.values()], [documents]);
+  const docs = useMemo<Document[]>(() => [...documents.entities.values(), ...documents.views.values(), ...(documents.viewer ? [documents.viewer] : [])], [documents]);
 
   const renderOne: StatesPreviewProps["renderState"] = (state: ViewState, all) => {
     const target = all.find((d): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer" && d.id === state.render.view);

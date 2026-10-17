@@ -1,6 +1,6 @@
 import { validateDocument } from "@yadad/core";
 import type { ResolvedViewer, ViewerDocument, ViewerFactValue, BoardView, CalendarView, DashboardView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
-import { addWidget, blankBoard, blankDashboard, blankEntity, blankForm, blankTable, BoardViewEditor, CalendarViewEditor, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor, uniqueItemId } from "@yadad/editor";
+import { addWidget, blankBoard, blankDashboard, blankEntity, blankForm, blankTable, BoardViewEditor, CalendarViewEditor, ViewerPanel, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor, uniqueItemId } from "@yadad/editor";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
 import { applyPatch, createDraftStore, createKeyValueAdapter, createMemoryAdapter, resolveViewer } from "@yadad/runtime";
@@ -153,6 +153,7 @@ const docKey = (doc: Document) => `${doc.kind}:${doc.id}`;
 
 type Mode =
   | { readonly kind: "view" }
+  | { readonly kind: "viewer" }
   | { readonly kind: "layout"; readonly id: string }
   | { readonly kind: "fields"; readonly id: string }
   | { readonly kind: "form"; readonly id: string }
@@ -246,6 +247,12 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
         </FieldFrame>
         <Button label="Start a new app" type="button" variant="secondary" disabled={appName.trim() === ""} onPress={createApp} />
       </div>
+      {page === "views" && documents.viewer && mode.kind === "viewer" && (
+        <ViewerPanel viewer={documents.viewer} registry={registry} documents={[...documents.entities.values(), ...documents.views.values()]} onSave={save} onCancel={close} />
+      )}
+      {page === "views" && documents.viewer && mode.kind !== "viewer" && (
+        <Button label="Edit viewer facts" type="button" variant="secondary" disabled={false} onPress={() => setMode({ kind: "viewer" })} />
+      )}
       {page === "views" && documents.viewer && <ViewAs document={documents.viewer} viewer={viewer} onChange={(fact, value) => setViewerInput([...viewer.facts.filter((f) => f.fact !== fact), { fact, value }])} />}
       {page === "states" && <StatesPage documents={documents} registry={registry} {...(initialStatesView ? { initialView: initialStatesView } : {})} />}
       {page === "views" && allRoots.map((id) => {
@@ -253,7 +260,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
         const entityId = view?.kind === "dashboard" ? firstEntity(view.id, documents) : view?.entity;
         const entity = entityId ? documents.entities.get(entityId) : undefined;
         const parts = viewsOf(id, documents);
-        const editing = mode.kind !== "view" && (mode.id === id || mode.id === entityId || parts.some((v) => v.id === mode.id && v.kind === mode.kind));
+        const editing = mode.kind !== "view" && mode.kind !== "viewer" && (mode.id === id || mode.id === entityId || parts.some((v) => v.id === mode.id && v.kind === mode.kind));
         return (
           <section key={id} aria-label={id}>
             {!editing && view && (
@@ -269,7 +276,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
               </div>
             )}
             {mode.kind === "layout" && mode.id === id && view?.kind === "dashboard" ? (
-              <DashboardLayoutEditor dashboard={view} registry={registry} onSave={save} onCancel={close} describeView={(v) => describe(v, documents)} views={[...documents.views.values()]} entities={documents.entities} />
+              <DashboardLayoutEditor dashboard={view} registry={registry} {...(documents.viewer ? { viewer: documents.viewer } : {})} onSave={save} onCancel={close} describeView={(v) => describe(v, documents)} views={[...documents.views.values()]} entities={documents.entities} />
             ) : mode.kind === "fields" && entity && mode.id === entity.id ? (
               <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} onSave={save} onCancel={close} />
             ) : (mode.kind === "form" || mode.kind === "table" || mode.kind === "calendar" || mode.kind === "board") && editing ? (
@@ -298,13 +305,14 @@ function viewEditor(mode: { readonly kind: "form" | "table" | "calendar" | "boar
   const entity = view && view.kind !== "dashboard" ? documents.entities.get(view.entity) : undefined;
   if (!entity) return null;
   const tableContext = { tables: [...documents.views.values()].filter((v): v is TableView => v.kind === "table"), entities: [...documents.entities.values()] };
+  const viewerProp = documents.viewer ? { viewer: documents.viewer } : {};
   const wrap = (editor: (onChange: (v: ViewDocument) => void) => ReactNode): ReactNode => (
     <WithStatesPreview key={`${view?.id}-${view?.revision}`} view={view as ViewDocument} documents={documents} registry={registry} editor={editor} />
   );
-  if (view?.kind === "form") return wrap((onChange) => <FormViewEditor view={view} entity={entity} registry={registry} onSave={save} onChange={onChange} onCancel={close} />);
-  if (view?.kind === "table") return wrap((onChange) => <TableViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
-  if (view?.kind === "calendar") return wrap((onChange) => <CalendarViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
-  if (view?.kind === "board") return wrap((onChange) => <BoardViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
+  if (view?.kind === "form") return wrap((onChange) => <FormViewEditor view={view} entity={entity} registry={registry} {...viewerProp} onSave={save} onChange={onChange} onCancel={close} />);
+  if (view?.kind === "table") return wrap((onChange) => <TableViewEditor view={view} entity={entity} registry={registry} {...viewerProp} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
+  if (view?.kind === "calendar") return wrap((onChange) => <CalendarViewEditor view={view} entity={entity} registry={registry} {...viewerProp} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
+  if (view?.kind === "board") return wrap((onChange) => <BoardViewEditor view={view} entity={entity} registry={registry} {...viewerProp} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
   return null;
 }
 
