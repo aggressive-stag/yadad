@@ -196,6 +196,14 @@ describe("TableViewEditor", () => {
     render(<TableViewEditor view={{ ...table, columns: [{ field: "title" }] }} entity={entity} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
     expect(button("Remove Title").disabled).toBe(true);
   });
+
+  test("the columns table scrolls inside a focusable region, so it never widens the page", () => {
+    render(<TableViewEditor view={table} entity={entity} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+    const region = screen.getByRole("region", { name: /Columns of tasks/ });
+    expect(region.tabIndex).toBe(0);
+    expect(region.style.overflowX).toBe("auto");
+    expect(within(region).getByRole("table")).toBeTruthy();
+  });
 });
 
 describe("DashboardLayoutEditor widgets and tabs", () => {

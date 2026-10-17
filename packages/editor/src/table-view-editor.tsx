@@ -353,7 +353,11 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
             <Button label="Add column" type="button" variant="primary" disabled={!addChoice} onPress={() => addChoice && run(addColumn(current, addChoice), () => setAdding(undefined))} />
           </div>
         )}
-        <Table caption={`Columns of ${current.title ?? current.id}`} columns={columns} rows={rows} onSort={() => {}} empty="No columns." />
+        <div data-yadad-scroll-region="" role="region" aria-label={`Columns of ${current.title ?? current.id}, scrolls sideways`} tabIndex={0} style={{ overflowX: "auto", contain: "inline-size" }}>
+          <div style={{ minInlineSize: "44rem" }}>
+            <Table caption={`Columns of ${current.title ?? current.id}`} columns={columns} rows={rows} onSort={() => {}} empty="No columns." />
+          </div>
+        </div>
         {columnIndicatorAfterTable && <DropIndicator />}
       </Section>
       <p aria-live="polite" data-yadad-editor-status="">
