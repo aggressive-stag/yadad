@@ -1,6 +1,6 @@
 # @yadad/renderer
 
-React renderers that turn entity and view documents, a registry and data adapters into working pages: `FormRenderer`, `TableRenderer`, `CalendarRenderer` and `DashboardRenderer`. Components are looked up in the registry by exact key; the renderer never imports one.
+React renderers that turn entity and view documents, a registry and data adapters into working pages: `FormRenderer`, `TableRenderer`, `CalendarRenderer`, `BoardRenderer` and `DashboardRenderer`. Components are looked up in the registry by exact key; the renderer never imports one.
 
 ```sh
 npm install @yadad/renderer @yadad/runtime @yadad/core react
@@ -9,16 +9,18 @@ npm install @yadad/renderer @yadad/runtime @yadad/core react
 Peer dependency: React 19.
 
 ```tsx
-import { CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
+import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
+import type { ViewDocument } from "@yadad/core";
 
 const dataSources = new Map([["default", adapter]]); // keyed by each view's `dataSource`
 
 <FormRenderer entity={entity} view={form} registry={registry} dataSources={dataSources} onSaved={(record) => {}} />
 <TableRenderer entity={entity} view={table} registry={registry} dataSources={dataSources} reloadKey={saves} />
 <CalendarRenderer entity={entity} view={calendar} registry={registry} dataSources={dataSources} reloadKey={saves} />
+<BoardRenderer entity={entity} view={board} registry={registry} dataSources={dataSources} reloadKey={saves} />
 
-const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map([[form.id, form], [table.id, table]]) };
+const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map<string, ViewDocument>([[form.id, form], [table.id, table]]) };
 <DashboardRenderer dashboard={dashboard} documents={documents} registry={registry} dataSources={dataSources} />
 ```
 
@@ -26,7 +28,22 @@ const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views
 - **Data.** Views name a `dataSource` key; the host maps keys to `DataAdapter`s. Views never carry URLs.
 - **Tables.** Honor `sort`, `pageSize`, the fixed `filter` and `quickFilters`. Change `reloadKey` to reload rows, e.g. after a form saves.
 - **Calendars.** The records of an entity on the days of a month or week, placed by `dateField`, rendered through the registry's `layout.Calendar` (an optional key; a registry without it gets an error summary). The renderer owns the visible range, the load and the announcements and hands days, entries and callbacks to the component. With `editable: true`, a move is optimistic — only the date field is sent with the record's `baseVersion` — and on any failure the entry goes back, the adapter's message shows and the range reloads. A `rowAction` opens the target table for an entry in place, with a Back control.
-- **Dashboards.** Plain CSS grid from `x, y, w, h`; the grid stacks into one column below `stackBelow` pixels (default 640). A `view` widget embeds a form, table or calendar.
+- **Calendar options.** `initialMode` and `initialAnchor` (a `"YYYY-MM-DD"` day) open the calendar on a given mode and on the month or week of that day; without them it opens on the view's first mode and today.
+- **Boards.** Cards in columns, one column per value of the field the board is grouped by, rendered through the registry's `layout.Board` (an optional key; a registry without it gets an error summary). Grouping is the viewer's choice among the view's `groupBy` fields and is uncontrolled by default; pass `groupBy` and `onGroupByChange` to control it from the host. Cards load once, so switching the grouping does not refetch. With `editable: true`, moving a card (drag, or the "Move to…" action) is optimistic: only the grouping field is sent with the record's `baseVersion`, and on a 400, 403 or 409 the card goes back, the adapter's message shows and the board reloads.
+- **Dashboards.** Plain CSS grid from `x, y, w, h`; the grid stacks into one column below `stackBelow` pixels (default 640). A `view` widget embeds a form, table, calendar or board; `count` and `stat` widgets show a number through the registry's count component.
+
+## Who is viewing
+
+Every renderer takes an optional `viewer` prop, built by `resolveViewer` in `@yadad/runtime` from the set's viewer document and what your app knows about the user. The renderer then leaves out what that viewer may not use (RFC 0006): form items, table columns, dashboard tabs and widgets whose `visibleWhen` is false are not rendered; in-place editing, drag and "Move to…" are withheld when `editableWhen` is false or the record's `can.update` is `false`; a `rowAction` is withheld while its `visibleWhen` is false. A dashboard passes the viewer on to the views it embeds and to the views a row action opens.
+
+```tsx
+import { resolveViewer } from "@yadad/runtime";
+
+const { viewer } = resolveViewer(viewerDocument, [{ fact: "role", value: user.role }]);
+<BoardRenderer entity={task} view={board} registry={registry} dataSources={dataSources} viewer={viewer} />
+```
+
+Without a `viewer` prop, a renderer that is given the document set (`documents`, whose `viewer` field holds the viewer document) uses the document's defaults; a bare view that reads a viewer fact and cannot find the document shows an error summary at `/viewer`. Views that read no viewer fact need nothing. The server stays the authority: a refused write (403) still reverts the change and reloads the records, which refreshes `can`.
 
 ## Reference fields
 
