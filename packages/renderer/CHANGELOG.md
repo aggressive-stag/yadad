@@ -1,5 +1,15 @@
 # @yadad/renderer
 
+## 0.9.1
+
+### Patch Changes
+
+- 869cd83: The README describes the current exports: boards, viewer facts and the state grid, with examples that type-check.
+- Updated dependencies [869cd83]
+- Updated dependencies [869cd83]
+  - @yadad/core@0.10.1
+  - @yadad/runtime@0.8.2
+
 ## 0.9.0
 
 ### Minor Changes

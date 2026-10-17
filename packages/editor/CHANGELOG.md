@@ -1,5 +1,16 @@
 # @yadad/editor
 
+## 0.11.1
+
+### Patch Changes
+
+- 0f0279e: The table view editor's columns table scrolls sideways inside its own region on narrow screens, so the Actions column is reachable without scrolling the page. The region takes focus, so arrow keys scroll it.
+- 869cd83: The README describes the current exports: boards, viewer facts and the state grid, with examples that type-check.
+- Updated dependencies [869cd83]
+- Updated dependencies [869cd83]
+  - @yadad/core@0.10.1
+  - @yadad/runtime@0.8.2
+
 ## 0.11.0
 
 ### Minor Changes

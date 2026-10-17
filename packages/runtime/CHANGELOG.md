@@ -1,5 +1,13 @@
 # @yadad/runtime
 
+## 0.8.2
+
+### Patch Changes
+
+- 869cd83: The README describes the current exports: boards, viewer facts and the state grid, with examples that type-check.
+- Updated dependencies [869cd83]
+  - @yadad/core@0.10.1
+
 ## 0.8.1
 
 ### Patch Changes
