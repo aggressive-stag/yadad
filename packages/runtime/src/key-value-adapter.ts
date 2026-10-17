@@ -1,5 +1,6 @@
 import type { BatchOperations, BatchResult, DataAdapter, DataRecord, DocumentError } from "@yadad/core";
 import { RecordConflictError, RecordNotFoundError, RecordValidationError } from "@yadad/core";
+import { assertPermitted, withPermissions } from "./adapter-guards.js";
 import { runQuery, validateFieldIds } from "./memory-adapter.js";
 import type { AdapterOptions } from "./memory-adapter.js";
 
@@ -48,10 +49,12 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
 
   return {
     async find(entity, query) {
-      return runQuery(load(entity), query);
+      const page = runQuery(load(entity), query);
+      return { items: page.items.map((r) => withPermissions(options, r)), total: page.total };
     },
     async findOne(entity, id) {
-      return load(entity).find((r) => r.id === id) ?? null;
+      const record = load(entity).find((r) => r.id === id);
+      return record ? withPermissions(options, record) : null;
     },
     async create(entity, values, meta) {
       const issues = validateFieldIds(options?.fields, entity, values, ["values"]);
@@ -59,28 +62,30 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
       const records = load(entity);
       const record: DataRecord = { id: newToken(), entityId: entity, entityRevision: meta.entityRevision, version: newToken(), values: { ...values } };
       save(entity, [...records, record]);
-      return record;
+      return withPermissions(options, record);
     },
     async update(entity, id, patch, meta) {
       const records = load(entity);
       const existing = records.find((r) => r.id === id);
       if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${id}".`);
+      assertPermitted(options, existing, "update");
       const issues = validateFieldIds(options?.fields, entity, patch, ["values"]);
       if (issues.length > 0) throw new RecordValidationError("Some values were rejected.", issues);
       if (meta.baseVersion !== undefined && existing.version !== meta.baseVersion) {
-        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, withPermissions(options, existing));
       }
-      if (Object.keys(patch).length === 0) return existing;
+      if (Object.keys(patch).length === 0) return withPermissions(options, existing);
       const record: DataRecord = { ...existing, entityRevision: meta.entityRevision, version: newToken(), values: { ...existing.values, ...patch } };
       save(entity, records.map((r) => (r.id === id ? record : r)));
-      return record;
+      return withPermissions(options, record);
     },
     async delete(entity, id, meta) {
       const records = load(entity);
       const existing = records.find((r) => r.id === id);
       if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${id}".`);
+      assertPermitted(options, existing, "delete");
       if (meta?.baseVersion !== undefined && existing.version !== meta.baseVersion) {
-        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, withPermissions(options, existing));
       }
       save(entity, records.filter((r) => r.id !== id));
     },
@@ -97,8 +102,9 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
       for (const del of deletes) {
         const existing = records.find((r) => r.id === del.id);
         if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${del.id}".`);
+        assertPermitted(options, existing, "delete");
         if (del.baseVersion !== undefined && existing.version !== del.baseVersion) {
-          throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+          throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, withPermissions(options, existing));
         }
       }
       const remaining = records.filter((r) => !deletes.some((d) => d.id === r.id));
@@ -108,7 +114,7 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
         created.push(record);
       }
       save(entity, [...remaining, ...created]);
-      return { created, deleted: deletes.map((d) => d.id) };
+      return { created: created.map((r) => withPermissions(options, r)), deleted: deletes.map((d) => d.id) };
     },
   };
 }

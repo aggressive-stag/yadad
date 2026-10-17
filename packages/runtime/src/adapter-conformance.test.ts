@@ -456,3 +456,94 @@ describe("http adapter: request encoding and status mapping", () => {
     expect(conflict.current).toBeNull();
   });
 });
+
+// --- per-record permissions and viewer conditions in queries (RFC 0006) ---
+
+const LOCKED = (record: { values: RecordValues }) => (record.values["exercise"] === "Locked" ? { update: false, delete: false } : undefined);
+const VIEWER_FILTER: Condition = { op: "and", conditions: [{ op: "empty", field: "reps" }, { op: "not", condition: { op: "viewerIn", fact: "role", values: ["owner"] } }] };
+
+function runPermissionConformance(label: string, make: (options: AdapterOptions) => DataAdapter): void {
+  describe(`${label}: record permissions`, () => {
+    const options: AdapterOptions = { ...FIELDS, recordPermissions: LOCKED };
+
+    test("every record read carries the stated can, and unrestricted records carry none", async () => {
+      const db = make(options);
+      const locked = await db.create(ENTITY, { exercise: "Locked" }, { entityRevision: REVISION });
+      const open = await db.create(ENTITY, { exercise: "Open" }, { entityRevision: REVISION });
+      expect(locked.can).toEqual({ update: false, delete: false });
+      expect(open.can).toBeUndefined();
+      expect((await db.findOne(ENTITY, locked.id))?.can).toEqual({ update: false, delete: false });
+      const page = await db.find(ENTITY, {});
+      expect(page.items.map((r) => r.can)).toEqual([{ update: false, delete: false }, undefined]);
+    });
+
+    test("updating or deleting a locked record is a ForbiddenError, an open one works", async () => {
+      const db = make(options);
+      const locked = await db.create(ENTITY, { exercise: "Locked" }, { entityRevision: REVISION });
+      const open = await db.create(ENTITY, { exercise: "Open" }, { entityRevision: REVISION });
+      expect(await expectError(db.update(ENTITY, locked.id, { weight: 1 }, { entityRevision: REVISION, baseVersion: locked.version }))).toBeInstanceOf(ForbiddenError);
+      expect(await expectError(db.delete(ENTITY, locked.id, { entityRevision: REVISION }))).toBeInstanceOf(ForbiddenError);
+      expect(await expectError(db.batch(ENTITY, { delete: [{ id: locked.id }, { id: open.id }] }, { entityRevision: REVISION }))).toBeInstanceOf(ForbiddenError);
+      expect((await db.find(ENTITY, {})).total).toBe(2);
+      const saved = await db.update(ENTITY, open.id, { weight: 5 }, { entityRevision: REVISION, baseVersion: open.version });
+      expect(saved.values["weight"]).toBe(5);
+      await db.delete(ENTITY, open.id, { entityRevision: REVISION });
+      expect((await db.find(ENTITY, {})).total).toBe(1);
+    });
+
+    test("an unrestricted adapter states no can", async () => {
+      const db = make(FIELDS);
+      const record = await db.create(ENTITY, { exercise: "Locked" }, { entityRevision: REVISION });
+      expect("can" in record).toBe(false);
+    });
+  });
+
+  describe(`${label}: viewer conditions in queries`, () => {
+    test("a viewerIn leaf anywhere in a filter is a validation error at /filter", async () => {
+      const db = make(FIELDS);
+      for (const filter of [VIEWER_FILTER, { op: "viewerIn", fact: "role", values: ["owner"] } as Condition]) {
+        const error = (await expectError(db.find(ENTITY, { filter }))) as RecordValidationError;
+        expect(error).toBeInstanceOf(RecordValidationError);
+        expect(error.issues.map((i) => [i.path, i.code])).toEqual([["/filter", "invalid-value"]]);
+      }
+    });
+  });
+}
+
+runPermissionConformance("memory adapter", (o) => createMemoryAdapter(o));
+runPermissionConformance("key-value adapter", (o) => createKeyValueAdapter(freshStore(), "app", o));
+runPermissionConformance("http adapter", (o) => makeFakeServer(o).adapter);
+
+describe("http adapter: can on the wire", () => {
+  const record = (can: unknown) => ({ id: "1", entityId: ENTITY, entityRevision: REVISION, version: "v1", values: { exercise: "Squat" }, can });
+  const serving = (payload: unknown): FetchLike => async () => ({ status: 200, json: async () => payload });
+
+  test("a valid can passes through on a list, a get, a write and the current record of a 409", async () => {
+    const can = { update: false };
+    const adapter = createHttpAdapter({ baseUrl: "/api/records", fetch: serving(record(can)) });
+    expect((await adapter.findOne(ENTITY, "1"))?.can).toEqual(can);
+    expect((await adapter.update(ENTITY, "1", { weight: 1 }, { entityRevision: REVISION })).can).toEqual(can);
+    expect((await adapter.create(ENTITY, {}, { entityRevision: REVISION })).can).toEqual(can);
+    const list = createHttpAdapter({ baseUrl: "/api/records", fetch: serving({ items: [record(can)], total: 1 }) });
+    expect((await list.find(ENTITY, {})).items[0]?.can).toEqual(can);
+    const conflicting = createHttpAdapter({ baseUrl: "/api/records", fetch: async () => ({ status: 409, json: async () => ({ errors: [], current: record(can) }) }) });
+    const failure = (await expectError(conflicting.update(ENTITY, "1", {}, { entityRevision: REVISION }))) as RecordConflictError;
+    expect(failure.current?.can).toEqual(can);
+  });
+
+  test("a malformed can is dropped, never an error", async () => {
+    for (const bad of ["no", null, [], { update: "yes" }, { update: false, share: true }, { delete: 1 }]) {
+      const adapter = createHttpAdapter({ baseUrl: "/api/records", fetch: serving({ items: [record(bad)], total: 1 }) });
+      const item = (await adapter.find(ENTITY, {})).items[0];
+      expect(item?.id).toBe("1");
+      expect(item !== undefined && "can" in item).toBe(false);
+    }
+  });
+
+  test("a viewerIn filter never reaches the wire", async () => {
+    let calls = 0;
+    const adapter = createHttpAdapter({ baseUrl: "/api/records", fetch: async () => (calls++, { status: 200, json: async () => ({ items: [], total: 0 }) }) });
+    expect(await expectError(adapter.find(ENTITY, { filter: VIEWER_FILTER }))).toBeInstanceOf(RecordValidationError);
+    expect(calls).toBe(0);
+  });
+});

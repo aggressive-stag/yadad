@@ -1,5 +1,5 @@
 import { isRelativeDate } from "@yadad/core";
-import type { ComparisonValue, Condition, EntityDocument, FieldValue, FormView, RecordValues, Scalar } from "@yadad/core";
+import type { ComparisonValue, Condition, EntityDocument, FieldValue, FormView, RecordValues, ResolvedViewer, Scalar, ViewerCondition } from "@yadad/core";
 
 const isEmpty = (v: FieldValue | undefined): boolean => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
 
@@ -62,15 +62,17 @@ export function resolveRelativeDates(condition: Condition | undefined, now?: Dat
 /**
  * Evaluates a condition against a record's values. Comparisons across types
  * are false. Relative dates resolve against `now` (default the current time).
+ * A `viewerIn` leaf reads `viewer`; with no viewer, or a fact the viewer does
+ * not have, it is false (RFC 0006).
  */
-export function evaluateCondition(condition: Condition, values: RecordValues, now?: Date): boolean {
+export function evaluateCondition(condition: Condition, values: RecordValues, now?: Date, viewer?: ResolvedViewer): boolean {
   switch (condition.op) {
     case "and":
-      return condition.conditions.every((c) => evaluateCondition(c, values, now));
+      return condition.conditions.every((c) => evaluateCondition(c, values, now, viewer));
     case "or":
-      return condition.conditions.some((c) => evaluateCondition(c, values, now));
+      return condition.conditions.some((c) => evaluateCondition(c, values, now, viewer));
     case "not":
-      return !evaluateCondition(condition.condition, values, now);
+      return !evaluateCondition(condition.condition, values, now, viewer);
     case "empty":
       return isEmpty(values[condition.field]);
     case "notEmpty":
@@ -82,9 +84,7 @@ export function evaluateCondition(condition: Condition, values: RecordValues, no
       return typeof v === "string" && v.toLowerCase().includes(condition.value.toLowerCase());
     }
     case "viewerIn":
-      // STUB (RFC 0006, card viewer-core): no viewer is passed yet, and the RFC's answer for no viewer is false.
-      // The runtime card replaces this with a lookup in the resolved viewer.
-      return false;
+      return viewerIn(condition, viewer);
     case "eq":
       return values[condition.field] === resolveValue(condition.value, now);
     case "neq":
@@ -97,6 +97,26 @@ export function evaluateCondition(condition: Condition, values: RecordValues, no
   }
 }
 
+/** A `viewerIn` leaf: true when the viewer's value for the fact is listed; false without a viewer or a fact. */
+function viewerIn(leaf: { readonly fact: string; readonly values: readonly (string | boolean)[] }, viewer: ResolvedViewer | undefined): boolean {
+  const entry = viewer?.facts.find((f) => f.fact === leaf.fact);
+  return entry !== undefined && leaf.values.includes(entry.value);
+}
+
+/** Evaluates a condition that has no record leaves (RFC 0006): `viewerIn`, `and`, `or`, `not`. */
+export function evaluateViewerCondition(condition: ViewerCondition, viewer: ResolvedViewer): boolean {
+  switch (condition.op) {
+    case "and":
+      return condition.conditions.every((c) => evaluateViewerCondition(c, viewer));
+    case "or":
+      return condition.conditions.some((c) => evaluateViewerCondition(c, viewer));
+    case "not":
+      return !evaluateViewerCondition(condition.condition, viewer);
+    case "viewerIn":
+      return viewerIn(condition, viewer);
+  }
+}
+
 export interface FormRules {
   /** Fields whose visibleWhen is false. */
   readonly hidden: ReadonlySet<string>;
@@ -105,12 +125,12 @@ export interface FormRules {
 }
 
 /** Which form items are hidden or conditionally required for the current values. */
-export function evaluateFormRules(view: FormView, values: RecordValues): FormRules {
+export function evaluateFormRules(view: FormView, values: RecordValues, viewer?: ResolvedViewer): FormRules {
   const hidden = new Set<string>();
   const required = new Set<string>();
   for (const item of view.sections.flatMap((s) => s.items)) {
-    if (item.visibleWhen && !evaluateCondition(item.visibleWhen, values)) hidden.add(item.field);
-    else if (item.requiredWhen && evaluateCondition(item.requiredWhen, values)) required.add(item.field);
+    if (item.visibleWhen && !evaluateCondition(item.visibleWhen, values, undefined, viewer)) hidden.add(item.field);
+    else if (item.requiredWhen && evaluateCondition(item.requiredWhen, values, undefined, viewer)) required.add(item.field);
   }
   return { hidden, required };
 }
@@ -120,8 +140,8 @@ export function evaluateFormRules(view: FormView, values: RecordValues): FormRul
  * dropped, and conditionally required fields become required. Views only
  * tighten the entity's rules, never loosen them.
  */
-export function applyFormRules(entity: EntityDocument, view: FormView, values: RecordValues): { entity: EntityDocument; values: RecordValues } {
-  const { hidden, required } = evaluateFormRules(view, values);
+export function applyFormRules(entity: EntityDocument, view: FormView, values: RecordValues, viewer?: ResolvedViewer): { entity: EntityDocument; values: RecordValues } {
+  const { hidden, required } = evaluateFormRules(view, values, viewer);
   const cleared = new Set(view.sections.flatMap((s) => s.items).filter((i) => i.clearWhenHidden === true && hidden.has(i.field)).map((i) => i.field));
   return {
     entity: { ...entity, fields: entity.fields.map((f) => (required.has(f.id) ? { ...f, required: true } : f)) },

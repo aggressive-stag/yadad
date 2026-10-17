@@ -1,6 +1,6 @@
-import type { Condition, EntityDocument, FormView } from "@yadad/core";
+import type { Condition, EntityDocument, FormView, ResolvedViewer } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { applyFormRules, dateFromToday, evaluateCondition, evaluateFormRules, resolveRelativeDates } from "./condition.js";
+import { applyFormRules, dateFromToday, evaluateCondition, evaluateFormRules, evaluateViewerCondition, resolveRelativeDates } from "./condition.js";
 import { createMemoryAdapter } from "./memory-adapter.js";
 
 const values = { exercise: "Squat", weight: 100, day: "2026-10-04", warmup: false, notes: "Left Knee pain", empty: "  " };
@@ -28,6 +28,42 @@ describe("evaluateCondition", () => {
     expect(is({ op: "and", conditions: [] })).toBe(true);
     expect(is({ op: "or", conditions: [] })).toBe(false);
     expect(is({ op: "not", condition: { op: "or", conditions: [{ op: "eq", field: "exercise", value: "Bench" }, { op: "empty", field: "notes" }] } })).toBe(true);
+  });
+});
+
+const owner: ResolvedViewer = { facts: [{ fact: "role", value: "owner" }, { fact: "beta", value: false }] };
+const ownerIn: Condition = { op: "viewerIn", fact: "role", values: ["editor", "owner"] };
+
+describe("viewerIn", () => {
+  test("is true when the viewer's value is listed, false otherwise", () => {
+    expect(evaluateCondition(ownerIn, values, undefined, owner)).toBe(true);
+    expect(evaluateCondition({ op: "viewerIn", fact: "role", values: ["viewer"] }, values, undefined, owner)).toBe(false);
+    expect(evaluateCondition({ op: "viewerIn", fact: "beta", values: [false] }, values, undefined, owner)).toBe(true);
+    expect(evaluateCondition({ op: "viewerIn", fact: "beta", values: [true] }, values, undefined, owner)).toBe(false);
+  });
+
+  test("with no viewer, or a fact the viewer lacks, it is false (and not flips it)", () => {
+    expect(evaluateCondition(ownerIn, values)).toBe(false);
+    expect(evaluateCondition(ownerIn, values, undefined, { facts: [] })).toBe(false);
+    expect(evaluateCondition({ op: "not", condition: ownerIn }, values)).toBe(true);
+  });
+
+  test("mixes with record leaves", () => {
+    const both: Condition = { op: "and", conditions: [{ op: "eq", field: "exercise", value: "Squat" }, ownerIn] };
+    expect(evaluateCondition(both, values, undefined, owner)).toBe(true);
+    expect(evaluateCondition(both, { exercise: "Bench" }, undefined, owner)).toBe(false);
+    expect(evaluateCondition({ op: "or", conditions: [{ op: "eq", field: "exercise", value: "Bench" }, ownerIn] }, values, undefined, owner)).toBe(true);
+  });
+
+  test("evaluateViewerCondition handles viewerIn, and, or, not", () => {
+    expect(evaluateViewerCondition({ op: "viewerIn", fact: "role", values: ["owner"] }, owner)).toBe(true);
+    expect(evaluateViewerCondition({ op: "not", condition: { op: "viewerIn", fact: "role", values: ["owner"] } }, owner)).toBe(false);
+    expect(evaluateViewerCondition({ op: "and", conditions: [] }, owner)).toBe(true);
+    expect(evaluateViewerCondition({ op: "or", conditions: [] }, owner)).toBe(false);
+    expect(
+      evaluateViewerCondition({ op: "or", conditions: [{ op: "viewerIn", fact: "beta", values: [true] }, { op: "viewerIn", fact: "role", values: ["owner"] }] }, owner),
+    ).toBe(true);
+    expect(evaluateViewerCondition({ op: "viewerIn", fact: "missing", values: ["x"] }, owner)).toBe(false);
   });
 });
 
@@ -59,6 +95,31 @@ describe("form rules", () => {
     expect([...easy.hidden]).toEqual(["why", "keep"]);
     expect([...easy.required]).toEqual([]);
     expect([...evaluateFormRules(view, { felt: "Hard" }).required]).toEqual(["why"]);
+  });
+
+  test("a viewer leaf hides or requires an item, mixed with record leaves", () => {
+    const viewerView: FormView = {
+      ...view,
+      sections: [
+        {
+          id: "s",
+          items: [
+            { field: "felt" },
+            { field: "why", visibleWhen: ownerIn },
+            { field: "keep", visibleWhen: { op: "and", conditions: [hard, ownerIn] }, requiredWhen: ownerIn },
+          ],
+        },
+      ],
+    };
+    expect([...evaluateFormRules(viewerView, { felt: "Hard" }, owner).hidden]).toEqual([]);
+    expect([...evaluateFormRules(viewerView, { felt: "Hard" }, owner).required]).toEqual(["keep"]);
+    expect([...evaluateFormRules(viewerView, { felt: "Easy" }, owner).hidden]).toEqual(["keep"]);
+    // No viewer: the leaves are false, so the items are hidden and nothing is required.
+    const none = evaluateFormRules(viewerView, { felt: "Hard" });
+    expect([...none.hidden]).toEqual(["why", "keep"]);
+    expect([...none.required]).toEqual([]);
+    const applied = applyFormRules(entity, viewerView, { felt: "Hard" }, owner);
+    expect(applied.entity.fields.find((f) => f.id === "keep")?.required).toBe(true);
   });
 
   test("applyFormRules clears only clearWhenHidden fields and tightens required", () => {

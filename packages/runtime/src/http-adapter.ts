@@ -6,6 +6,7 @@ import {
   RecordValidationError,
   UnauthorizedError,
 } from "@yadad/core";
+import { assertQueryHasNoViewer, validCan } from "./adapter-guards.js";
 import { resolveRelativeDates } from "./condition.js";
 
 /** A same-origin fetch's credentials mode, mirroring the browser's RequestCredentials. */
@@ -117,7 +118,7 @@ export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
         throw new RecordNotFoundError(message);
       case 409: {
         const current = isObject(body) ? (body as ErrorBody).current : undefined;
-        throw new RecordConflictError(message, isObject(current) ? current : null);
+        throw new RecordConflictError(message, isObject(current) ? readRecord(current as unknown as DataRecord) : null);
       }
       default:
         throw new Error(`The server responded with status ${status}.`);
@@ -141,28 +142,32 @@ export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
 
   return {
     async find(entity, query) {
+      assertQueryHasNoViewer(query);
       const { status, body } = await send("GET", `${base}/${entity}${queryString(query)}`);
       // An unknown entity is a 404; the in-process adapters surface it as an empty page.
       if (status === 404) return { items: [], total: 0 };
       if (status < 200 || status >= 300) throwForStatus(status, body);
-      return body as Page<DataRecord>;
+      const page = body as Page<DataRecord>;
+      return Array.isArray(page?.items) ? { ...page, items: page.items.map(readRecord) } : page;
     },
     async findOne(entity, id) {
       const { status, body } = await send("GET", `${base}/${entity}/${encodeURIComponent(id)}`);
       // A missing record (or another user's record) is a 404, read as "not found".
       if (status === 404) return null;
       if (status < 200 || status >= 300) throwForStatus(status, body);
-      return body as DataRecord;
+      return readRecord(body as DataRecord);
     },
     async create(entity, values, meta) {
-      return await post<DataRecord>(`${base}/${entity}`, { values, entityRevision: meta.entityRevision });
+      return readRecord(await post<DataRecord>(`${base}/${entity}`, { values, entityRevision: meta.entityRevision }));
     },
     async update(entity, id, patch, meta) {
-      return await sendPatch<DataRecord>(`${base}/${entity}/${encodeURIComponent(id)}`, {
-        values: patch,
-        entityRevision: meta.entityRevision,
-        baseVersion: meta.baseVersion,
-      });
+      return readRecord(
+        await sendPatch<DataRecord>(`${base}/${entity}/${encodeURIComponent(id)}`, {
+          values: patch,
+          entityRevision: meta.entityRevision,
+          baseVersion: meta.baseVersion,
+        }),
+      );
     },
     async delete(entity, id, meta) {
       const url = `${base}/${entity}/${encodeURIComponent(id)}${meta?.baseVersion !== undefined ? `?baseVersion=${encodeURIComponent(meta.baseVersion)}` : ""}`;
@@ -172,9 +177,18 @@ export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
       const payload: Record<string, unknown> = { entityRevision: meta.entityRevision };
       if (ops.create && ops.create.length > 0) payload.create = ops.create.map((values) => ({ values }));
       if (ops.delete && ops.delete.length > 0) payload.delete = ops.delete;
-      return await post<BatchResult>(`${base}/${entity}/_batch`, payload);
+      const result = await post<BatchResult>(`${base}/${entity}/_batch`, payload);
+      return Array.isArray(result?.created) ? { ...result, created: result.created.map(readRecord) } : result;
     },
   };
+}
+
+/** A record from the server with its `can` checked: a valid one is kept as is, a malformed one is dropped. */
+function readRecord(record: DataRecord): DataRecord {
+  if (!isObject(record) || !("can" in record)) return record;
+  const { can, ...rest } = record;
+  const valid = validCan(can);
+  return valid === undefined ? rest : { ...rest, can: valid };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

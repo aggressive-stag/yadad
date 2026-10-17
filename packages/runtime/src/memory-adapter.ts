@@ -7,10 +7,12 @@ import type {
   FieldValue,
   Page,
   Query,
+  RecordPermissions,
   RecordValues,
   SortSpec,
 } from "@yadad/core";
 import { jsonPointer, RecordConflictError, RecordNotFoundError, RecordValidationError } from "@yadad/core";
+import { assertQueryHasNoViewer, withPermissions, assertPermitted } from "./adapter-guards.js";
 import { evaluateCondition } from "./condition.js";
 
 /**
@@ -20,6 +22,13 @@ import { evaluateCondition } from "./condition.js";
  */
 export interface AdapterOptions {
   readonly fields?: Record<string, readonly string[]>;
+  /**
+   * States what the current viewer may do with a record (RFC 0006). It is
+   * applied at read time to every record the adapter returns, as `can`, and
+   * enforced: an update or delete of a record whose permissions say `false`
+   * throws a ForbiddenError, as a server's 403 would. Host code, not a document.
+   */
+  readonly recordPermissions?: (record: DataRecord) => RecordPermissions | undefined;
 }
 
 /** In-memory DataAdapter for tests, the showcase and local dev. Nothing persists. */
@@ -40,10 +49,12 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
 
   return {
     async find(entity, query) {
-      return runQuery([...table(entity).values()], query);
+      const page = runQuery([...table(entity).values()], query);
+      return { items: page.items.map((r) => withPermissions(options, r)), total: page.total };
     },
     async findOne(entity, id) {
-      return table(entity).get(id) ?? null;
+      const record = table(entity).get(id);
+      return record ? withPermissions(options, record) : null;
     },
     async create(entity, values, meta) {
       const issues = validateFieldIds(options?.fields, entity, values, ["values"]);
@@ -56,17 +67,18 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
         values: { ...values },
       };
       table(entity).set(record.id, record);
-      return record;
+      return withPermissions(options, record);
     },
     async update(entity, id, patch, meta) {
       const existing = table(entity).get(id);
       if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${id}".`);
+      assertPermitted(options, existing, "update");
       const issues = validateFieldIds(options?.fields, entity, patch, ["values"]);
       if (issues.length > 0) throw new RecordValidationError("Some values were rejected.", issues);
       if (meta.baseVersion !== undefined && existing.version !== meta.baseVersion) {
-        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, withPermissions(options, existing));
       }
-      if (Object.keys(patch).length === 0) return existing;
+      if (Object.keys(patch).length === 0) return withPermissions(options, existing);
       const record: DataRecord = {
         ...existing,
         entityRevision: meta.entityRevision,
@@ -74,13 +86,14 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
         values: { ...existing.values, ...patch },
       };
       table(entity).set(id, record);
-      return record;
+      return withPermissions(options, record);
     },
     async delete(entity, id, meta) {
       const existing = table(entity).get(id);
       if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${id}".`);
+      assertPermitted(options, existing, "delete");
       if (meta?.baseVersion !== undefined && existing.version !== meta.baseVersion) {
-        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, withPermissions(options, existing));
       }
       table(entity).delete(id);
     },
@@ -97,8 +110,9 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
       for (const del of deletes) {
         const existing = t.get(del.id);
         if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${del.id}".`);
+        assertPermitted(options, existing, "delete");
         if (del.baseVersion !== undefined && existing.version !== del.baseVersion) {
-          throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+          throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, withPermissions(options, existing));
         }
       }
       const deleted: string[] = [];
@@ -116,15 +130,16 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
           values: { ...values },
         };
         t.set(record.id, record);
-        created.push(record);
+        created.push(withPermissions(options, record));
       }
       return { created, deleted };
     },
   };
 }
 
-/** Filter, then sort, then page: the query semantics every in-process adapter shares. */
+/** Filter, then sort, then page: the query semantics every in-process adapter shares. A `viewerIn` leaf in the filter is rejected. */
 export function runQuery(records: readonly DataRecord[], query: Query): Page<DataRecord> {
+  assertQueryHasNoViewer(query);
   const { filter } = query;
   const matching = records.filter((r) => !filter || evaluateCondition(filter, r.values));
   const all = sortRecords(matching, query.sort ?? []);
