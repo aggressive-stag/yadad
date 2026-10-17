@@ -15,7 +15,7 @@
     "describe-registry": "node tools/describe-registry.ts",
     "record-schema": "node tools/record-schema.ts",
     "test": "vitest run",
-    "lint": "eslint .",
+    "lint": "eslint --flag unstable_native_nodejs_ts_config .",
     "changeset": "changeset"
   },
   "devDependencies": {
