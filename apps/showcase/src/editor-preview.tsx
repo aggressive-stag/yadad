@@ -35,11 +35,11 @@ export function WithStatesPreview({ view, documents, registry, editor }: { reado
     const target = all.find((d): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer" && d.id === state.render.view);
     if (!target) return null;
     const source = sourceStates({ view: target.id, axes: [], states: [state], skipped: [], strategy: "full", complete: true }, all).states[0];
-    return source ? renderState(contextFor(source, target, all, registry, now), setOf(all)) : null;
+    return source ? renderState(source, contextFor(source, target, all, registry, now), setOf(all)) : null;
   };
 
   const checkStates: NonNullable<StatesPreviewProps["checkStates"]> = ({ view: target, documents: all }) =>
-    enqueueChecks(() => checkViewStates({ view: target, documents: all, registry, now, manyRecords: QUICK_MANY, render: (_state, context) => renderState(context, setOf(all)) })).then((results) =>
+    enqueueChecks(() => checkViewStates({ view: target, documents: all, registry, now, manyRecords: QUICK_MANY, render: (state, context) => renderState(state, context, setOf(all)) })).then((results) =>
       results.map((r) => ({ id: r.id, problems: r.problems })),
     );
 

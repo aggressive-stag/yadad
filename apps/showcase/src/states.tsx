@@ -1,4 +1,4 @@
-import type { DataAdapter, Document, EntityDocument, Registry, ViewDocument } from "@yadad/core";
+import type { BoardView, DataAdapter, Document, EntityDocument, Registry, ResolvedViewer, ViewDocument } from "@yadad/core";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
 import { createDraftStore, viewStates } from "@yadad/runtime";
@@ -22,7 +22,7 @@ export function stateViews(documents: DocumentSet): ViewDocument[] {
 }
 
 /** The one-line wiring per view kind: this is what a host app writes. */
-export function renderState(context: StateRenderContext, set: DocumentSet): ReactNode {
+export function renderState(state: SourceViewState, context: StateRenderContext, set: DocumentSet): ReactNode {
   const { view, entity, registry, dataSources, drafts, now } = context;
   const entities = set.entities;
   // The state's viewer goes to the renderer; the "viewer not provided" state leaves the prop out.
@@ -35,10 +35,28 @@ export function renderState(context: StateRenderContext, set: DocumentSet): Reac
     case "calendar":
       return entity ? <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...viewer} /> : null;
     case "board":
-      return entity ? <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...viewer} /> : null;
+      // The state names the field the board is grouped by; the renderer's `groupBy` prop takes it, and the viewer may still switch.
+      return entity && state.render.kind === "board" ? <StateBoard key={state.id} initial={state.render.groupBy} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} set={set} viewer={viewer} /> : null;
     case "dashboard":
       return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...viewer} />;
   }
+}
+
+interface StateBoardProps {
+  readonly initial: string;
+  readonly entity: EntityDocument;
+  readonly view: BoardView;
+  readonly registry: Registry<ReactNode>;
+  readonly dataSources: ReadonlyMap<string, DataAdapter>;
+  readonly entities: DocumentSet["entities"];
+  readonly set: DocumentSet;
+  readonly viewer: { readonly viewer?: ResolvedViewer };
+}
+
+/** A board that starts on the state's grouping and follows the viewer's choice after that. */
+function StateBoard({ initial, entity, view, registry, dataSources, entities, set, viewer }: StateBoardProps): ReactNode {
+  const [groupBy, setGroupBy] = useState(initial);
+  return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} groupBy={groupBy} onGroupByChange={setGroupBy} {...viewer} />;
 }
 
 /** Everything a renderer needs for one state: a fresh adapter under every data source key, and a draft store for a form's values. */
@@ -79,7 +97,7 @@ function Live({ state, view, docs, set, registry, now }: { readonly state: Sourc
   }, [state, view]);
   return (
     <div ref={ref}>
-      <Boundary>{renderState(context, set)}</Boundary>
+      <Boundary>{renderState(state, context, set)}</Boundary>
     </div>
   );
 }
@@ -260,7 +278,7 @@ export function StatesPage({ documents, registry, initialView }: StatesPageProps
       registry,
       now,
       ...(fullLoad ? {} : { manyRecords: QUICK_MANY }),
-      render: (state, context) => renderState(context, set),
+      render: (state, context) => renderState(state, context, set),
     })));
     queue = started.then(() => undefined, () => undefined);
     started.then(
