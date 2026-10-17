@@ -1,5 +1,16 @@
 # @yadad/testing
 
+## 0.5.0
+
+### Minor Changes
+
+- 668fee0: Add `checkViewStates` and `problems`, exported from `@yadad/testing/state-checks`. They render every data and source state of a view with a `render` function the host passes in, and report states that throw, log a console error, show or lack a field against its `visibleWhen`, disagree with `requiredWhen` on the required marker, have an interactive element without an accessible name, or fail to load without a visible message.
+
+### Patch Changes
+
+- Updated dependencies [7aedd18]
+  - @yadad/runtime@0.8.0
+
 ## 0.4.0
 
 ### Minor Changes

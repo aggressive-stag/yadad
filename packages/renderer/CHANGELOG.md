@@ -1,5 +1,13 @@
 # @yadad/renderer
 
+## 0.7.1
+
+### Patch Changes
+
+- 97bcbf1: `TableRenderer` now shows a failed read in the registry's `ErrorSummary` ("Could not load records: <message>"), like the board and calendar, instead of as the empty-row text.
+- Updated dependencies [7aedd18]
+  - @yadad/runtime@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
