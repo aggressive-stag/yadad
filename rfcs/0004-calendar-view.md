@@ -1,6 +1,6 @@
 # RFC 0004: Calendar view
 
-- Status: Accepted (2026-10-15); Slice 1 implemented (2026-10-16) — `core`, `runtime`, `renderer`/`testing`, `showcase` and `editor` (the calendar panel, card 12) are all done. Only item 6, the components-repo `layout.Calendar` component, remains outside this repo.
+- Status: Accepted (2026-10-15); Slice 1 implemented (2026-10-16) — `core`, `runtime`, `renderer`/`testing`, `showcase` and `editor` (the calendar panel) are all done. Only item 6, the components-repo `layout.Calendar` component, remains outside this repo.
 - Touches: `core` (new view kind, validator, `describeContract`, registry types), `runtime` (range math, range queries, move), `renderer` (calendar renderer, dashboard `view` widget), `testing` (mock registry and contract kit), `editor` (calendar panel), `apps/showcase`, registry contract (one optional `layout` key); the components repo (the component itself)
 - Bumps `specVersion` from 2 to **3** with an identity `migrate()` step (additive) and a before/after fixture pair.
 

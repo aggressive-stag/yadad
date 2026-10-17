@@ -1,6 +1,6 @@
 # RFC 0006: Who is viewing
 
-- Status: Accepted (2026-10-17)
+- Status: Accepted (2026-10-17); Slice 1 implemented (2026-10-17) — `core`, `runtime`, `renderer`/`testing`, `showcase` and `editor` are all done. Slice 2 is not started.
 - Touches: `core` (a `viewer` document kind, one new condition op, new optional keys on existing views, `DataRecord.can`, validator, `describeContract`), `runtime` (viewer resolution, condition evaluation, view predicates, adapters, `viewStates` axes), `renderer` (every renderer takes `viewer`), `testing` (state checks), `editor` (viewer panel, condition builder), `docs/records-protocol.md`, `apps/showcase`. No registry change: components are not told about the viewer.
 - Bumps `specVersion` from 4 to **5** (read `SPEC_VERSION`; if another step landed first, take the next number) with an identity `migrate()` step (additive) and a before/after fixture pair.
 
