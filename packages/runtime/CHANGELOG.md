@@ -1,5 +1,21 @@
 # @yadad/runtime
 
+## 0.7.0
+
+### Minor Changes
+
+- b6a63f6: Add `viewStates(view, documents, { now, limit })`: lists the states a view can be in, read from its documents.
+  
+  The conditions a view uses (form `visibleWhen` and `requiredWhen`, the `filter` of a table, calendar or board, row-action bindings) become axes with boundary values by type, and the view kind adds axes (record counts, a calendar's mode, a board's `groupBy`, a dashboard's tabs and embedded views). Axes are combined into at most `limit` states (default 24): every combination when they fit, otherwise a deterministic pairwise cover. Each state has a stable `id`, a readable `label`, the chosen value per axis and what to render (form values, or validated records and the matching ids, plus `now`). A state that cannot be built is left out and listed under `skipped`. Also exports `combineAxes(axes, limit)`, the generic combiner, and the `StateAxis`, `ViewState` and related types.
+
+### Patch Changes
+
+- 91a2d86: `ReferenceOptionsResult` (from `loadReferenceOptions` and `loadBoardTargets`) gains `total`, the target's full record count, so a caller can say "Showing 50 of 63". Existing fields are unchanged.
+- 6a83b20: Keep up with the new `viewerIn` condition op (RFC 0006, not implemented yet in these packages). `evaluateCondition` returns false for a `viewerIn` leaf (the answer for no viewer), `viewStates` ignores one, and the editor describes one in words and treats it as not editable in the condition builder. Viewer semantics arrive in later releases.
+- Updated dependencies [9ff56b5]
+- Updated dependencies [6a83b20]
+  - @yadad/core@0.10.0
+
 ## 0.6.2
 
 ### Patch Changes

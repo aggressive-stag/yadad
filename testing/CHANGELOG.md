@@ -1,5 +1,23 @@
 # @yadad/testing
 
+## 0.4.0
+
+### Minor Changes
+
+- 088510c: Add `BoardRenderer` (RFC 0005) and render `board` views in the dashboard `view` widget. It takes the same props as `CalendarRenderer` plus `groupBy` and `onGroupByChange` for host-controlled grouping (uncontrolled by default), loads cards and reference columns through the runtime, moves cards optimistically with `baseVersion` and reverts with an error and a live-region message on 400, 403 or 409. A registry without `layout.Board` gets an error summary. `@yadad/testing` gains a plain mock board (no drag) and board contract checks.
+- 4017e95: Add `createStateAdapter(seed, options)`: a `DataAdapter` seeded with a view state's records (or a record list) that can load forever, fail every read with a message, refuse writes with a 400 (field error) or 403, or conflict on writes with a 409, and be switched while a test runs. Add `sourceStates(viewStates(...), documents)`, which adds a `source` axis (`ready`, `loading`, `error`, `refused`, `conflict`; only the ones that make sense for the view) to the data states from `@yadad/runtime`. `@yadad/testing` now depends on `@yadad/runtime`.
+
+### Patch Changes
+
+- ef2cfdb: The mock registry's board puts focus back on a moved card's "Move to…" action after the card is rebuilt in its new column, or put back by a refused move, so keyboard focus is no longer lost to the page.
+- Updated dependencies [91a2d86]
+- Updated dependencies [9ff56b5]
+- Updated dependencies [b6a63f6]
+- Updated dependencies [6a83b20]
+- Updated dependencies [6a83b20]
+  - @yadad/runtime@0.7.0
+  - @yadad/core@0.10.0
+
 ## 0.3.1
 
 ### Patch Changes

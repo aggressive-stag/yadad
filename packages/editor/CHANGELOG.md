@@ -1,5 +1,23 @@
 # @yadad/editor
 
+## 0.9.0
+
+### Minor Changes
+
+- 0f1de59: Add `BoardViewEditor` for `board` views, in the style of the calendar editor. It edits the title, the title field, whether dragging a card moves it, the card order within a column, a fixed filter (through the shared condition builder), the `groupBy` list (only select, reference and optional boolean fields are offered, one to `BOARD_GROUP_BY_MAX`, the first is the default), up to `BOARD_CARD_FIELDS_MAX` card fields, and the `rowAction` (shared with the table editor's row-action targets). Groupings and card fields can be dragged by a grip or moved with the arrow keys or Move buttons; each change is one validated, undoable patch and the new position is announced. Also adds the board patch helpers in `views.ts` (`addBoardGroupBy`, `setBoardTitleField`, `moveBoardCardField` and so on), `blankBoard`, and offers board views as embeddable widgets in `DashboardLayoutEditor`'s palette.
+
+### Patch Changes
+
+- 6dde494: The board panel now announces "Board settings applied." when Apply settings is pressed, instead of leaving the previous message in the live region.
+- 6a83b20: Keep up with the new `viewerIn` condition op (RFC 0006, not implemented yet in these packages). `evaluateCondition` returns false for a `viewerIn` leaf (the answer for no viewer), `viewStates` ignores one, and the editor describes one in words and treats it as not editable in the condition builder. Viewer semantics arrive in later releases.
+- Updated dependencies [91a2d86]
+- Updated dependencies [9ff56b5]
+- Updated dependencies [b6a63f6]
+- Updated dependencies [6a83b20]
+- Updated dependencies [6a83b20]
+  - @yadad/runtime@0.7.0
+  - @yadad/core@0.10.0
+
 ## 0.8.2
 
 ### Patch Changes
