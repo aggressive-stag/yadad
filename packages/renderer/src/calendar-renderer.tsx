@@ -1,6 +1,6 @@
 import { AdapterError, RecordValidationError, conditionFields } from "@yadad/core";
-import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, TableView } from "@yadad/core";
-import { bindFilter, calendarToday, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, shiftAnchor, visibleDays, visibleRange, weekdayLabels } from "@yadad/runtime";
+import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
+import { bindFilter, calendarToday, canUpdate, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -10,6 +10,7 @@ import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
 import { TableRenderer } from "./table-renderer.js";
+import { useViewerSetup } from "./viewer.js";
 
 export interface CalendarRendererProps {
   readonly entity: EntityDocument;
@@ -25,6 +26,13 @@ export interface CalendarRendererProps {
   readonly documents?: DocumentSet;
   /** The clock for "today" and relative dates in the view's filter. Defaults to the current time. */
   readonly now?: Date;
+  /**
+   * Who is viewing (RFC 0006), from `resolveViewer`. Moving and opening are
+   * offered only where this viewer may use them. Without it, a renderer with
+   * `documents` uses the viewer document's defaults; a view that reads a viewer
+   * fact and cannot find the document shows an error.
+   */
+  readonly viewer?: ResolvedViewer;
 }
 
 const DEFAULT_MODES: readonly CalendarMode[] = ["month", "week"];
@@ -54,11 +62,12 @@ interface Opened {
  * container, with the target table filtered by that record and a Back button.
  * The calendar stays mounted (hidden), so Back returns to the same period.
  */
-export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now }: CalendarRendererProps): ReactNode {
+export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp }: CalendarRendererProps): ReactNode {
+  const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const afterRender = useRef<(() => void) | undefined>(undefined);
-  const { Button } = registry.layout;
+  const { Button, ErrorSummary } = registry.layout;
   const refEntities = entities ?? documents?.entities;
 
   useEffect(() => {
@@ -102,6 +111,8 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
     setOpened(undefined);
   };
 
+  if (viewerError) return <ErrorSummary errors={[viewerError]} />;
+
   return (
     <div ref={containerRef} data-yadad-drill={view.id}>
       <div data-yadad-drill-level={0} {...(opened ? { hidden: true } : {})}>
@@ -114,7 +125,8 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
           reloadKey={reloadKey}
           {...(now ? { now } : {})}
           extraErrors={actionErrors}
-          {...(action && actionErrors.length === 0 ? { onOpen: open } : {})}
+          viewer={viewer}
+          {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
         />
       </div>
       {opened && targetEntity && documents && (
@@ -125,7 +137,7 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
               {opened.heading}
             </h2>
           </div>
-          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} />
+          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />
         </div>
       )}
     </div>
@@ -141,6 +153,7 @@ interface CalendarBodyProps {
   readonly reloadKey?: unknown;
   readonly now?: Date;
   readonly extraErrors: readonly DocumentError[];
+  readonly viewer: ResolvedViewer;
   readonly onOpen?: (record: DataRecord) => void;
 }
 
@@ -157,7 +170,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The entry is back on its day. Reload if the problem stays." }];
 }
 
-function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, onOpen }: CalendarBodyProps): ReactNode {
+function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen }: CalendarBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
   const modes = view.modes ?? DEFAULT_MODES;
   const weekStartsOn = view.weekStartsOn ?? 1;
@@ -172,6 +185,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
 
   const adapter = dataSources.get(view.dataSource);
+  const editable = viewEditable(view, viewer);
   const range = useMemo(() => visibleRange(anchor, mode, weekStartsOn), [anchor, mode, weekStartsOn]);
   const key = rangeKey(range);
 
@@ -280,7 +294,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       ),
       label: [title, ...details.map((f) => plain(f, record)), ...(color ? [color.label] : [])].join(", "),
       ...(color ? { color } : {}),
-      movable: view.editable === true && !isPending,
+      movable: editable && canUpdate(record) && !isPending,
       pending: isPending,
     };
   };
@@ -302,7 +316,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
 
   const move = (recordId: string, day: string): void => {
     const record = loadedRecords?.find((r) => r.id === recordId);
-    if (!record || !adapter || inFlight.current.has(recordId)) return;
+    if (!record || !adapter || !editable || !canUpdate(record) || inFlight.current.has(recordId)) return;
     const title = recordTitle(record);
     let plan;
     try {
@@ -382,7 +396,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
               },
             }
           : {})}
-        {...(view.editable === true ? { onMove: move } : {})}
+        {...(editable ? { onMove: move } : {})}
       />
     </div>
   );
