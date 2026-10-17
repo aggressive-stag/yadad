@@ -88,7 +88,7 @@ function representative(source: SourceState, states: readonly ViewState[], entit
  * once with `source = ready`, so no data state is lost.
  */
 export function sourceStates(result: ViewStatesResult, documents: readonly Document[]): SourceStatesResult {
-  const view = documents.find((d): d is ViewDocument => d.kind !== "entity" && d.id === result.view);
+  const view = documents.find((d): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer" && d.id === result.view);
   if (!view) throw new RangeError(`view "${result.view}" is not among the documents`);
   const entity = "entity" in view ? documents.find((d): d is EntityDocument => d.kind === "entity" && d.id === view.entity) : undefined;
   const sources = applicableSources(view);

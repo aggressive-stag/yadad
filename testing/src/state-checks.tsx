@@ -4,7 +4,7 @@
 // `render` function that wires its own.
 
 import { act, render as mount } from "@testing-library/react";
-import type { DataAdapter, Document, EntityDocument, FormView, Registry, ViewDocument } from "@yadad/core";
+import type { DataAdapter, Document, EntityDocument, FormView, Registry, ResolvedViewer, ViewDocument } from "@yadad/core";
 import { createDraftStore, evaluateFormRules, viewStates } from "@yadad/runtime";
 import type { DraftStore, ViewStatesOptions } from "@yadad/runtime";
 import axe from "axe-core";
@@ -53,6 +53,10 @@ export interface StateRenderContext {
   readonly drafts: { readonly store: DraftStore } | undefined;
   /** The `now` the states were built with. */
   readonly now: Date;
+  /** The viewer this state renders for (`state.viewer`). */
+  readonly viewer: ResolvedViewer;
+  /** True on the "viewer not provided" state: leave the renderer's `viewer` prop out entirely. */
+  readonly omitViewer: boolean;
 }
 
 export interface CheckViewStatesOptions {
@@ -107,12 +111,12 @@ const AXE_NAME_RULES = [
  */
 export async function checkViewStates(options: CheckViewStatesOptions): Promise<StateCheckResult[]> {
   const { documents, now } = options;
-  const view = typeof options.view === "string" ? documents.find((d): d is ViewDocument => d.kind !== "entity" && d.id === options.view) : options.view;
+  const view = typeof options.view === "string" ? documents.find((d): d is ViewDocument => isView(d) && d.id === options.view) : options.view;
   if (!view) throw new RangeError(`view "${String(options.view)}" is not among the documents`);
   const entity = "entity" in view ? documents.find((d): d is EntityDocument => d.kind === "entity" && d.id === view.entity) : undefined;
   const registry = options.registry ?? mockRegistry;
   const skip = new Set(options.skip ?? []);
-  const keys = new Set<string>(documents.flatMap((d) => (d.kind !== "entity" && "dataSource" in d ? [d.dataSource] : [])));
+  const keys = new Set<string>(documents.flatMap((d) => (isView(d) && "dataSource" in d ? [d.dataSource] : [])));
   if ("dataSource" in view) keys.add(view.dataSource);
 
   const stateOptions: ViewStatesOptions = {
@@ -161,7 +165,7 @@ async function checkState(
   try {
     let container: HTMLElement;
     try {
-      const element = options.render(state, { view, entity, documents, registry, adapter, dataSources, drafts, now: options.now });
+      const element = options.render(state, { view, entity, documents, registry, adapter, dataSources, drafts, now: options.now, viewer: state.viewer, omitViewer: state.omitViewer === true });
       const mounted = mount(element);
       unmount = mounted.unmount;
       container = mounted.container;
@@ -187,6 +191,8 @@ async function checkState(
   }
   return found;
 }
+
+const isView = (d: Document): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer";
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 

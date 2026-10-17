@@ -27,7 +27,7 @@ const documents: Document[] = readdirSync(dir)
   });
 
 const entities = new Map(documents.filter((d): d is EntityDocument => d.kind === "entity").map((d) => [d.id, d]));
-const views = new Map(documents.filter((d): d is ViewDocument => d.kind !== "entity").map((d) => [d.id, d]));
+const views = new Map(documents.filter((d): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer").map((d) => [d.id, d]));
 const set: DocumentSet = { entities, views };
 
 /** The one-line wiring per view kind: this is what a host app writes. */
