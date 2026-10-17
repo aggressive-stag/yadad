@@ -1,5 +1,7 @@
 import { SPEC_VERSION } from "@yadad/core";
-import type { CalendarView, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { BoardView, CalendarView, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
+
+import { groupableFieldsOf } from "./views.js";
 
 // Starting points for building an app from nothing. Each is a valid document
 // at revision 1 that the editors can take from there.
@@ -33,6 +35,13 @@ export function blankCalendar(entity: EntityDocument, id: string, dataSource: st
   const dateField = entity.fields.find((f) => f.type === "date")?.id;
   if (dateField === undefined) return null;
   return { kind: "calendar", specVersion: SPEC_VERSION, id, entity: entity.id, revision: 1, dataSource, dateField };
+}
+
+/** A board grouped by the entity's first groupable field (select, reference, or a boolean that is not required); null when there is none. */
+export function blankBoard(entity: EntityDocument, id: string, dataSource: string): BoardView | null {
+  const field = groupableFieldsOf(entity)[0];
+  if (field === undefined) return null;
+  return { kind: "board", specVersion: SPEC_VERSION, id, entity: entity.id, revision: 1, dataSource, groupBy: [{ field }] };
 }
 
 /** A dashboard with one empty tab; add widgets with the layout editor. */

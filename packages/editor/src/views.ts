@@ -1,5 +1,5 @@
-import { CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, jsonPointer, validateDocuments } from "@yadad/core";
-import type { CalendarMode, CalendarView, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView } from "@yadad/core";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, jsonPointer, validateDocuments } from "@yadad/core";
+import type { BoardView, CalendarMode, CalendarView, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -496,6 +496,160 @@ export function setCalendarRowAction(view: CalendarView, entity: EntityDocument,
   const path = "/rowAction";
   if (action === undefined) return ok(setOptional(view.rowAction !== undefined, path, undefined));
   const candidate: CalendarView = { ...view, rowAction: action };
+  const set = [entity, ...context.entities.filter((e) => e.id !== entity.id), ...context.tables, candidate];
+  const result = validateDocuments(set);
+  const problem = result.ok ? undefined : result.errors.find((e) => e.path.startsWith(path));
+  if (problem) return { ok: false, error: { path: problem.path, code: problem.code, message: problem.message, hint: problem.hint } };
+  if (JSON.stringify(view.rowAction) === JSON.stringify(action)) return ok([]);
+  return ok(setOptional(view.rowAction !== undefined, path, action as unknown as Json));
+}
+
+// ---- board -------------------------------------------------------------
+// A board shows one entity's records as cards in columns, one column per
+// value of a grouping field (RFC 0005). Like the calendar, most edits are a
+// single top-level property guarded by a `test` on the view id. Whether a
+// field may group, title or fill a card comes from the same lists the
+// validator uses.
+
+function guardBoard(view: BoardView): PatchOperation {
+  return { op: "test", path: "/id", value: view.id };
+}
+
+/** Sets the board's caption; an empty title removes it. */
+export function setBoardTitle(view: BoardView, title: string): PatchOperation[] {
+  const trimmed = title.trim();
+  return setOptional(view.title !== undefined, "/title", trimmed === "" ? undefined : trimmed);
+}
+
+/** Fields of the entity a board may group by: select, boolean (not required, since it could only be true) and reference. */
+export function groupableFieldsOf(entity: EntityDocument): string[] {
+  return entity.fields.filter((f) => BOARD_GROUP_FIELD_TYPES.includes(f.type) && !(f.type === "boolean" && f.required === true)).map((f) => f.id);
+}
+
+/** Fields of the entity that may title a card: text and select. */
+export function boardTitleFieldsOf(entity: EntityDocument): string[] {
+  return entity.fields.filter((f) => BOARD_TITLE_FIELD_TYPES.includes(f.type)).map((f) => f.id);
+}
+
+/** The field that titles cards: `titleField`, or else the entity's first text field. */
+export function effectiveBoardTitleField(entity: EntityDocument, view: BoardView): string | undefined {
+  return view.titleField ?? entity.fields.find((f) => f.type === "text")?.id;
+}
+
+/** Groupable fields the board does not list yet, in entity order. */
+export function fieldsNotInBoardGroupBy(entity: EntityDocument, view: BoardView): string[] {
+  const used = new Set(view.groupBy.map((g) => g.field));
+  return groupableFieldsOf(entity).filter((id) => !used.has(id));
+}
+
+/** Adds a grouping at the end (the first stays the default). At most BOARD_GROUP_BY_MAX; only groupable fields. */
+export function addBoardGroupBy(view: BoardView, entity: EntityDocument, fieldId: string): Result {
+  if (view.groupBy.some((g) => g.field === fieldId)) return fail(["groupBy"], `"${fieldId}" is already a grouping.`, "Nothing to add.");
+  if (!groupableFieldsOf(entity).includes(fieldId)) return fail(["groupBy"], `"${fieldId}" cannot group a board.`, `Use one of: ${groupableFieldsOf(entity).join(", ")}.`);
+  if (view.groupBy.length >= BOARD_GROUP_BY_MAX) return fail(["groupBy"], `A board allows at most ${BOARD_GROUP_BY_MAX} groupings.`, "Remove one before adding another.");
+  return ok([guardBoard(view), { op: "add", path: "/groupBy/-", value: { field: fieldId } }]);
+}
+
+function groupByIndex(view: BoardView, fieldId: string): number {
+  return view.groupBy.findIndex((g) => g.field === fieldId);
+}
+
+/** Removes a grouping; at least one stays. */
+export function removeBoardGroupBy(view: BoardView, fieldId: string): Result {
+  const i = groupByIndex(view, fieldId);
+  if (i < 0) return fail(["groupBy"], `"${fieldId}" is not a grouping.`, "Nothing to remove.");
+  if (view.groupBy.length === 1) return fail(["groupBy"], "A board needs at least one grouping.", "Add another grouping before removing this one.");
+  return ok([guardBoard(view), { op: "remove", path: `/groupBy/${i}` }]);
+}
+
+/** Moves a grouping by `by` places (negative is up); the first is the default. One place for the Move buttons and arrow keys, any distance for a drag. */
+export function moveBoardGroupBy(view: BoardView, fieldId: string, by: number): Result {
+  const i = groupByIndex(view, fieldId);
+  if (i < 0) return fail(["groupBy"], `"${fieldId}" is not a grouping.`, "Add it first.");
+  const to = i + by;
+  if (to < 0 || to >= view.groupBy.length) return fail(["groupBy", i], `"${fieldId}" is already ${by < 0 ? "first" : "last"}.`, "Move it the other way.");
+  return ok([guardBoard(view), { op: "move", from: `/groupBy/${i}`, path: `/groupBy/${to}` }]);
+}
+
+/**
+ * Sets or clears the title field. A card field that would then repeat the
+ * title is dropped in the same patch, so the edit never leaves the board
+ * invalid against its entity.
+ */
+export function setBoardTitleField(view: BoardView, entity: EntityDocument, fieldId: string | undefined): PatchOperation[] {
+  if (fieldId === view.titleField) return [];
+  const title = fieldId ?? entity.fields.find((f) => f.type === "text")?.id;
+  const patch: PatchOperation[] = [guardBoard(view), ...setOptional(view.titleField !== undefined, "/titleField", fieldId)];
+  const cards = view.cardFields ?? [];
+  if (title !== undefined && cards.includes(title)) {
+    const rest = cards.filter((id) => id !== title);
+    patch.push(...setOptional(true, "/cardFields", rest.length === 0 ? undefined : rest));
+  }
+  return patch;
+}
+
+/** Fields that may be added as card fields: every field except the card's title and those already shown. */
+export function fieldsNotInBoardCards(entity: EntityDocument, view: BoardView): string[] {
+  const used = new Set([effectiveBoardTitleField(entity, view), ...(view.cardFields ?? [])].filter((id): id is string => id !== undefined));
+  return entity.fields.map((f) => f.id).filter((id) => !used.has(id));
+}
+
+function cardIndex(view: BoardView, fieldId: string): number {
+  return (view.cardFields ?? []).findIndex((id) => id === fieldId);
+}
+
+/** Shows a field under the card's title. At most BOARD_CARD_FIELDS_MAX, never the title field. */
+export function addBoardCardField(view: BoardView, entity: EntityDocument, fieldId: string): Result {
+  const current = view.cardFields ?? [];
+  if (current.includes(fieldId)) return fail(["cardFields"], `"${fieldId}" is already a card field.`, "Nothing to add.");
+  if (!entity.fields.some((f) => f.id === fieldId)) return fail(["cardFields"], `"${fieldId}" is not a field of ${entity.id}.`, "Pick a field of the entity.");
+  if (fieldId === effectiveBoardTitleField(entity, view)) return fail(["cardFields"], `"${fieldId}" is already shown as the card's title.`, "Pick another field.");
+  if (current.length >= BOARD_CARD_FIELDS_MAX) return fail(["cardFields"], `A board shows at most ${BOARD_CARD_FIELDS_MAX} card fields.`, "Remove one before adding another.");
+  return ok([guardBoard(view), current.length === 0 ? { op: "add", path: "/cardFields", value: [fieldId] } : { op: "add", path: "/cardFields/-", value: fieldId }]);
+}
+
+/** Takes a field out of the card fields. Removing the last one clears the property. */
+export function removeBoardCardField(view: BoardView, fieldId: string): Result {
+  const i = cardIndex(view, fieldId);
+  if (i < 0) return fail(["cardFields"], `"${fieldId}" is not a card field.`, "Nothing to remove.");
+  if ((view.cardFields ?? []).length === 1) return ok([guardBoard(view), { op: "remove", path: "/cardFields" }]);
+  return ok([guardBoard(view), { op: "remove", path: `/cardFields/${i}` }]);
+}
+
+/** Moves a card field by `by` places (negative is up). */
+export function moveBoardCardField(view: BoardView, fieldId: string, by: number): Result {
+  const i = cardIndex(view, fieldId);
+  if (i < 0) return fail(["cardFields"], `"${fieldId}" is not a card field.`, "Add it first.");
+  const to = i + by;
+  if (to < 0 || to >= (view.cardFields ?? []).length) return fail(["cardFields", i], `"${fieldId}" is already ${by < 0 ? "first" : "last"}.`, "Move it the other way.");
+  return ok([guardBoard(view), { op: "move", from: `/cardFields/${i}`, path: `/cardFields/${to}` }]);
+}
+
+/** Sets or clears the board's fixed filter ("cards always match"). */
+export function setBoardFilter(view: BoardView, condition: Condition | undefined): Result {
+  return ok([guardBoard(view), ...setOptional(view.filter !== undefined, "/filter", condition as unknown as Json | undefined)]);
+}
+
+/** Sets the card order within a column to one key, or clears it. */
+export function setBoardSort(view: BoardView, sort: SortSpec | undefined): PatchOperation[] {
+  return [guardBoard(view), ...setOptional(view.sort !== undefined, "/sort", sort ? [{ field: sort.field, dir: sort.dir }] : undefined)];
+}
+
+/** Lets a drag to another column change the grouping field, or stops it. */
+export function setBoardEditable(view: BoardView, editable: boolean): PatchOperation[] {
+  return [guardBoard(view), ...setOptional(view.editable !== undefined, "/editable", editable ? true : undefined)];
+}
+
+/** The table views a board's row action may open: every table in the context (a board never is a target). */
+export function boardRowActionTargets(context: RowActionContext): readonly TableView[] {
+  return context.tables;
+}
+
+/** Sets or clears a board's row action, checked against the whole set by the document validator (as for calendars). */
+export function setBoardRowAction(view: BoardView, entity: EntityDocument, context: RowActionContext, action: RowAction | undefined): Result {
+  const path = "/rowAction";
+  if (action === undefined) return ok(setOptional(view.rowAction !== undefined, path, undefined));
+  const candidate: BoardView = { ...view, rowAction: action };
   const set = [entity, ...context.entities.filter((e) => e.id !== entity.id), ...context.tables, candidate];
   const result = validateDocuments(set);
   const problem = result.ok ? undefined : result.errors.find((e) => e.path.startsWith(path));
