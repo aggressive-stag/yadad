@@ -34,7 +34,7 @@ It is in flux like the documents (no freeze is planned): a change here is a chan
 Do not re-implement the field rules. Generate a JSON Schema (draft 2020-12) from the entity document and validate each write's `values` against it. In JavaScript, `recordJsonSchema(entity)` from `@yadad/core` returns it. Without JavaScript in the backend's runtime, generate the files at build time from the repository:
 
 ```sh
-node tools/record-schema.mjs entities/set.json > schemas/set.schema.json   # or: pnpm record-schema entities/set.json
+node tools/record-schema.ts entities/set.json > schemas/set.schema.json   # or: pnpm record-schema entities/set.json
 ```
 
 Then, for example in Python with `jsonschema` (install `jsonschema[format]` for the `date` format check):
