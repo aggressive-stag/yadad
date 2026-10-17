@@ -1,4 +1,3 @@
-/* global module */
 // Dependency direction from ARCHITECTURE.md §4. Paths are relative to the
 // repo root. Declared workspace deps resolve through pnpm symlinks to their
 // real paths (packages/<name>/...). Undeclared ones and subpath imports do not
@@ -7,8 +6,10 @@
 //
 // tools/forbidden-import-fixture/ proves every rule fires (pnpm depcruise:fixture).
 
+import type { IConfiguration, IForbiddenRuleType } from "dependency-cruiser";
+
 /** Anything in the workspace except the listed packages, by path or by package name. */
-const workspaceExcept = (...allowed) => {
+const workspaceExcept = (...allowed: string[]): string => {
   const ok = allowed.join("|");
   return `^(packages/(?!(${ok})/)|testing/|apps/|@yadad/(?!(${ok})(/|$)))`;
 };
@@ -22,7 +23,7 @@ const TESTING = "^(testing/|@yadad/testing(/|$))";
  * `allowed`; test files may also import @yadad/testing (DECISIONS.md: the mock
  * registry and contract kit are test-only dependencies).
  */
-const direction = (name, pkg, allowed, comment) => [
+const direction = (name: string, pkg: string, allowed: string[], comment: string): IForbiddenRuleType[] => [
   {
     name,
     comment,
@@ -39,8 +40,7 @@ const direction = (name, pkg, allowed, comment) => [
   },
 ];
 
-/** @type {import('dependency-cruiser').IConfiguration} */
-module.exports = {
+const config: IConfiguration = {
   forbidden: [
     ...direction("core-imports-nothing", "core", ["core"], "core imports nothing from the workspace (ARCHITECTURE.md §4)."),
     ...direction("runtime-imports-core-only", "runtime", ["core", "runtime"], "runtime imports core only."),
@@ -109,3 +109,5 @@ module.exports = {
     },
   },
 };
+
+export default config;

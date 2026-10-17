@@ -1,14 +1,10 @@
-/* global URL, console, process */
-// Proves every rule in .dependency-cruiser.cjs fires: cruises this fixture
+// Proves every rule in .dependency-cruiser.ts fires: cruises this fixture
 // (a miniature workspace with one deliberate violation per rule) and fails
 // unless the violations match EXPECTED exactly. Run: pnpm depcruise:fixture
 
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { cruise } from "dependency-cruiser";
-
-const require = createRequire(import.meta.url);
-const config = require("../../.dependency-cruiser.cjs");
+import config from "../../.dependency-cruiser.ts";
 const baseDir = fileURLToPath(new URL(".", import.meta.url));
 
 const EXPECTED = [
@@ -31,17 +27,19 @@ const EXPECTED = [
   ["runtime-imports-core-only", "packages/runtime/src/uses-testing.ts", "testing/src/index.ts"],
 ].map((v) => v.join(" | "));
 
-const { enhancedResolveOptions, ...options } = config.options;
+const { enhancedResolveOptions, ...options } = config.options ?? {};
+const forbidden = config.forbidden ?? [];
 const { output } = await cruise(
   ["packages", "testing", "apps"],
-  { ...options, baseDir, validate: true, ruleSet: { forbidden: config.forbidden } },
+  { ...options, baseDir, validate: true, ruleSet: { forbidden } },
   enhancedResolveOptions,
 );
 
+if (typeof output === "string") throw new Error("expected the cruise result as an object, got a string");
 const actual = output.summary.violations.map((v) => [v.rule.name, v.from, v.to].join(" | "));
 const missing = EXPECTED.filter((v) => !actual.includes(v));
 const unexpected = actual.filter((v) => !EXPECTED.includes(v));
-const unproven = config.forbidden
+const unproven = forbidden
   .map((rule) => rule.name)
   .filter((name) => !EXPECTED.some((v) => v.startsWith(`${name} |`)));
 
@@ -50,4 +48,4 @@ for (const v of unexpected) console.error(`unexpected: ${v}`);
 for (const name of unproven) console.error(`no fixture violation for rule: ${name}`);
 
 if (missing.length || unexpected.length || unproven.length) process.exit(1);
-console.log(`forbidden-import fixture: all ${config.forbidden.length} rules fire (${actual.length} violations as expected)`);
+console.log(`forbidden-import fixture: all ${forbidden.length} rules fire (${actual.length} violations as expected)`);
