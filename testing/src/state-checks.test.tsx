@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import type { DataAdapter, Document, EntityDocument, FormView, TableView } from "@yadad/core";
-import { evaluateFormRules } from "@yadad/runtime";
+import type { CalendarProps, CalendarView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewerDocument } from "@yadad/core";
+import { evaluateFormRules, viewEditable } from "@yadad/runtime";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { describe, expect, test } from "vitest";
+import { mockRegistry } from "./mock-registry.js";
 import { checkViewStates, problems } from "./state-checks.js";
 import type { StateCheck } from "./state-checks.js";
 
@@ -151,5 +152,84 @@ describe("checkViewStates", () => {
 
   test("an unknown view id throws", async () => {
     await expect(checkViewStates({ view: "nope", documents, now: NOW, render: () => null })).rejects.toThrow(/nope/);
+  });
+
+  describe("viewer axes", () => {
+    const viewerDoc: ViewerDocument = {
+      kind: "viewer",
+      specVersion: 5,
+      id: "viewer",
+      revision: 1,
+      facts: [{ id: "role", label: "Role", type: "select", options: { source: "static", values: ["viewer", "owner"] }, default: "viewer" }],
+    };
+    const calendar: CalendarView = {
+      ...base,
+      specVersion: 5,
+      kind: "calendar",
+      id: "task_calendar",
+      dateField: "due",
+      titleField: "title",
+      editable: true,
+      editableWhen: { op: "viewerIn", fact: "role", values: ["owner"] },
+    };
+    const dated: EntityDocument = { ...entity, fields: [...entity.fields, { id: "due", type: "date", label: "Due" }] };
+    const set: Document[] = [dated, calendar, viewerDoc];
+
+    interface Behaviour {
+      readonly alwaysMovable?: boolean;
+      readonly neverMovable?: boolean;
+      readonly ignoreLock?: boolean;
+    }
+
+    /** A calendar stand-in: the registry's Calendar records what the "renderer" gave it. */
+    const registryFor = (): Registry<ReactNode> => ({ ...mockRegistry, layout: { ...mockRegistry.layout, Calendar: () => <div data-testid="stub-calendar" /> } });
+    const render = (behaviour: Behaviour) => (state: { viewer: never; render: { kind: string; records?: { id: string; can?: { update?: boolean } }[] } }, ctx: { registry: Registry<ReactNode> }): ReactNode => {
+      const Calendar = ctx.registry.layout.Calendar!;
+      const editable = viewEditable(calendar, state.viewer) && !behaviour.neverMovable || behaviour.alwaysMovable === true;
+      const entries = (state.render.records ?? []).map((r) => ({
+        id: r.id,
+        content: null,
+        label: r.id,
+        movable: editable && (behaviour.ignoreLock === true || r.can?.update !== false),
+        pending: false,
+      }));
+      const props = {
+        label: "c",
+        title: "c",
+        mode: "month",
+        modes: [],
+        weekdays: [],
+        days: [{ date: "2026-10-17", dayOfMonth: 17, weekday: 6, label: "d", inMonth: true, isToday: true, entries }],
+        loading: false,
+        announcement: "",
+        onModeChange: () => undefined,
+        onPrevious: () => undefined,
+        onNext: () => undefined,
+        onToday: () => undefined,
+        ...(editable ? { onMove: () => undefined } : {}),
+      } as unknown as CalendarProps<ReactNode>;
+      return <Calendar {...props} />;
+    };
+    const go = (behaviour: Behaviour) =>
+      checkViewStates({ view: calendar, documents: set, now: NOW, registry: registryFor(), skip: ["error-message", "accessible-name"], render: render(behaviour) as never });
+
+    test("a calendar that follows the viewer and the locks passes", async () => {
+      const results = await go({});
+      expect(results.some((r) => r.label.includes("role = owner"))).toBe(true);
+      expect(results.some((r) => r.label.includes("record locked"))).toBe(true);
+      expect(problems(results)).toEqual([]);
+    });
+
+    test("moving offered to a viewer who may not move is reported", async () => {
+      expect(checks(await go({ alwaysMovable: true }))).toEqual(["editable-offered"]);
+    });
+
+    test("moving offered on a locked record is reported", async () => {
+      expect(checks(await go({ ignoreLock: true }))).toEqual(["editable-offered"]);
+    });
+
+    test("moving withheld from a viewer who may move is reported", async () => {
+      expect(checks(await go({ neverMovable: true }))).toContain("editable-missing");
+    });
   });
 });
