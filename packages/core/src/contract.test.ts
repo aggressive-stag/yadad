@@ -32,7 +32,7 @@ describe("contract lists", () => {
   });
   test("condition ops match CONDITION_OPS exactly", () => {
     expect(contract.conditions.ops.map((o) => o.op)).toEqual(contract.conditions.ops.map((o) => o.op)); // the op list comes from CONDITION_OPS via the mapping
-    expect(contract.conditions.ops.length).toBeGreaterThanOrEqual(13);
+    expect(contract.conditions.ops.length).toBeGreaterThanOrEqual(14);
   });
   test("the calendar kind, its limits and the optional registry key are described", () => {
     const kind = contract.documentKinds.find((k) => k.kind === "calendar");
@@ -339,6 +339,8 @@ function conditionExample(op: string): Record<string, unknown> {
       return { op, conditions: [{ op: "eq", field: "name", value: "a" }, { op: "notEmpty", field: "name" }] };
     case "single":
       return { op, condition: { op: "eq", field: "name", value: "a" } };
+    case "viewer":
+      return { op, fact: "role", values: ["editor", "owner"] };
     default:
       throw new Error(`unknown shape`);
   }
@@ -350,9 +352,9 @@ describe("conditions", () => {
       const doc = { ...formBase, sections: [{ id: "main", title: "Hello", items: [{ field: "name", visibleWhen: conditionExample(opSpec.op) }] }] };
       expect(problems(doc)).toEqual([]);
     });
-    test(`op "${opSpec.op}" in its listed shape validates (table filter)`, () => {
+    test(`op "${opSpec.op}" in its listed shape ${opSpec.shape.kind === "viewer" ? "is rejected" : "validates"} (table filter)`, () => {
       const doc = { ...tableBase, filter: conditionExample(opSpec.op) };
-      expect(problems(doc)).toEqual([]);
+      expect(problems(doc)).toEqual(opSpec.shape.kind === "viewer" ? [["/filter", "invalid-value"]] : []);
     });
     test(`op "${opSpec.op}" rejects an unlisted property at its path`, () => {
       const doc = { ...formBase, sections: [{ id: "main", title: "Hello", items: [{ field: "name", visibleWhen: { ...conditionExample(opSpec.op), bogus: 1 } }] }] };

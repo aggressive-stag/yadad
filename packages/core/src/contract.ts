@@ -4,11 +4,11 @@
 
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
-import type { CalendarMode, Document, FieldType, MeasureOp, WidgetType } from "./document.js";
-import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
+import type { CalendarMode, Document, FieldType, MeasureOp, ViewerFactType, WidgetType } from "./document.js";
+import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
-export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard"] as const;
+export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] as const;
 
 /** Ids for fields, sections, tabs, grid items, columns, documents and views. */
 export const ID_PATTERN = /^[a-z][a-z0-9_]*$/;
@@ -53,6 +53,11 @@ export const BOARD_GROUP_FIELD_TYPES: readonly FieldType[] = ["select", "boolean
 /** Field types a board's titleField may have. */
 export const BOARD_TITLE_FIELD_TYPES: readonly FieldType[] = ["text", "select"];
 
+/** A viewer document declares 1 to this many facts; a select fact lists 2 to this many values (RFC 0006). */
+export const VIEWER_FACTS_MAX = 8;
+export const VIEWER_FACT_VALUES_MAX = 8;
+export const VIEWER_FACT_VALUES_MIN = 2;
+
 /** Conditions may nest at most this many levels (and/or/not). */
 export const MAX_CONDITION_DEPTH = 16;
 
@@ -79,7 +84,8 @@ type ConditionShape =
   | { readonly kind: "values"; readonly keys: ["values"] }
   | { readonly kind: "none"; readonly keys: [] }
   | { readonly kind: "nested"; readonly keys: ["conditions"] }
-  | { readonly kind: "single"; readonly keys: ["condition"] };
+  | { readonly kind: "single"; readonly keys: ["condition"] }
+  | { readonly kind: "viewer"; readonly keys: ["fact", "values"] };
 
 interface ConditionOpSpec {
   readonly op: ConditionOp;
@@ -103,6 +109,17 @@ interface WidgetSpec {
   readonly widget: WidgetType;
   readonly description: string;
   readonly properties: readonly PropertySpec[];
+}
+
+/** Where a condition may appear and what it may read (RFC 0006). `record` leaves read the record; `viewer` leaves are `viewerIn`. */
+interface ConditionPlaceSpec {
+  /** JSON Pointer pattern into the document; `*` stands for an array index. */
+  readonly path: string;
+  /** The document kinds that have this key. */
+  readonly kinds: readonly Document["kind"][];
+  /** `record+viewer`: any condition. `viewer`: only viewerIn, and, or, not. `record`: no viewerIn (filters are sent to the server). */
+  readonly accepts: "record+viewer" | "viewer" | "record";
+  readonly description: string;
 }
 
 export interface ContractDescription {
@@ -134,6 +151,17 @@ export interface ContractDescription {
     readonly groupFieldTypes: readonly FieldType[];
     readonly titleFieldTypes: readonly FieldType[];
   };
+  /** The `viewer` document kind (RFC 0006): the facts a host can tell the renderers about the viewer. */
+  readonly viewer: {
+    readonly factTypes: readonly ViewerFactType[];
+    readonly factsMax: number;
+    readonly factValuesMax: number;
+    readonly factValuesMin: number;
+    /** A set has at most this many viewer documents. */
+    readonly documentsMax: number;
+  };
+  /** Every place a condition can appear and which kinds of leaf it accepts. */
+  readonly conditionPlaces: readonly ConditionPlaceSpec[];
   /** Registry keys a registry may leave out; the renderer reports a view that needs a missing one. */
   readonly optionalRegistryKeys: readonly { readonly key: string; readonly description: string }[];
   /** The ops of a `stat` widget's `measure`. */
@@ -170,7 +198,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "entity", required: true, description: "The id of the entity this form edits." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "dataSource", required: true, description: "Key the host maps to a DataAdapter. Never a URL." },
-      { key: "sections", required: true, description: "An array of sections: { id, title?, items: [{ field, visibleWhen?, requiredWhen?, clearWhenHidden? }] }." },
+      { key: "sections", required: true, description: "An array of sections: { id, title?, items: [{ field, visibleWhen?, requiredWhen?, clearWhenHidden? }] }. The conditions may mix record leaves and viewerIn leaves; clearWhenHidden cannot be true while visibleWhen reads the viewer." },
     ],
   },
   {
@@ -183,13 +211,13 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "entity", required: true, description: "The id of the entity whose records are shown." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "dataSource", required: true, description: "Key the host maps to a DataAdapter. Never a URL." },
-      { key: "columns", required: true, description: "An array of { field, editable? }; at least one, each field once." },
+      { key: "columns", required: true, description: "An array of { field, editable?, visibleWhen?, editableWhen? }; at least one, each field once. visibleWhen and editableWhen are viewer conditions (viewerIn, and, or, not): the column is shown, or edited in place, only while they hold for the viewer. editableWhen needs editable: true and can only narrow it." },
       { key: "title", required: false, description: "Caption shown with the table." },
       { key: "sort", required: false, description: "Initial sort: an array of { field, dir: \"asc\" | \"desc\" }." },
       { key: "pageSize", required: false, description: "Rows per page, a whole number from 1 to 1000." },
       { key: "filter", required: false, description: "A condition every row must always match." },
       { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number and date fields as a from/to range (either end may stay empty)." },
-      { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only.` },
+      { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only. visibleWhen (a viewer condition) hides the action from viewers it does not hold for.` },
     ],
   },
   {
@@ -212,6 +240,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "modes", required: false, description: `The periods the viewer can switch between, from ${CALENDAR_MODES.join(", ")}; non-empty, no duplicates, the first is the default. Defaults to [${CALENDAR_MODES_DEFAULT.map((m) => JSON.stringify(m)).join(", ")}].` },
       { key: "weekStartsOn", required: false, description: `First day of the week: a whole number from 0 (Sunday) to 6. Defaults to ${CALENDAR_WEEK_STARTS_ON_DEFAULT} (Monday).` },
       { key: "editable", required: false, description: "Whether moving an entry to another day changes its date field. Defaults to false." },
+      { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from an entry, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A calendar can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
     ],
   },
@@ -232,6 +261,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "filter", required: false, description: "A condition every card must always match (relative dates allowed)." },
       { key: "sort", required: false, description: "Order of cards within a column: an array of { field, dir }. Defaults to the title field, ascending." },
       { key: "editable", required: false, description: "Whether dragging a card to another column changes the field currently grouping the board. Defaults to false." },
+      { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from a card, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A board can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
     ],
   },
@@ -243,8 +273,23 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
       { key: "id", required: true, description: "The dashboard's id." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
-      { key: "tabs", required: true, description: "An array of { id, title, columns?, items: [...] }; at least one." },
+      { key: "tabs", required: true, description: "An array of { id, title, columns?, visibleWhen?, items: [...] }; at least one. Every grid item may also carry visibleWhen. visibleWhen is a viewer condition (viewerIn, and, or, not): a tab is listed, or a widget rendered, only while it holds for the viewer; a hidden widget leaves its cell empty." },
       { key: "title", required: false, description: "Caption shown with the dashboard." },
+    ],
+  },
+  {
+    kind: "viewer",
+    description: "The facts a host can tell the renderers about the viewer (a role, a plan, a feature flag), read by viewerIn conditions. A set has at most one. It is not a view: it draws nothing.",
+    properties: [
+      { key: "kind", required: true, description: 'The kind, "viewer".' },
+      { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
+      { key: "id", required: true, description: "The viewer document's id." },
+      { key: "revision", required: true, description: "Bumped whenever this document changes." },
+      {
+        key: "facts",
+        required: true,
+        description: `An array of ${VIEWER_FACTS_MAX} facts at most (at least one), each id once: { id, label, type: ${VIEWER_FACT_TYPES.map((t) => JSON.stringify(t)).join(" | ")}, default, options? }. A select fact needs options { source: "static", values } with ${VIEWER_FACT_VALUES_MIN} to ${VIEWER_FACT_VALUES_MAX} values and a default that is one of them; a boolean fact has no options and a true/false default. The default is what a viewer the host says nothing about gets: pick the least-privileged one.`,
+      },
     ],
   },
 ];
@@ -300,6 +345,7 @@ const CONDITION_EXAMPLES: { readonly [K in ConditionOp]: string } = {
   and: '{ "op": "and", "conditions": [ <condition>, ... ] } (a list under "conditions")',
   or: '{ "op": "or", "conditions": [ <condition>, ... ] } (a list under "conditions")',
   not: '{ "op": "not", "condition": <condition> } (one condition under "condition")',
+  viewerIn: '{ "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] } (the viewer\'s value of a fact declared in the viewer document is one of "values"; a list under "values")',
 };
 
 const CONDITION_SHAPES: { readonly [K in ConditionOp]: ConditionShape } = {
@@ -316,6 +362,7 @@ const CONDITION_SHAPES: { readonly [K in ConditionOp]: ConditionShape } = {
   and: { kind: "nested", keys: ["conditions"] },
   or: { kind: "nested", keys: ["conditions"] },
   not: { kind: "single", keys: ["condition"] },
+  viewerIn: { kind: "viewer", keys: ["fact", "values"] },
 };
 
 /** Field types each measure op accepts (empty for count, which takes no field). */
@@ -368,6 +415,19 @@ const WIDGET_SPECS: Record<WidgetType, WidgetSpec> = {
     ],
   },
 };
+
+const CONDITION_PLACE_SPECS: readonly ConditionPlaceSpec[] = [
+  { path: "/sections/*/items/*/visibleWhen", kinds: ["form"], accepts: "record+viewer", description: "A viewer leaf that is false hides the field exactly like a record condition. clearWhenHidden: true is rejected while this reads the viewer." },
+  { path: "/sections/*/items/*/requiredWhen", kinds: ["form"], accepts: "record+viewer", description: "Requires the field while the condition holds." },
+  { path: "/columns/*/visibleWhen", kinds: ["table"], accepts: "viewer", description: "The column is not shown while this is false." },
+  { path: "/columns/*/editableWhen", kinds: ["table"], accepts: "viewer", description: "The column is editable in place only while this holds; needs the column's editable: true." },
+  { path: "/editableWhen", kinds: ["calendar", "board"], accepts: "viewer", description: "Moving is offered only while this holds; needs editable: true." },
+  { path: "/rowAction/visibleWhen", kinds: ["table", "calendar", "board"], accepts: "viewer", description: "While false, rows, entries and cards do not open the target view." },
+  { path: "/tabs/*/visibleWhen", kinds: ["dashboard"], accepts: "viewer", description: "The tab is not listed while this is false." },
+  { path: "/tabs/*/items/*/visibleWhen", kinds: ["dashboard"], accepts: "viewer", description: "The widget is not rendered while this is false; its cell stays empty." },
+  { path: "/filter", kinds: ["table", "calendar", "board"], accepts: "record", description: "A filter is sent to the server as a query, so it cannot depend on the viewer." },
+  { path: "/tabs/*/items/*/filter", kinds: ["dashboard"], accepts: "record", description: "The filter of a count or stat widget; it cannot depend on the viewer." },
+];
 
 /**
  * The error codes `validateDocument` and `validateDocuments` report. The
@@ -433,6 +493,8 @@ export function describeContract(): ContractDescription {
       groupFieldTypes: [...BOARD_GROUP_FIELD_TYPES],
       titleFieldTypes: [...BOARD_TITLE_FIELD_TYPES],
     },
+    viewer: { factTypes: [...VIEWER_FACT_TYPES], factsMax: VIEWER_FACTS_MAX, factValuesMax: VIEWER_FACT_VALUES_MAX, factValuesMin: VIEWER_FACT_VALUES_MIN, documentsMax: 1 },
+    conditionPlaces: CONDITION_PLACE_SPECS,
     optionalRegistryKeys: [
       { key: "layout.Calendar", description: "Draws a calendar view (CalendarProps). Optional for now: without it a calendar view renders an error summary instead. It becomes required once the reference component set ships a calendar." },
       { key: "layout.Board", description: "Draws a board view (BoardProps). Optional for now: without it a board view renders an error summary instead. It becomes required once the reference component set ships a board." },

@@ -1,7 +1,7 @@
 // PRE-CONTRACT document shapes: entities with the five v0 field types and
 // form views. Table and dashboard views, and the frozen contract, come later.
 
-import type { Condition } from "./condition.js";
+import type { Condition, ViewerCondition } from "./condition.js";
 
 /**
  * Engine document format version. Version 1 adds relative dates in conditions
@@ -11,11 +11,14 @@ import type { Condition } from "./condition.js";
  * `rowAction`); older documents stay valid and `migrate()` stamps them.
  * Version 3 adds the `calendar` view (RFC 0004); older documents stay valid
  * and `migrate()` stamps them. Version 4 adds the `board` view (RFC 0005);
- * older documents stay valid and `migrate()` stamps them.
+ * older documents stay valid and `migrate()` stamps them. Version 5 adds the
+ * `viewer` document kind, the `viewerIn` condition op and the viewer-only
+ * `visibleWhen`/`editableWhen` keys (RFC 0006); older documents stay valid and
+ * `migrate()` stamps them.
  */
-export const SPEC_VERSION = 4;
+export const SPEC_VERSION = 5;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
@@ -124,6 +127,10 @@ export interface TableColumn {
   readonly field: string;
   /** Whether rows can edit this column in place. Defaults to false. */
   readonly editable?: boolean;
+  /** Show the column only while this holds for the viewer (RFC 0006). Absent: always shown. */
+  readonly visibleWhen?: ViewerCondition;
+  /** Edit the column in place only while this holds for the viewer. Needs `editable: true`; can only narrow it (RFC 0006). */
+  readonly editableWhen?: ViewerCondition;
 }
 
 export interface SortSpec {
@@ -175,6 +182,8 @@ export interface RowAction {
   readonly bind: readonly RowBinding[];
   /** Defaults to "replace". */
   readonly mode?: RowActionMode;
+  /** Open the target only while this holds for the viewer (RFC 0006). Absent: always. */
+  readonly visibleWhen?: ViewerCondition;
 }
 
 /** The periods a calendar can show. A phone-width agenda is a rendering choice, not a mode. */
@@ -214,6 +223,8 @@ export interface CalendarView {
   readonly weekStartsOn?: number;
   /** Moving an entry changes `dateField`. Defaults to false. */
   readonly editable?: boolean;
+  /** Moving is offered only while this holds for the viewer. Needs `editable: true`; can only narrow it (RFC 0006). */
+  readonly editableWhen?: ViewerCondition;
   /** Activating an entry opens a table view scoped to it, as on tables. A calendar can start a chain, never be a target. */
   readonly rowAction?: RowAction;
 }
@@ -252,6 +263,8 @@ export interface BoardView {
   readonly sort?: readonly SortSpec[];
   /** Dragging a card changes the field it is currently grouped by. Defaults to false. */
   readonly editable?: boolean;
+  /** Moving is offered only while this holds for the viewer. Needs `editable: true`; can only narrow it (RFC 0006). */
+  readonly editableWhen?: ViewerCondition;
   /** Activating a card opens a table view scoped to it, as on tables. A board can start a chain, never be a target. */
   readonly rowAction?: RowAction;
 }
@@ -308,13 +321,23 @@ export interface StatWidget {
 export type Widget = ViewWidget | CountWidget | StatWidget;
 
 /** A widget placed on the tab's grid: column x, row y (from 0), w columns wide, h rows tall. */
-export type GridItem = { readonly id: string; readonly x: number; readonly y: number; readonly w: number; readonly h: number } & Widget;
+export type GridItem = {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  /** Render the widget only while this holds for the viewer; otherwise its cell stays empty (RFC 0006). */
+  readonly visibleWhen?: ViewerCondition;
+} & Widget;
 
 export interface DashboardTab {
   readonly id: string;
   readonly title: string;
   /** Grid columns. Defaults to 12. */
   readonly columns?: number;
+  /** List the tab only while this holds for the viewer (RFC 0006). */
+  readonly visibleWhen?: ViewerCondition;
   readonly items: readonly GridItem[];
 }
 
@@ -328,7 +351,57 @@ export interface DashboardView {
   readonly tabs: readonly DashboardTab[];
 }
 
+/** Viewer fact types. Both have a closed set of values, so the state grid can list every case. */
+export const VIEWER_FACT_TYPES = ["select", "boolean"] as const;
+export type ViewerFactType = (typeof VIEWER_FACT_TYPES)[number];
+
+interface ViewerFactBase {
+  readonly id: string;
+  readonly label: string;
+}
+
+/** A fact with a closed list of values, e.g. a role. */
+export interface SelectViewerFact extends ViewerFactBase {
+  readonly type: "select";
+  readonly options: StaticOptions;
+  /** One of `options.values`: what a viewer the host says nothing about gets. */
+  readonly default: string;
+}
+
+/** A yes/no fact, e.g. a feature flag. */
+export interface BooleanViewerFact extends ViewerFactBase {
+  readonly type: "boolean";
+  /** What a viewer the host says nothing about gets. */
+  readonly default: boolean;
+}
+
+export type ViewerFact = SelectViewerFact | BooleanViewerFact;
+
+/**
+ * The facts a host can tell the renderers about the viewer (RFC 0006). A
+ * document set has at most one. Not a view: it has no entity and draws nothing.
+ */
+export interface ViewerDocument {
+  readonly kind: "viewer";
+  readonly specVersion: SpecVersion;
+  readonly id: string;
+  readonly revision: number;
+  /** 1 to VIEWER_FACTS_MAX facts, each id once. */
+  readonly facts: readonly ViewerFact[];
+}
+
+/** One fact's value for one viewer. */
+export interface ViewerFactValue {
+  readonly fact: string;
+  readonly value: string | boolean;
+}
+
+/** A complete, valid viewer: every declared fact exactly once, in declaration order. */
+export interface ResolvedViewer {
+  readonly facts: readonly ViewerFactValue[];
+}
+
 /** Discriminated on `kind`. */
 export type ViewDocument = FormView | TableView | CalendarView | BoardView | DashboardView;
-export type Document = EntityDocument | ViewDocument;
+export type Document = EntityDocument | ViewDocument | ViewerDocument;
 export type DocumentKind = Document["kind"];

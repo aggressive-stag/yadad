@@ -144,7 +144,7 @@ describe("validateDocuments", () => {
 
   test("a structural error is tagged with the document's id and keeps its allowed list", () => {
     const set = [entity("e", [{ id: "name", type: "text" }]), { kind: "widget", specVersion: 0, id: "w", revision: 1 }];
-    expect(problems(set)).toEqual([{ path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "board", "dashboard"] }]);
+    expect(problems(set)).toEqual([{ path: "/kind", code: "unknown-kind", document: "w", allowed: ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] }]);
   });
 });
 

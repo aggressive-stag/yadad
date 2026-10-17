@@ -6,10 +6,10 @@
 // widgets point at existing views) that only hold across a whole set.
 
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
-import type { Condition, ConditionOp } from "./condition.js";
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX } from "./contract.js";
-import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, WIDGET_TYPES } from "./document.js";
-import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView } from "./document.js";
+import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
+import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -54,6 +54,8 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
     validateBoard(errors, input);
   } else if (input["kind"] === "dashboard") {
     validateDashboard(errors, input);
+  } else if (input["kind"] === "viewer") {
+    validateViewer(errors, input);
   } else if (input["kind"] === undefined) {
     errors.add(["kind"], "required", 'Missing required property "kind".', `Add "kind": one of ${DOCUMENT_KINDS.join(", ")}.`);
   } else {
@@ -187,6 +189,9 @@ function validateForm(errors: Errors, doc: JsonObject): void {
       checkCondition(errors, item["visibleWhen"], [...itemPath, "visibleWhen"]);
       checkCondition(errors, item["requiredWhen"], [...itemPath, "requiredWhen"]);
       checkBoolean(errors, item, itemPath, "clearWhenHidden");
+      if (item["clearWhenHidden"] === true && containsViewerLeaf(item["visibleWhen"])) {
+        errors.add([...itemPath, "clearWhenHidden"], "invalid-value", "clearWhenHidden cannot be combined with a viewer condition in visibleWhen.", "Clearing would erase a value the viewer cannot see. Remove clearWhenHidden.");
+      }
       if (typeof item["field"] === "string") placed.push({ id: item["field"], path: [...itemPath, "field"] });
     });
   });
@@ -204,7 +209,7 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 
 function validateTable(errors: Errors, doc: JsonObject): void {
   checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters", "rowAction"]);
-  checkCondition(errors, doc["filter"], ["filter"]);
+  checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   const filters = checkArray(errors, doc, [], "quickFilters");
   const filtered: { id: string; path: Path }[] = [];
@@ -235,9 +240,12 @@ function validateTable(errors: Errors, doc: JsonObject): void {
       errors.add(path, "type", "A column must be a JSON object.", 'Use { "field": "<field id>" }.');
       return;
     }
-    checkKeys(errors, column, path, ["field"], ["editable"]);
+    checkKeys(errors, column, path, ["field"], ["editable", "visibleWhen", "editableWhen"]);
     checkId(errors, column, path, "field");
     checkBoolean(errors, column, path, "editable");
+    checkCondition(errors, column["visibleWhen"], [...path, "visibleWhen"], "viewer");
+    checkCondition(errors, column["editableWhen"], [...path, "editableWhen"], "viewer");
+    checkEditableWhen(errors, column, path);
     if (typeof column["field"] === "string") shown.push({ id: column["field"], path: [...path, "field"] });
   });
   reportDuplicates(errors, shown, "column", "a table (each field appears once)");
@@ -273,7 +281,7 @@ function checkSort(errors: Errors, doc: JsonObject, scope: string): void {
 const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField"] as const;
 
 function validateCalendar(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "rowAction"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -281,10 +289,12 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
   checkNonEmptyString(errors, doc, [], "dataSource");
   checkNonEmptyString(errors, doc, [], "title");
   for (const key of CALENDAR_ID_KEYS) checkId(errors, doc, [], key);
-  checkCondition(errors, doc["filter"], ["filter"]);
+  checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkSort(errors, doc, "a calendar's sort");
   checkBoolean(errors, doc, [], "editable");
+  checkCondition(errors, doc["editableWhen"], ["editableWhen"], "viewer");
+  checkEditableWhen(errors, doc, []);
 
   const details = checkArray(errors, doc, [], "detailFields");
   if (details) {
@@ -321,7 +331,7 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
 }
 
 function validateBoard(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "rowAction"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -329,10 +339,12 @@ function validateBoard(errors: Errors, doc: JsonObject): void {
   checkNonEmptyString(errors, doc, [], "dataSource");
   checkNonEmptyString(errors, doc, [], "title");
   checkId(errors, doc, [], "titleField");
-  checkCondition(errors, doc["filter"], ["filter"]);
+  checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkSort(errors, doc, "a board's sort");
   checkBoolean(errors, doc, [], "editable");
+  checkCondition(errors, doc["editableWhen"], ["editableWhen"], "viewer");
+  checkEditableWhen(errors, doc, []);
 
   const groupBy = checkArray(errors, doc, [], "groupBy");
   if (groupBy) {
@@ -379,8 +391,9 @@ function checkRowAction(errors: Errors, value: unknown): void {
     errors.add(path, "type", "A rowAction must be a JSON object.", ROW_ACTION_HINT);
     return;
   }
-  checkKeys(errors, value, path, ["open", "bind"], ["mode"]);
+  checkKeys(errors, value, path, ["open", "bind"], ["mode", "visibleWhen"]);
   checkId(errors, value, path, "open");
+  checkCondition(errors, value["visibleWhen"], [...path, "visibleWhen"], "viewer");
   if (value["mode"] !== undefined && !ROW_ACTION_MODES.some((m) => m === value["mode"])) {
     errors.add([...path, "mode"], "invalid-value", `Unsupported rowAction mode ${JSON.stringify(value["mode"])}.`, `Use "replace" (the only mode so far; "dialog" is planned). Allowed: ${ROW_ACTION_MODES.join(", ")}.`, [...ROW_ACTION_MODES]);
   }
@@ -417,7 +430,8 @@ function validateDashboard(errors: Errors, doc: JsonObject): void {
       errors.add(path, "type", "A tab must be a JSON object.", 'Use { "id", "title", "items" }.');
       return;
     }
-    checkKeys(errors, tab, path, ["id", "title", "items"], ["columns"]);
+    checkKeys(errors, tab, path, ["id", "title", "items"], ["columns", "visibleWhen"]);
+    checkCondition(errors, tab["visibleWhen"], [...path, "visibleWhen"], "viewer");
     checkId(errors, tab, path, "id");
     checkNonEmptyString(errors, tab, path, "title");
     if (typeof tab["id"] === "string") tabIds.push({ id: tab["id"], path: [...path, "id"] });
@@ -459,7 +473,8 @@ function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns:
       : widget === "stat"
         ? { required: ["label", "view", "measure"], optional: ["filter"] }
         : { required: ["view"], optional: [] };
-  checkKeys(errors, item, path, ["id", "x", "y", "w", "h", "widget", ...keys.required], keys.optional);
+  checkKeys(errors, item, path, ["id", "x", "y", "w", "h", "widget", ...keys.required], [...keys.optional, "visibleWhen"]);
+  checkCondition(errors, item["visibleWhen"], [...path, "visibleWhen"], "viewer");
   checkId(errors, item, path, "id");
   let usable = true;
   for (const { key, min } of GRID_ITEM_KEYS) {
@@ -477,7 +492,7 @@ function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns:
   checkId(errors, item, path, "view");
   if (widget === "count" || widget === "stat") {
     checkNonEmptyString(errors, item, path, "label");
-    checkCondition(errors, item["filter"], [...path, "filter"]);
+    checkCondition(errors, item["filter"], [...path, "filter"], "filter");
   }
   if (widget === "stat") checkMeasure(errors, item["measure"], [...path, "measure"]);
   return usable;
@@ -559,6 +574,7 @@ const CONDITION_SHAPES: { readonly [K in ConditionOp]: string } = {
   and: '{ "op": "and", "conditions": [ <condition>, ... ] } (a list under "conditions")',
   or: '{ "op": "or", "conditions": [ <condition>, ... ] } (a list under "conditions")',
   not: '{ "op": "not", "condition": <condition> } (one condition under "condition")',
+  viewerIn: '{ "op": "viewerIn", "fact": "<viewer fact id>", "values": ["editor", "owner"] } (a list under "values")',
 };
 
 /** Keys authors swap by one letter; an unknown one suggests its twin when that is what the op takes. */
@@ -580,8 +596,15 @@ function checkConditionKeys(errors: Errors, obj: JsonObject, path: Path, op: Con
   }
 }
 
+/**
+ * Where a condition sits (RFC 0006): `any` takes record and viewer leaves (form
+ * items), `viewer` only viewer leaves (places with no record), `filter` only
+ * record leaves (a filter is sent to the server).
+ */
+type ConditionPlace = "any" | "viewer" | "filter";
+
 /** Validates an optional condition (undefined is fine). */
-function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): void {
+function checkCondition(errors: Errors, value: unknown, path: Path, place: ConditionPlace = "any", depth = 0): void {
   if (value === undefined) return;
   if (!isObject(value)) {
     errors.add(path, "type", "A condition must be a JSON object.", CONDITION_HINT);
@@ -592,7 +615,33 @@ function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): 
     return;
   }
   const op = value["op"];
+  if (place === "viewer" && typeof op === "string" && (CONDITION_OPS as readonly string[]).includes(op) && op !== "viewerIn" && op !== "and" && op !== "or" && op !== "not") {
+    errors.add(path, "invalid-value", "Only viewer conditions are allowed here.", "Use op viewerIn, optionally inside and, or, not.");
+    return;
+  }
   switch (op) {
+    case "viewerIn": {
+      if (place === "filter") {
+        errors.add(path, "invalid-value", "A filter cannot depend on the viewer.", "Filters are sent to the server. Scope records on the server, or hide this view with a viewer condition.");
+        return;
+      }
+      checkConditionKeys(errors, value, path, op, ["fact", "values"]);
+      checkId(errors, value, path, "fact");
+      const values = checkArray(errors, value, path, "values");
+      if (!values) return;
+      if (values.length === 0 || values.length > VIEWER_FACT_VALUES_MAX) {
+        errors.add([...path, "values"], "invalid-value", `"values" must list 1 to ${VIEWER_FACT_VALUES_MAX} values, but ${values.length} are listed.`, `Use ${CONDITION_SHAPES.viewerIn}.`);
+      }
+      const seen: unknown[] = [];
+      values.forEach((v, i) => {
+        if (typeof v !== "string" && typeof v !== "boolean") {
+          errors.add([...path, "values", i], "type", "Each value must be text or true/false.", `Use ${CONDITION_SHAPES.viewerIn}.`);
+        } else if (seen.includes(v)) {
+          errors.add([...path, "values", i], "invalid-value", `Value ${JSON.stringify(v)} is listed twice.`, "Remove the duplicate.");
+        } else seen.push(v);
+      });
+      return;
+    }
     case "eq":
     case "neq":
     case "gt":
@@ -635,12 +684,12 @@ function checkCondition(errors: Errors, value: unknown, path: Path, depth = 0): 
     case "or": {
       checkConditionKeys(errors, value, path, op, ["conditions"]);
       const list = checkArray(errors, value, path, "conditions");
-      list?.forEach((c, i) => checkCondition(errors, c, [...path, "conditions", i], depth + 1));
+      list?.forEach((c, i) => checkCondition(errors, c, [...path, "conditions", i], place, depth + 1));
       return;
     }
     case "not":
       checkConditionKeys(errors, value, path, op, ["condition"]);
-      checkCondition(errors, value["condition"], [...path, "condition"], depth + 1);
+      checkCondition(errors, value["condition"], [...path, "condition"], place, depth + 1);
       return;
     case undefined:
       errors.add([...path, "op"], "required", 'Missing required property "op".', `Add "op": one of ${CONDITION_OPS.join(", ")}.`);
@@ -668,6 +717,101 @@ function checkRelativeDate(errors: Errors, value: object, path: Path): void {
     errors.add([...path, "daysFromToday"], "type", '"daysFromToday" must be a whole number.', shape);
   } else if (Math.abs(days) > MAX_RELATIVE_DAYS) {
     errors.add([...path, "daysFromToday"], "invalid-value", `"daysFromToday" ${days} is out of range.`, `Use a whole number from -${MAX_RELATIVE_DAYS} to ${MAX_RELATIVE_DAYS}.`);
+  }
+}
+
+/** True when a raw condition contains a `viewerIn` leaf anywhere (shape not required to be valid). */
+function containsViewerLeaf(value: unknown, depth = 0): boolean {
+  if (!isObject(value) || depth > MAX_CONDITION_DEPTH) return false;
+  if (value["op"] === "viewerIn") return true;
+  if (Array.isArray(value["conditions"])) return value["conditions"].some((c: unknown) => containsViewerLeaf(c, depth + 1));
+  return containsViewerLeaf(value["condition"], depth + 1);
+}
+
+/** `editableWhen` only narrows `editable: true`, so it needs it (RFC 0006). */
+function checkEditableWhen(errors: Errors, owner: JsonObject, path: Path): void {
+  if (owner["editableWhen"] !== undefined && owner["editable"] !== true) {
+    errors.add([...path, "editableWhen"], "invalid-value", `"editableWhen" has no effect while "editable" is not true.`, "editableWhen only narrows editable: true. Set editable to true or remove editableWhen.");
+  }
+}
+
+// ---- viewer document ------------------------------------------------------
+
+function validateViewer(errors: Errors, doc: JsonObject): void {
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "revision", "facts"], []);
+  checkSpecVersion(errors, doc);
+  checkId(errors, doc, [], "id");
+  checkRevision(errors, doc);
+
+  const facts = checkArray(errors, doc, [], "facts");
+  if (!facts) return;
+  if (facts.length === 0 || facts.length > VIEWER_FACTS_MAX) {
+    errors.add(["facts"], "invalid-value", `A viewer declares 1 to ${VIEWER_FACTS_MAX} facts, but ${facts.length} are listed.`, facts.length === 0 ? 'Add a fact, e.g. { "id": "beta", "label": "Beta features", "type": "boolean", "default": false }.' : `Remove ${facts.length - VIEWER_FACTS_MAX}.`);
+  }
+  const seen = new Set<string>();
+  facts.forEach((fact, i) => {
+    const path: Path = ["facts", i];
+    if (!isObject(fact)) {
+      errors.add(path, "type", "A fact must be a JSON object.", 'Use { "id", "label", "type", "default" }.');
+      return;
+    }
+    validateViewerFact(errors, fact, path);
+    const id = fact["id"];
+    if (typeof id === "string" && ID_PATTERN.test(id)) {
+      if (seen.has(id)) errors.add([...path, "id"], "invalid-value", `Fact "${id}" is declared twice.`, "Fact ids are unique; rename or remove this one.");
+      else seen.add(id);
+    }
+  });
+}
+
+const VIEWER_DEFAULT_HINT = "The value a viewer gets when the host says nothing; pick the least-privileged one.";
+
+function validateViewerFact(errors: Errors, fact: JsonObject, path: Path): void {
+  checkKeys(errors, fact, path, ["id", "label", "type"], ["options", "default"]);
+  checkId(errors, fact, path, "id");
+  checkNonEmptyString(errors, fact, path, "label");
+  const type = fact["type"];
+  if (type !== undefined && !VIEWER_FACT_TYPES.some((t) => t === type)) {
+    errors.add([...path, "type"], "invalid-value", `Unknown viewer fact type ${JSON.stringify(type)}.`, `Use one of: ${VIEWER_FACT_TYPES.join(", ")}.`, VIEWER_FACT_TYPES);
+    return;
+  }
+  const dflt = fact["default"];
+  if (type === "boolean") {
+    if ("options" in fact) errors.add([...path, "options"], "unknown-property", 'A boolean fact has no "options".', "Remove options.");
+    if (dflt === undefined) errors.add([...path, "default"], "required", 'Missing required property "default".', VIEWER_DEFAULT_HINT);
+    else if (typeof dflt !== "boolean") errors.add([...path, "default"], "type", 'A boolean fact\'s "default" must be true or false.', "Use true or false (without quotes).");
+    return;
+  }
+  let values: readonly string[] | undefined;
+  if (type === "select") {
+    const options = fact["options"];
+    const opath = [...path, "options"];
+    if (options === undefined) errors.add(opath, "required", 'A select fact needs "options".', 'Add "options": { "source": "static", "values": ["viewer", "editor"] }.');
+    else if (!isObject(options)) errors.add(opath, "type", '"options" must be an object.', 'Use { "source": "static", "values": ["viewer", "editor"] }.');
+    else {
+      checkKeys(errors, options, opath, ["source", "values"], []);
+      if (options["source"] !== undefined && options["source"] !== "static") {
+        errors.add([...opath, "source"], "invalid-value", `Unknown options source ${JSON.stringify(options["source"])}.`, 'Use "static".');
+      }
+      const list = checkArray(errors, options, opath, "values");
+      if (list) {
+        if (list.length < VIEWER_FACT_VALUES_MIN || list.length > VIEWER_FACT_VALUES_MAX) {
+          errors.add([...opath, "values"], "invalid-value", `A select fact lists ${VIEWER_FACT_VALUES_MIN} to ${VIEWER_FACT_VALUES_MAX} values, but ${list.length} are listed.`, list.length < VIEWER_FACT_VALUES_MIN ? "Add a value, or make this a boolean fact." : `Remove ${list.length - VIEWER_FACT_VALUES_MAX}.`);
+        }
+        const seenValues = new Set<string>();
+        list.forEach((v, j) => {
+          if (typeof v !== "string" || v.trim() === "") errors.add([...opath, "values", j], "invalid-value", "Each value must be non-empty text.", "Remove it or give it a name.");
+          else if (seenValues.has(v)) errors.add([...opath, "values", j], "invalid-value", `Value "${v}" is listed twice.`, "Remove the duplicate.");
+          else seenValues.add(v);
+        });
+        values = list.filter((v): v is string => typeof v === "string" && v.trim() !== "");
+      }
+    }
+    if (dflt === undefined) errors.add([...path, "default"], "required", 'Missing required property "default".', VIEWER_DEFAULT_HINT);
+    else if (typeof dflt !== "string") errors.add([...path, "default"], "type", 'A select fact\'s "default" must be one of its values (text).', "Use one of options.values.");
+    else if (values && !values.includes(dflt)) {
+      errors.add([...path, "default"], "invalid-value", `Default ${JSON.stringify(dflt)} is not one of the fact's values.`, `Use one of: ${values.join(", ")}.`, values);
+    }
   }
 }
 
@@ -857,6 +1001,7 @@ export function validateDocuments(inputs: readonly unknown[]): ValidationResult<
     else errors.push(...result.errors.map(tag));
   });
   checkSetReferences(errors, okDocs);
+  checkViewerReferences(errors, warnings, okDocs);
   return errors.length > 0 ? { ok: false, errors, warnings } : { ok: true, value: okDocs, warnings };
 }
 
@@ -1354,6 +1499,8 @@ function checkReferenceOps(errors: DocumentError[], document: string, entity: En
     case "not":
       checkReferenceOps(errors, document, entity, condition.condition, [...base, "condition"]);
       return;
+    case "viewerIn":
+      return;
     default: {
       const field = entity.fields.find((f) => f.id === condition.field);
       if (field?.type !== "reference" || REFERENCE_OPS.includes(condition.op)) return;
@@ -1418,6 +1565,8 @@ function checkConditionFields(condition: Condition | undefined, base: Path, chec
       break;
     case "not":
       checkConditionFields(condition.condition, [...base, "condition"], check);
+      break;
+    case "viewerIn":
       break;
     default:
       check(condition.field, [...base, "field"]);
@@ -1485,5 +1634,107 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       });
       if (item.widget === "stat") checkMeasureFields(errors, doc.id, entity, item.measure, [...itemPath, "measure"]);
     });
+  });
+}
+
+// ---- viewer references (RFC 0006) -------------------------------------------
+
+/** Calls `visit` for every `viewerIn` leaf in a condition, with its JSON Pointer path. */
+function eachViewerLeaf(condition: Condition | ViewerCondition | undefined, base: Path, visit: (leaf: Extract<Condition, { readonly op: "viewerIn" }>, path: Path) => void): void {
+  if (!condition) return;
+  switch (condition.op) {
+    case "viewerIn":
+      visit(condition, base);
+      return;
+    case "and":
+    case "or":
+      condition.conditions.forEach((c, i) => eachViewerLeaf(c, [...base, "conditions", i], visit));
+      return;
+    case "not":
+      eachViewerLeaf(condition.condition, [...base, "condition"], visit);
+      return;
+    default:
+      return;
+  }
+}
+
+/**
+ * Checks every `viewerIn` leaf in the set against the set's viewer document
+ * (the fact exists, the values fit its type and list), that there is only one
+ * viewer document, and warns about a fact nothing reads.
+ */
+function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[], docs: readonly Document[]): void {
+  const viewers = docs.filter((d): d is ViewerDocument => d.kind === "viewer");
+  const viewer = viewers[0];
+  for (const extra of viewers.slice(1)) {
+    errors.push({ path: "", code: "invalid-value", message: `The set has more than one viewer document ("${viewer?.id ?? ""}" and "${extra.id}").`, hint: "A set has one viewer document. Merge the facts.", document: extra.id });
+  }
+  const facts = new Map<string, ViewerFact>((viewer?.facts ?? []).map((f) => [f.id, f]));
+  const factIds = [...facts.keys()];
+  const read = new Set<string>();
+
+  for (const doc of docs) {
+    const check = (condition: Condition | ViewerCondition | undefined, base: Path): void => {
+      eachViewerLeaf(condition, base, (leaf, path) => {
+        read.add(leaf.fact);
+        const fact = facts.get(leaf.fact);
+        if (!fact) {
+          errors.push(
+            viewer
+              ? refError(doc.id, [...path, "fact"], `Viewer fact "${leaf.fact}" is not declared.`, `Use a fact of the viewer document "${viewer.id}", or declare it there.`, factIds)
+              : refError(doc.id, [...path, "fact"], "No viewer document declares viewer facts.", "Add a document of kind viewer.", factIds),
+          );
+          return;
+        }
+        leaf.values.forEach((value, j) => {
+          const vpath = [...path, "values", j];
+          if (fact.type === "boolean") {
+            if (typeof value !== "boolean") {
+              errors.push({ path: jsonPointer(vpath), code: "type", message: `Fact "${fact.id}" is a boolean, but ${JSON.stringify(value)} is text.`, hint: "Use true or false (without quotes).", document: doc.id });
+            }
+          } else if (typeof value !== "string") {
+            errors.push({ path: jsonPointer(vpath), code: "type", message: `Fact "${fact.id}" is a select, but ${JSON.stringify(value)} is a boolean.`, hint: `Use one of: ${fact.options.values.join(", ")}.`, document: doc.id });
+          } else if (!fact.options.values.includes(value)) {
+            errors.push({ path: jsonPointer(vpath), code: "invalid-value", message: `${JSON.stringify(value)} is not a value of fact "${fact.id}".`, hint: `Use one of: ${fact.options.values.join(", ")}.`, document: doc.id, allowed: [...fact.options.values] });
+          }
+        });
+      });
+    };
+    switch (doc.kind) {
+      case "form":
+        doc.sections.forEach((section, i) =>
+          section.items.forEach((item, j) => {
+            check(item.visibleWhen, ["sections", i, "items", j, "visibleWhen"]);
+            check(item.requiredWhen, ["sections", i, "items", j, "requiredWhen"]);
+          }),
+        );
+        break;
+      case "table":
+        doc.columns.forEach((column, i) => {
+          check(column.visibleWhen, ["columns", i, "visibleWhen"]);
+          check(column.editableWhen, ["columns", i, "editableWhen"]);
+        });
+        check(doc.rowAction?.visibleWhen, ["rowAction", "visibleWhen"]);
+        break;
+      case "calendar":
+      case "board":
+        check(doc.editableWhen, ["editableWhen"]);
+        check(doc.rowAction?.visibleWhen, ["rowAction", "visibleWhen"]);
+        break;
+      case "dashboard":
+        doc.tabs.forEach((tab, t) => {
+          check(tab.visibleWhen, ["tabs", t, "visibleWhen"]);
+          tab.items.forEach((item, i) => check(item.visibleWhen, ["tabs", t, "items", i, "visibleWhen"]));
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  viewer?.facts.forEach((fact, i) => {
+    if (!read.has(fact.id)) {
+      warnings.push({ path: jsonPointer(["facts", i]), code: "empty", message: `Nothing reads the fact "${fact.id}".`, hint: "Use it in a viewerIn condition or remove it.", document: viewer.id });
+    }
   });
 }

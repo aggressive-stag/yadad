@@ -34,7 +34,15 @@ export type Condition =
   | { readonly op: "empty" | "notEmpty"; readonly field: string }
   /** All (and) or any (or) of the conditions. An empty "and" is true; an empty "or" is false. */
   | { readonly op: "and" | "or"; readonly conditions: readonly Condition[] }
-  | { readonly op: "not"; readonly condition: Condition };
+  | { readonly op: "not"; readonly condition: Condition }
+  /** The viewer's value for this fact is one of these (RFC 0006). Reads the viewer, not the record. */
+  | { readonly op: "viewerIn"; readonly fact: string; readonly values: readonly (string | boolean)[] };
+
+/** The subset of conditions for places that have no record: `viewerIn`, `and`, `or`, `not`. */
+export type ViewerCondition =
+  | Extract<Condition, { readonly op: "viewerIn" }>
+  | { readonly op: "and" | "or"; readonly conditions: readonly ViewerCondition[] }
+  | { readonly op: "not"; readonly condition: ViewerCondition };
 
 export type ConditionOp = Condition["op"];
 
@@ -43,9 +51,9 @@ export function isRelativeDate(value: unknown): value is RelativeDate {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "daysFromToday" in value;
 }
 
-export const CONDITION_OPS: readonly ConditionOp[] = ["eq", "neq", "gt", "gte", "lt", "lte", "in", "contains", "empty", "notEmpty", "and", "or", "not"];
+export const CONDITION_OPS: readonly ConditionOp[] = ["eq", "neq", "gt", "gte", "lt", "lte", "in", "contains", "empty", "notEmpty", "and", "or", "not", "viewerIn"];
 
-/** Every field id a condition refers to, for checking them against the entity. */
+/** Every record field id a condition refers to, for checking them against the entity. A `viewerIn` leaf names no field. */
 export function conditionFields(condition: Condition): string[] {
   switch (condition.op) {
     case "and":
@@ -53,7 +61,24 @@ export function conditionFields(condition: Condition): string[] {
       return condition.conditions.flatMap(conditionFields);
     case "not":
       return conditionFields(condition.condition);
+    case "viewerIn":
+      return [];
     default:
       return [condition.field];
+  }
+}
+
+/** Every viewer fact id a condition reads (one per `viewerIn` leaf, in order, repeats kept). */
+export function conditionViewerFacts(condition: Condition): string[] {
+  switch (condition.op) {
+    case "and":
+    case "or":
+      return condition.conditions.flatMap(conditionViewerFacts);
+    case "not":
+      return conditionViewerFacts(condition.condition);
+    case "viewerIn":
+      return [condition.fact];
+    default:
+      return [];
   }
 }

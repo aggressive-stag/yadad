@@ -11,6 +11,15 @@ export type FieldValue = string | number | boolean | null;
  */
 export type RecordValues = Readonly<Record<string, FieldValue>>;
 
+/**
+ * What the current viewer may do with one record (RFC 0006). A missing key
+ * means "not stated": the action is offered and the server decides.
+ */
+export interface RecordPermissions {
+  readonly update?: boolean;
+  readonly delete?: boolean;
+}
+
 export interface DataRecord {
   /** Opaque, chosen by the adapter. Never reused for a different record, even after a delete. */
   readonly id: string;
@@ -23,6 +32,8 @@ export interface DataRecord {
    */
   readonly version: string;
   readonly values: RecordValues;
+  /** Present only when the server states permissions. A hint for the UI, never sent back on writes. */
+  readonly can?: RecordPermissions;
 }
 
 import type { Condition } from "./condition.js";
