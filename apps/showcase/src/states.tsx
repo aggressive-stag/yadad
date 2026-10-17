@@ -193,6 +193,9 @@ export interface StatesPageProps {
 type CheckRun = { readonly key: string; readonly status: "running" | "done" | "failed"; readonly results: ReadonlyMap<string, StateCheckResult>; readonly message?: string };
 
 /** Every state of a view as a grid of live, scaled-down renders, with the state checks' findings marked on them. */
+/** The checks that are running or waiting: axe-core refuses to start a second run while one is going. */
+let queue: Promise<void> = Promise.resolve();
+
 export function StatesPage({ documents, registry, initialView }: StatesPageProps): ReactNode {
   const views = stateViews(documents);
   const [viewId, setViewId] = useState(() => (initialView && documents.views.has(initialView) ? initialView : (views[0]?.id ?? "")));
@@ -234,14 +237,17 @@ export function StatesPage({ documents, registry, initialView }: StatesPageProps
     let stale = false;
     setRun({ key: runKey, status: "running", results: new Map() });
     const { docs: current, documents: set } = stable.current;
-    checkViewStates({
+    // axe-core allows one run at a time, so runs queue up; one that went stale while waiting is skipped.
+    const started = queue.then(() => (stale ? [] : checkViewStates({
       view,
       documents: current,
       registry,
       now,
       ...(fullLoad ? {} : { manyRecords: QUICK_MANY }),
       render: (state, context) => renderState(context, set),
-    }).then(
+    })));
+    queue = started.then(() => undefined, () => undefined);
+    started.then(
       (results) => !stale && setRun({ key: runKey, status: "done", results: new Map(results.map((r) => [r.id, r])) }),
       (error: unknown) => !stale && setRun({ key: runKey, status: "failed", results: new Map(), message: error instanceof Error ? error.message : String(error) }),
     );
