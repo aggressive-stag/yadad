@@ -26,6 +26,8 @@ export interface ReferenceOptionsResult {
   readonly options: readonly ReferenceOption[];
   /** True when the target has more records than `options` holds. */
   readonly more: boolean;
+  /** The target's total record count, so a caller can say how many fit in `options`. */
+  readonly total: number;
 }
 
 /**
@@ -46,6 +48,7 @@ export async function loadReferenceOptions(
   return {
     options: page.items.map((record) => ({ id: record.id, label: referenceLabel(record, display) })),
     more: page.total > page.items.length,
+    total: page.total,
   };
 }
 

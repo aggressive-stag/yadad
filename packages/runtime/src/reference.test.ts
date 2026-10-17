@@ -52,11 +52,13 @@ describe("loadReferenceOptions", () => {
     expect(result.options.map((o) => o.label)).toEqual(["Bench", "Deadlift", "Squat"]);
     expect(result.options.map((o) => o.id)).toEqual(["2", "3", "1"]);
     expect(result.more).toBe(false);
+    expect(result.total).toBe(result.options.length);
   });
   test("caps the list and signals more", async () => {
     const result = await loadReferenceOptions(await seeded(), exercise, ref, 2);
     expect(result.options.map((o) => o.label)).toEqual(["Bench", "Deadlift"]);
     expect(result.more).toBe(true);
+    expect(result.total).toBeGreaterThan(result.options.length);
   });
   test("labels a record with an empty display value by its id", async () => {
     const db = createMemoryAdapter();

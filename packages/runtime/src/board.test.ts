@@ -267,6 +267,7 @@ describe("loadBoardTargets", () => {
     const loaded = await loadBoardTargets(db, person, assigneeField);
     expect(loaded.options).toHaveLength(50);
     expect(loaded.more).toBe(true);
+    expect(loaded.total).toBe(60);
     expect(loaded.options[0]?.label).toBe("p000");
   });
 });
