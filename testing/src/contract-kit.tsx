@@ -4,7 +4,7 @@
 // the mock registry. Needs a DOM: call it from a test file with
 // `// @vitest-environment jsdom`.
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { FIELD_TYPES } from "@yadad/core";
 import type { BoardProps, CalendarDayProps, CalendarProps, DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry } from "@yadad/core";
 import axe from "axe-core";
@@ -761,16 +761,20 @@ function boardChecks(registry: Registry<ReactNode>): ContractCheck[] {
   return [
     layoutCheck("Board is a group named by its label and names its columns by label and count", async (problems) => {
       const { container } = render(<Board {...base} />);
-      const board = container.querySelector<HTMLElement>('[data-testid="board"]');
-      if (!board) problems.push("Board must render a group (role=group or section) named by its label.");
-      if (board?.getAttribute("aria-label") !== "Tasks") problems.push("The board group must be named by its label.");
-      const columns = container.querySelectorAll<HTMLElement>('[data-testid^="column-"]');
-      if (columns.length !== 4) problems.push(`Board must render one region per column (4), got ${columns.length}.`);
-      const home = columns[0];
-      if (home) {
-        const name = `${home.getAttribute("aria-label") ?? ""} ${home.textContent ?? ""}`;
-        if (!/home/i.test(name) || !/1/.test(name)) problems.push(`A column must be named by its label and card count ("Home, 1 cards"), got "${name}".`);
-        if (home.getAttribute("role") !== "group" && !home.matches("section, [role=region]")) problems.push("A column must be a group/region.");
+      // RFC 0005 "Semantics": the board is a group named by its label; each column is
+      // a group (or region) named "<column label>, <count> cards". The contract names
+      // no test ids and no role beyond group/region, so find both by role and name.
+      // The separator is not checked: a name computed from a heading ("Home 1 card") is as good.
+      const named = (name: string | RegExp) => [...screen.queryAllByRole("group", { name }), ...screen.queryAllByRole("region", { name })];
+      if (named("Tasks").length === 0) problems.push("Board must render a group (role=group or a labelled section) named by its label.");
+      for (const column of base.columns) {
+        const escaped = column.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const found = named(new RegExp(`^${escaped}\\W*${column.count}(?!\\d)`));
+        if (found.length !== 1) problems.push(`Board must render one group (or region) per column, named by its label and card count ("${column.label}, ${column.count} cards"); found ${found.length} (groups and regions on the page: ${[...screen.queryAllByRole("group"), ...screen.queryAllByRole("region")].map((e) => `"${e.getAttribute("aria-label") ?? e.textContent?.slice(0, 30) ?? ""}"`).join(", ")}).`);
+        for (const card of column.cards) {
+          const inside = found[0] && within(found[0]).queryAllByRole("listitem").some((li) => li.textContent.includes(String(card.label)));
+          if (found[0] && !inside) problems.push(`The card "${card.label}" must be a list item inside its column "${column.label}".`);
+        }
       }
       const cards = screen.queryAllByRole("listitem");
       if (!cards.some((c) => c.textContent?.includes("Pay rent"))) problems.push("Board must show every card's content in its column.");

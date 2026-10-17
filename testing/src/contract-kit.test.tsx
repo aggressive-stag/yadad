@@ -166,3 +166,46 @@ describe("the kit's calendar checks", () => {
     expect(await run(registry, "layout: Calendar offers Move to day")).toEqual(expect.arrayContaining([expect.stringContaining("Move to day")]));
   });
 });
+
+describe("the kit's board checks find the board by role and name", () => {
+  const run = async (registry: Registry<ReactNode>) => (await registryContractChecks(registry).find((c) => c.name.startsWith("layout: Board is a group"))!.run());
+  const Board = mockRegistry.layout.Board!;
+  const withBoard = (Replacement: NonNullable<Registry<ReactNode>["layout"]["Board"]>): Registry<ReactNode> => ({ ...mockRegistry, layout: { ...mockRegistry.layout, Board: Replacement } });
+
+  test("a board with no test ids passes, whether its columns are groups or regions", async () => {
+    const stripped = (Tag: "div" | "section", role?: "group") =>
+      withBoard((props) => (
+        <div role="group" aria-label={props.label}>
+          {props.columns.map((c) => (
+            <Tag key={c.id} role={role} aria-label={`${c.label}, ${c.count} cards`}>
+              <ul>{c.cards.map((card) => <li key={card.id}>{card.content}</li>)}</ul>
+            </Tag>
+          ))}
+        </div>
+      ));
+    expect(await run(stripped("div", "group"))).toEqual([]);
+    expect(await run(stripped("section"))).toEqual([]);
+  });
+
+  test("a board with the test ids but unnamed columns fails", async () => {
+    const problems = await run(
+      withBoard((props) => (
+        <div role="group" aria-label={props.label} data-testid="board">
+          {props.columns.map((c) => (
+            <div key={c.id} data-testid={`column-${c.id}`}>
+              <ul>{c.cards.map((card) => <li key={card.id}>{card.content}</li>)}</ul>
+            </div>
+          ))}
+        </div>
+      )),
+    );
+    expect(problems).toEqual(expect.arrayContaining([expect.stringContaining('"Home, 1 cards"')]));
+  });
+
+  test("a board that is not named by its label fails", async () => {
+    const problems = await run(withBoard((props) => <div data-testid="board">{Board(props)}</div>));
+    expect(problems).toEqual([]);
+    const unnamed = await run(withBoard((props) => <div>{props.columns.map((c) => <section key={c.id} aria-label={`${c.label}, ${c.count} cards`} />)}</div>));
+    expect(unnamed).toEqual(expect.arrayContaining([expect.stringContaining("named by its label")]));
+  });
+});
