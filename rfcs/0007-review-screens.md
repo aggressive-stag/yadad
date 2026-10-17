@@ -193,7 +193,7 @@ A new field type `datetime`: an instant.
 - **Calendars and boards:** not in slice 1. `dateField` must be a `date` field (a `datetime` is `invalid-value` with the hint "use a date field; placing instants on local days is not supported yet"); `groupBy` cannot be a datetime. Placing instants on the viewer's local days needs time-zone range maths (RFC 0004 kept it out for that reason) and moves between days would have to keep the time of day; it is slice 2.
 - **Measures:** `min` and `max` stay number and date in slice 1.
 - **Record schema:** `recordJsonSchema` emits `type: "string"`, `format: "date-time"` and a `pattern` for the canonical form, with `min` and `max` as the date's do (as patterns are not ordered, an exact range check is stated in the field's `description` and `validateRecord`, exactly as the schema already documents for steps). The parity test covers it. `docs/records-protocol.md` says datetimes are canonical strings.
-- **Registry:** `fields.datetime` joins `fields` (an `Input` and a `Display`), so the registry type gains a member and existing registries stop type-checking until they add it. That is the cost RFC 0004 avoided by staying on `date`; the review screens need an instant, so it is paid here, once, with a minor changeset that says so. The reference components and the mock registry add it in the same release.
+- **Registry:** `fields.datetime` (an `Input` and a `Display`) is an **optional** member of `fields`, like `layout.Calendar` and `layout.Board`. Existing registries keep type-checking. A document that uses a `datetime` field with a registry that lacks the key renders an `ErrorSummary` naming the missing key, as a calendar does without `layout.Calendar`. The reference components and the mock registry add it in the same release.
 - **Migration:** additive. Older documents have no `datetime` field and are unaffected; the validator does not gate the type on `specVersion`.
 
 ### Comparing versions
@@ -314,7 +314,7 @@ Each has a one-line `hint` that shows the fix ("write 2026-10-17T09:30:00.000Z",
 - invalid, one per row of the table above, with the exact expected errors;
 - data fixtures: a record page with `next` and no `total`, `can.actions` on records, an action `409` body.
 
-The core changeset says exactly what breaks: `fields.datetime` joins every registry, `Page.total` is optional, `Query.page` is a union, `RecordPermissions` gains a member, `DataRecord` is otherwise unchanged. The runtime changeset says the same for `Page`.
+The core changeset says exactly what changes: `fields.datetime` is a new optional registry key, `Page.total` is optional, `Query.page` is a union, `RecordPermissions` gains a member, `DataRecord` is otherwise unchanged. The runtime changeset says the same for `Page`.
 
 ### Runtime, renderer, editor
 
@@ -409,15 +409,17 @@ Accepted. The owner pre-accepted the direction to keep the queue moving; the des
 3. The protocol endpoint is `POST {base}/{entity}/{id}/actions/{action}` with `input`, `entityRevision` and a required `baseVersion`; `200 Record` or `204`; `403` and `409` as for writes. Guards over other state are done by making `version` cover it; no `context`.
 4. `DataAdapter.act` is optional; a missing one gives an `ErrorSummary`. The memory and key-value adapters take an `actions` option.
 5. One new optional registry key, `layout.Dialog` (shared with RFC 0003 slice 2); the renderer builds the dialog content.
-6. `datetime`: one canonical stored form (UTC, milliseconds, `Z`), displayed in the viewer's zone, ordered as a string, with a range quick filter. Not a calendar or board field and no relative values in slice 1. It is a required member of `fields`, so registries must add it.
+6. `datetime`: one canonical stored form (UTC, milliseconds, `Z`), displayed in the viewer's zone, ordered as a string, with a range quick filter. Not a calendar or board field and no relative values in slice 1. It is an optional member of `fields`; a registry without it shows an `ErrorSummary` where a `datetime` field is used.
 7. `compare` on a text column: against the previous or next row, or against another text field; the diff is computed in `runtime`, drawn through an optional `diff` prop on the text `Display`.
 8. `total` is optional and `next` is an opaque cursor; the table pages with Previous and Next and no count; counts walk to the cap.
 9. Read-only needs no new key. Nested data is join entities plus drill-down; evidence is pre-joined text in slice 1.
 10. `specVersion` 5 to 6 with an identity `migrate()`.
 
-## Open questions for the owner
+## Owner answers
 
-1. Should `layout.Dialog` follow `Calendar` and `Board` and become required with the next major release, together with `act`?
-2. Should a dashboard drill target (structured evidence under a clicked decision) move into slice 1 if the pre-joined text proves too limited?
-3. Is a canonical millisecond UTC string the right single stored form, or should a server's finer precision be allowed on the wire and compared by parsing?
-4. Should an action without `confirm` and without `input` be allowed at all, or should a confirmation always be required (with a `confirm` of just a message)?
+The owner leans toward **allowing** rather than forbidding: optional registry keys and optional adapter methods, with a clear error where something is missing, rather than requirements that break existing component sets or adapters.
+
+1. **`layout.Dialog` and `act` stay optional.** There is no plan to make them required. This also applies to `fields.datetime` (see Registry above).
+2. **A dashboard drill target in slice 1:** still open. It stays in slice 2 unless the pre-joined evidence text proves too limited.
+3. **Millisecond UTC is fine** as the one canonical stored form.
+4. **An action without `confirm` and without `input` is allowed.** A document asks for a confirmation when it wants one.
