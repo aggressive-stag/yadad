@@ -14,7 +14,7 @@ import type { ReactNode } from "react";
 const TILE_WIDTH = 960;
 const PHONE_WIDTH = 390;
 /** "Many records" for the grid: small enough that 30 live calendars stay quick. */
-const QUICK_MANY = 60;
+export const QUICK_MANY = 60;
 
 /** The views the States page can show: everything with a render. */
 export function stateViews(documents: DocumentSet): ViewDocument[] {
@@ -22,7 +22,7 @@ export function stateViews(documents: DocumentSet): ViewDocument[] {
 }
 
 /** The one-line wiring per view kind: this is what a host app writes. */
-function renderState(context: StateRenderContext, set: DocumentSet): ReactNode {
+export function renderState(context: StateRenderContext, set: DocumentSet): ReactNode {
   const { view, entity, registry, dataSources, drafts, now } = context;
   const entities = set.entities;
   // The renderers take no `viewer` prop yet, so viewer states render without one.
@@ -41,7 +41,7 @@ function renderState(context: StateRenderContext, set: DocumentSet): ReactNode {
 }
 
 /** Everything a renderer needs for one state: a fresh adapter under every data source key, and a draft store for a form's values. */
-function contextFor(state: SourceViewState, view: ViewDocument, docs: readonly Document[], registry: Registry<ReactNode>, now: Date): StateRenderContext {
+export function contextFor(state: SourceViewState, view: ViewDocument, docs: readonly Document[], registry: Registry<ReactNode>, now: Date): StateRenderContext {
   const entity = "entity" in view ? docs.find((d): d is EntityDocument => d.kind === "entity" && d.id === view.entity) : undefined;
   const adapter = state.adapter();
   const keys = new Set<string>(docs.flatMap((d) => (d.kind !== "entity" && d.kind !== "viewer" && "dataSource" in d ? [d.dataSource] : [])));
@@ -195,6 +195,13 @@ type CheckRun = { readonly key: string; readonly status: "running" | "done" | "f
 /** Every state of a view as a grid of live, scaled-down renders, with the state checks' findings marked on them. */
 /** The checks that are running or waiting: axe-core refuses to start a second run while one is going. */
 let queue: Promise<void> = Promise.resolve();
+
+/** Runs a check after the ones already waiting; the editor preview shares the queue with this page. */
+export function enqueueChecks<T>(task: () => Promise<T>): Promise<T> {
+  const started = queue.then(task);
+  queue = started.then(() => undefined, () => undefined);
+  return started;
+}
 
 export function StatesPage({ documents, registry, initialView }: StatesPageProps): ReactNode {
   const views = stateViews(documents);

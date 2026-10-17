@@ -17,6 +17,7 @@ import formLogSet from "../../../fixtures/valid/form-log-set.json?raw";
 import tableExerciseHistory from "../../../fixtures/valid/table-exercise-history.json?raw";
 import tableSets from "../../../fixtures/valid/table-sets.json?raw";
 import { loadDocumentSet } from "./documents";
+import { WithStatesPreview } from "./editor-preview";
 import { StatesPage } from "./states";
 
 /** The fixture documents, as raw JSON. Edit those files and the page follows. */
@@ -287,10 +288,13 @@ function viewEditor(mode: { readonly kind: "form" | "table" | "calendar" | "boar
   const entity = view && view.kind !== "dashboard" ? documents.entities.get(view.entity) : undefined;
   if (!entity) return null;
   const tableContext = { tables: [...documents.views.values()].filter((v): v is TableView => v.kind === "table"), entities: [...documents.entities.values()] };
-  if (view?.kind === "form") return <FormViewEditor view={view} entity={entity} registry={registry} onSave={save} onCancel={close} />;
-  if (view?.kind === "table") return <TableViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
-  if (view?.kind === "calendar") return <CalendarViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
-  if (view?.kind === "board") return <BoardViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onCancel={close} />;
+  const wrap = (editor: (onChange: (v: ViewDocument) => void) => ReactNode): ReactNode => (
+    <WithStatesPreview key={`${view?.id}-${view?.revision}`} view={view as ViewDocument} documents={documents} registry={registry} editor={editor} />
+  );
+  if (view?.kind === "form") return wrap((onChange) => <FormViewEditor view={view} entity={entity} registry={registry} onSave={save} onChange={onChange} onCancel={close} />);
+  if (view?.kind === "table") return wrap((onChange) => <TableViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
+  if (view?.kind === "calendar") return wrap((onChange) => <CalendarViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
+  if (view?.kind === "board") return wrap((onChange) => <BoardViewEditor view={view} entity={entity} registry={registry} context={tableContext} onSave={save} onChange={onChange} onCancel={close} />);
   return null;
 }
 

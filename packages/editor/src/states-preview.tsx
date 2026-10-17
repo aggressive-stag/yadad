@@ -1,7 +1,7 @@
 import type { Document, FormView, ViewDocument } from "@yadad/core";
 import { evaluateCondition, viewStates } from "@yadad/runtime";
 import type { ViewState, ViewStatesResult } from "@yadad/runtime";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 /** The most states the preview builds when `limit` is not given. */
@@ -242,6 +242,15 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
 }
 
 function StateTile({ state, change, problems, checked, open, onToggle, content, tileId }: { readonly state: ViewState; readonly change: StateChange; readonly problems: readonly StateProblem[]; readonly checked: boolean; readonly open: boolean; readonly onToggle: () => void; readonly content: () => ReactNode; readonly tileId: string }): ReactNode {
+  const frame = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.3);
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setScale(Math.min(1, el.clientWidth / TILE_WIDTH)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
     <li data-yadad-state={state.id} data-change={change} data-problems={problems.length} style={{ border: "1px solid var(--yadad-border, #c9c9c9)", padding: "var(--yadad-space-2, 0.5rem)", minWidth: 0 }}>
       <button type="button" aria-expanded={open} aria-describedby={problems.length > 0 ? `${tileId}-problems` : undefined} onClick={onToggle}>
@@ -255,8 +264,8 @@ function StateTile({ state, change, problems, checked, open, onToggle, content, 
       )}
       {problems.length > 0 && <span data-yadad-state-marker=""> ⚠ {problems.length === 1 ? "1 problem" : `${problems.length} problems`}</span>}
       {problems.length === 0 && checked && <span data-yadad-state-ok=""> ✓</span>}
-      <div aria-hidden="true" data-yadad-state-preview="" style={{ overflow: "hidden", height: "8rem", position: "relative" }}>
-        <div inert style={{ width: TILE_WIDTH, transform: "scale(0.3)", transformOrigin: "top left" }}>
+      <div ref={frame} aria-hidden="true" data-yadad-state-preview="" style={{ overflow: "hidden", height: "9rem", position: "relative" }}>
+        <div inert style={{ width: TILE_WIDTH, transform: `scale(${scale})`, transformOrigin: "top left" }}>
           {content()}
         </div>
       </div>
