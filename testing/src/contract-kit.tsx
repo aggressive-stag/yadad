@@ -6,7 +6,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { FIELD_TYPES } from "@yadad/core";
-import type { CalendarDayProps, CalendarProps, DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry } from "@yadad/core";
+import type { BoardProps, CalendarDayProps, CalendarProps, DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -158,7 +158,7 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * one at a time (await each), never concurrently.
  */
 export function registryContractChecks(registry: Registry<ReactNode>, samples: FieldSamples = defaultSamples): readonly ContractCheck[] {
-  return [...FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry), ...calendarChecks(registry)];
+  return [...FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry), ...calendarChecks(registry), ...boardChecks(registry)];
 }
 
 function checksFor<K extends FieldType>(type: K, registry: Registry<ReactNode>, samples: FieldSamples): ContractCheck[] {
@@ -701,6 +701,169 @@ function calendarChecks(registry: Registry<ReactNode>): ContractCheck[] {
       rerender(<Calendar {...base} announcement={{ seq: 2, text: "Could not move Pay rent: Forbidden" }} />);
       if (!screen.queryByRole("status")?.textContent.includes("Could not move Pay rent: Forbidden")) problems.push("The live region must show a newer announcement.");
       if (container.querySelector('[aria-busy="true"]') !== null) problems.push("When not loading, nothing may be aria-busy.");
+    }),
+  ];
+}
+
+/**
+ * Checks for `layout.Board` (RFC 0005). The key is optional, so a registry
+ * without a board has no board checks; one with a board must pass all.
+ */
+function boardChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const { Board } = registry.layout;
+  if (!Board) return [];
+
+  const none = () => {};
+  const base: BoardProps<ReactNode> = {
+    label: "Tasks",
+    groupChoices: [
+      { field: "list", label: "List" },
+      { field: "assignee", label: "Assignee" },
+    ],
+    groupField: "list",
+    columns: [
+      {
+        id: "v:Home",
+        label: "Home",
+        count: 1,
+        droppable: true,
+        cards: [{ id: "a", content: "Pay rent", label: "Pay rent", movable: true, pending: false }],
+      },
+      {
+        id: "v:Work",
+        label: "Work",
+        count: 1,
+        droppable: true,
+        cards: [{ id: "b", content: "Call Ada", label: "Call Ada", movable: true, pending: false }],
+      },
+      {
+        id: "empty",
+        label: "No List",
+        count: 0,
+        droppable: true,
+        cards: [],
+      },
+      { id: "other", label: "Other", count: 0, droppable: false, cards: [] },
+    ],
+    loading: false,
+    onGroupBy: none,
+  };
+  const [home, work, empty] = base.columns;
+  const withMovable: BoardProps<ReactNode> = {
+    ...base,
+    columns: [
+      ...(home ? [home] : []),
+      ...(work ? [{ ...work, cards: [...work.cards, { id: "p", content: "Book flights", label: "Book flights", movable: false, pending: true }] }] : []),
+      ...(empty ? [empty] : []),
+    ],
+  };
+
+  return [
+    layoutCheck("Board is a group named by its label and names its columns by label and count", async (problems) => {
+      const { container } = render(<Board {...base} />);
+      const board = container.querySelector<HTMLElement>('[data-testid="board"]');
+      if (!board) problems.push("Board must render a group (role=group or section) named by its label.");
+      if (board?.getAttribute("aria-label") !== "Tasks") problems.push("The board group must be named by its label.");
+      const columns = container.querySelectorAll<HTMLElement>('[data-testid^="column-"]');
+      if (columns.length !== 4) problems.push(`Board must render one region per column (4), got ${columns.length}.`);
+      const home = columns[0];
+      if (home) {
+        const name = `${home.getAttribute("aria-label") ?? ""} ${home.textContent ?? ""}`;
+        if (!/home/i.test(name) || !/1/.test(name)) problems.push(`A column must be named by its label and card count ("Home, 1 cards"), got "${name}".`);
+        if (home.getAttribute("role") !== "group" && !home.matches("section, [role=region]")) problems.push("A column must be a group/region.");
+      }
+      const cards = screen.queryAllByRole("listitem");
+      if (!cards.some((c) => c.textContent?.includes("Pay rent"))) problems.push("Board must show every card's content in its column.");
+      problems.push(...(await axeProblems(container, "board columns")));
+    }),
+
+    layoutCheck("Board offers a group-by select when there is more than one grouping and calls onGroupBy", async (problems) => {
+      const calls: string[] = [];
+      const { container } = render(<Board {...base} onGroupBy={(f) => calls.push(f)} />);
+      const select = container.querySelector<HTMLSelectElement>('select');
+      if (!select) problems.push("With more than one groupChoice, Board must offer a group-by control (a labelled select).");
+      else {
+        const options = Array.from(select.options).map((o) => o.value);
+        if (options.join() !== "list,assignee") problems.push(`The group-by select must offer every groupChoice (${base.groupChoices.map((c: { label: string }) => c.label).join(", ")}), got [${options.join(", ")}].`);
+        if (select.value !== "list") problems.push("The select must show the field in use (groupField).");
+        const name = `${select.getAttribute("aria-label") ?? ""} ${Array.from(select.labels ?? []).map((l) => l.textContent).join(" ")}`;
+        if (!/group by/i.test(name)) problems.push("The group-by control must be named \"Group by\".");
+        fireEvent.change(select, { target: { value: "assignee" } });
+      }
+      if (calls.join() !== "assignee") problems.push(`Choosing a field must call onGroupBy with its id, got [${calls.join(", ")}].`);
+      cleanup();
+      render(<Board {...base} groupChoices={base.groupChoices.slice(0, 1)} groupField="list" />);
+      if (document.querySelector("select")) problems.push("With one groupChoice there must be no group-by switcher.");
+    }),
+
+    layoutCheck("Board cards open on activation when onOpenCard is set", async (problems) => {
+      const opened: string[] = [];
+      render(<Board {...base} onOpenCard={(id) => opened.push(id)} />);
+      const card = screen.queryByRole("button", { name: "Pay rent" });
+      if (!card) problems.push("With onOpenCard set, each card must be a button (or link) named by its label.");
+      else fireEvent.click(card);
+      if (opened.join() !== "a") problems.push(`Activating a card must call onOpenCard with its id, got [${opened.join(", ")}].`);
+      cleanup();
+      render(<Board {...base} />);
+      if (screen.queryByRole("button", { name: "Pay rent" })) problems.push("Without onOpenCard, cards must not be buttons.");
+    }),
+
+    layoutCheck("Board offers Move to… for every movable card and calls onMove once with a column id", async (problems) => {
+      const moves: string[] = [];
+      const { container } = render(<Board {...withMovable} onMove={(id, columnId) => moves.push(`${id}@${columnId}`)} />);
+      const triggers = screen.queryAllByRole("button", { name: /move to…|move to/i });
+      if (triggers.length !== 2) problems.push(`Every movable card (and only those) must have a "Move to…" button; expected 2, got ${triggers.length}. Pending cards are not movable.`);
+      const first = triggers[0];
+      if (first) {
+        if ((first as HTMLButtonElement).disabled || first.tabIndex < 0) problems.push('"Move to…" must be focusable, not hidden until hover.');
+        fireEvent.click(first);
+        const select = container.querySelector<HTMLSelectElement>('form select');
+        if (!select) problems.push('"Move to…" must open a labelled list (menu) of the droppable columns other than the card\'s own.');
+        else {
+          const options = Array.from(select.options).filter((o) => o.value !== "").map((o) => o.value);
+          if (options.includes("v:Home")) problems.push("The list must not offer the card's own column.");
+          if (options.includes("other")) problems.push("The list must not offer the \"other\" column (it is not droppable).");
+          if (!options.includes("v:Work") || !options.includes("empty")) problems.push(`The list must offer the droppable columns ("Work", "No List"), got [${options.join(", ")}].`);
+          problems.push(...(await axeProblems(container, "board move to")));
+          fireEvent.change(select, { target: { value: "empty" } });
+          const confirm = screen.queryByRole("button", { name: /^(move|confirm|ok|save)$/i });
+          if (!confirm) problems.push("The move list must have a confirm button.");
+          else fireEvent.click(confirm);
+        }
+      }
+      if (moves.join() !== "a@empty") problems.push(`Confirming must call onMove(id, columnId) exactly once with a column id, got [${moves.join(", ")}].`);
+      cleanup();
+      moves.length = 0;
+      render(<Board {...withMovable} onMove={(id, columnId) => moves.push(`${id}@${columnId}`)} />);
+      const again = screen.queryAllByRole("button", { name: /move to…|move to/i })[0];
+      if (again) {
+        fireEvent.click(again);
+        const select = document.querySelector<HTMLSelectElement>("form select");
+        if (select) {
+          fireEvent.change(select, { target: { value: "v:Work" } });
+          fireEvent.keyDown(select, { key: "Escape" });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (document.querySelector("form select")) problems.push("Escape must close the move list.");
+        if (moves.length > 0) problems.push("Escape must cancel without calling onMove.");
+        if (document.activeElement === document.body) problems.push("After Escape, focus must return to the card, not be lost.");
+      }
+      cleanup();
+      render(<Board {...withMovable} />);
+      if (screen.queryAllByRole("button", { name: /move to…|move to/i }).length > 0) problems.push('Without onMove there must be no "Move to…" control.');
+    }),
+
+    layoutCheck("Board announces through a live region, reports loading and shows the notice", async (problems) => {
+      const { container } = render(<Board {...base} loading announcement={{ seq: 1, text: "Moved Pay rent to Work" }} notice={<p>Showing the first 1,000 of 1,412 cards.</p>} />);
+      const status = screen.queryByRole("status");
+      if (!status) problems.push("Board must keep a role=\"status\" live region mounted.");
+      else {
+        if (status.getAttribute("aria-live") !== "polite" && status.getAttribute("aria-live") !== null) problems.push("The live region must be polite (aria-live=\"polite\").");
+        if (!status.textContent.includes("Moved Pay rent to Work")) problems.push("The live region must show announcement.text.");
+      }
+      if (container.querySelector('[aria-busy="true"]') === null) problems.push('While loading, the board must set aria-busy="true".');
+      if (!screen.queryByText(/Showing the first 1,000 of 1,412 cards/)) problems.push("Board must show the notice above the columns.");
+      problems.push(...(await axeProblems(container, "board loading")));
     }),
   ];
 }

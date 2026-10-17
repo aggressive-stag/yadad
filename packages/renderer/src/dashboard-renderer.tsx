@@ -17,6 +17,7 @@ import type { AggregateResult } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { DocumentSet } from "./document-set.js";
+import { BoardRenderer } from "./board-renderer.js";
 import { CalendarRenderer } from "./calendar-renderer.js";
 import { FormRenderer } from "./form-renderer.js";
 import type { FormRendererProps } from "./form-renderer.js";
@@ -94,6 +95,10 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
     }
     if (view.kind === "calendar") {
       return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
+    }
+    if (view.kind === "board") {
+      // The group-by choice is uncontrolled inside a cell (RFC 0005).
+      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} />;
     }
     return null;
   };

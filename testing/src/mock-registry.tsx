@@ -1,4 +1,5 @@
 import type {
+  BoardProps,
   BooleanField,
   ButtonProps,
   CalendarProps,
@@ -37,7 +38,7 @@ export const mockRegistry: Registry<ReactNode> = {
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
     reference: { type: "reference", Input: MockReferenceInput, Display: MockReferenceDisplay },
   },
-  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar },
+  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard },
   widgets: { count: MockCount },
 };
 
@@ -424,4 +425,127 @@ function MockCalendar({
       </table>
     </section>
   );
+}
+
+/**
+ * A plain board: columns as labelled regions with headings, cards as list
+ * items, a group-by select and a "Move to…" control per movable card. No drag
+ * (that is the components repo's job); this is the path every user has.
+ */
+function MockBoard({
+  label,
+  groupChoices,
+  groupField,
+  columns,
+  loading,
+  notice,
+  announcement,
+  onGroupBy,
+  onOpenCard,
+  onMove,
+}: BoardProps<ReactNode>): ReactNode {
+  const base = useId();
+  const [moving, setMoving] = useState<string | undefined>(undefined);
+  const [target, setTarget] = useState("");
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const finish = (): void => {
+    setMoving(undefined);
+    queueMicrotask(() => returnFocus.current?.focus());
+  };
+  return (
+    <section role="group" aria-label={label} aria-busy={loading} data-testid="board" data-group-field={groupField}>
+      <h3 id={`${base}-title`}>{label}</h3>
+      {groupChoices.length > 1 && (
+        <div role="group" aria-label="Group by">
+          <label htmlFor={`${base}-group`}>Group by</label>{" "}
+          <select id={`${base}-group`} value={groupField} onChange={(e) => onGroupBy(e.target.value)}>
+            {groupChoices.map((choice) => (
+              <option key={choice.field} value={choice.field}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {notice !== undefined && <div data-testid="board-notice">{notice}</div>}
+      <div role="status" aria-live="polite" data-testid="board-status">
+        {announcement?.text}
+      </div>
+      <ul aria-label="Columns" data-testid="board-columns">
+        {columns.map((column) => (
+          <li key={column.id} role="group" aria-label={`${column.label}, ${column.count} cards`} data-testid={`column-${column.id}`} data-droppable={column.droppable} data-count={column.count}>
+            <h4>
+              {column.label} ({column.count})
+            </h4>
+            <ul data-testid={`column-cards-${column.id}`}>
+              {column.cards.map((card) => (
+                <li key={card.id} data-testid={`card-${card.id}`} data-pending={card.pending}>
+                  {onOpenCard ? (
+                    <button type="button" aria-label={card.label} onClick={() => onOpenCard(card.id)}>
+                      {card.content}
+                    </button>
+                  ) : (
+                    <span aria-label={card.label} role="group">
+                      {card.content}
+                    </span>
+                  )}
+                  {onMove && card.movable && (
+                    <button
+                      type="button"
+                      aria-label={`Move to… ${card.label}`}
+                      style={{ minWidth: 24, minHeight: 24 }}
+                      onClick={(e) => {
+                        returnFocus.current = e.currentTarget;
+                        setTarget("");
+                        setMoving(card.id);
+                      }}
+                    >
+                      Move to…
+                    </button>
+                  )}
+                  {onMove && moving === card.id && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (target !== "") onMove(card.id, target);
+                        finish();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") finish();
+                      }}
+                    >
+                      <label>
+                        {`Move ${card.label} to`}
+                        <select autoFocus value={target} onChange={(e) => setTarget(e.target.value)}>
+                          <option value="" disabled>
+                            Choose a column
+                          </option>
+                          {columns
+                            .filter((c) => c.droppable && c.id !== currentColumnId(columns, card.id))
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <button type="submit">Move</button>
+                      <button type="button" onClick={finish}>
+                        Cancel
+                      </button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** The id of the column that contains the card (its "current column"). */
+function currentColumnId(columns: readonly { readonly id: string; readonly cards: readonly { readonly id: string }[] }[], cardId: string): string {
+  return columns.find((column) => column.cards.some((card) => card.id === cardId))?.id ?? "";
 }

@@ -1,5 +1,5 @@
 import { jsonPointer } from "@yadad/core";
-import type { CalendarView, DataAdapter, DocumentError, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { BoardView, CalendarView, DataAdapter, DocumentError, EntityDocument, FormView, TableView } from "@yadad/core";
 
 /** A field id a view refers to, and where in the view document it does. */
 export interface FieldRef {
@@ -13,7 +13,7 @@ export interface FieldRef {
  */
 export function checkViewSetup(
   entity: EntityDocument,
-  view: FormView | TableView | CalendarView,
+  view: FormView | TableView | CalendarView | BoardView,
   adapter: DataAdapter | undefined,
   refs: readonly FieldRef[],
 ): DocumentError[] {
