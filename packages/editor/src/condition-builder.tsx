@@ -1,7 +1,7 @@
 import { isRelativeDate } from "@yadad/core";
-import type { Condition, EntityDocument, Field, FieldValue, Registry, RelativeDate } from "@yadad/core";
+import type { Condition, EntityDocument, Field, FieldValue, Registry, RelativeDate, ViewerDocument, ViewerFact } from "@yadad/core";
 import type { ReactNode } from "react";
-import { buildGroup, describeComparisonValue, OPERATOR_WORDS, operatorsFor, parseGroup, roundTrips, takesRelativeDate, takesValue } from "./conditions.js";
+import { buildGroup, describeComparisonValue, isViewerComparison, OPERATOR_WORDS, operatorsFor, parseGroup, roundTrips, takesRelativeDate, takesValue } from "./conditions.js";
 import type { Comparison, Group } from "./conditions.js";
 import { renderInput } from "./inputs.js";
 import { choiceField, describeCondition } from "./ui.js";
@@ -34,10 +34,22 @@ export function starterDraft(fields: readonly Field[], excludeField?: string): D
   return field ? { combine: "all", comparisons: [{ not: false, op: "eq", field: field.id }] } : undefined;
 }
 
+/** A fresh draft that reads the viewer: one comparison on the first fact, no values yet. */
+export function viewerStarterDraft(viewer: ViewerDocument | undefined): DraftGroup | undefined {
+  const fact = viewer?.facts[0];
+  return fact ? { combine: "all", comparisons: [{ not: false, op: "viewerIn", field: fact.id }] } : undefined;
+}
+
 /** A draft to keep editing: the condition as the builder sees it, or a starter when there is none. */
 export function draftFor(entity: EntityDocument, condition: Condition | undefined, excludeField?: string): DraftGroup | undefined {
   if (condition !== undefined && roundTrips(condition)) return parseGroup(condition) as DraftGroup;
   return starterDraft(entity.fields, excludeField);
+}
+
+/** Like draftFor, for a place that accepts only viewer conditions (a column's visibleWhen, a tab's visibleWhen). */
+export function viewerDraftFor(viewer: ViewerDocument | undefined, condition: Condition | undefined): DraftGroup | undefined {
+  if (condition !== undefined && roundTrips(condition)) return parseGroup(condition) as DraftGroup;
+  return viewerStarterDraft(viewer);
 }
 
 /** What the draft builds today; the parent uses this to disable Apply and detect no-ops. */
@@ -57,7 +69,16 @@ interface ConditionBuilderProps {
   /** A human name for the condition, for labels: "Show only when", "Rows always match". */
   readonly label: string;
   readonly registry: Registry<ReactNode>;
-  readonly entity: EntityDocument;
+  /** The entity whose fields a comparison can read. Omit for a place that has no record (only viewer comparisons then). */
+  readonly entity?: EntityDocument | undefined;
+  /** The set's viewer document: with it, a comparison can read a viewer fact (RFC 0006). */
+  readonly viewer?: ViewerDocument | undefined;
+  /**
+   * What a comparison may read. "record": fields only. "record+viewer": fields
+   * and viewer facts (needs `viewer`). "viewer": viewer facts only, for places
+   * that have no record. Defaults to "record+viewer" when `viewer` is given.
+   */
+  readonly sources?: "record" | "record+viewer" | "viewer" | undefined;
   /** A field the condition must not reference: the field itself, for "show only when". */
   readonly excludeField?: string | undefined;
   readonly draft: DraftGroup | undefined;
@@ -74,12 +95,19 @@ interface ConditionBuilderProps {
  * Deeper conditions are shown intact in words, with a way to replace them —
  * never silently dropped.
  */
-export function ConditionBuilder({ id, label, registry, entity, excludeField, draft, onChange, current, onReplace }: ConditionBuilderProps): ReactNode {
+export function ConditionBuilder({ id, label, registry, entity, viewer, sources, excludeField, draft, onChange, current, onReplace }: ConditionBuilderProps): ReactNode {
   const { Button } = registry.layout;
-  const candidates = entity.fields.filter((f) => f.id !== excludeField);
-  if (candidates.length === 0) return <p>No other fields of {entity.id} to compare against.</p>;
-  const labelOf = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
-  const fieldOf = (c: DraftComparison): Field => entity.fields.find((f) => f.id === c.field) ?? candidates[0]!;
+  const mode = sources ?? (viewer ? "record+viewer" : "record");
+  const candidates = entity && mode !== "viewer" ? entity.fields.filter((f) => f.id !== excludeField) : [];
+  const facts = viewer && mode !== "record" ? viewer.facts : [];
+  if (candidates.length === 0 && facts.length === 0) return <p>{mode === "viewer" ? "No viewer facts are declared to compare against." : `No other fields of ${entity?.id ?? "the entity"} to compare against.`}</p>;
+  const labelOf = (fieldId: string) => entity?.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
+  const factLabelOf = (factId: string) => facts.find((f) => f.id === factId)?.label ?? factId;
+  const fieldOf = (c: DraftComparison): Field => entity?.fields.find((f) => f.id === c.field) ?? candidates[0]!;
+  const factOf = (c: DraftComparison): ViewerFact => facts.find((f) => f.id === c.field) ?? facts[0]!;
+  const factValues = (fact: ViewerFact): readonly (string | boolean)[] => (fact.type === "select" ? fact.options.values : [true, false]);
+  const showValue = (v: FieldValue | undefined): string => (typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
+  const SOURCES = { field: "A field of the record", viewer: "The viewer" } as const;
 
   const setComparison = (i: number, patch: { not?: boolean; op?: DraftComparison["op"]; field?: string; value?: DraftComparison["value"]; values?: readonly FieldValue[] | undefined }) =>
     onChange({
@@ -95,7 +123,7 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
   // A field or operator change invalidates a value of the old type; reset it.
   // The operator stays only when the new field's type offers it.
   const onField = (i: number, fieldId: string) => {
-    const next = entity.fields.find((f) => f.id === fieldId);
+    const next = entity?.fields.find((f) => f.id === fieldId);
     const current = draft?.comparisons[i];
     const keep = next !== undefined && current !== undefined && operatorsFor(next.type).includes(current.op);
     setComparison(i, { field: fieldId, ...(keep ? {} : { op: "eq" as const }), value: undefined, values: undefined });
@@ -107,10 +135,17 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
     setComparison(i, { op, value: keep ? c.value : undefined, values: undefined });
   };
 
+  const onSource = (i: number, source: keyof typeof SOURCES) => {
+    if (source === "viewer") setComparison(i, { op: "viewerIn", field: facts[0]!.id, value: undefined, values: undefined });
+    else setComparison(i, { op: "eq", field: candidates[0]!.id, value: undefined, values: undefined });
+  };
+  const onFact = (i: number, factId: string) => setComparison(i, { field: factId, values: undefined });
+
   const combineId = `${id}-combine`;
   const combineField = choiceField("combine", "Match", Object.keys(COMBINE) as string[]);
   const compareWords = draft
     ? draft.comparisons.map((c) => {
+        if (isViewerComparison(c)) return `${c.not ? "not " : ""}the viewer's ${factLabelOf(c.field)} is one of ${(c.values ?? []).map(showValue).join(", ")}`;
         const words = OPERATOR_WORDS[c.op];
         const value = c.op === "in" ? (c.values ?? []).join(", ") : takesValue(c.op) ? describeComparisonValue(c.value as Comparison["value"]) : "";
         return `${labelOf(c.field)} ${words}${value ? ` ${value}` : ""}`;
@@ -121,7 +156,7 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
     <div data-yadad-condition-builder={id}>
       {current !== undefined && !roundTrips(current) ? (
         <>
-          <p data-yadad-condition-readonly="">{describeCondition(current, labelOf)}</p>
+          <p data-yadad-condition-readonly="">{describeCondition(current, labelOf, factLabelOf)}</p>
           <p>This is deeper than the builder edits, so it is shown as-is. Replacing it starts a new one.</p>
           {onReplace ? <Button label={`Replace ${label}`} type="button" variant="secondary" disabled={false} onPress={onReplace} /> : null}
         </>
@@ -133,6 +168,28 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
             <p>{compareWords.join(draft.combine === "any" ? " or " : " and ")}</p>
           </div>
           {draft.comparisons.map((c, i) => {
+            if (isViewerComparison(c)) {
+              const fact = factOf(c);
+              return (
+                <div key={i} data-yadad-condition-comparison={`${id}-${i}`} style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", alignItems: "center", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                  {candidates.length > 0 && renderInput(registry, choiceField("source", "Compare", Object.values(SOURCES)), SOURCES.viewer, { inputId: `${id}-source-${i}`, invalid: false }, () => onSource(i, "field"))}
+                  {renderInput(registry, choiceField("fact", label, facts.map((x) => x.label)), fact.label, { inputId: `${id}-fact-${i}`, invalid: false }, (v) => onFact(i, facts.find((x) => x.label === v)?.id ?? c.field))}
+                  <span>is one of</span>
+                  <span role="group" aria-label={`Values of ${fact.label}`} style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-space-1, 0.25rem)" }}>
+                    {factValues(fact).map((v) => (
+                      <span key={String(v)} style={{ display: "inline-flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>
+                        {renderInput(registry, { id: `${c.field}_${String(v)}`, type: "boolean", label: showValue(v) }, (c.values ?? []).includes(v), { inputId: `${id}-in-${i}-${String(v)}`, invalid: false }, (on) =>
+                          setComparison(i, { values: on ? [...(c.values ?? []), v] : (c.values ?? []).filter((x) => x !== v) }),
+                        )}
+                        {showValue(v)}
+                      </span>
+                    ))}
+                  </span>
+                  {renderInput(registry, { id: `${c.field}_not`, type: "boolean", label: "Not" }, c.not, { inputId: `${id}-not-${i}`, invalid: false }, (on) => setComparison(i, { not: on === true }))}
+                  <Button label={`Remove comparison ${i + 1}`} type="button" variant="secondary" disabled={false} onPress={() => removeComparison(i)} />
+                </div>
+              );
+            }
             const f = fieldOf(c);
             const fieldId = `${id}-field-${i}`;
             const opId = `${id}-op-${i}`;
@@ -140,6 +197,7 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
             const opField = choiceField("op", "Operator", ops.map((o) => OPERATOR_WORDS[o]));
             return (
               <div key={i} data-yadad-condition-comparison={`${id}-${i}`} style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", alignItems: "center", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                {facts.length > 0 && renderInput(registry, choiceField("source", "Compare", Object.values(SOURCES)), SOURCES.field, { inputId: `${id}-source-${i}`, invalid: false }, () => onSource(i, "viewer"))}
                 {renderInput(registry, choiceField("field", label, candidates.map((x) => x.label)), labelOf(c.field), { inputId: fieldId, invalid: false }, (v) => onField(i, candidates.find((x) => x.label === v)?.id ?? c.field))}
                 {renderInput(registry, opField, OPERATOR_WORDS[c.op] ?? "is", { inputId: opId, invalid: false }, (v) => {
                   const op = ops.find((o) => OPERATOR_WORDS[o] === v);
@@ -177,7 +235,13 @@ export function ConditionBuilder({ id, label, registry, entity, excludeField, dr
           })}
           {draft.comparisons.length > 0 && builtOf(draft) === undefined ? <p data-yadad-condition-incomplete="">Fill in every row to apply this condition.</p> : null}
           <div style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
-            <Button label="Add comparison" type="button" variant="secondary" disabled={false} onPress={() => onChange({ combine: draft.combine, comparisons: [...draft.comparisons, { not: false, op: "eq", field: candidates[0]!.id }] })} />
+            <Button
+              label="Add comparison"
+              type="button"
+              variant="secondary"
+              disabled={false}
+              onPress={() => onChange({ combine: draft.combine, comparisons: [...draft.comparisons, candidates.length > 0 ? { not: false, op: "eq", field: candidates[0]!.id } : { not: false, op: "viewerIn", field: facts[0]!.id }] })}
+            />
           </div>
         </>
       ) : (

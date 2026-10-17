@@ -1,4 +1,5 @@
-import type { DocumentError, EntityDocument, FieldValue, FormItem, FormView, Registry } from "@yadad/core";
+import { conditionViewerFacts } from "@yadad/core";
+import type { DocumentError, EntityDocument, FieldValue, FormItem, FormView, Registry, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { Fragment, useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -31,6 +32,8 @@ export interface FormViewEditorProps {
   /** The view's entity, for field labels and the fields not placed yet. */
   readonly entity: EntityDocument;
   readonly registry: Registry<ReactNode>;
+  /** The set's viewer document: with it, "show only when" and "required while" can read a viewer fact (RFC 0006). */
+  readonly viewer?: ViewerDocument;
   /** Receives the edited form with its revision bumped. */
   readonly onSave: (view: FormView) => void;
   /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
@@ -47,7 +50,7 @@ type Result = PatchOperation[] | { ok: true; patch: PatchOperation[] } | { ok: f
  * step with the arrow keys; each move is one undoable patch, and where it
  * lands is announced. Conditions on a field are kept and shown.
  */
-export function FormViewEditor({ view, entity, registry, onSave, onChange, onCancel }: FormViewEditorProps): ReactNode {
+export function FormViewEditor({ view, entity, registry, viewer, onSave, onChange, onCancel }: FormViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<FormView>>(() => startSession(view));
   useReportChange(session.current, onChange);
@@ -60,6 +63,7 @@ export function FormViewEditor({ view, entity, registry, onSave, onChange, onCan
   const current = session.current;
 
   const label = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
+  const factLabel = (id: string) => viewer?.facts.find((f) => f.id === id)?.label ?? id;
   const sectionName = (id: string) => current.sections.find((s) => s.id === id)?.title ?? id;
   const announce = (message: string) => {
     setProblems([]);
@@ -191,7 +195,7 @@ export function FormViewEditor({ view, entity, registry, onSave, onChange, onCan
   const ruleCondition = (item: FormItem | undefined, rule: RuleKey) => (rule === "visibleWhen" ? item?.visibleWhen : rule === "requiredWhen" ? item?.requiredWhen : undefined);
   const ruleText = (item: FormItem | undefined, rule: RuleKey) => {
     const c = ruleCondition(item, rule);
-    return c === undefined ? undefined : rule === "visibleWhen" ? `Shown when ${describeCondition(c, label)}` : `Required when ${describeCondition(c, label)}`;
+    return c === undefined ? undefined : rule === "visibleWhen" ? `Shown when ${describeCondition(c, label, factLabel)}` : `Required when ${describeCondition(c, label, factLabel)}`;
   };
   const openRule = (fieldId: string, rule: RuleKey) => {
     if (rule === "clearWhenHidden") return;
@@ -210,7 +214,7 @@ export function FormViewEditor({ view, entity, registry, onSave, onChange, onCan
     if (same) return;
     run(setFormItemCondition(current, fieldId, rule, built), () => {
       closeRule();
-      announce(built === undefined ? `${label(fieldId)} ${ruleLabelText(rule)}: cleared.` : `${label(fieldId)} ${ruleLabelText(rule)}: ${describeCondition(built, label)}.`);
+      announce(built === undefined ? `${label(fieldId)} ${ruleLabelText(rule)}: cleared.` : `${label(fieldId)} ${ruleLabelText(rule)}: ${describeCondition(built, label, factLabel)}.`);
     });
   };
   const removeRule = (fieldId: string, rule: "visibleWhen" | "requiredWhen") => {
@@ -249,6 +253,7 @@ export function FormViewEditor({ view, entity, registry, onSave, onChange, onCan
           label={ruleLabelText(rule)}
           registry={registry}
           entity={entity}
+          viewer={viewer}
           excludeField={rule === "visibleWhen" ? item.field : undefined}
           draft={builder.draft}
           onChange={(draft) => setBuilder({ field: item.field, rule, draft })}
@@ -335,7 +340,7 @@ export function FormViewEditor({ view, entity, registry, onSave, onChange, onCan
             label={`${item.clearWhenHidden ? "Keep" : "Clear"} ${label(item.field)} while hidden`}
             type="button"
             variant="secondary"
-            disabled={!item.visibleWhen}
+            disabled={!item.visibleWhen || conditionViewerFacts(item.visibleWhen).length > 0}
             onPress={() => applyRule(item.field, "clearWhenHidden")}
           />
         </span>,

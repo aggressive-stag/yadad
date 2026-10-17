@@ -39,14 +39,14 @@ export const asText = (v: FieldValue | undefined): string => (typeof v === "stri
 const OP_WORDS = { eq: "is", neq: "is not", gt: "is more than", gte: "is at least", lt: "is less than", lte: "is at most" } as const;
 
 /** A condition in plain words, using field labels, e.g. "How did it feel? is Hard". */
-export function describeCondition(condition: Condition, label: (fieldId: string) => string): string {
+export function describeCondition(condition: Condition, label: (fieldId: string) => string, factLabel: (factId: string) => string = (id) => id): string {
   const show = (v: Scalar) => (typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
   switch (condition.op) {
     case "and":
     case "or":
-      return condition.conditions.length === 0 ? (condition.op === "and" ? "always" : "never") : condition.conditions.map((c) => describeCondition(c, label)).join(` ${condition.op} `);
+      return condition.conditions.length === 0 ? (condition.op === "and" ? "always" : "never") : condition.conditions.map((c) => describeCondition(c, label, factLabel)).join(` ${condition.op} `);
     case "not":
-      return `not (${describeCondition(condition.condition, label)})`;
+      return `not (${describeCondition(condition.condition, label, factLabel)})`;
     case "in":
       return `${label(condition.field)} is one of ${condition.values.map(show).join(", ")}`;
     case "contains":
@@ -56,7 +56,7 @@ export function describeCondition(condition: Condition, label: (fieldId: string)
     case "notEmpty":
       return `${label(condition.field)} is filled in`;
     case "viewerIn":
-      return `the viewer's ${condition.fact} is one of ${condition.values.map(show).join(", ")}`;
+      return `the viewer's ${factLabel(condition.fact)} is one of ${condition.values.map(show).join(", ")}`;
     default:
       return `${label(condition.field)} ${OP_WORDS[condition.op]} ${describeComparisonValue(condition.value)}`;
   }

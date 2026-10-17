@@ -178,11 +178,15 @@ describe("relative dates", () => {
   });
 });
 
-describe("viewerIn (stub until the editor supports viewers)", () => {
+describe("viewerIn", () => {
   const leaf: Condition = { op: "viewerIn", fact: "role", values: ["editor", "owner"] };
-  test("is not editable in the builder (parseGroup gives up, so it is shown intact) and reads in words", () => {
-    expect(parseGroup(leaf)).toBeUndefined();
-    expect(parseGroup({ op: "and", conditions: [leaf, { op: "notEmpty", field: "a" }] })).toBeUndefined();
+  test("is a comparison the builder edits, alone or among record comparisons, and reads in words", () => {
+    expect(parseGroup(leaf)?.comparisons).toEqual([{ not: false, op: "viewerIn", field: "role", values: ["editor", "owner"] }]);
+    expect(parseGroup({ op: "and", conditions: [leaf, { op: "notEmpty", field: "a" }] })?.comparisons).toHaveLength(2);
     expect(describeCondition(leaf, (id) => id)).toBe("the viewer's role is one of editor, owner");
+    expect(describeCondition(leaf, (id) => id, () => "Role")).toBe("the viewer's Role is one of editor, owner");
+  });
+  test("one nested deeper than the builder edits still stays read-only", () => {
+    expect(parseGroup({ op: "not", condition: { op: "not", condition: leaf } })).toBeUndefined();
   });
 });

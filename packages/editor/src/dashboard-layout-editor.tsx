@@ -1,5 +1,5 @@
 import { MEASURE_FIELD_TYPES, MEASURE_OPS } from "@yadad/core";
-import type { DashboardView, EntityDocument, GridItem, Measure, MeasureOp, Registry, ViewDocument } from "@yadad/core";
+import type { DashboardView, EntityDocument, GridItem, Measure, MeasureOp, Registry, ViewDocument, ViewerCondition, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
@@ -10,7 +10,8 @@ import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
-import { measureFor, setCountWidgetFilter, setStatMeasure } from "./views.js";
+import { measureFor, setCountWidgetFilter, setItemVisibleWhen, setStatMeasure, setTabVisibleWhen } from "./views.js";
+import { ViewerRule } from "./viewer-rule.js";
 
 export interface DashboardLayoutEditorProps {
   readonly dashboard: DashboardView;
@@ -24,6 +25,8 @@ export interface DashboardLayoutEditorProps {
   readonly views?: readonly ViewDocument[];
   /** The documents' entities, so a count widget's filter can be edited against its table's entity. */
   readonly entities?: ReadonlyMap<string, EntityDocument>;
+  /** The set's viewer document: with it, each tab and widget can be shown only to some viewers (RFC 0006). */
+  readonly viewer?: ViewerDocument;
 }
 
 /** One entry of the add-widget list, with the size it starts at. */
@@ -85,7 +88,7 @@ function describeMeasure(m: Measure, label: (fieldId: string) => string): string
  * with arrow keys resizes it. Overlapping or out-of-bounds layouts are
  * rejected by document validation, with the reason announced.
  */
-export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, describeView = (id) => id, views = [], entities }: DashboardLayoutEditorProps): ReactNode {
+export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, describeView = (id) => id, views = [], entities, viewer }: DashboardLayoutEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<DashboardView>>(() => startSession(dashboard));
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
@@ -119,11 +122,18 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
   };
 
   /** Applies a tab or widget change and announces it, or why it was refused. */
-  const change = (patch: PatchOperation[], done: string, onOk?: () => void) => {
+  const change = (patch: PatchOperation[], done: string, onOk?: () => void): boolean => {
     const next = edit(session, patch);
     setSession(next);
     setStatus(next.rejected.length > 0 ? `Not changed: ${next.rejected[0]?.message ?? "invalid dashboard"}` : done);
     if (next.rejected.length === 0) onOk?.();
+    return next.rejected.length === 0;
+  };
+
+  /** Sets a tab's or widget's viewer rule, saying what happened. */
+  const setRule = (result: { ok: true; patch: PatchOperation[] } | { ok: false; error: { message: string } }, done: string): boolean => {
+    if (!result.ok) return setStatus(`Not changed: ${result.error.message}`), false;
+    return result.patch.length === 0 ? true : change(result.patch, done);
   };
 
   const remove = (item: GridItem) => change(removeWidget(current, tab.id, item.id), `Removed ${name(item)}.`);
@@ -309,6 +319,19 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
                   )}
                 </span>
               </span>
+              {viewer && (
+                <span onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} data-yadad-item-viewer-rule="" style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                  <ViewerRule
+                    registry={registry}
+                    viewer={viewer}
+                    rule="Show"
+                    target={name(item)}
+                    condition={item.visibleWhen}
+                    otherwise="Shown to everyone (hidden, the cell stays empty)"
+                    onSet={(c: ViewerCondition | undefined) => setRule(setItemVisibleWhen(current, tab.id, item.id, c), c === undefined ? `${name(item)} is shown to everyone.` : `${name(item)} is shown by a viewer condition.`)}
+                  />
+                </span>
+              )}
               {item.widget === "stat" && countEntityOf(item) !== undefined && (
                 <span onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} data-yadad-stat-measure="" style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                   {measureControls(item, countEntityOf(item)!)}
@@ -414,6 +437,19 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, d
           }}
         />
       </div>
+      {viewer && (
+        <div data-yadad-tab-viewer-rule="">
+          <ViewerRule
+            registry={registry}
+            viewer={viewer}
+            rule="List tab"
+            target={tab.title}
+            condition={tab.visibleWhen}
+            otherwise={`The ${tab.title} tab is listed for everyone`}
+            onSet={(c: ViewerCondition | undefined) => setRule(setTabVisibleWhen(current, tab.id, c), c === undefined ? `The ${tab.title} tab is listed for everyone.` : `The ${tab.title} tab is listed by a viewer condition.`)}
+          />
+        </div>
+      )}
       <p aria-live="polite" data-yadad-editor-status="">
         {status}
       </p>

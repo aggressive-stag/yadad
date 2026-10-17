@@ -1,4 +1,4 @@
-import type { BoardView, DocumentError, EntityDocument, FieldValue, Registry } from "@yadad/core";
+import type { BoardView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
@@ -10,6 +10,7 @@ import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
+import { ViewerRule } from "./viewer-rule.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import {
@@ -28,6 +29,8 @@ import {
   setBoardEditable,
   setBoardFilter,
   setBoardRowAction,
+  setBoardEditableWhen,
+  setRowActionVisibleWhen,
   setBoardSort,
   setBoardTitle,
   setBoardTitleField,
@@ -45,6 +48,8 @@ export interface BoardViewEditorProps {
    * row action, and a board's existing one is kept.
    */
   readonly context?: RowActionContext;
+  /** The set's viewer document: with it, moving can be limited to some viewers and the row action opened only for some (RFC 0006). */
+  readonly viewer?: ViewerDocument;
   /** Receives the edited board with its revision bumped. */
   readonly onSave: (view: BoardView) => void;
   /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
@@ -167,7 +172,7 @@ function ReorderList({ registry, base, marker, caption, columnLabel, empty, noun
  * moved one step with the arrow keys or with the Move buttons; each change
  * is one validated, undoable patch, and where a field lands is announced.
  */
-export function BoardViewEditor({ view, entity, registry, context, onSave, onChange, onCancel }: BoardViewEditorProps): ReactNode {
+export function BoardViewEditor({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: BoardViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<BoardView>>(() => startSession(view));
   useReportChange(session.current, onChange);
@@ -186,14 +191,15 @@ export function BoardViewEditor({ view, entity, registry, context, onSave, onCha
     setStatus(message);
   };
 
-  const run = (result: Result, onOk?: () => void) => {
-    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]);
+  const run = (result: Result, onOk?: () => void): boolean => {
+    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]), false;
     const patch = Array.isArray(result) ? result : result.patch;
-    if (patch.length === 0) return onOk?.();
+    if (patch.length === 0) return onOk?.(), true;
     const next = edit(session, patch);
     setSession(next);
     setProblems(next.rejected);
     if (next.rejected.length === 0) onOk?.();
+    return next.rejected.length === 0;
   };
 
   /** A move of a field in one of the two lists, applied and announced with its new position. */
@@ -318,6 +324,9 @@ export function BoardViewEditor({ view, entity, registry, context, onSave, onCha
             })}
           <Button label="Apply settings" type="button" variant="secondary" disabled={false} onPress={applySettings} />
         </div>
+        {viewer && current.editable === true && (
+          <ViewerRule registry={registry} viewer={viewer} rule="Allow moving" target={current.title ?? current.id} condition={current.editableWhen} otherwise="Moving is offered to everyone" onSet={(c) => run(setBoardEditableWhen(current, c), () => announce(c === undefined ? "Moving is offered to everyone." : "Moving is limited by a viewer condition."))} />
+        )}
         {current.filter ? (
           <p>
             Cards always match: {describeCondition(current.filter, label)}.
@@ -434,6 +443,7 @@ export function BoardViewEditor({ view, entity, registry, context, onSave, onCha
                 propertyInput(registry, `${base}-ra-to`, choiceField("row_action_to", "With this field of the target", toFields.map((f) => f.label)), pickedTo?.label, (v) => setRowTo(toFields.find((f) => f.label === v)?.id))
               )}
               <Button label="Set row action" type="button" variant="secondary" disabled={!pickedTarget || !pickedFrom || !pickedTo} onPress={applyRowAction} />
+              {action && viewer && <ViewerRule registry={registry} viewer={viewer} rule="Open rows" target="row action" condition={action.visibleWhen} otherwise="Rows open for everyone" onSet={(c) => run(setRowActionVisibleWhen(current, c), () => announce("Row action: updated who it opens for."))} />}
               {action && <Button label="Remove row action" type="button" variant="secondary" disabled={false} onPress={() => run(setBoardRowAction(current, entity, context, undefined), () => announce("Row action removed."))} />}
             </div>
           )}

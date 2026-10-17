@@ -1,4 +1,4 @@
-import type { DocumentError, EntityDocument, Field, FieldValue, Registry, RowAction, TableView } from "@yadad/core";
+import type { DocumentError, EntityDocument, Field, FieldValue, Registry, RowAction, TableView, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -11,7 +11,8 @@ import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js"
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
-import { rowActionTargets, setRowAction, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
+import { ViewerRule } from "./viewer-rule.js";
+import { rowActionTargets, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
 import type { RowActionContext } from "./views.js";
 
 export interface TableViewEditorProps {
@@ -25,6 +26,8 @@ export interface TableViewEditorProps {
    * row action, and a table's existing one is kept.
    */
   readonly context?: RowActionContext;
+  /** The set's viewer document: with it, each column can be shown and edited only for some viewers, and the row action opened only for some (RFC 0006). */
+  readonly viewer?: ViewerDocument;
   /** Receives the edited table with its revision bumped. */
   readonly onSave: (view: TableView) => void;
   /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
@@ -60,7 +63,7 @@ const settingsOf = (view: TableView): Settings => ({
  * one undoable patch, and where it lands is announced. A fixed filter, if
  * the table has one, is kept and shown.
  */
-export function TableViewEditor({ view, entity, registry, context, onSave, onChange, onCancel }: TableViewEditorProps): ReactNode {
+export function TableViewEditor({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: TableViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<TableView>>(() => startSession(view));
   useReportChange(session.current, onChange);
@@ -78,14 +81,15 @@ export function TableViewEditor({ view, entity, registry, context, onSave, onCha
     setStatus(message);
   };
 
-  const run = (result: Result, onOk?: () => void) => {
-    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]);
+  const run = (result: Result, onOk?: () => void): boolean => {
+    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]), false;
     const patch = Array.isArray(result) ? result : result.patch;
-    if (patch.length === 0) return onOk?.();
+    if (patch.length === 0) return onOk?.(), true;
     const next = edit(session, patch);
     setSession(next);
     setProblems(next.rejected);
     if (next.rejected.length === 0) onOk?.();
+    return next.rejected.length === 0;
   };
 
   /** Applies a patch through the session and reports it in the status line. */
@@ -149,7 +153,7 @@ export function TableViewEditor({ view, entity, registry, context, onSave, onCha
   const filtered = new Set(current.quickFilters?.map((f) => f.field));
   const fieldType = (id: string) => entity.fields.find((f) => f.id === id)?.type;
 
-  const columns = ["Column", "Edit in place", "Quick filter", "Actions"].map((name) => ({ id: name.toLowerCase().replace(/ /g, "_"), headerId: `${base}-col-${name}`, label: name, sortable: false }));
+  const columns = ["Column", "Edit in place", "Quick filter", ...(viewer ? ["Viewers"] : []), "Actions"].map((name) => ({ id: name.toLowerCase().replace(/ /g, "_"), headerId: `${base}-col-${name}`, label: name, sortable: false }));
   const rows = current.columns.map((column, i) => {
     const name = label(column.field);
     const editable = column.editable === true;
@@ -179,6 +183,14 @@ export function TableViewEditor({ view, entity, registry, context, onSave, onCha
         </span>,
         editable ? "Yes" : "No",
         quick ? "Yes" : canFilter ? "No" : <span key="quick" title={QUICK_FILTER_REASON}>Not available. {QUICK_FILTER_REASON}</span>,
+        ...(viewer
+          ? [
+              <span key="viewers">
+                <ViewerRule registry={registry} viewer={viewer} rule="Show" target={name} condition={column.visibleWhen} otherwise="Shown to everyone" onSet={(c) => run(setColumnVisibleWhen(current, column.field, c), () => announce(`${name}: ${c === undefined ? "shown to everyone" : "shown by a viewer condition"}.`))} />
+                {editable && <ViewerRule registry={registry} viewer={viewer} rule="Allow editing" target={name} condition={column.editableWhen} otherwise="Editable for everyone who may edit" onSet={(c) => run(setColumnEditableWhen(current, column.field, c), () => announce(`${name}: editing ${c === undefined ? "for everyone" : "limited by a viewer condition"}.`))} />}
+              </span>,
+            ]
+          : []),
         <span key="actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
           <Button label={`Move ${name} left`} type="button" variant="secondary" disabled={i === 0} onPress={() => run(moveColumn(current, column.field, -1))} />
           <Button label={`Move ${name} right`} type="button" variant="secondary" disabled={i === current.columns.length - 1} onPress={() => run(moveColumn(current, column.field, 1))} />
@@ -309,6 +321,7 @@ export function TableViewEditor({ view, entity, registry, context, onSave, onCha
       {context && (
         <Section id={`${base}-row-action`} title="Row action">
           {action ? <p>{describeAction(action)}</p> : <p>Clicking a row does nothing.</p>}
+          {action && viewer && <ViewerRule registry={registry} viewer={viewer} rule="Open rows" target="row action" condition={action.visibleWhen} otherwise="Rows open for everyone" onSet={(c) => run(setRowActionVisibleWhen(current, c), () => announce("Row action: updated who it opens for."))} />}
           {targets.length === 0 ? (
             <p>There is no other table view to open.</p>
           ) : (

@@ -5,17 +5,18 @@
 // (ARCHITECTURE.md §6).
 
 import { isRelativeDate } from "@yadad/core";
-import type { ComparisonValue, Condition, FieldType, Scalar } from "@yadad/core";
+import type { ComparisonValue, Condition, FieldType, Scalar, ViewerCondition } from "@yadad/core";
 
 /** One comparison of a field against a value; "not" applies to the comparison itself. */
 export interface Comparison {
   readonly not: boolean;
   /** The operator, "not" aside: eq/neq, ordering for numbers and dates, in/contains, empty/notEmpty. */
-  readonly op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "contains" | "empty" | "notEmpty";
+  readonly op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "contains" | "empty" | "notEmpty" | "viewerIn";
+  /** The record field; for "viewerIn" the viewer fact id (RFC 0006). */
   readonly field: string;
   /** A value for eq/neq and ordering (on a date field also a relative date); absent for empty/notEmpty. */
   readonly value?: ComparisonValue;
-  /** The list for "in". */
+  /** The list for "in", and for "viewerIn" the viewer fact's values (strings or booleans). */
   readonly values?: readonly Scalar[];
 }
 
@@ -58,6 +59,7 @@ export const OPERATOR_WORDS: Readonly<Record<Comparison["op"], string>> = {
   contains: "contains",
   empty: "is empty",
   notEmpty: "is filled in",
+  viewerIn: "is one of",
 };
 
 /** The ops on a date field that can compare with "today +/- N days". */
@@ -102,6 +104,8 @@ function toComparison(c: Condition): Comparison | undefined {
       return { not: false, op: "in", field: c.field, values: c.values };
     case "contains":
       return { not: false, op: "contains", field: c.field, value: c.value };
+    case "viewerIn":
+      return { not: false, op: "viewerIn", field: c.fact, values: c.values };
     case "empty":
     case "notEmpty":
       return { not: false, op: c.op, field: c.field };
@@ -146,6 +150,11 @@ export function compareToCondition(c: Comparison): Condition | undefined {
     case "in":
       if (c.values === undefined || c.values.length === 0) return undefined;
       body = { op: "in", field: c.field, values: c.values };
+      break;
+    case "viewerIn":
+      if (c.values === undefined || c.values.length === 0) return undefined;
+      body = { op: "viewerIn", fact: c.field, values: c.values.filter((v): v is string | boolean => typeof v === "string" || typeof v === "boolean") };
+      if (body.values.length !== c.values.length) return undefined;
       break;
     case "contains":
       if (typeof c.value !== "string") return undefined;
@@ -211,5 +220,34 @@ export function valueFits(type: FieldType, value: ComparisonValue | readonly Sca
       return list.every((v) => typeof v === "boolean");
     default:
       return true;
+  }
+}
+
+/** Whether a comparison reads the viewer rather than a record field. */
+export function isViewerComparison(c: Pick<Comparison, "op">): boolean {
+  return c.op === "viewerIn";
+}
+
+/**
+ * A condition as a ViewerCondition (only `viewerIn`, `and`, `or`, `not`), or
+ * undefined when it reads a record anywhere: the places that have no record
+ * accept nothing else.
+ */
+export function asViewerCondition(condition: Condition | undefined): ViewerCondition | undefined {
+  if (condition === undefined) return undefined;
+  switch (condition.op) {
+    case "viewerIn":
+      return condition;
+    case "not": {
+      const inner = asViewerCondition(condition.condition);
+      return inner && { op: "not", condition: inner };
+    }
+    case "and":
+    case "or": {
+      const parts = condition.conditions.map(asViewerCondition);
+      return parts.every((p) => p !== undefined) ? { op: condition.op, conditions: parts as ViewerCondition[] } : undefined;
+    }
+    default:
+      return undefined;
   }
 }

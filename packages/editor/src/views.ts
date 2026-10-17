@@ -1,5 +1,5 @@
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, jsonPointer, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarMode, CalendarView, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView } from "@yadad/core";
+import type { BoardView, CalendarMode, CalendarView, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -193,7 +193,65 @@ export function setColumnEditable(view: TableView, fieldId: string, editable: bo
   const guard: PatchOperation = { op: "test", path: `/columns/${c}/field`, value: fieldId };
   const has = view.columns[c]?.editable !== undefined;
   if (editable) return ok([guard, { op: has ? "replace" : "add", path: `/columns/${c}/editable`, value: true }]);
-  return ok(has ? [guard, { op: "remove", path: `/columns/${c}/editable` }] : []);
+  // editableWhen only narrows editable: true, so it goes with it.
+  const narrowed = view.columns[c]?.editableWhen !== undefined ? [{ op: "remove" as const, path: `/columns/${c}/editableWhen` }] : [];
+  return ok(has ? [guard, ...narrowed, { op: "remove", path: `/columns/${c}/editable` }] : []);
+}
+
+/** Sets or clears the viewer condition that shows a column (RFC 0006). */
+export function setColumnVisibleWhen(view: TableView, fieldId: string, condition: ViewerCondition | undefined): Result {
+  const c = columnIndex(view, fieldId);
+  if (c < 0) return fail(["columns"], `"${fieldId}" is not a column.`, "Add it first.");
+  const ops = setOptional(view.columns[c]?.visibleWhen !== undefined, `/columns/${c}/visibleWhen`, condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [{ op: "test", path: `/columns/${c}/field`, value: fieldId }, ...ops]);
+}
+
+/** Sets or clears the viewer condition that allows editing a column in place. The column must be editable. */
+export function setColumnEditableWhen(view: TableView, fieldId: string, condition: ViewerCondition | undefined): Result {
+  const c = columnIndex(view, fieldId);
+  if (c < 0) return fail(["columns"], `"${fieldId}" is not a column.`, "Add it first.");
+  if (condition !== undefined && view.columns[c]?.editable !== true) return fail(["columns", c, "editableWhen"], `${fieldId} is not editable in place.`, "Make the column editable first: editableWhen only narrows editable.");
+  const ops = setOptional(view.columns[c]?.editableWhen !== undefined, `/columns/${c}/editableWhen`, condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [{ op: "test", path: `/columns/${c}/field`, value: fieldId }, ...ops]);
+}
+
+/** Sets or clears the viewer condition under which the row action opens its target (RFC 0006). Works on a table, calendar or board. */
+export function setRowActionVisibleWhen(view: TableView | CalendarView | BoardView, condition: ViewerCondition | undefined): Result {
+  const action = view.rowAction;
+  if (!action) return fail(["rowAction"], "This view has no row action.", "Set a row action first.");
+  const ops = setOptional(action.visibleWhen !== undefined, "/rowAction/visibleWhen", condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [{ op: "test", path: "/id", value: view.id }, ...ops]);
+}
+
+/** Sets or clears the viewer condition that lists a dashboard tab. */
+export function setTabVisibleWhen(view: DashboardView, tabId: string, condition: ViewerCondition | undefined): Result {
+  const t = view.tabs.findIndex((tab) => tab.id === tabId);
+  if (t < 0) return fail(["tabs"], `No tab "${tabId}".`, "Pick an existing tab.");
+  const ops = setOptional(view.tabs[t]?.visibleWhen !== undefined, `/tabs/${t}/visibleWhen`, condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [{ op: "test", path: `/tabs/${t}/id`, value: tabId }, ...ops]);
+}
+
+/** Sets or clears the viewer condition that renders a dashboard widget; hidden, its cell stays empty. */
+export function setItemVisibleWhen(view: DashboardView, tabId: string, itemId: string, condition: ViewerCondition | undefined): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  const ops = setOptional(item.visibleWhen !== undefined, `/tabs/${t}/items/${i}/visibleWhen`, condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [{ op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId }, ...ops]);
+}
+
+/** Sets or clears the viewer condition that allows moving on a calendar. The calendar must be editable. */
+export function setCalendarEditableWhen(view: CalendarView, condition: ViewerCondition | undefined): Result {
+  if (condition !== undefined && view.editable !== true) return fail(["editableWhen"], "This calendar is not editable.", "Let entries be moved first: editableWhen only narrows editable.");
+  const ops = setOptional(view.editableWhen !== undefined, "/editableWhen", condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [guardCalendar(view), ...ops]);
+}
+
+/** Sets or clears the viewer condition that allows moving on a board. The board must be editable. */
+export function setBoardEditableWhen(view: BoardView, condition: ViewerCondition | undefined): Result {
+  if (condition !== undefined && view.editable !== true) return fail(["editableWhen"], "This board is not editable.", "Let cards be moved first: editableWhen only narrows editable.");
+  const ops = setOptional(view.editableWhen !== undefined, "/editableWhen", condition as unknown as Json | undefined);
+  return ok(ops.length === 0 ? [] : [guardBoard(view), ...ops]);
 }
 
 /** Sets an optional top-level property, or removes it when the value is undefined. */
@@ -478,7 +536,9 @@ export function setCalendarWeekStartsOn(view: CalendarView, day: number | undefi
 
 /** Lets a drag to another day change the date field, or stops it. */
 export function setCalendarEditable(view: CalendarView, editable: boolean): PatchOperation[] {
-  return [guardCalendar(view), ...setOptional(view.editable !== undefined, "/editable", editable ? true : undefined)];
+  // editableWhen only narrows editable: true, so it goes with it.
+  const narrowed = !editable && view.editableWhen !== undefined ? setOptional(true, "/editableWhen", undefined) : [];
+  return [guardCalendar(view), ...narrowed, ...setOptional(view.editable !== undefined, "/editable", editable ? true : undefined)];
 }
 
 /** The table views a calendar's row action may open: every table in the context (a calendar never is a target). */
@@ -637,7 +697,8 @@ export function setBoardSort(view: BoardView, sort: SortSpec | undefined): Patch
 
 /** Lets a drag to another column change the grouping field, or stops it. */
 export function setBoardEditable(view: BoardView, editable: boolean): PatchOperation[] {
-  return [guardBoard(view), ...setOptional(view.editable !== undefined, "/editable", editable ? true : undefined)];
+  const narrowed = !editable && view.editableWhen !== undefined ? setOptional(true, "/editableWhen", undefined) : [];
+  return [guardBoard(view), ...narrowed, ...setOptional(view.editable !== undefined, "/editable", editable ? true : undefined)];
 }
 
 /** The table views a board's row action may open: every table in the context (a board never is a target). */

@@ -1,4 +1,4 @@
-import type { CalendarMode, CalendarView, DocumentError, EntityDocument, FieldValue, Registry } from "@yadad/core";
+import type { CalendarMode, CalendarView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
 import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
@@ -10,6 +10,7 @@ import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
+import { ViewerRule } from "./viewer-rule.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import {
@@ -25,6 +26,8 @@ import {
   setCalendarEditable,
   setCalendarFilter,
   setCalendarRowAction,
+  setCalendarEditableWhen,
+  setRowActionVisibleWhen,
   setCalendarSort,
   setCalendarTitle,
   setCalendarTitleField,
@@ -44,6 +47,8 @@ export interface CalendarViewEditorProps {
    * no row action, and a calendar's existing one is kept.
    */
   readonly context?: RowActionContext;
+  /** The set's viewer document: with it, moving can be limited to some viewers and the row action opened only for some (RFC 0006). */
+  readonly viewer?: ViewerDocument;
   /** Receives the edited calendar with its revision bumped. */
   readonly onSave: (view: CalendarView) => void;
   /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
@@ -91,7 +96,7 @@ const settingsOf = (view: CalendarView): Settings => ({
  * where it will land — or moved one step with the arrow keys; each move is
  * one undoable patch, and where it lands is announced.
  */
-export function CalendarViewEditor({ view, entity, registry, context, onSave, onChange, onCancel }: CalendarViewEditorProps): ReactNode {
+export function CalendarViewEditor({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: CalendarViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<CalendarView>>(() => startSession(view));
   useReportChange(session.current, onChange);
@@ -109,14 +114,15 @@ export function CalendarViewEditor({ view, entity, registry, context, onSave, on
     setStatus(message);
   };
 
-  const run = (result: Result, onOk?: () => void) => {
-    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]);
+  const run = (result: Result, onOk?: () => void): boolean => {
+    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]), false;
     const patch = Array.isArray(result) ? result : result.patch;
-    if (patch.length === 0) return onOk?.();
+    if (patch.length === 0) return onOk?.(), true;
     const next = edit(session, patch);
     setSession(next);
     setProblems(next.rejected);
     if (next.rejected.length === 0) onOk?.();
+    return next.rejected.length === 0;
   };
 
   /** Applies a patch through the session and reports it in the status line. */
@@ -317,6 +323,9 @@ export function CalendarViewEditor({ view, entity, registry, context, onSave, on
             })}
           <Button label="Apply settings" type="button" variant="secondary" disabled={false} onPress={applySettings} />
         </div>
+        {viewer && current.editable === true && (
+          <ViewerRule registry={registry} viewer={viewer} rule="Allow moving" target={current.title ?? current.id} condition={current.editableWhen} otherwise="Moving is offered to everyone" onSet={(c) => run(setCalendarEditableWhen(current, c), () => announce(c === undefined ? "Moving is offered to everyone." : "Moving is limited by a viewer condition."))} />
+        )}
         {current.filter ? (
           <p>
             Entries always match: {describeCondition(current.filter, label)}.
@@ -383,6 +392,7 @@ export function CalendarViewEditor({ view, entity, registry, context, onSave, on
                 propertyInput(registry, `${base}-ra-to`, choiceField("row_action_to", "With this field of the target", toFields.map((f) => f.label)), pickedTo?.label, (v) => setRowTo(toFields.find((f) => f.label === v)?.id))
               )}
               <Button label="Set row action" type="button" variant="secondary" disabled={!pickedTarget || !pickedFrom || !pickedTo} onPress={applyRowAction} />
+              {action && viewer && <ViewerRule registry={registry} viewer={viewer} rule="Open rows" target="row action" condition={action.visibleWhen} otherwise="Rows open for everyone" onSet={(c) => run(setRowActionVisibleWhen(current, c), () => announce("Row action: updated who it opens for."))} />}
               {action && <Button label="Remove row action" type="button" variant="secondary" disabled={false} onPress={() => run(setCalendarRowAction(current, entity, context, undefined), () => announce("Row action removed."))} />}
             </div>
           )}
