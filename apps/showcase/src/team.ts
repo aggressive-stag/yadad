@@ -1,7 +1,8 @@
 import { ForbiddenError } from "@yadad/core";
 import type { BoardView, DashboardView, DataAdapter, FormView, TableView, ViewDocument, ViewerDocument } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
-import { PEOPLE, PRIORITIES, STATUSES } from "./tasks";
+import { PEOPLE } from "./tasks";
+import type { PRIORITIES, STATUSES } from "./tasks";
 
 /**
  * A generic shared task list for the "View as" demo (RFC 0006): one viewer
