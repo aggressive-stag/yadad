@@ -246,6 +246,21 @@ describe("moving a card", () => {
     expect(titles("v:Work")).not.toContain("Pay rent");
   });
 
+  test("focus is not lost when the moved card is rebuilt in its new column, or put back by a refusal", async () => {
+    const { db } = await seed();
+    let refuse = false;
+    await open({ adapter: { ...db, update: (...args) => (refuse ? Promise.reject(new ForbiddenError("No.")) : db.update(...args)) } });
+    moveTo("Pay rent", "v:Work");
+    await waitFor(() => expect(status()).toBe("Moved Pay rent to Work"));
+    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Move to… Pay rent/);
+    expect(column("v:Work").contains(document.activeElement)).toBe(true);
+    refuse = true;
+    moveTo("Pay rent", "v:Home");
+    await screen.findByRole("alert");
+    await waitFor(() => expect(titles("v:Work")).toContain("Pay rent"));
+    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Move to… Pay rent/);
+  });
+
   test("a validation error (400) shows the adapter's issues and reverts", async () => {
     const { db } = await seed();
     const rejecting: DataAdapter = {

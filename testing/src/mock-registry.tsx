@@ -22,7 +22,7 @@ import type {
   TextField,
 } from "@yadad/core";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 /**
  * Unstyled stub components with data-testid hooks, one per field type.
@@ -448,12 +448,28 @@ function MockBoard({
   const [moving, setMoving] = useState<string | undefined>(undefined);
   const [target, setTarget] = useState("");
   const returnFocus = useRef<HTMLElement | null>(null);
+  // The card that was just moved: its node is rebuilt in the new column, so focus is put back on its "Move to…" action.
+  const movedCard = useRef<string | undefined>(undefined);
   const finish = (): void => {
     setMoving(undefined);
     queueMicrotask(() => returnFocus.current?.focus());
   };
+  useEffect(() => {
+    if (movedCard.current === undefined) return;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body) return;
+    document.querySelector<HTMLElement>(`[data-testid="card-${movedCard.current}"] button[aria-label^="Move to…"]`)?.focus();
+  });
   return (
-    <section role="group" aria-label={label} aria-busy={loading} data-testid="board" data-group-field={groupField}>
+    <section
+      role="group"
+      aria-label={label}
+      aria-busy={loading}
+      data-testid="board"
+      data-group-field={groupField}
+      onKeyDownCapture={() => (movedCard.current = undefined)}
+      onPointerDownCapture={() => (movedCard.current = undefined)}
+    >
       <h3 id={`${base}-title`}>{label}</h3>
       {groupChoices.length > 1 && (
         <div role="group" aria-label="Group by">
@@ -508,6 +524,7 @@ function MockBoard({
                       onSubmit={(e) => {
                         e.preventDefault();
                         if (target !== "") onMove(card.id, target);
+                        movedCard.current = card.id;
                         finish();
                       }}
                       onKeyDown={(e) => {
