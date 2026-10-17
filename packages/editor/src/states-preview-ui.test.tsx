@@ -121,6 +121,7 @@ describe("StatesPreview", () => {
     expect(fresh).toEqual(["viewer-not-provided"]);
     expect(marks).toContain("changed");
     expect(screen.getByRole("status").textContent).not.toMatch(/no longer apply/);
+    expect(document.querySelector("[data-yadad-states-viewer-axes]")?.textContent).toContain("Role (viewer, owner)");
   });
 
   test("shows the host's check problems per state, and drops an answer for an older document", async () => {

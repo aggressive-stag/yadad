@@ -202,7 +202,8 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
     </section>
   );
 
-  const { states, skipped, complete } = built.result;
+  const { states, skipped, complete, axes } = built.result;
+  const viewerAxes = axes.filter((a) => a.kind === "viewer");
   const changeOf = (id: string): StateChange => comparison?.changes.get(id) ?? "unchanged";
   const changedCount = states.filter((s) => changeOf(s.id) !== "unchanged").length;
   const shown = changedOnly ? states.filter((s) => changeOf(s.id) !== "unchanged") : states;
@@ -224,6 +225,11 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
         {current?.status === "done" && (failing === 0 ? " Checks found no problems." : ` Checks found problems in ${failing} ${failing === 1 ? "state" : "states"}.`)}
         {current?.status === "failed" && ` The checks could not run: ${current.message ?? ""}.`}
       </p>
+      {viewerAxes.length > 0 && (
+        <p data-yadad-states-viewer-axes="">
+          Viewer facts this view reads: {viewerAxes.map((a) => `${a.label} (${a.values.map((v) => v.label.replace(/^[^=]*= /, "")).join(", ")})`).join("; ")}.
+        </p>
+      )}
       {comparison && comparison.removed.length > 0 && (
         <details data-yadad-states-removed="">
           <summary>States only the saved revision has</summary>
