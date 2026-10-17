@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { flatIndex } from "./drag.js";
 import type { DropTarget, ReorderableRow } from "./drag.js";
+import { useReportChange } from "./report-change.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
@@ -46,6 +47,8 @@ export interface BoardViewEditorProps {
   readonly context?: RowActionContext;
   /** Receives the edited board with its revision bumped. */
   readonly onSave: (view: BoardView) => void;
+  /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
+  readonly onChange?: (view: BoardView) => void;
   readonly onCancel: () => void;
 }
 
@@ -164,9 +167,10 @@ function ReorderList({ registry, base, marker, caption, columnLabel, empty, noun
  * moved one step with the arrow keys or with the Move buttons; each change
  * is one validated, undoable patch, and where a field lands is announced.
  */
-export function BoardViewEditor({ view, entity, registry, context, onSave, onCancel }: BoardViewEditorProps): ReactNode {
+export function BoardViewEditor({ view, entity, registry, context, onSave, onChange, onCancel }: BoardViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<BoardView>>(() => startSession(view));
+  useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [settings, setSettings] = useState<Settings>(() => settingsOf(view));
   const [addingGroup, setAddingGroup] = useState<string | undefined>(undefined);

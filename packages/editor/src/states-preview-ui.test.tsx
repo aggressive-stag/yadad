@@ -1,0 +1,126 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { Document, EntityDocument, FormView } from "@yadad/core";
+import type { ViewState } from "@yadad/runtime";
+import { mockRegistry } from "@yadad/testing";
+import { useState } from "react";
+import { afterEach, describe, expect, test } from "vitest";
+import { FormViewEditor } from "./form-view-editor.js";
+import { compareStates, StatesPreview } from "./states-preview.js";
+import type { StateCheckFinding, StatesPreviewProps } from "./states-preview.js";
+
+afterEach(cleanup);
+
+const entity: EntityDocument = {
+  kind: "entity",
+  specVersion: 4,
+  id: "task",
+  revision: 1,
+  fields: [
+    { id: "title", type: "text", label: "Title", required: true },
+    { id: "status", type: "select", label: "Status", options: { source: "static", values: ["open", "done"] } },
+    { id: "note", type: "text", label: "Note" },
+  ],
+};
+
+const form: FormView = {
+  kind: "form",
+  specVersion: 4,
+  id: "task_form",
+  entity: "task",
+  revision: 1,
+  dataSource: "default",
+  sections: [{ id: "main", items: [{ field: "title" }, { field: "status" }, { field: "note" }] }],
+};
+
+const now = new Date("2026-10-17T10:00:00");
+const renderState: StatesPreviewProps["renderState"] = (state) => <div data-testid="render">{state.label}</div>;
+const ids = () => screen.getAllByRole("listitem").filter((li) => li.hasAttribute("data-yadad-state")).map((li) => li.getAttribute("data-yadad-state"));
+
+/** The editor and the preview side by side, the way a host wires them. */
+function Host({ checkStates }: { checkStates?: StatesPreviewProps["checkStates"] }) {
+  const [edited, setEdited] = useState<FormView>(form);
+  return (
+    <>
+      <FormViewEditor view={form} entity={entity} registry={mockRegistry} onSave={() => {}} onChange={setEdited} onCancel={() => {}} />
+      <StatesPreview view={edited} saved={form} documents={[entity]} now={now} renderState={renderState} {...(checkStates ? { checkStates } : {})} />
+    </>
+  );
+}
+
+describe("StatesPreview", () => {
+  test("shows the states of the view, none marked while nothing is edited", () => {
+    render(<StatesPreview view={form} saved={form} documents={[entity]} now={now} renderState={renderState} />);
+    expect(ids().length).toBeGreaterThan(0);
+    expect(document.querySelector("[data-change='new']")).toBeNull();
+    expect(screen.getByRole("status").textContent).toContain("None differ from the saved revision.");
+  });
+
+  test("adding a visibleWhen in the editor adds states and marks them new or changed", () => {
+    render(<Host />);
+    const before = ids();
+    fireEvent.click(screen.getByRole("button", { name: "Show only when: Note" }));
+    const op = document.querySelector<HTMLSelectElement>("[data-yadad-rule-builder] select[id$='-op-0']");
+    expect(op).toBeTruthy();
+    fireEvent.change(op as HTMLSelectElement, { target: { value: "is filled in" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply show only when" }));
+    const after = ids();
+    expect(after.length).toBeGreaterThan(before.length);
+    expect(document.querySelectorAll("[data-change='new'], [data-change='changed']").length).toBeGreaterThan(0);
+    expect(screen.getByRole("status").textContent).toMatch(/new or changed since the saved revision/);
+    // Undo returns to the saved revision: nothing is marked.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(ids()).toEqual(before);
+    expect(document.querySelector("[data-change='new'], [data-change='changed']")).toBeNull();
+  });
+
+  test("a state whose visible fields changed is marked changed; the rest are not", () => {
+    const withNote = (value: string): FormView => ({ ...form, sections: [{ id: "main", items: [{ field: "title" }, { field: "status" }, { field: "note", visibleWhen: { op: "eq", field: "status", value } }] }] });
+    render(<StatesPreview view={withNote("open")} saved={withNote("done")} documents={[entity]} now={now} renderState={renderState} />);
+    const marks = [...document.querySelectorAll("[data-yadad-state]")].map((li) => li.getAttribute("data-change"));
+    expect(marks).toContain("changed");
+    expect(marks).toContain("unchanged");
+    expect(marks).not.toContain("new");
+  });
+
+  test("compareStates reports a removed state", () => {
+    const state = (id: string): ViewState => ({ id, label: id, values: { a: id }, render: { kind: "form", view: "v", values: {}, now }, viewer: { facts: [] } });
+    const result = compareStates(form, [state("a"), state("b")], form, [state("a")]);
+    expect(result.removed).toEqual([{ id: "b", label: "b" }]);
+    expect(result.changes.get("a")).toBe("unchanged");
+  });
+
+  test("shows the host's check problems per state, and drops an answer for an older document", async () => {
+    const seen: number[] = [];
+    const checkStates: StatesPreviewProps["checkStates"] = async ({ states }) => {
+      seen.push(states.length);
+      const first = states[0];
+      return first ? ([{ id: first.id, problems: [{ check: "field-missing", message: "Note is missing" }] }] satisfies StateCheckFinding[]) : [];
+    };
+    render(<Host checkStates={checkStates} />);
+    await waitFor(() => expect(screen.getByText(/Note is missing/)).toBeTruthy());
+    expect(screen.getByRole("status").textContent).toContain("Checks found problems in 1 state");
+    expect(document.querySelectorAll("[data-yadad-state-marker]").length).toBe(1);
+  });
+
+  test("is keyboard usable: a tile button opens the state at full size and closes it again", () => {
+    render(<StatesPreview view={form} saved={form} documents={[entity]} now={now} renderState={renderState} />);
+    const tile = document.querySelector<HTMLElement>("[data-yadad-state]") as HTMLElement;
+    const open = within(tile).getByRole("button");
+    expect(open.getAttribute("aria-expanded")).toBe("false");
+    open.focus();
+    expect(document.activeElement).toBe(open);
+    fireEvent.click(open);
+    expect(open.getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector("[data-yadad-state-open]")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Close / }));
+    expect(document.querySelector("[data-yadad-state-open]")).toBeNull();
+  });
+
+  test("reports states it could not build instead of throwing", () => {
+    const broken = { ...form, entity: "missing" } as Document as FormView;
+    render(<StatesPreview view={broken} saved={broken} documents={[entity]} now={now} renderState={renderState} />);
+    expect(screen.getByText("1 states could not be built")).toBeTruthy();
+    expect(ids()).toEqual([]);
+  });
+});

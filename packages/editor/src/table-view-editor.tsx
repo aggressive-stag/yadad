@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import type { DropTarget, ReorderableRow } from "./drag.js";
 import { flatIndex } from "./drag.js";
+import { useReportChange } from "./report-change.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
@@ -26,6 +27,8 @@ export interface TableViewEditorProps {
   readonly context?: RowActionContext;
   /** Receives the edited table with its revision bumped. */
   readonly onSave: (view: TableView) => void;
+  /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
+  readonly onChange?: (view: TableView) => void;
   readonly onCancel: () => void;
 }
 
@@ -57,9 +60,10 @@ const settingsOf = (view: TableView): Settings => ({
  * one undoable patch, and where it lands is announced. A fixed filter, if
  * the table has one, is kept and shown.
  */
-export function TableViewEditor({ view, entity, registry, context, onSave, onCancel }: TableViewEditorProps): ReactNode {
+export function TableViewEditor({ view, entity, registry, context, onSave, onChange, onCancel }: TableViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<TableView>>(() => startSession(view));
+  useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [settings, setSettings] = useState<Settings>(() => settingsOf(view));
   const [adding, setAdding] = useState<string | undefined>(undefined);

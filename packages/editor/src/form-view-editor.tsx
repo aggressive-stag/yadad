@@ -4,6 +4,7 @@ import { Fragment, useId, useState } from "react";
 import type { ReactNode } from "react";
 import type { DropTarget, RangeSpan, ReorderableRow } from "./drag.js";
 import { flatIndex, insertIndex } from "./drag.js";
+import { useReportChange } from "./report-change.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
@@ -32,6 +33,8 @@ export interface FormViewEditorProps {
   readonly registry: Registry<ReactNode>;
   /** Receives the edited form with its revision bumped. */
   readonly onSave: (view: FormView) => void;
+  /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
+  readonly onChange?: (view: FormView) => void;
   readonly onCancel: () => void;
 }
 
@@ -44,9 +47,10 @@ type Result = PatchOperation[] | { ok: true; patch: PatchOperation[] } | { ok: f
  * step with the arrow keys; each move is one undoable patch, and where it
  * lands is announced. Conditions on a field are kept and shown.
  */
-export function FormViewEditor({ view, entity, registry, onSave, onCancel }: FormViewEditorProps): ReactNode {
+export function FormViewEditor({ view, entity, registry, onSave, onChange, onCancel }: FormViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<FormView>>(() => startSession(view));
+  useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [newSection, setNewSection] = useState("");
   const [titles, setTitles] = useState<Readonly<Record<string, string>>>({});
