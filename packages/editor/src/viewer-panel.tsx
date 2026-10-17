@@ -34,8 +34,8 @@ function conflictErrors(conflicts: readonly DocumentError[]): DocumentError[] {
   return conflicts.map((c) => ({
     path: `${c.document ?? ""}${c.path}`,
     code: "invalid-value",
-    message: `${c.document ?? "A document"}${c.path} still reads it: ${c.message}`,
-    hint: "Change or remove that condition first, then make this edit.",
+    message: `${c.document ?? "A document"}${c.path}: ${c.message}`,
+    hint: "Something still reads this. Change or remove that condition first, then make this edit.",
   }));
 }
 
