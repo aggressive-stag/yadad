@@ -74,11 +74,11 @@ module.exports = {
     },
     {
       name: "no-deep-imports",
-      comment: "Import other workspace packages through their public entry point only.",
+      comment: "Import other workspace packages through their public entry points only (the package index, and testing's contract-kit and state-checks).",
       severity: "error",
       from: { path: "^(packages/[^/]+|testing|apps/[^/]+)/" },
       to: {
-        path: "^(packages/[^/]+|testing)/(?!src/index\\.ts$)|^@yadad/[^/]+/",
+        path: "^(packages/[^/]+|testing)/(?!src/(index\\.ts|contract-kit\\.tsx|state-checks\\.tsx)$)|^@yadad/[^/]+/",
         pathNot: "^$1/",
       },
     },

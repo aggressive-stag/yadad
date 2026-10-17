@@ -14,6 +14,11 @@
       "@yadad/source": "./src/contract-kit.tsx",
       "types": "./dist/contract-kit.d.ts",
       "default": "./dist/contract-kit.js"
+    },
+    "./state-checks": {
+      "@yadad/source": "./src/state-checks.tsx",
+      "types": "./dist/state-checks.d.ts",
+      "default": "./dist/state-checks.js"
     }
   },
   "files": [
