@@ -15,3 +15,5 @@ export * from "./calendar-view-editor.js";
 export { idFromTitle } from "./ui.js";
 export * from "./states-preview.js";
 export { useReportChange } from "./report-change.js";
+export * from "./viewer.js";
+export * from "./viewer-panel.js";

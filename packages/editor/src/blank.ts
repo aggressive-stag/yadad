@@ -1,7 +1,8 @@
 import { SPEC_VERSION } from "@yadad/core";
-import type { BoardView, CalendarView, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { BoardView, CalendarView, DashboardView, EntityDocument, FormView, TableView, ViewerDocument } from "@yadad/core";
 
 import { groupableFieldsOf } from "./views.js";
+import { newViewerFact } from "./viewer.js";
 
 // Starting points for building an app from nothing. Each is a valid document
 // at revision 1 that the editors can take from there.
@@ -47,4 +48,9 @@ export function blankBoard(entity: EntityDocument, id: string, dataSource: strin
 /** A dashboard with one empty tab; add widgets with the layout editor. */
 export function blankDashboard(id: string, title?: string): DashboardView {
   return { kind: "dashboard", specVersion: SPEC_VERSION, id, ...(title ? { title } : {}), revision: 1, tabs: [{ id: "main", title: "Main", items: [] }] };
+}
+
+/** A viewer document with one role fact whose default is the least-privileged value; add facts and values with the viewer panel. */
+export function blankViewer(id = "viewer"): ViewerDocument {
+  return { kind: "viewer", specVersion: SPEC_VERSION, id, revision: 1, facts: [newViewerFact("role", "Role", "select")] };
 }
