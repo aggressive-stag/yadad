@@ -471,13 +471,13 @@ function MockBoard({
       <div role="status" aria-live="polite" data-testid="board-status">
         {announcement?.text}
       </div>
-      <ul aria-label="Columns" data-testid="board-columns">
+      <div data-testid="board-columns">
         {columns.map((column) => (
-          <li key={column.id} role="group" aria-label={`${column.label}, ${column.count} cards`} data-testid={`column-${column.id}`} data-droppable={column.droppable} data-count={column.count}>
+          <div key={column.id} role="group" aria-label={`${column.label}, ${column.count} cards`} data-testid={`column-${column.id}`} data-droppable={column.droppable} data-count={column.count}>
             <h4>
               {column.label} ({column.count})
             </h4>
-            <ul data-testid={`column-cards-${column.id}`}>
+            <ul data-testid={`cards-${column.id}`}>
               {column.cards.map((card) => (
                 <li key={card.id} data-testid={`card-${card.id}`} data-pending={card.pending}>
                   {onOpenCard ? (
@@ -538,9 +538,9 @@ function MockBoard({
                 </li>
               ))}
             </ul>
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     </section>
   );
 }
