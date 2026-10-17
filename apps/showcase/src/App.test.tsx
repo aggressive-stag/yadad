@@ -44,3 +44,10 @@ test("saved edits are restored, and edits that no longer validate are reported",
   expect(html).toContain("no longer validate and were ignored: broken");
   expect(html).toContain(">Reset saved data</button>");
 });
+
+test("the tasks board page renders its demo, and its dashboard embed", () => {
+  const html = renderToStaticMarkup(<App registry={mockRegistry} roots={["tasks_board", "tasks_home"]} />);
+  const board = html.match(/<section aria-label="tasks_board">[\s\S]*?<\/section>/)?.[0] ?? "";
+  expect(board).toContain("Tasks");
+  expect(html).toContain('<section aria-label="tasks_home">');
+});

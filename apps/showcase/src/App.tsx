@@ -1,13 +1,14 @@
 import { validateDocument } from "@yadad/core";
-import type { CalendarView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
+import type { BoardView, CalendarView, DashboardView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
 import { blankDashboard, blankEntity, blankForm, blankTable, CalendarViewEditor, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor } from "@yadad/editor";
-import { CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
+import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
 import { createDraftStore, createKeyValueAdapter, createMemoryAdapter } from "@yadad/runtime";
 import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { bookingEntity, bookingsAdapter } from "./bookings";
+import { personEntity, taskEntity, tasksAdapter } from "./tasks";
 import dashboardTraining from "../../../fixtures/valid/dashboard-training.json?raw";
 import entityHello from "../../../fixtures/valid/entity-hello.json?raw";
 import entityWorkoutSet from "../../../fixtures/valid/entity-workout-set.json?raw";
@@ -21,7 +22,7 @@ import { loadDocumentSet } from "./documents";
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
 
 /** Views rendered at the top level of the page, by id. */
-export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar"];
+export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_home"];
 
 /** The bookings table the calendar's row action opens for a booking. */
 const bookingsTable: TableView = {
@@ -61,10 +62,43 @@ const bookingsView: CalendarView = {
   rowAction: { open: "booking_history", bind: [{ field: "client", to: "client" }] },
 };
 
-/** Folds the bookings demo documents into a loaded set, as a host would seed its own data source. */
+/**
+ * The board page's documents: tasks grouped by status, owner or priority
+ * (the viewer picks), editable so a move changes the field, and the same
+ * board embedded in a small dashboard.
+ */
+const tasksView: BoardView = {
+  kind: "board",
+  specVersion: 4,
+  id: "tasks_board",
+  title: "Tasks",
+  entity: "task",
+  revision: 1,
+  dataSource: "tasks",
+  groupBy: [{ field: "status" }, { field: "owner" }, { field: "priority" }],
+  titleField: "title",
+  cardFields: ["owner", "priority"],
+  sort: [{ field: "title", dir: "asc" }],
+  editable: true,
+};
+
+const tasksHome: DashboardView = {
+  kind: "dashboard",
+  specVersion: 4,
+  id: "tasks_home",
+  title: "Team home",
+  revision: 1,
+  tabs: [{ id: "work", title: "Work", items: [{ id: "board", x: 0, y: 0, w: 12, h: 10, widget: "view", view: "tasks_board" }] }],
+};
+
+/** Folds the bookings and tasks demo documents into a loaded set, as a host would seed its own data sources. */
 function withBookings(base: DocumentSet): DocumentSet {
   const entities = new Map(base.entities);
   const views = new Map(base.views);
+  entities.set(personEntity.id, personEntity);
+  entities.set(taskEntity.id, taskEntity);
+  views.set(tasksView.id, tasksView);
+  views.set(tasksHome.id, tasksHome);
   entities.set(bookingEntity.id, bookingEntity);
   views.set(bookingsView.id, bookingsView);
   views.set(bookingsTable.id, bookingsTable);
@@ -121,6 +155,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => {
     const map = new Map<string, DataAdapter>([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]);
     map.set("bookings", bookingsAdapter());
+    map.set("tasks", tasksAdapter());
     return map;
   });
   // Documents saved from the editors replace the loaded ones, and persist when storage is given.
@@ -284,7 +319,7 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
   const entity = documents.entities.get(view.entity);
   if (!entity) return null;
   if (view.kind === "calendar") return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} />;
-  if (view.kind === "board") return null; // no BoardRenderer yet
+  if (view.kind === "board") return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} />;
   return view.kind === "form" ? (
     <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} {...drafts} />
   ) : (
