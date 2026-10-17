@@ -1,6 +1,6 @@
 import { AdapterError, RecordValidationError, conditionFields } from "@yadad/core";
-import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, ReferenceOption, Registry, TableView } from "@yadad/core";
-import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, groupByColumn, loadBoardCards, loadBoardTargets, moveCard } from "@yadad/runtime";
+import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
+import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, canUpdate, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
 import type { BoardColumnDef, BoardLoad } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -10,6 +10,7 @@ import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
 import { TableRenderer } from "./table-renderer.js";
+import { useViewerSetup } from "./viewer.js";
 
 const NUMBER = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const OTHER_COLUMN_DEF: BoardColumnDef = { id: "other", kind: "other", label: BOARD_OTHER_LABEL, value: null };
@@ -37,6 +38,13 @@ export interface BoardRendererProps {
   readonly groupBy?: string;
   /** Called on every viewer choice, controlled or not. */
   readonly onGroupByChange?: (field: string) => void;
+  /**
+   * Who is viewing (RFC 0006), from `resolveViewer`. Moving and opening are
+   * offered only where this viewer may use them. Without it, a renderer with
+   * `documents` uses the viewer document's defaults; a view that reads a viewer
+   * fact and cannot find the document shows an error.
+   */
+  readonly viewer?: ResolvedViewer;
 }
 
 type CardState =
@@ -69,11 +77,12 @@ interface Opened {
  * container, with the target table filtered by that card and a Back button.
  * The board stays mounted (hidden), so Back returns to the same grouping.
  */
-export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, onGroupByChange }: BoardRendererProps): ReactNode {
+export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, onGroupByChange, viewer: viewerProp }: BoardRendererProps): ReactNode {
+  const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const afterRender = useRef<(() => void) | undefined>(undefined);
-  const { Button } = registry.layout;
+  const { Button, ErrorSummary } = registry.layout;
   const refEntities = entities ?? documents?.entities;
 
   useEffect(() => {
@@ -116,6 +125,8 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
     setOpened(undefined);
   };
 
+  if (viewerError) return <ErrorSummary errors={[viewerError]} />;
+
   return (
     <div ref={containerRef} data-yadad-drill={view.id}>
       <div data-yadad-drill-level={0} {...(opened ? { hidden: true } : {})}>
@@ -128,9 +139,10 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
           reloadKey={reloadKey}
           {...(now ? { now } : {})}
           extraErrors={actionErrors}
+          viewer={viewer}
           {...(groupBy !== undefined ? { groupBy } : {})}
           {...(onGroupByChange ? { onGroupByChange } : {})}
-          {...(action && actionErrors.length === 0 ? { onOpen: open } : {})}
+          {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
         />
       </div>
       {opened && targetEntity && documents && (
@@ -141,7 +153,7 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
               {opened.heading}
             </h2>
           </div>
-          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} />
+          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />
         </div>
       )}
     </div>
@@ -157,6 +169,7 @@ interface BoardBodyProps {
   readonly reloadKey?: unknown;
   readonly now?: Date;
   readonly extraErrors: readonly DocumentError[];
+  readonly viewer: ResolvedViewer;
   readonly groupBy?: string;
   readonly onGroupByChange?: (field: string) => void;
   readonly onOpen?: (record: DataRecord) => void;
@@ -173,7 +186,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The card is back in its column. Reload if the problem stays." }];
 }
 
-function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, groupBy, onGroupByChange, onOpen }: BoardBodyProps): ReactNode {
+function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, onGroupByChange, onOpen }: BoardBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
 
   // The grouping choice: uncontrolled state by default, host-controlled when `groupBy` is set.
@@ -195,6 +208,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
 
   const adapter = dataSources.get(view.dataSource);
+  const editable = viewEditable(view, viewer);
 
   // One card load per (view, data source, reloadKey, reload). The query carries
   // no grouping, so switching the grouping never refetches. A reload starts
@@ -345,7 +359,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
           </>
         ),
         label: [title, ...details.map((f) => `${f.label}: ${plain(f, record)}`)].join(", "),
-        movable: view.editable === true && !isPending,
+        movable: editable && canUpdate(record) && !isPending,
         pending: isPending,
       };
     });
@@ -374,7 +388,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
 
   const move = (recordId: string, columnId: string): void => {
     const record = loadedRecords?.find((r) => r.id === recordId);
-    if (!record || !adapter || inFlight.current.has(recordId)) return;
+    if (!record || !adapter || !editable || !canUpdate(record) || inFlight.current.has(recordId)) return;
     const title = recordTitle(record);
     const def = columnId === OTHER_COLUMN_DEF.id ? OTHER_COLUMN_DEF : columnDefs.find((c) => c.id === columnId);
     if (!def) return; // a stale column id (the grouping changed mid-gesture): ignore
@@ -460,7 +474,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         {...(announcement ? { announcement } : {})}
         onGroupBy={changeGroup}
         {...(onOpen ? { onOpenCard: (id: string) => { const record = loadedRecords?.find((r) => r.id === id); if (record) onOpen(record); } } : {})}
-        {...(view.editable === true ? { onMove: move } : {})}
+        {...(editable ? { onMove: move } : {})}
       />
     </div>
   );
