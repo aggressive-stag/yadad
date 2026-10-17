@@ -88,7 +88,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
   const tab = tabs.find((t) => t.id === selected) ?? tabs[0];
-  if (!tab) return null;
+  if (!tab) return <p data-yadad-dashboard-nothing="">There is nothing to show you here.</p>;
   const stacked = width !== undefined && width < stackBelow;
   const columns = stacked ? 1 : (tab.columns ?? DEFAULT_COLUMNS);
 
