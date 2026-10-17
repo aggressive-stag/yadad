@@ -1,8 +1,8 @@
-# HTTP records protocol (v0, pre-contract)
+# HTTP records protocol
 
-How a host's backend serves records to yadad's HTTP `DataAdapter`. The adapter (`createHttpAdapter` in `@yadad/runtime`) speaks this protocol and nothing else; a backend that implements it gets tables, forms and dashboards without writing UI code.
+How a host's backend serves records to yadad's HTTP `DataAdapter`. The adapter (`createHttpAdapter` in `@yadad/runtime`) speaks this protocol and nothing else; a backend that implements it gets tables, forms, calendars, boards and dashboards without writing UI code.
 
-It is pre-contract like the documents: it can still change before `contract-v0`, and a change here is a change for both sides.
+It is in flux like the documents (no freeze is planned): a change here is a change for both sides, and ships with a release of `@yadad/runtime`.
 
 ## Basics
 
@@ -25,7 +25,7 @@ It is pre-contract like the documents: it can still change before `contract-v0`,
 }
 ```
 
-- `can` is optional and states what the viewer making the request may do with this record: `{ "update"?: boolean, "delete"?: boolean }`. A missing `can`, or a missing key in it, means "not stated": the client offers the action and the server decides, so servers that do not implement it change nothing. It only restricts: `"update": true` enables nothing the document does not already offer. It is a read-time snapshot for this viewer, may change without `version` changing, and is never cached across reloads or sent back: a request body never carries `can`, and a server ignores it if sent. It appears on every Record the server returns (list items, `GET`, `POST`/`PATCH`/batch responses, the `current` record of a `409`). The server still enforces: a refused write is a `403`. A client treats a malformed `can` (not an object, a non-boolean, an unknown key) as absent.
+- `can` is optional and states what the viewer making the request may do with this record: `{ "update"?: boolean, "delete"?: boolean }`. A missing `can`, or a missing key in it, means "not stated": the client offers the action and the server decides, so servers that do not implement it change nothing. It only restricts: `"update": true` enables nothing the document does not already offer. It is a read-time snapshot for this viewer, may change without `version` changing, and is never cached across reloads or sent back: a request body never carries `can`, and a server ignores it if sent. It appears on every Record the server returns (list items, `GET`, `POST`/`PATCH`/batch responses, the `current` record of a `409`). The server still enforces: a refused write is a `403`; the client puts the edit or the moved card back, shows the response's message and reloads, which refreshes `can`. A client treats a malformed `can` (not an object, a non-boolean, an unknown key) as absent.
 - `entityRevision` is a schema stamp, not concurrency control: old records are upcast on read. A write carries the revision the client built its `values` against, and the server stamps it on the saved record. A server never rejects a write because the request's `entityRevision` is older or newer than its own current one: it judges the `values` by its own rules, so a field it does not know is a `400` (unknown field) and everything else is accepted. The stamp is the only thing the revision changes.
 - `version` is concurrency control. The client sends it back as `baseVersion` on writes; the server rejects the write if the record changed since. It must change on every write that changes the record, so two writes close together never share one. Its format is the server's business (a counter, a hash, or a timestamp fine-grained enough for that). Several records may share a version if the server stores them together; a write to any of them changes all of their versions.
 
@@ -151,6 +151,8 @@ PATCH /api/records/set/s14
 
 403 { "errors": [ { "path": "", "code": "forbidden", "message": "You are not allowed to update this record.", "hint": "Ask the owner." } ] }
 ```
+
+A filter never carries a viewer: the client refuses a `viewerIn` condition in a filter before it sends a request, so the server never has to parse one. Who is asking comes from the server's own session, and `can` is how it tells the client.
 
 **Count only** (`limit=0`): `GET /api/records/set?limit=0` returns `200 { "items": [], "total": 41 }`.
 
