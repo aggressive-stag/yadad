@@ -361,12 +361,15 @@ function TableBody({ entity, view, registry, dataSources, entities, reloadKey, b
           )}
         </Section>
       )}
+      {rows.status === "failed" && (
+        <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${rows.message}`, hint: "Reload the page to try again." }]} />
+      )}
       <Table
         caption={view.title ?? entity.id}
         columns={headers}
         rows={tableRows}
         onSort={onSort}
-        empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? `Could not load records: ${rows.message}` : filter ? "No records match the filters." : "No records yet."}
+        empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? "No records to show." : filter ? "No records match the filters." : "No records yet."}
       />
       {editErrors.length > 0 && <ErrorSummary id={editErrorsId} errors={editErrors} />}
       {pages > 1 && (

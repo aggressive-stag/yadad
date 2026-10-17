@@ -152,9 +152,10 @@ describe("table in each source state", () => {
     expect(screen.getByText("Loading…")).toBeTruthy();
   });
 
-  test("a failed read shows the message", async () => {
+  test("a failed read shows ErrorSummary with the message", async () => {
     open(adapterWith({ source: "error", message: "Server is down" }));
-    expect(await screen.findByText("Could not load records: Server is down")).toBeTruthy();
+    expect((await alert()).textContent).toContain("Could not load records: Server is down");
+    expect(screen.getByTestId("error-summary")).toBeTruthy();
   });
 
   test.each([
