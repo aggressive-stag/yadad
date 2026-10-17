@@ -1,6 +1,6 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
-import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { bindFilter, emptyFormState, resolveRelativeDates, setFieldValue, submitEdit } from "@yadad/runtime";
+import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
+import { bindFilter, canUpdate, columnEditable, emptyFormState, resolveRelativeDates, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
 import type { FormState } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -8,6 +8,7 @@ import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
 import { renderDisplay, renderInput } from "./fields.js";
 import { useReferences } from "./references.js";
+import { useViewerSetup } from "./viewer.js";
 
 export interface TableRendererProps {
   readonly entity: EntityDocument;
@@ -27,6 +28,13 @@ export interface TableRendererProps {
    * target table and its entity are looked up here.
    */
   readonly documents?: DocumentSet;
+  /**
+   * Who is viewing (RFC 0006), from `resolveViewer`. Columns, in-place editing
+   * and the row action the viewer may not use are not offered. Without it, a
+   * renderer with `documents` uses the viewer document's defaults; a table that
+   * reads a viewer fact and cannot find the document shows an error.
+   */
+  readonly viewer?: ResolvedViewer;
 }
 
 /** What the table shows for a row's action: its accessible name and what happens on activation. */
@@ -35,7 +43,8 @@ interface RowActionHandle {
   readonly open: (record: DataRecord) => void;
 }
 
-interface TableBodyProps extends Omit<TableRendererProps, "documents"> {
+interface TableBodyProps extends Omit<TableRendererProps, "documents" | "viewer"> {
+  readonly viewer: ResolvedViewer;
   /** Replaces the view's own fixed filter: the target's filter with the row bindings applied. */
   readonly baseFilter?: Condition | undefined;
   /** Fields whose quick filters are hidden because a row action fixed them. */
@@ -79,11 +88,12 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * and a Back button. Earlier tables stay mounted (hidden), so Back restores
  * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp }: TableRendererProps): ReactNode {
+  const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [stack, setStack] = useState<readonly Level[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const afterRender = useRef<(() => void) | undefined>(undefined);
-  const { Button } = registry.layout;
+  const { Button, ErrorSummary } = registry.layout;
   const refEntities = entities ?? documents?.entities;
 
   useEffect(() => {
@@ -107,6 +117,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     const targetEntity = documents.entities.get(target.entity);
     if (!targetEntity) return fail(`View "${target.id}" is for entity "${target.entity}", which is not loaded.`, "Load that entity document.");
     if (index >= MAX_ROW_ACTION_DEPTH) return {}; // the validator caps chains; never nest deeper at run time
+    if (!rowActionVisible(action, viewer)) return {}; // hidden for this viewer: rows are plain rows
     const text = (record: DataRecord, field: string): string => {
       const value = record.values[field];
       return value === undefined || value === null || value === "" ? "" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
@@ -152,6 +163,8 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     setStack((s) => s.slice(0, -1));
   };
 
+  if (viewerError) return <ErrorSummary errors={[viewerError]} />;
+
   return (
     <div ref={containerRef} data-yadad-drill={view.id}>
       {levels.map((level, i) => (
@@ -169,6 +182,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
             view={level.view}
             registry={registry}
             dataSources={dataSources}
+            viewer={viewer}
             {...(refEntities ? { entities: refEntities } : {})}
             reloadKey={reloadKey}
             baseFilter={level.baseFilter}
@@ -181,7 +195,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   );
 }
 
-function TableBody({ entity, view, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [] }: TableBodyProps): ReactNode {
+function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [] }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -190,6 +204,7 @@ function TableBody({ entity, view, registry, dataSources, entities, reloadKey, b
   const [saving, setSaving] = useState(false);
   const [reloads, setReloads] = useState(0);
   const [quick, setQuick] = useState<RecordValues>({});
+  const shownColumns = useMemo(() => visibleColumns(view, viewer), [view, viewer]);
 
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
@@ -210,22 +225,22 @@ function TableBody({ entity, view, registry, dataSources, entities, reloadKey, b
   }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloads]);
 
   // Labels for the references on the loaded page; picker options only while a row is being edited.
-  const referenceColumns = view.columns.flatMap((c) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === c.field));
+  const referenceColumns = shownColumns.flatMap((c) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === c.field));
   const wants = rows.status !== "loaded" ? [] : rows.items.flatMap((record) => referenceColumns.flatMap((field) => {
     const value = (editing?.record.id === record.id && field.id in editing.state.values ? editing.state.values[field.id] : undefined) ?? record.values[field.id];
     return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
   }));
-  const editableReferences = editing ? referenceColumns.filter((f) => view.columns.some((c) => c.field === f.id && c.editable === true)) : [];
+  const editableReferences = editing ? referenceColumns.filter((f) => shownColumns.some((c) => c.field === f.id && columnEditable(c, viewer))) : [];
   const references = useReferences(adapter, entities, editableReferences, wants, reloadKey);
 
   // Entering edit mode moves focus to the row's first editable input.
   const editingId = editing?.record.id;
   useEffect(() => {
     if (editingId === undefined) return;
-    const first = view.columns.find((c) => c.editable === true);
+    const first = shownColumns.find((c) => columnEditable(c, viewer));
     if (!first) return;
     document.getElementById(`${tableId}-${editingId}-${first.field}`)?.focus();
-  }, [editingId, tableId, view.columns]);
+  }, [editingId, tableId, shownColumns, viewer]);
 
   const refs = [
     ...view.columns.map((c, i) => ({ field: c.field, path: ["columns", i, "field"] })),
@@ -237,10 +252,11 @@ function TableBody({ entity, view, registry, dataSources, entities, reloadKey, b
   const { Table, Button, ErrorSummary, Section, FieldFrame } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const columns = view.columns.flatMap((c) => {
+  const columns = shownColumns.flatMap((c) => {
     const field = entity.fields.find((f) => f.id === c.field);
-    return field ? [{ field, editable: c.editable === true }] : [];
+    return field ? [{ field, editable: columnEditable(c, viewer) }] : [];
   });
+  if (shownColumns.length === 0) return <p data-yadad-table-view={view.id} data-yadad-table-nothing="">There is nothing to show you here.</p>;
   const hasActions = columns.some((c) => c.editable) || rowAction !== undefined;
   const headerId = (columnId: string) => `${tableId}-col-${columnId}`;
   const editErrorsId = `${tableId}-edit-errors`;
@@ -274,11 +290,15 @@ function TableBody({ entity, view, registry, dataSources, entities, reloadKey, b
       setReloads((n) => n + 1);
     } else {
       setEditing({ ...editing, state: { ...editing.state, errors: result.errors } });
+      // A refusal may mean the record's permissions changed: reload to refresh `can` (RFC 0006).
+      if (result.errors.some((e) => e.code === "forbidden")) setReloads((n) => n + 1);
     }
   }
 
+  const isEditing = (record: DataRecord): boolean => editing?.record.id === record.id && canUpdate(record);
+
   const renderCell = (record: DataRecord, field: Field, editable: boolean): ReactNode => {
-    if (!editable || editing?.record.id !== record.id) return renderDisplay(registry, field, record.values[field.id], references);
+    if (!editable || !editing || !isEditing(record)) return renderDisplay(registry, field, record.values[field.id], references);
     const state = editing.state;
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
     const value = field.id in state.values ? state.values[field.id] : record.values[field.id];
@@ -300,14 +320,14 @@ function TableBody({ entity, view, registry, dataSources, entities, reloadKey, b
   };
 
   const renderActions = (record: DataRecord): ReactNode =>
-    editing?.record.id === record.id ? (
+    isEditing(record) ? (
       <>
         <Button label="Save" type="button" variant="primary" disabled={saving} onPress={() => void saveEdit()} />
         <Button label="Cancel" type="button" variant="secondary" disabled={saving} onPress={() => setEditing(undefined)} />
       </>
     ) : (
       <>
-        {columns.some((c) => c.editable) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => setEditing({ record, state: emptyFormState })} />}
+        {columns.some((c) => c.editable) && canUpdate(record) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => setEditing({ record, state: emptyFormState })} />}
         {rowAction && (
           <span data-yadad-row-open={record.id}>
             <Button label={rowAction.label(record)} type="button" variant="secondary" disabled={saving} onPress={() => rowAction.open(record)} />
@@ -327,6 +347,8 @@ function TableBody({ entity, view, registry, dataSources, entities, reloadKey, b
 
   const quickFields = (view.quickFilters ?? []).flatMap((f) => {
     if (lockedFields.includes(f.field)) return [];
+    // No filter control for a column this viewer cannot see (the filter itself still works).
+    if (view.columns.some((c) => c.field === f.field) && !shownColumns.some((c) => c.field === f.field)) return [];
     const field = entity.fields.find((x) => x.id === f.field);
     return field && field.type !== "reference" ? [field] : []; // a reference cannot be a quick filter (the validator rejects it)
   });
