@@ -7,6 +7,7 @@ import { mockRegistry } from "@yadad/testing";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CalendarRenderer } from "./calendar-renderer.js";
+import type { CalendarRendererProps } from "./calendar-renderer.js";
 import { DashboardRenderer } from "./dashboard-renderer.js";
 import type { DocumentSet } from "./document-set.js";
 
@@ -398,5 +399,31 @@ describe("in a dashboard", () => {
     const bad: DashboardView = { ...dashboard, tabs: [{ id: "plan", title: "Plan", items: [{ id: "n", x: 0, y: 0, w: 4, h: 1, widget: "count", label: "Tasks", view: "tasks_calendar" }] }] };
     render(<DashboardRenderer dashboard={bad} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
     expect((await screen.findByRole("alert")).textContent).toContain("needs a table view");
+  });
+});
+
+describe("calendar starting mode and anchor", () => {
+  const show = (extra: Partial<CalendarRendererProps>, view: CalendarView = calendar) =>
+    render(<CalendarRenderer entity={entity} view={view} registry={mockRegistry} dataSources={new Map([["default", createMemoryAdapter()]])} now={NOW} {...extra} />);
+
+  test("opens on the given mode and the week of the given anchor, and the viewer can still navigate", async () => {
+    show({ initialMode: "week", initialAnchor: "2026-12-03" });
+    await waitFor(() => expect(screen.getAllByRole("gridcell")).toHaveLength(7));
+    expect(cell("2026-12-03")).toBeTruthy();
+    expect(cell("2026-10-15")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => expect(cell("2026-12-10")).toBeTruthy());
+  });
+
+  test("opens on the month of the given anchor", async () => {
+    show({ initialAnchor: "2027-02-10" });
+    await waitFor(() => expect(screen.getByRole("heading", { name: "February 2027" })).toBeTruthy());
+    expect(screen.getAllByRole("gridcell")).toHaveLength(42);
+  });
+
+  test("a mode the view does not offer, or an invalid anchor, falls back to the defaults", async () => {
+    show({ initialMode: "week", initialAnchor: "not-a-date" }, { ...calendar, modes: ["month"] });
+    await waitFor(() => expect(screen.getByRole("heading", { name: "October 2026" })).toBeTruthy());
+    expect(screen.getAllByRole("gridcell")).toHaveLength(42);
   });
 });

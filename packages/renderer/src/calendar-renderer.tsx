@@ -33,6 +33,14 @@ export interface CalendarRendererProps {
    * fact and cannot find the document shows an error.
    */
   readonly viewer?: ResolvedViewer;
+  /**
+   * The mode the calendar opens on. Only the first render reads it: after
+   * that the viewer's choice (the mode switcher) wins. A mode that is not one
+   * of the view's `modes` falls back to the first of them.
+   */
+  readonly initialMode?: CalendarMode;
+  /** The day ("YYYY-MM-DD") whose month or week the calendar opens on; defaults to today. Read on the first render only. An invalid date falls back to today. */
+  readonly initialAnchor?: string;
 }
 
 const DEFAULT_MODES: readonly CalendarMode[] = ["month", "week"];
@@ -62,7 +70,7 @@ interface Opened {
  * container, with the target table filtered by that record and a Back button.
  * The calendar stays mounted (hidden), so Back returns to the same period.
  */
-export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp }: CalendarRendererProps): ReactNode {
+export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp, initialMode, initialAnchor }: CalendarRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -126,6 +134,8 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
           {...(now ? { now } : {})}
           extraErrors={actionErrors}
           viewer={viewer}
+          {...(initialMode ? { initialMode } : {})}
+          {...(initialAnchor !== undefined ? { initialAnchor } : {})}
           {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
         />
       </div>
@@ -155,6 +165,8 @@ interface CalendarBodyProps {
   readonly extraErrors: readonly DocumentError[];
   readonly viewer: ResolvedViewer;
   readonly onOpen?: (record: DataRecord) => void;
+  readonly initialMode?: CalendarMode;
+  readonly initialAnchor?: string;
 }
 
 const rangeKey = (range: DateRange): string => `${range.first}/${range.last}`;
@@ -170,12 +182,21 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The entry is back on its day. Reload if the problem stays." }];
 }
 
-function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen }: CalendarBodyProps): ReactNode {
+function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen, initialMode, initialAnchor }: CalendarBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
   const modes = view.modes ?? DEFAULT_MODES;
   const weekStartsOn = view.weekStartsOn ?? 1;
-  const [mode, setMode] = useState<CalendarMode>(modes[0] ?? "month");
-  const [anchor, setAnchor] = useState(() => calendarToday(clock()));
+  const [mode, setMode] = useState<CalendarMode>(() => (initialMode && modes.includes(initialMode) ? initialMode : (modes[0] ?? "month")));
+  const [anchor, setAnchor] = useState(() => {
+    const today = calendarToday(clock());
+    if (initialAnchor === undefined) return today;
+    try {
+      visibleRange(initialAnchor, "month", 1);
+      return initialAnchor;
+    } catch {
+      return today;
+    }
+  });
   const [state, setState] = useState<RangeState | undefined>(undefined);
   const [reloads, setReloads] = useState(0);
   /** Records whose move is in flight, with the day they were moved to. */
