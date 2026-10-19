@@ -96,6 +96,43 @@ export interface ReferenceField extends FieldBase {
 /** Discriminated on `type`. */
 export type Field = TextField | NumberField | BooleanField | SelectField | DateField | DatetimeField | ReferenceField;
 
+/** An entity declares at most this many record actions, and an action at most this many input fields (RFC 0007). */
+export const ACTIONS_MAX = 12;
+export const ACTION_INPUT_MAX = 5;
+/** Field types an action's input fields may have: those with a plain input, not `reference` (a picker needs a target query). */
+export const ACTION_INPUT_FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime"] as const;
+export type ActionInputFieldType = (typeof ACTION_INPUT_FIELD_TYPES)[number];
+export const ACTION_CONFIRM_TONES = ["neutral", "danger"] as const;
+export type ActionConfirmTone = (typeof ACTION_CONFIRM_TONES)[number];
+
+/** A field definition of an action's input: the same properties as the entity field of that type. */
+export type ActionInputField = TextField | NumberField | BooleanField | SelectField | DateField | DatetimeField;
+
+/** What the dialog says before an action runs. */
+export interface ActionConfirm {
+  readonly title?: string;
+  readonly message: string;
+  readonly confirmLabel?: string;
+  /** "danger" marks the confirm button as destructive. Defaults to "neutral". */
+  readonly tone?: ActionConfirmTone;
+}
+
+/**
+ * A named command a record can run (RFC 0007): approve, reject, restore. The
+ * server decides what it changes; the document only says what is offered.
+ */
+export interface RecordAction {
+  readonly id: string;
+  /** The button text. */
+  readonly label: string;
+  /** Absent: the action runs on press without a dialog, unless it has `input`. */
+  readonly confirm?: ActionConfirm;
+  /** Asked for in the dialog; at most `ACTION_INPUT_MAX` fields. */
+  readonly input?: readonly ActionInputField[];
+  /** Offered on a record only while this holds (record and viewerIn leaves, as on a form item). */
+  readonly visibleWhen?: Condition;
+}
+
 /** Data model: owns fields, types and validation. */
 export interface EntityDocument {
   readonly kind: "entity";
@@ -103,6 +140,8 @@ export interface EntityDocument {
   readonly id: string;
   readonly revision: number;
   readonly fields: readonly Field[];
+  /** Commands a record can run; views offer them with `recordActions` (RFC 0007). */
+  readonly actions?: readonly RecordAction[];
 }
 
 export interface FormItem {

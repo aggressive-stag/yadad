@@ -8,7 +8,7 @@
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
-import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
@@ -75,10 +75,11 @@ export function validateDocument(input: unknown): ValidationResult<Document> {
 }
 
 function validateEntity(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "revision", "fields"], []);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "revision", "fields"], ["actions"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkRevision(errors, doc);
+  validateActions(errors, doc);
 
   const fields = checkArray(errors, doc, [], "fields");
   if (!fields) return;
@@ -94,6 +95,76 @@ function validateEntity(errors: Errors, doc: JsonObject): void {
     if (typeof field["id"] === "string") ids.push({ id: field["id"], path: [...path, "id"] });
   });
   reportDuplicates(errors, ids, "field", "an entity");
+}
+
+/** Checks an entity's `actions` (RFC 0007): the shape of each action, its confirm and its input fields. Names of fields are checked against the entity in the set pass. */
+function validateActions(errors: Errors, doc: JsonObject): void {
+  const actions = checkArray(errors, doc, [], "actions");
+  if (!actions) return;
+  if (actions.length > ACTIONS_MAX) {
+    errors.add(["actions"], "invalid-value", `An entity declares at most ${ACTIONS_MAX} actions, but ${actions.length} are listed.`, `Remove ${actions.length - ACTIONS_MAX}.`);
+  }
+  const ids: { id: string; path: Path }[] = [];
+  actions.forEach((action, i) => {
+    const path: Path = ["actions", i];
+    if (!isObject(action)) {
+      errors.add(path, "type", "An action must be a JSON object.", 'Use { "id", "label" } and optionally "confirm", "input", "visibleWhen".');
+      return;
+    }
+    checkKeys(errors, action, path, ["id", "label"], ["confirm", "input", "visibleWhen"]);
+    checkId(errors, action, path, "id");
+    checkNonEmptyString(errors, action, path, "label");
+    if (typeof action["id"] === "string") ids.push({ id: action["id"], path: [...path, "id"] });
+    validateActionConfirm(errors, action["confirm"], [...path, "confirm"]);
+    validateActionInput(errors, action["input"], [...path, "input"]);
+    checkCondition(errors, action["visibleWhen"], [...path, "visibleWhen"]);
+  });
+  reportDuplicates(errors, ids, "action", "an entity");
+}
+
+function validateActionConfirm(errors: Errors, confirm: unknown, path: Path): void {
+  if (confirm === undefined) return;
+  if (!isObject(confirm)) {
+    errors.add(path, "type", '"confirm" must be an object.', 'Use { "message": "Apply this decision?" }.');
+    return;
+  }
+  checkKeys(errors, confirm, path, ["message"], ["title", "confirmLabel", "tone"]);
+  checkNonEmptyString(errors, confirm, path, "message");
+  checkNonEmptyString(errors, confirm, path, "title");
+  checkNonEmptyString(errors, confirm, path, "confirmLabel");
+  const tone = confirm["tone"];
+  if (tone !== undefined && !ACTION_CONFIRM_TONES.some((t) => t === tone)) {
+    errors.add([...path, "tone"], "invalid-value", `Unknown tone ${JSON.stringify(tone)}.`, `Use one of: ${ACTION_CONFIRM_TONES.join(", ")}.`, ACTION_CONFIRM_TONES);
+  }
+}
+
+function validateActionInput(errors: Errors, input: unknown, path: Path): void {
+  if (input === undefined) return;
+  if (!Array.isArray(input)) {
+    errors.add(path, "type", '"input" must be an array.', 'Use [ { "id": "reason", "type": "text", "label": "Reason" } ].');
+    return;
+  }
+  if (input.length === 0 || input.length > ACTION_INPUT_MAX) {
+    errors.add(path, "invalid-value", `An action asks for 1 to ${ACTION_INPUT_MAX} input fields, but ${input.length} are listed.`, input.length === 0 ? 'Add a field, or remove "input".' : `Remove ${input.length - ACTION_INPUT_MAX}.`);
+  }
+  const ids: { id: string; path: Path }[] = [];
+  input.forEach((field, i) => {
+    const fieldPath: Path = [...path, i];
+    if (!isObject(field)) {
+      errors.add(fieldPath, "type", "An input field must be a JSON object.", 'Use { "id", "type", "label" }.');
+      return;
+    }
+    const type = field["type"];
+    if (type === "reference") {
+      errors.add([...fieldPath, "type"], "invalid-value", "An action cannot ask for a reference field.", `Use one of: ${ACTION_INPUT_FIELD_TYPES.join(", ")} (a picker needs a target query, which actions do not have yet).`, ACTION_INPUT_FIELD_TYPES);
+    } else if (typeof type === "string" && !isFieldType(type)) {
+      errors.add([...fieldPath, "type"], "unknown-field-type", `Unknown field type ${JSON.stringify(type)}.`, `Input field types: ${ACTION_INPUT_FIELD_TYPES.join(", ")}.`, ACTION_INPUT_FIELD_TYPES);
+    } else {
+      validateField(errors, field, fieldPath);
+    }
+    if (typeof field["id"] === "string") ids.push({ id: field["id"], path: [...fieldPath, "id"] });
+  });
+  reportDuplicates(errors, ids, "input field", "an action");
 }
 
 function validateField(errors: Errors, field: JsonObject, path: Path): void {
@@ -1069,6 +1140,7 @@ function checkSetReferences(errors: DocumentError[], docs: readonly Document[]):
     switch (doc.kind) {
       case "entity":
         checkReferenceFields(errors, doc, idx);
+        checkActionConditions(errors, doc);
         break;
       case "form":
       case "table":
@@ -1473,6 +1545,22 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
 }
 
+/** Checks that the fields an action's `visibleWhen` reads exist on its entity and fit the ops used on them (RFC 0007). */
+function checkActionConditions(errors: DocumentError[], entity: EntityDocument): void {
+  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  entity.actions?.forEach((action, i) => {
+    const base: Path = ["actions", i, "visibleWhen"];
+    checkConditionFields(action.visibleWhen, base, (fieldId, path) => {
+      if (!fieldIds.includes(fieldId)) {
+        errors.push(refError(entity.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+      }
+    });
+    checkRelativeDateFields(errors, entity.id, entity, action.visibleWhen, base);
+    checkReferenceOps(errors, entity.id, entity, action.visibleWhen, base);
+    checkDatetimeConditions(errors, entity.id, entity, action.visibleWhen, base);
+  });
+}
+
 /** Checks each reference field of an entity: the target entity exists and `display` is a text or select field on it. */
 function checkReferenceFields(errors: DocumentError[], entity: EntityDocument, idx: SetIndex): void {
   entity.fields.forEach((field, i) => {
@@ -1773,6 +1861,9 @@ function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[
       });
     };
     switch (doc.kind) {
+      case "entity":
+        doc.actions?.forEach((action, i) => check(action.visibleWhen, ["actions", i, "visibleWhen"]));
+        break;
       case "form":
         doc.sections.forEach((section, i) =>
           section.items.forEach((item, j) => {

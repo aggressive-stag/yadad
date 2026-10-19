@@ -62,6 +62,7 @@ describe("viewer document", () => {
     expect(contract.documentKinds.map((k) => k.kind)).toContain("viewer");
     expect(contract.conditions.ops.map((o) => o.op)).toContain("viewerIn");
     expect(contract.conditionPlaces.map((p) => `${p.path}:${p.accepts}`)).toEqual([
+      "/actions/*/visibleWhen:record+viewer",
       "/sections/*/items/*/visibleWhen:record+viewer",
       "/sections/*/items/*/requiredWhen:record+viewer",
       "/columns/*/visibleWhen:viewer",

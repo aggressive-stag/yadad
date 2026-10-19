@@ -5,7 +5,7 @@
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
 import type { CalendarMode, Document, FieldType, MeasureOp, ViewerFactType, WidgetType } from "./document.js";
-import { CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
 export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] as const;
@@ -160,6 +160,13 @@ export interface ContractDescription {
     /** A set has at most this many viewer documents. */
     readonly documentsMax: number;
   };
+  /** Limits of entity `actions` (RFC 0007). */
+  readonly actions: {
+    readonly max: number;
+    readonly inputMax: number;
+    readonly inputFieldTypes: readonly FieldType[];
+    readonly confirmTones: readonly string[];
+  };
   /** Every place a condition can appear and which kinds of leaf it accepts. */
   readonly conditionPlaces: readonly ConditionPlaceSpec[];
   /** Registry keys a registry may leave out; the renderer reports a view that needs a missing one. */
@@ -186,6 +193,11 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "id", required: true, description: "The entity's id." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "fields", required: true, description: "The fields, an array of { id, type, label, ... }." },
+      {
+        key: "actions",
+        required: false,
+        description: `Commands a record can run (RFC 0007): an array of ${ACTIONS_MAX} at most, each { id, label, confirm?, input?, visibleWhen? }. confirm is { message, title?, confirmLabel?, tone?: "neutral" | "danger" }. input is 1 to ${ACTION_INPUT_MAX} fields of type ${ACTION_INPUT_FIELD_TYPES.join(", ")} (never reference), each id once. visibleWhen takes record and viewerIn leaves: the action is offered on a record only while it holds. An action with neither confirm nor input runs on press; one with input always asks in a dialog. Views offer actions with recordActions; the server runs and authorises them.`,
+      },
     ],
   },
   {
@@ -426,6 +438,7 @@ const WIDGET_SPECS: Record<WidgetType, WidgetSpec> = {
 };
 
 const CONDITION_PLACE_SPECS: readonly ConditionPlaceSpec[] = [
+  { path: "/actions/*/visibleWhen", kinds: ["entity"], accepts: "record+viewer", description: "The action is offered on a record only while this holds for the record's values and the viewer; otherwise it is not rendered." },
   { path: "/sections/*/items/*/visibleWhen", kinds: ["form"], accepts: "record+viewer", description: "A viewer leaf that is false hides the field exactly like a record condition. clearWhenHidden: true is rejected while this reads the viewer." },
   { path: "/sections/*/items/*/requiredWhen", kinds: ["form"], accepts: "record+viewer", description: "Requires the field while the condition holds." },
   { path: "/columns/*/visibleWhen", kinds: ["table"], accepts: "viewer", description: "The column is not shown while this is false." },
@@ -503,6 +516,7 @@ export function describeContract(): ContractDescription {
       titleFieldTypes: [...BOARD_TITLE_FIELD_TYPES],
     },
     viewer: { factTypes: [...VIEWER_FACT_TYPES], factsMax: VIEWER_FACTS_MAX, factValuesMax: VIEWER_FACT_VALUES_MAX, factValuesMin: VIEWER_FACT_VALUES_MIN, documentsMax: 1 },
+    actions: { max: ACTIONS_MAX, inputMax: ACTION_INPUT_MAX, inputFieldTypes: [...ACTION_INPUT_FIELD_TYPES], confirmTones: [...ACTION_CONFIRM_TONES] },
     conditionPlaces: CONDITION_PLACE_SPECS,
     optionalRegistryKeys: [
       { key: "layout.Calendar", description: "Draws a calendar view (CalendarProps). Optional for now: without it a calendar view renders an error summary instead. It becomes required once the reference component set ships a calendar." },

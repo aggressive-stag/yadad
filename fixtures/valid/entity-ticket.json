@@ -1,0 +1,42 @@
+{
+  "kind": "entity",
+  "specVersion": 6,
+  "id": "ticket",
+  "revision": 1,
+  "fields": [
+    { "id": "title", "type": "text", "label": "Title", "required": true },
+    { "id": "state", "type": "select", "label": "State", "options": { "source": "static", "values": ["open", "snoozed", "closed"] } },
+    { "id": "owner", "type": "text", "label": "Owner" },
+    { "id": "due_at", "type": "datetime", "label": "Due at" },
+    { "id": "due_on", "type": "date", "label": "Due on" },
+    { "id": "effort", "type": "number", "label": "Effort", "min": 0 }
+  ],
+  "actions": [
+    {
+      "id": "close",
+      "label": "Close",
+      "confirm": { "title": "Close ticket", "message": "Close this ticket?", "confirmLabel": "Close it", "tone": "danger" },
+      "input": [
+        { "id": "note", "type": "text", "label": "Note", "required": true },
+        { "id": "effort", "type": "number", "label": "Effort spent", "min": 0, "step": 0.5, "unit": "h" },
+        { "id": "notify", "type": "boolean", "label": "Tell the owner" },
+        { "id": "resolution", "type": "select", "label": "Resolution", "required": true, "options": { "source": "static", "values": ["fixed", "duplicate", "wontfix"] } },
+        { "id": "follow_up_on", "type": "date", "label": "Follow up on", "min": "2026-01-01" }
+      ],
+      "visibleWhen": {
+        "op": "and",
+        "conditions": [
+          { "op": "eq", "field": "state", "value": "open" },
+          { "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] }
+        ]
+      }
+    },
+    {
+      "id": "snooze",
+      "label": "Snooze",
+      "input": [{ "id": "until", "type": "datetime", "label": "Until", "required": true, "min": "2026-01-01T00:00:00.000Z" }],
+      "visibleWhen": { "op": "or", "conditions": [{ "op": "eq", "field": "state", "value": "open" }, { "op": "gt", "field": "due_at", "value": "2026-10-17T09:30:00.000Z" }] }
+    },
+    { "id": "archive", "label": "Archive" }
+  ]
+}

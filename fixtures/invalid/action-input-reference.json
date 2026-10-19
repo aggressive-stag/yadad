@@ -1,0 +1,56 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ],
+    "actions": [
+      {
+        "id": "go",
+        "label": "Go",
+        "input": [
+          {
+            "id": "a",
+            "type": "text",
+            "label": "A"
+          },
+          {
+            "id": "b",
+            "type": "text",
+            "label": "B"
+          },
+          {
+            "id": "owner",
+            "type": "reference",
+            "label": "Owner",
+            "entity": "e"
+          }
+        ]
+      }
+    ]
+  }
+]

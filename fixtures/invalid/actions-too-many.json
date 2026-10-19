@@ -1,0 +1,86 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ],
+    "actions": [
+      {
+        "id": "a0",
+        "label": "Go"
+      },
+      {
+        "id": "a1",
+        "label": "Go"
+      },
+      {
+        "id": "a2",
+        "label": "Go"
+      },
+      {
+        "id": "a3",
+        "label": "Go"
+      },
+      {
+        "id": "a4",
+        "label": "Go"
+      },
+      {
+        "id": "a5",
+        "label": "Go"
+      },
+      {
+        "id": "a6",
+        "label": "Go"
+      },
+      {
+        "id": "a7",
+        "label": "Go"
+      },
+      {
+        "id": "a8",
+        "label": "Go"
+      },
+      {
+        "id": "a9",
+        "label": "Go"
+      },
+      {
+        "id": "a10",
+        "label": "Go"
+      },
+      {
+        "id": "a11",
+        "label": "Go"
+      },
+      {
+        "id": "a12",
+        "label": "Go"
+      }
+    ]
+  }
+]

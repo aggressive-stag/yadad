@@ -1,0 +1,59 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ],
+    "actions": [
+      {
+        "id": "go",
+        "label": "Go",
+        "visibleWhen": {
+          "op": "viewerIn",
+          "fact": "role",
+          "values": [
+            "owner"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "viewer",
+    "specVersion": 6,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      {
+        "id": "beta",
+        "label": "Beta",
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  }
+]

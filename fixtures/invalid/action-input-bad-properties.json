@@ -1,0 +1,63 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ],
+    "actions": [
+      {
+        "id": "go",
+        "label": "Go",
+        "input": [
+          {
+            "id": "a",
+            "type": "select",
+            "label": "A"
+          },
+          {
+            "id": "b",
+            "type": "number",
+            "label": "B",
+            "min": "low"
+          },
+          {
+            "id": "c",
+            "type": "text",
+            "label": "C",
+            "min": 1
+          },
+          {
+            "id": "d",
+            "type": "datetime",
+            "label": "D",
+            "min": "2026-10-17"
+          }
+        ]
+      }
+    ]
+  }
+]

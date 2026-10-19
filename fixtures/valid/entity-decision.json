@@ -1,0 +1,31 @@
+{
+  "kind": "entity",
+  "specVersion": 6,
+  "id": "decision",
+  "revision": 1,
+  "fields": [
+    { "id": "state", "type": "select", "label": "State", "options": { "source": "static", "values": ["pending", "applied", "rejected"] } },
+    { "id": "kind", "type": "select", "label": "Kind", "options": { "source": "static", "values": ["merge", "retire", "rename"] } },
+    { "id": "summary", "type": "text", "label": "Summary", "required": true },
+    { "id": "confidence", "type": "number", "label": "Confidence", "min": 0, "max": 1, "step": 0.01 },
+    { "id": "created_at", "type": "datetime", "label": "Proposed at" },
+    { "id": "decided_at", "type": "datetime", "label": "Decided at" },
+    { "id": "decided_by", "type": "text", "label": "Decided by" },
+    { "id": "evidence", "type": "text", "label": "Evidence" }
+  ],
+  "actions": [
+    {
+      "id": "apply",
+      "label": "Apply",
+      "confirm": { "message": "Apply this decision? It changes the records it names." },
+      "visibleWhen": { "op": "eq", "field": "state", "value": "pending" }
+    },
+    {
+      "id": "reject",
+      "label": "Reject",
+      "confirm": { "title": "Reject decision", "message": "Reject this decision?", "confirmLabel": "Reject", "tone": "danger" },
+      "input": [{ "id": "reason", "type": "text", "label": "Reason (optional)" }],
+      "visibleWhen": { "op": "eq", "field": "state", "value": "pending" }
+    }
+  ]
+}
