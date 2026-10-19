@@ -1,6 +1,6 @@
 {
   "kind": "table",
-  "specVersion": 5,
+  "specVersion": 6,
   "id": "recent_sets",
   "entity": "workout_set",
   "revision": 1,

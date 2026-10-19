@@ -16,9 +16,9 @@ import type { Condition, ViewerCondition } from "./condition.js";
  * `visibleWhen`/`editableWhen` keys (RFC 0006); older documents stay valid and
  * `migrate()` stamps them.
  */
-export const SPEC_VERSION = 5;
+export const SPEC_VERSION = 6;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */

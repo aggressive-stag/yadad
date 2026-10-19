@@ -46,6 +46,12 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     description: "Version 5 adds the `viewer` document kind, the `viewerIn` condition op and the viewer-only `visibleWhen`/`editableWhen` keys (RFC 0006). Every version 4 document stays valid, so this step only stamps the new version.",
     run: (doc) => ({ ...doc, specVersion: 5 }),
   },
+  {
+    from: 5,
+    to: 6,
+    description: "Version 6 adds the `datetime` field type, entity `actions`, view `recordActions`, the table column `compare` setting and optional page totals (RFC 0007). Every version 5 document stays valid, so this step only stamps the new version.",
+    run: (doc) => ({ ...doc, specVersion: 6 }),
+  },
 ];
 
 function isObject(value: unknown): value is JsonObject {
