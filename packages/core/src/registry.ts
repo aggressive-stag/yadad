@@ -104,9 +104,26 @@ export interface FieldInputExtras {
   readonly reference: ReferenceInputExtras;
 }
 
-/** Extra Display props per field type; only reference has any. */
+/** One run of a word diff (RFC 0007): text that is the same in both versions, only in the new one, or only in the old one. */
+export interface DiffSegment {
+  readonly kind: "same" | "added" | "removed";
+  readonly text: string;
+}
+
+/**
+ * Props a text Display gets besides the common ones. `diff`, set only for a
+ * `compare` column, is the word diff of the value (the "after") against what it
+ * is compared with. A component that ignores it shows the plain value, a safe
+ * degradation; one that uses it marks additions and removals without relying
+ * on colour (`<ins>` and `<del>`, plus hidden "added:" and "removed:" text).
+ */
+export interface TextDisplayExtras {
+  readonly diff?: readonly DiffSegment[];
+}
+
+/** Extra Display props per field type; only text and reference have any. */
 export interface FieldDisplayExtras {
-  readonly text: Record<never, never>;
+  readonly text: TextDisplayExtras;
   readonly number: Record<never, never>;
   readonly boolean: Record<never, never>;
   readonly select: Record<never, never>;
@@ -161,10 +178,26 @@ export interface TableColumnHeader {
   readonly sort?: "asc" | "desc";
 }
 
+/**
+ * One action a record offers (RFC 0007), as plain data and a callback: the
+ * component decides how to draw it (a button, a menu item). The renderer never
+ * builds the buttons itself.
+ */
+export interface RecordActionItem {
+  readonly id: string;
+  readonly label: string;
+  readonly tone: "neutral" | "danger";
+  /** This record has an action in flight; the component disables its buttons. */
+  readonly pending: boolean;
+  readonly onPress: () => void;
+}
+
 export interface TableRow<N> {
   readonly id: string;
   /** One cell per column, in column order. */
   readonly cells: readonly N[];
+  /** The actions available on this row, in order (RFC 0007). Pressing one does not open the row action. Components that ignore it show no buttons. */
+  readonly actions?: readonly RecordActionItem[];
 }
 
 export interface TableProps<N> {
@@ -176,6 +209,24 @@ export interface TableProps<N> {
   readonly onSort: (columnId: string) => void;
   /** Shown instead of rows when there are none. */
   readonly empty: N;
+  /** The header text of the actions column, shown only when some row has actions (RFC 0007). */
+  readonly actionsLabel?: string;
+}
+
+/** A list of problems, e.g. a failed save or a view that cannot render. Announced to screen readers. */
+/**
+ * A modal dialog (RFC 0007; RFC 0003's `mode: "dialog"` reuses it). The renderer
+ * builds the content (message, input fields, ErrorSummary, Cancel and Confirm
+ * Buttons); the component only provides the modal behaviour: focus trapped
+ * inside and returned to the pressed control on close, Escape closes, the
+ * background inert, scrolls on a phone.
+ */
+export interface DialogProps<N> {
+  /** Accessible name: the action's confirm title, or its label. */
+  readonly label: string;
+  /** Escape, an outside press, the close control. */
+  readonly onClose: () => void;
+  readonly children: N;
 }
 
 /** A list of problems, e.g. a failed save or a view that cannot render. Announced to screen readers. */
@@ -233,6 +284,8 @@ export interface CalendarEntry<N> {
   readonly movable: boolean;
   /** A move of this entry is in flight. */
   readonly pending: boolean;
+  /** The actions available on this entry, in order (RFC 0007); in the entry's menu where the component has one. */
+  readonly actions?: readonly RecordActionItem[];
 }
 
 export interface CalendarDayProps<N> {
@@ -298,6 +351,8 @@ export interface BoardCard<N> {
   readonly movable: boolean;
   /** A move of this card is in flight. */
   readonly pending: boolean;
+  /** The actions available on this card, in order (RFC 0007), next to the "Move to..." path. */
+  readonly actions?: readonly RecordActionItem[];
 }
 
 /** One column of a board: all records sharing one value of the grouping field. */
@@ -378,6 +433,8 @@ export interface Registry<N> {
     readonly Calendar?: Component<CalendarProps<N>, N>;
     /** Optional until the reference component set ships a board (RFC 0005); then it becomes required. */
     readonly Board?: Component<BoardProps<N>, N>;
+    /** Optional (RFC 0007): a view with an action that needs a dialog (a confirmation or input) shows an error summary without it. Shared with RFC 0003's dialog mode. */
+    readonly Dialog?: Component<DialogProps<N>, N>;
   };
   readonly widgets: WidgetComponents<N>;
 }

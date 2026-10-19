@@ -526,6 +526,8 @@ export function describeContract(): ContractDescription {
     optionalRegistryKeys: [
       { key: "layout.Calendar", description: "Draws a calendar view (CalendarProps). Optional for now: without it a calendar view renders an error summary instead. It becomes required once the reference component set ships a calendar." },
       { key: "layout.Board", description: "Draws a board view (BoardProps). Optional for now: without it a board view renders an error summary instead. It becomes required once the reference component set ships a board." },
+      { key: "fields.datetime", description: "The Input and Display of a datetime field (RFC 0007). Optional: a document that uses a datetime field with a registry that lacks it renders an error summary naming the key instead." },
+      { key: "layout.Dialog", description: "Draws a modal dialog around content the renderer builds (DialogProps; RFC 0007). Optional: an action that needs a confirmation or input, rendered with a registry that lacks it, shows an error summary instead. Actions with neither need no dialog." },
     ],
     measures: MEASURE_OPS.map((op) => MEASURE_SPECS[op]),
     grid: {
