@@ -115,7 +115,8 @@ export async function aggregate(adapter: DataAdapter, entityId: string, measure:
   const filter = options.filter ? resolveRelativeDates(options.filter, options.now) : undefined;
   const base = filter ? { filter } : {};
   if (measure.op === "count") {
-    const { total } = await adapter.find(entityId, { ...base, page: { offset: 0, limit: 0 } });
+    // RFC 0007: card 34h (a count without a total walks the pages up to the cap)
+    const { total = 0 } = await adapter.find(entityId, { ...base, page: { offset: 0, limit: 0 } });
     return { value: total, partial: false, read: total, total };
   }
   const maxRecords = options.maxRecords ?? AGGREGATE_MAX_RECORDS;
@@ -125,9 +126,9 @@ export async function aggregate(adapter: DataAdapter, entityId: string, measure:
   let total = 0;
   while (read < maxRecords) {
     const page = await adapter.find(entityId, { ...base, page: { offset: read, limit: Math.min(pageSize, maxRecords - read) } });
-    total = page.total;
     for (const record of page.items) acc.add(record.values);
     read += page.items.length;
+    total = page.total ?? read; // RFC 0007: card 34h (no total: the pages are not followed by `next` yet)
     if (page.items.length === 0 || read >= total) break;
   }
   return { value: acc.result(), partial: total > read, read, total };

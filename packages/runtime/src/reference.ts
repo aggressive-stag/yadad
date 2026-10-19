@@ -47,8 +47,8 @@ export async function loadReferenceOptions(
   });
   return {
     options: page.items.map((record) => ({ id: record.id, label: referenceLabel(record, display) })),
-    more: page.total > page.items.length,
-    total: page.total,
+    more: page.total !== undefined ? page.total > page.items.length : (page.next ?? null) !== null,
+    total: page.total ?? page.items.length, // RFC 0007: card 34h
   };
 }
 

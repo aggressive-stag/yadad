@@ -215,8 +215,9 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     let current = true;
     // Relative dates become fixed ones here, on every load, so adapters never see them and "today" stays today.
     const fixed = filter ? resolveRelativeDates(filter) : undefined;
+    // RFC 0007: card 35e (Previous and Next without a total)
     adapter.find(entity.id, { sort, page: { offset: page * pageSize, limit: pageSize }, ...(fixed ? { filter: fixed } : {}) }).then(
-      (result) => current && setRows({ status: "loaded", items: result.items, total: result.total }),
+      (result) => current && setRows({ status: "loaded", items: result.items, total: result.total ?? result.items.length }),
       (error: unknown) => current && setRows({ status: "failed", message: error instanceof Error ? error.message : String(error) }),
     );
     return () => {

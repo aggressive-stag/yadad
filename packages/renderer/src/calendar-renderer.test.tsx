@@ -198,7 +198,7 @@ describe("calendar rendering", () => {
     const item = (await db.find("task", {})).items[0]!;
     const many: DataAdapter = {
       ...db,
-      find: (_name, query) => Promise.resolve({ items: Array.from({ length: query.page?.limit ?? 500 }, (_, i) => ({ ...item, id: `${query.page?.offset ?? 0}-${i}` })), total: 2431 }),
+      find: (_name, query) => Promise.resolve({ items: Array.from({ length: query.page?.limit ?? 500 }, (_, i) => ({ ...item, id: `${query.page && "offset" in query.page ? query.page.offset : 0}-${i}` })), total: 2431 }),
     };
     await open({ adapter: many }).catch(() => undefined);
     const notice = await screen.findByTestId("calendar-notice");

@@ -1,0 +1,11 @@
+{
+  "errors": [{ "path": "/baseVersion", "code": "conflict", "message": "This decision was changed since you loaded it.", "hint": "Reload it and try again." }],
+  "current": {
+    "id": "d1",
+    "entityId": "decision",
+    "entityRevision": 1,
+    "version": "5",
+    "values": { "state": "applied", "summary": "Merge two notes", "created_at": "2026-10-17T09:30:00.000Z" },
+    "can": { "actions": { "apply": false, "reject": false } }
+  }
+}

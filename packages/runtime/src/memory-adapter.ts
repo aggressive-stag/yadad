@@ -50,7 +50,7 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
   return {
     async find(entity, query) {
       const page = runQuery([...table(entity).values()], query);
-      return { items: page.items.map((r) => withPermissions(options, r)), total: page.total };
+      return { ...page, items: page.items.map((r) => withPermissions(options, r)) };
     },
     async findOne(entity, id) {
       const record = table(entity).get(id);
@@ -143,7 +143,9 @@ export function runQuery(records: readonly DataRecord[], query: Query): Page<Dat
   const { filter } = query;
   const matching = records.filter((r) => !filter || evaluateCondition(filter, r.values));
   const all = sortRecords(matching, query.sort ?? []);
-  const items = query.page ? all.slice(query.page.offset, query.page.offset + query.page.limit) : all;
+  // RFC 0007: card 34e (cursor paging; until then a cursor is read as an offset)
+  const offset = query.page === undefined ? 0 : "cursor" in query.page ? Number.parseInt(query.page.cursor, 10) || 0 : query.page.offset;
+  const items = query.page ? all.slice(offset, offset + query.page.limit) : all;
   return { items, total: all.length };
 }
 

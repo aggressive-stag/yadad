@@ -50,7 +50,7 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
   return {
     async find(entity, query) {
       const page = runQuery(load(entity), query);
-      return { items: page.items.map((r) => withPermissions(options, r)), total: page.total };
+      return { ...page, items: page.items.map((r) => withPermissions(options, r)) };
     },
     async findOne(entity, id) {
       const record = load(entity).find((r) => r.id === id);

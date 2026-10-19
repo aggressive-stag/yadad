@@ -18,6 +18,13 @@ export type RecordValues = Readonly<Record<string, FieldValue>>;
 export interface RecordPermissions {
   readonly update?: boolean;
   readonly delete?: boolean;
+  /**
+   * Action id to allowed (RFC 0007); only `false` restricts. The second
+   * deliberate map in core, after `RecordValues`: its keys are action ids
+   * chosen by users, which core cannot list. A missing key means "not stated":
+   * the action is offered and the server decides.
+   */
+  readonly actions?: Readonly<Record<string, boolean>>;
 }
 
 export interface DataRecord {
@@ -45,12 +52,28 @@ export interface Query {
   readonly filter?: Condition;
   /** Sort keys in priority order. Empty values sort last in both directions. */
   readonly sort?: readonly SortSpec[];
-  readonly page?: { readonly offset: number; readonly limit: number };
+  /**
+   * Offset paging, or (when the server counts nothing) cursor paging: the
+   * `cursor` is the opaque `next` of the previous page, never parsed by the
+   * client (RFC 0007). `limit: 0` asks for a count and needs `total`.
+   */
+  readonly page?: { readonly offset: number; readonly limit: number } | { readonly cursor: string; readonly limit: number };
 }
 
 export interface Page<T> {
   readonly items: readonly T[];
-  readonly total: number;
+  /** The number of matching records. Absent when the server does not count (it then answers with `next`). */
+  readonly total?: number;
+  /** Opaque token for the following page; `null` or absent at the end. A page with neither `total` nor `next` is the last. */
+  readonly next?: string | null;
+}
+
+/** What running an action needs (RFC 0007): the input fields' values and the guard, the version the client last read. */
+export interface ActionRequest {
+  /** The declared input fields' values; absent when the action has none. */
+  readonly input?: RecordValues;
+  /** `baseVersion` is required here: a stale action is a conflict, checked before `input`. */
+  readonly meta: WriteMeta & { readonly baseVersion: string };
 }
 
 /** What a write needs: the entity revision, and the record's version if the client read it. */
@@ -151,4 +174,13 @@ export interface DataAdapter {
   delete(entity: string, id: string, meta?: WriteMeta): Promise<void>;
   /** Create and delete many in one atomic step; if any item fails, nothing is written. */
   batch(entity: string, ops: BatchOperations, meta: WriteMeta): Promise<BatchResult>;
+  /**
+   * Runs a declared action on a record (RFC 0007). Optional until the next
+   * major release: a view with `recordActions` rendered with an adapter that
+   * has none shows an error instead of buttons that fail. Resolves to the
+   * record after the action (with its new `can`), or null when the action
+   * removed it. A refusal is a `ForbiddenError`, a stale or no longer
+   * applicable action a `RecordConflictError`, bad input a `RecordValidationError`.
+   */
+  act?(entity: string, id: string, action: string, request: ActionRequest): Promise<DataRecord | null>;
 }

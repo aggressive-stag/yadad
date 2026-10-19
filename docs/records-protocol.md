@@ -25,7 +25,7 @@ It is in flux like the documents (no freeze is planned): a change here is a chan
 }
 ```
 
-- `can` is optional and states what the viewer making the request may do with this record: `{ "update"?: boolean, "delete"?: boolean }`. A missing `can`, or a missing key in it, means "not stated": the client offers the action and the server decides, so servers that do not implement it change nothing. It only restricts: `"update": true` enables nothing the document does not already offer. It is a read-time snapshot for this viewer, may change without `version` changing, and is never cached across reloads or sent back: a request body never carries `can`, and a server ignores it if sent. It appears on every Record the server returns (list items, `GET`, `POST`/`PATCH`/batch responses, the `current` record of a `409`). The server still enforces: a refused write is a `403`; the client puts the edit or the moved card back, shows the response's message and reloads, which refreshes `can`. A client treats a malformed `can` (not an object, a non-boolean, an unknown key) as absent.
+- `can` is optional and states what the viewer making the request may do with this record: `{ "update"?: boolean, "delete"?: boolean, "actions"?: { [actionId]: boolean } }`. A missing `can`, or a missing key in it, means "not stated": the client offers the action and the server decides, so servers that do not implement it change nothing. It only restricts: `"update": true` enables nothing the document does not already offer. It is a read-time snapshot for this viewer, may change without `version` changing, and is never cached across reloads or sent back: a request body never carries `can`, and a server ignores it if sent. It appears on every Record the server returns (list items, `GET`, `POST`/`PATCH`/batch responses, the `current` record of a `409`). The server still enforces: a refused write is a `403`; the client puts the edit or the moved card back, shows the response's message and reloads, which refreshes `can`. A client treats a malformed `can` (not an object, a non-boolean, an unknown key) as absent.
 - `entityRevision` is a schema stamp, not concurrency control: old records are upcast on read. A write carries the revision the client built its `values` against, and the server stamps it on the saved record. A server never rejects a write because the request's `entityRevision` is older or newer than its own current one: it judges the `values` by its own rules, so a field it does not know is a `400` (unknown field) and everything else is accepted. The stamp is the only thing the revision changes.
 - `version` is concurrency control. The client sends it back as `baseVersion` on writes; the server rejects the write if the record changed since. It must change on every write that changes the record, so two writes close together never share one. Its format is the server's business (a counter, a hash, or a timestamp fine-grained enough for that). Several records may share a version if the server stores them together; a write to any of them changes all of their versions.
 
@@ -62,12 +62,13 @@ What the schema says: one property per field; `additionalProperties: false` (unk
 
 | Method and path | Body | Success |
 | --- | --- | --- |
-| `GET {base}/{entity}?filter=&sort=&offset=&limit=` | — | `200 { "items": Record[], "total": number }` |
+| `GET {base}/{entity}?filter=&sort=&offset=&limit=` (or `cursor=` instead of `offset=`) | — | `200 { "items": Record[], "total"?: number, "next"?: string \| null }` |
 | `GET {base}/{entity}/{id}` | — | `200 Record` |
 | `POST {base}/{entity}` | `{ "values", "entityRevision" }` | `201 Record` |
 | `PATCH {base}/{entity}/{id}` | `{ "values", "entityRevision", "baseVersion" }` | `200 Record` |
 | `DELETE {base}/{entity}/{id}?baseVersion=` | — | `204` |
 | `POST {base}/{entity}/_batch` | see below | `200 { "created": Record[], "deleted": string[] }` |
+| `POST {base}/{entity}/{id}/actions/{action}` | `{ "input"?, "entityRevision", "baseVersion" }` | `200 Record`, or `204` when the action removed the record |
 
 `{id}` is URL-encoded. Ids never start with `_`, so `_batch` cannot collide with one.
 
@@ -76,7 +77,8 @@ What the schema says: one property per field; `additionalProperties: false` (unk
 - `filter`: a URL-encoded JSON condition, exactly the `Condition` AST from `@yadad/core` (ops `eq neq gt gte lt lte in contains empty notEmpty and or not`). Optional.
 - `sort`: URL-encoded JSON array of `{ "field", "dir": "asc" | "desc" }`, first key first. Empty values sort last in both directions. Optional; without it the order is the server's choice but stable.
 - `offset` (default 0, minimum 0) and `limit` (default 50, minimum 0, maximum 500). `limit=0` is legal: `items` is empty and `total` is still the real count (a count widget uses this). A `limit` above 500, a negative or non-integer `offset` or `limit` is a `400`.
-- `total` counts every record matching `filter`, ignoring `offset` and `limit`.
+- `total` counts every record matching `filter`, ignoring `offset` and `limit`. It is optional: a server that does not count leaves it out.
+- `cursor` is an alternative to `offset` for servers that page without counting: the opaque `next` of the previous response, which the client passes back and never parses. Sending both `cursor` and `offset` is a `400`. `next` is `null` or absent on the last page. A response with neither `total` nor `next` has no way to say "there is more", so the client treats it as the last page. `limit=0` is a count request and needs `total`.
 
 The server must translate conditions by whitelist: every op and field id is checked against what it knows and mapped to its storage. It never builds a query from strings in the request. An unknown op or field is a `400`. `viewerIn` is a condition op for documents, not for the wire: the client adapters refuse a filter that contains one, and a server treats it as an unknown op (`400`). Scoping records to the signed-in user belongs on the server.
 
@@ -121,6 +123,21 @@ Every non-2xx response has the same body shape as document errors in `@yadad/cor
 | `403` | Signed in but not allowed, e.g. a write to a record whose `can` says `false` | — |
 | `404` | Unknown entity, or no such record for this user (another user's record is also a `404`) | — |
 | `409` | `baseVersion` is stale | `"current": Record` (or `null` if it was deleted) so the client can show or merge it |
+
+### Actions
+
+`POST {base}/{entity}/{id}/actions/{action}` runs a command the entity declares (its `actions`). `{action}` is an action id.
+
+```json
+{ "input": { "reason": "duplicate of s4" }, "entityRevision": 3, "baseVersion": "7" }
+```
+
+- `input` holds the declared input fields' values; absent or `{}` when there are none. An unknown input id is a `400` at `/input/<field>`.
+- `baseVersion` is required and is checked first: a stale action is a `409` with `"current"`, even if `input` is also invalid. `entityRevision` is a schema stamp, as on writes.
+- `200 Record` is the record after the action, with its new `can`. `204` means the action removed the record.
+- `403` the viewer may not run it (or `can.actions` said so); `404` unknown entity, record or action; `409` stale **or** no longer applicable (the message says why, `current` is the record now). A client reloads on both and does not retry.
+- `can.actions` is an object from action id to boolean; only `false` restricts, and a malformed one is dropped as a whole, like the rest of `can`.
+- To guard an action by more than the record's own change, make `version` cover that other state (several records may share a version when stored together).
 
 The adapter turns these into typed errors; it does not retry writes on its own.
 

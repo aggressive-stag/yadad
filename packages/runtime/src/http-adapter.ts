@@ -202,7 +202,7 @@ function queryString(query: Query): string {
   if (query.filter !== undefined) parts.push(`filter=${encodeURIComponent(JSON.stringify(resolveRelativeDates(query.filter)))}`);
   if (query.sort !== undefined) parts.push(`sort=${encodeURIComponent(JSON.stringify(query.sort))}`);
   if (query.page !== undefined) {
-    parts.push(`offset=${encodeURIComponent(String(query.page.offset))}`);
+    parts.push("cursor" in query.page ? `cursor=${encodeURIComponent(query.page.cursor)}` : `offset=${encodeURIComponent(String(query.page.offset))}`);
     parts.push(`limit=${encodeURIComponent(String(query.page.limit))}`);
   }
   return parts.length > 0 ? `?${parts.join("&")}` : "";

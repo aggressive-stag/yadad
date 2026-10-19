@@ -228,7 +228,7 @@ describe("loadCalendarRange", () => {
 
   test("pages through a range larger than one page, de-duplicated, no truncation", async () => {
     const db = await seed(1200);
-    const calls: { offset: number; limit: number }[] = [];
+    const calls: { offset?: number; limit: number }[] = [];
     const spy = { ...db, find: (e: string, q: Parameters<typeof db.find>[1]) => (q.page && calls.push(q.page), db.find(e, q)) };
     const load = await loadCalendarRange(spy, view, range, { entity });
     expect(load.records).toHaveLength(1200);
@@ -253,7 +253,7 @@ describe("loadCalendarRange", () => {
 
   test("an adapter that returns fewer than asked is stepped through by what it gave", async () => {
     const db = await seed(25);
-    const small = { ...db, find: (e: string, q: Parameters<typeof db.find>[1]) => db.find(e, q.page ? { ...q, page: { offset: q.page.offset, limit: Math.min(q.page.limit, 10) } } : q) };
+    const small = { ...db, find: (e: string, q: Parameters<typeof db.find>[1]) => db.find(e, q.page ? { ...q, page: { ...q.page, limit: Math.min(q.page.limit, 10) } } : q) };
     const load = await loadCalendarRange(small, view, range, { entity });
     expect(load.records).toHaveLength(25);
     expect(load.truncated).toBe(false);

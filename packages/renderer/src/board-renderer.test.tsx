@@ -347,7 +347,7 @@ describe("states", () => {
     const many: DataAdapter = {
       ...db,
       find: (name, query) =>
-        name === "task" ? Promise.resolve({ items: Array.from({ length: query.page?.limit ?? 500 }, (_, i) => ({ ...item, id: `${query.page?.offset ?? 0}-${i}` })), total: 1412 }) : db.find(name, query),
+        name === "task" ? Promise.resolve({ items: Array.from({ length: query.page?.limit ?? 500 }, (_, i) => ({ ...item, id: `${query.page && "offset" in query.page ? query.page.offset : 0}-${i}` })), total: 1412 }) : db.find(name, query),
     };
     render(<BoardRenderer entity={entity} view={board} registry={mockRegistry} dataSources={new Map([["default", many]])} entities={documents.entities} />);
     const notice = await screen.findByTestId("board-notice");

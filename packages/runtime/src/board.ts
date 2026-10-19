@@ -185,9 +185,10 @@ export async function loadBoardCards(adapter: DataAdapter, view: BoardView, opti
   const first = await adapter.find(view.entity, query(0, Math.min(pageSize, maxCards)));
   const pages = [first.items];
   const stride = first.items.length; // an adapter may return fewer than asked; step by what it gave
-  if (stride > 0 && first.total > stride && stride < maxCards) {
+  const firstTotal = first.total ?? first.items.length; // RFC 0007: card 34h (cursor paging)
+  if (stride > 0 && firstTotal > stride && stride < maxCards) {
     const requests: Promise<readonly DataRecord[]>[] = [];
-    for (let offset = stride; offset < Math.min(first.total, maxCards); offset += stride) {
+    for (let offset = stride; offset < Math.min(firstTotal, maxCards); offset += stride) {
       requests.push(adapter.find(view.entity, query(offset, Math.min(stride, maxCards - offset))).then((p) => p.items));
     }
     pages.push(...(await Promise.all(requests)));
@@ -199,7 +200,7 @@ export async function loadBoardCards(adapter: DataAdapter, view: BoardView, opti
     seen.add(record.id);
     records.push(record);
   }
-  return { records, total: first.total, truncated: first.total > records.length };
+  return { records, total: firstTotal, truncated: firstTotal > records.length };
 }
 
 /**
