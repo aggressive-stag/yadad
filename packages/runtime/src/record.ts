@@ -1,4 +1,4 @@
-import { isIsoDate, jsonPointer } from "@yadad/core";
+import { isIsoDate, isIsoDatetime, jsonPointer } from "@yadad/core";
 import type { DocumentError, EntityDocument, Field, FieldValue, RecordValues } from "@yadad/core";
 
 /**
@@ -80,6 +80,13 @@ function checkValue(field: Field, value: FieldValue): Problem | undefined {
       if (typeof value !== "string" || !isIsoDate(value)) return wrongType(name, "a date (YYYY-MM-DD)");
       if (field.min !== undefined && value < field.min) return outOfRange(name, `on or after ${field.min}`);
       if (field.max !== undefined && value > field.max) return outOfRange(name, `on or before ${field.max}`);
+      return undefined;
+
+    case "datetime":
+      // RFC 0007: card 34b (the full datetime helpers; this is the canonical-form check)
+      if (typeof value !== "string" || !isIsoDatetime(value)) return wrongType(name, "an instant (YYYY-MM-DDTHH:MM:SS.sssZ, UTC)");
+      if (field.min !== undefined && value < field.min) return outOfRange(name, `at or after ${field.min}`);
+      if (field.max !== undefined && value > field.max) return outOfRange(name, `at or before ${field.max}`);
       return undefined;
   }
 }

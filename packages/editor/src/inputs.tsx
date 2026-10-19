@@ -48,6 +48,15 @@ export function renderInput(
       const { Input } = registry.fields.date;
       return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
     }
+    case "datetime": {
+      // RFC 0007: card 37d. A registry without fields.datetime gets a plain text box.
+      if (registry.fields.datetime) {
+        const { Input } = registry.fields.datetime;
+        return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+      }
+      const { Input } = registry.fields.text;
+      return <Input {...common} field={{ id: field.id, type: "text", label: field.label }} value={asString(value)} onChange={onChange} />;
+    }
     case "reference": {
       // The editor never reads records, so it cannot offer the picker: a record id is typed as text.
       const { Input } = registry.fields.text;
@@ -78,6 +87,15 @@ export function renderDisplay(registry: Registry<ReactNode>, field: Field, value
     case "date": {
       const { Display } = registry.fields.date;
       return <Display field={field} value={asString(value)} />;
+    }
+    case "datetime": {
+      // RFC 0007: card 37d. A registry without fields.datetime shows the stored text.
+      if (registry.fields.datetime) {
+        const { Display } = registry.fields.datetime;
+        return <Display field={field} value={asString(value)} />;
+      }
+      const { Display } = registry.fields.text;
+      return <Display field={{ id: field.id, type: "text", label: field.label }} value={asString(value)} />;
     }
     case "reference": {
       const { Display } = registry.fields.reference;

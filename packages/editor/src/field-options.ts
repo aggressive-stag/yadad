@@ -20,6 +20,8 @@ export const FIELD_PROPERTIES: { readonly [K in FieldType]: readonly Field[] } =
     { id: "min", type: "date", label: "Earliest date" },
     { id: "max", type: "date", label: "Latest date" },
   ],
+  // RFC 0007: card 37d (min and max of a datetime need an instant input)
+  datetime: [],
   // The entity editor swaps these for pickers when it knows the other entities.
   reference: [
     { id: "entity", type: "text", label: "Target entity id", required: true },
@@ -40,6 +42,7 @@ export const FIELD_TYPE_LABELS: { readonly [K in FieldType]: string } = {
   boolean: "Checkbox",
   select: "Choice list",
   date: "Date",
+  datetime: "Date and time",
   reference: "Link to another record",
 };
 
@@ -60,6 +63,8 @@ export function fieldFromProperties(type: FieldType, v: RecordValues): Field {
       return { ...base, type, ...opt("min", num(v["min"])), ...opt("max", num(v["max"])), ...opt("step", num(v["step"])), ...opt("unit", str(v["unit"])) };
     case "date":
       return { ...base, type, ...opt("min", date(v["min"])), ...opt("max", date(v["max"])) };
+    case "datetime":
+      return { ...base, type };
     case "reference":
       return { ...base, type, entity: str(v["entity"]) ?? "", ...opt("display", str(v["display"])) };
     case "select": {

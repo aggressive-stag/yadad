@@ -320,6 +320,15 @@ const FIELD_SPECS: Record<FieldType, FieldSpec> = {
       { key: "max", required: false, description: 'Latest allowed date, "YYYY-MM-DD".' },
     ],
   },
+  datetime: {
+    type: "datetime",
+    description:
+      'An instant, stored in exactly one form: "YYYY-MM-DDTHH:MM:SS.sssZ" (UTC, three fractional digits, a trailing Z; what Date.prototype.toISOString prints). Shown in the viewer\'s time zone. Conditions on it take eq, neq, gt, gte, lt, lte, in, empty and notEmpty (no contains) with an instant of that form as the value. It cannot be a calendar dateField or a board groupBy. Use it only with a registry that has fields.datetime.',
+    properties: [
+      { key: "min", required: false, description: 'Earliest allowed instant, "YYYY-MM-DDTHH:MM:SS.sssZ".' },
+      { key: "max", required: false, description: 'Latest allowed instant, "YYYY-MM-DDTHH:MM:SS.sssZ".' },
+    ],
+  },
   reference: {
     type: "reference",
     description:

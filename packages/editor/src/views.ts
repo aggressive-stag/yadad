@@ -287,6 +287,7 @@ export const QUICK_FILTER_KINDS: { readonly [K in FieldType]: "match" | "contain
   text: "contains",
   number: "range",
   date: "range",
+  datetime: undefined, // RFC 0007: card 35g (the renderer's from/to quick filter for instants)
   reference: undefined,
 };
 

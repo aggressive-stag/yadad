@@ -14,6 +14,23 @@ const asString = (v: FieldValue | undefined): string | undefined => (typeof v ==
 const asNumber = (v: FieldValue | undefined): number | undefined => (typeof v === "number" ? v : undefined);
 const asBoolean = (v: FieldValue | undefined): boolean | undefined => (typeof v === "boolean" ? v : undefined);
 
+/** RFC 0007: card 35b. A registry without the optional fields.datetime shows an ErrorSummary naming the key. */
+function missingDatetime(registry: Registry<ReactNode>, field: Field): ReactNode {
+  const { ErrorSummary } = registry.layout;
+  return (
+    <ErrorSummary
+      errors={[
+        {
+          path: "/fields/datetime",
+          code: "required",
+          message: `This registry has no fields.datetime component, so the datetime field ${field.id} cannot be shown.`,
+          hint: "Add a fields.datetime entry (an Input and a Display) to the registry.",
+        },
+      ]}
+    />
+  );
+}
+
 /**
  * Renders the field's Input from the registry. The switch narrows the field
  * and its stored value together, so every entry gets exactly its own props.
@@ -47,6 +64,11 @@ export function renderInput(
       const { Input } = registry.fields.date;
       return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
     }
+    case "datetime": {
+      if (!registry.fields.datetime) return missingDatetime(registry, field);
+      const { Input } = registry.fields.datetime;
+      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+    }
     case "reference": {
       const { Input } = registry.fields.reference;
       const id = asString(value);
@@ -76,6 +98,11 @@ export function renderDisplay(registry: Registry<ReactNode>, field: Field, value
     }
     case "date": {
       const { Display } = registry.fields.date;
+      return <Display field={field} value={asString(value)} />;
+    }
+    case "datetime": {
+      if (!registry.fields.datetime) return missingDatetime(registry, field);
+      const { Display } = registry.fields.datetime;
       return <Display field={field} value={asString(value)} />;
     }
     case "reference": {

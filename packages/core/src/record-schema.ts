@@ -15,7 +15,7 @@ export interface RecordFieldSchema {
   readonly minimum?: number;
   readonly maximum?: number;
   readonly multipleOf?: number;
-  readonly format?: "date";
+  readonly format?: "date" | "date-time";
   readonly pattern?: string;
   /** Conjunction of `{ pattern }` subschemas; used for date ranges. */
   readonly allOf?: readonly { readonly pattern: string }[];
@@ -113,6 +113,20 @@ function fieldSchema(field: Field): RecordFieldSchema {
           "A calendar date, YYYY-MM-DD. Whether 2026-02-30 is rejected depends on the validator asserting the \"date\" format.",
       };
     }
+
+    case "datetime": {
+      const bounds: { pattern: string }[] = [];
+      if (field.min !== undefined) bounds.push({ pattern: isoDateAtLeast(field.min) });
+      if (field.max !== undefined) bounds.push({ pattern: isoDateAtMost(field.max) });
+      return {
+        type: nullable("string", field),
+        format: "date-time",
+        pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+        ...(bounds.length > 0 ? { allOf: bounds } : {}),
+        description:
+          "An instant in the one stored form, YYYY-MM-DDTHH:MM:SS.sssZ (UTC, milliseconds, Z). The min and max patterns compare the text; whether the moment exists (2026-02-30T00:00:00.000Z is rejected) depends on the validator asserting the \"date-time\" format.",
+      };
+    }
   }
 }
 
@@ -141,11 +155,12 @@ function isoDateAtMost(max: string): string {
 }
 
 function isoDateBound(bound: string, beyond: (digit: number) => string | undefined): string {
-  const alternatives = [bound];
+  const escape = (text: string): string => text.replace(/\./g, "\\.");
+  const alternatives = [escape(bound)];
   for (let i = 0; i < bound.length; i++) {
-    if (bound[i] === "-") continue;
+    if (!/\d/.test(bound[i] ?? "")) continue;
     const cls = beyond(Number(bound[i]));
-    if (cls !== undefined) alternatives.push(`${bound.slice(0, i)}${cls}.*`);
+    if (cls !== undefined) alternatives.push(`${escape(bound.slice(0, i))}${cls}.*`);
   }
   return `^(?:${alternatives.join("|")})$`;
 }

@@ -31,6 +31,7 @@ export function operatorsFor(type: FieldType): readonly Comparison["op"][] {
   switch (type) {
     case "number":
     case "date":
+    case "datetime": // RFC 0007: card 37d (the value input for an instant)
       return ["eq", "neq", "gt", "gte", "lt", "lte", "empty", "notEmpty"];
     case "text":
       return ["eq", "neq", "contains", "empty", "notEmpty"];

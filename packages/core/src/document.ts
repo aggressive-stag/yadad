@@ -22,7 +22,7 @@ export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
-export const FIELD_TYPES = ["text", "number", "boolean", "select", "date", "reference"] as const;
+export const FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime", "reference"] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
 interface FieldBase {
@@ -69,6 +69,18 @@ export interface DateField extends FieldBase {
 }
 
 /**
+ * An instant (RFC 0007), stored in exactly one form: "YYYY-MM-DDTHH:MM:SS.sssZ"
+ * (UTC, three fractional digits, `Z`). Shown in the viewer's time zone.
+ */
+export interface DatetimeField extends FieldBase {
+  readonly type: "datetime";
+  /** Earliest allowed instant, in the stored form. */
+  readonly min?: string;
+  /** Latest allowed instant, in the stored form. */
+  readonly max?: string;
+}
+
+/**
  * A link to a record of another entity (RFC 0002). The stored value is the
  * target record's id, a string. The server owns referential integrity; the
  * engine only offers existing records in the picker.
@@ -82,7 +94,7 @@ export interface ReferenceField extends FieldBase {
 }
 
 /** Discriminated on `type`. */
-export type Field = TextField | NumberField | BooleanField | SelectField | DateField | ReferenceField;
+export type Field = TextField | NumberField | BooleanField | SelectField | DateField | DatetimeField | ReferenceField;
 
 /** Data model: owns fields, types and validation. */
 export interface EntityDocument {

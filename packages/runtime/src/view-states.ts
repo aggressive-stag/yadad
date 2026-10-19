@@ -196,6 +196,9 @@ function typicalValue(field: Field, today: string): FieldValue {
       return field.options.values[0] ?? null;
     case "date":
       return firstValid(field, [today, field.min, field.max].filter((v): v is string => v !== undefined));
+    case "datetime":
+      // RFC 0007: card 34h (the state grid's datetime value, rendered in options.timeZone)
+      return firstValid(field, [`${today}T09:30:00.000Z`, field.min, field.max].filter((v): v is string => v !== undefined));
     case "reference":
       return SAMPLE_REFERENCE;
   }

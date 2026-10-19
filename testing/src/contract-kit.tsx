@@ -6,7 +6,7 @@
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { FIELD_TYPES } from "@yadad/core";
-import type { BoardProps, CalendarDayProps, CalendarProps, DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry } from "@yadad/core";
+import type { BoardProps, CalendarDayProps, CalendarProps, DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry, RequiredFieldEntries } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -48,7 +48,12 @@ function inputProps<K extends FieldType>(base: InputProps<FieldDefinitions[K], F
   return withExtras(base, extras);
 }
 
-export type FieldSamples = { readonly [K in FieldType]: FieldSample<K> };
+// RFC 0007: later card (testing). `datetime` is an optional registry key and has no
+// contract checks yet, so the kit leaves it out until the reference components ship it.
+type CheckedFieldType = Exclude<FieldType, "datetime">;
+const CHECKED_FIELD_TYPES: readonly CheckedFieldType[] = FIELD_TYPES.filter((t): t is CheckedFieldType => t !== "datetime");
+
+export type FieldSamples = { readonly [K in CheckedFieldType]: FieldSample<K> };
 
 export const defaultSamples: FieldSamples = {
   text: { field: { id: "name", type: "text", label: "Name", required: true }, value: "Ada", inputExtras: NONE, displayExtras: NONE },
@@ -107,7 +112,7 @@ const stringDriver: Driver<string> = {
   shows: (text, value) => text.includes(value),
 };
 
-const drivers: { readonly [K in FieldType]: Driver<FieldValueTypes[K]> } = {
+const drivers: { readonly [K in CheckedFieldType]: Driver<FieldValueTypes[K]> } = {
   text: stringDriver,
   select: stringDriver,
   date: stringDriver,
@@ -158,10 +163,10 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * one at a time (await each), never concurrently.
  */
 export function registryContractChecks(registry: Registry<ReactNode>, samples: FieldSamples = defaultSamples): readonly ContractCheck[] {
-  return [...FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry), ...calendarChecks(registry), ...boardChecks(registry)];
+  return [...CHECKED_FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry), ...calendarChecks(registry), ...boardChecks(registry)];
 }
 
-function checksFor<K extends FieldType>(type: K, registry: Registry<ReactNode>, samples: FieldSamples): ContractCheck[] {
+function checksFor<K extends CheckedFieldType>(type: K, registry: Registry<ReactNode>, samples: FieldSamples): ContractCheck[] {
   return fieldChecks(type, registry, samples[type], drivers[type]);
 }
 
@@ -176,13 +181,14 @@ export function describeRegistryContract(registry: Registry<ReactNode>, samples:
   });
 }
 
-function fieldChecks<K extends FieldType>(
+function fieldChecks<K extends CheckedFieldType>(
   type: K,
   registry: Registry<ReactNode>,
   sample: FieldSample<K>,
   driver: Driver<FieldValueTypes[K]>,
 ): ContractCheck[] {
-  const entry = registry.fields[type];
+  const entries: RequiredFieldEntries<ReactNode> = registry.fields;
+  const entry = entries[type];
   const { Input, Display } = entry;
   const { FieldFrame } = registry.layout;
   const inputId = `yadad-contract-${sample.field.id}`;

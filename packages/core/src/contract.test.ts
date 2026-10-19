@@ -279,6 +279,7 @@ const fieldExamples: Record<string, Record<string, unknown>> = {
   boolean: {},
   select: { options: { source: "static", values: ["Squat", "Bench"] } },
   date: { min: "2026-01-01", max: "2026-12-31" },
+  datetime: { min: "2026-01-01T00:00:00.000Z", max: "2026-12-31T23:59:59.999Z" },
   reference: { entity: "exercise", display: "name" },
 };
 

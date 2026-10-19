@@ -2,7 +2,7 @@
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
 // CellEditor and optionsSchema come later.
 
-import type { BooleanField, CalendarMode, DateField, Field, FieldType, NumberField, ReferenceField, SelectField, TextField } from "./document.js";
+import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, NumberField, ReferenceField, SelectField, TextField } from "./document.js";
 import type { DocumentError } from "./errors.js";
 
 /**
@@ -20,6 +20,8 @@ export interface FieldValueTypes {
   readonly select: string;
   /** "YYYY-MM-DD" */
   readonly date: string;
+  /** "YYYY-MM-DDTHH:MM:SS.sssZ": UTC, milliseconds, `Z`. */
+  readonly datetime: string;
   /** The target record's id. */
   readonly reference: string;
 }
@@ -31,6 +33,7 @@ export interface FieldDefinitions {
   readonly boolean: BooleanField;
   readonly select: SelectField;
   readonly date: DateField;
+  readonly datetime: DatetimeField;
   readonly reference: ReferenceField;
 }
 
@@ -97,6 +100,7 @@ export interface FieldInputExtras {
   readonly boolean: Record<never, never>;
   readonly select: Record<never, never>;
   readonly date: Record<never, never>;
+  readonly datetime: Record<never, never>;
   readonly reference: ReferenceInputExtras;
 }
 
@@ -107,6 +111,7 @@ export interface FieldDisplayExtras {
   readonly boolean: Record<never, never>;
   readonly select: Record<never, never>;
   readonly date: Record<never, never>;
+  readonly datetime: Record<never, never>;
   readonly reference: ReferenceDisplayExtras;
 }
 
@@ -345,11 +350,22 @@ export interface BoardProps<N> {
 }
 
 /**
+ * One entry per field type. `datetime` is optional until the reference
+ * component set ships it (RFC 0007), like `layout.Calendar`: a document that
+ * uses a datetime field with a registry that lacks it shows an error.
+ */
+export type RequiredFieldEntries<N> = { readonly [K in Exclude<FieldType, "datetime">]: FieldTypeEntry<K, N> };
+
+export type RegistryFields<N> = RequiredFieldEntries<N> & {
+  readonly datetime?: FieldTypeEntry<"datetime", N>;
+};
+
+/**
  * Exact-key lookup: one entry per field type, enforced by the type system
  * (a mapped type over FieldType, not an index signature), plus layout chrome.
  */
 export interface Registry<N> {
-  readonly fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> };
+  readonly fields: RegistryFields<N>;
   readonly layout: {
     readonly FieldFrame: Component<FieldFrameProps<N>, N>;
     readonly Section: Component<SectionProps<N>, N>;

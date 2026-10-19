@@ -137,6 +137,11 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
       checkIsoDate(errors, field, path, "max");
       checkRange(errors, field, path, (v): v is string => typeof v === "string" && isIsoDate(v));
       return;
+    case "datetime":
+      checkIsoDatetime(errors, field, path, "min");
+      checkIsoDatetime(errors, field, path, "max");
+      checkRange(errors, field, path, (v): v is string => typeof v === "string" && isIsoDatetime(v));
+      return;
     case "reference":
       checkId(errors, field, path, "entity");
       if (field["display"] !== undefined) checkId(errors, field, path, "display");
@@ -151,6 +156,7 @@ const FIELD_KEYS: { readonly [K in FieldType]: { readonly required: readonly str
   boolean: { required: [], optional: [] },
   select: { required: ["options"], optional: [] },
   date: { required: [], optional: ["min", "max"] },
+  datetime: { required: [], optional: ["min", "max"] },
   reference: { required: ["entity"], optional: ["display"] },
 };
 
@@ -918,6 +924,20 @@ function checkIsoDate(errors: Errors, obj: JsonObject, path: Path, key: string):
   const v = obj[key];
   if (v !== undefined && (typeof v !== "string" || !isIsoDate(v))) {
     errors.add([...path, key], "invalid-value", `"${key}" must be a date like "2026-10-04".`, "Use YYYY-MM-DD.");
+  }
+}
+
+/** The one stored form of an instant: "YYYY-MM-DDTHH:MM:SS.sssZ" naming a real moment (RFC 0007). */
+export function isIsoDatetime(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
+  const d = new Date(value);
+  return !Number.isNaN(d.getTime()) && d.toISOString() === value;
+}
+
+function checkIsoDatetime(errors: Errors, obj: JsonObject, path: Path, key: string): void {
+  const v = obj[key];
+  if (v !== undefined && (typeof v !== "string" || !isIsoDatetime(v))) {
+    errors.add([...path, key], "invalid-value", `"${key}" must be an instant like "2026-10-17T09:30:00.000Z".`, "Write 2026-10-17T09:30:00.000Z: UTC, three fractional digits, a trailing Z.");
   }
 }
 
