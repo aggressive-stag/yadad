@@ -41,6 +41,16 @@ describe("contract lists", () => {
     expect(contract.calendar).toMatchObject({ modes: ["month", "week"], defaultModes: ["month", "week"], weekStartsOn: { default: 1, min: 0, max: 6 }, detailFieldsMax: 3 });
     expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(["layout.Calendar", "layout.Board", "fields.datetime", "layout.Dialog"]);
   });
+  test("RFC 0007: the datetime type, entity actions, recordActions, compare and the new registry keys are described", () => {
+    expect(contract.fieldTypes.map((f) => f.type)).toContain("datetime");
+    const keys = (kind: string): string[] => contract.documentKinds.find((k) => k.kind === kind)?.properties.map((p) => p.key) ?? [];
+    expect(keys("entity")).toContain("actions");
+    for (const kind of ["table", "calendar", "board"]) expect(keys(kind)).toContain("recordActions");
+    expect(contract.documentKinds.find((k) => k.kind === "table")?.properties.find((p) => p.key === "columns")?.description).toContain("compare");
+    expect(contract.actions).toEqual({ recordActionsMax: 6, max: 12, inputMax: 5, inputFieldTypes: ["text", "number", "boolean", "select", "date", "datetime"], confirmTones: ["neutral", "danger"] });
+    expect(contract.conditionPlaces).toContainEqual(expect.objectContaining({ path: "/actions/*/visibleWhen", kinds: ["entity"], accepts: "record+viewer" }));
+    expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(expect.arrayContaining(["fields.datetime", "layout.Dialog"]));
+  });
   test("specVersion matches SPEC_VERSION", () => {
     expect(contract.specVersion).toBe(SPEC_VERSION);
   });

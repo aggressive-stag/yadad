@@ -90,6 +90,9 @@ lines.push(`calendar view: modes ${cal.modes.join(", ")} (default ${JSON.stringi
 lines.push("");
 const viewer = contract.viewer;
 lines.push(`viewer document (at most ${viewer.documentsMax} per set): ${viewer.factsMax} facts at most; fact types ${viewer.factTypes.join(", ")}; a select fact lists ${viewer.factValuesMin} to ${viewer.factValuesMax} values.`);
+const actions = contract.actions;
+lines.push("");
+lines.push(`record actions (entity \`actions\`, offered by a view's \`recordActions\`): an entity declares ${actions.max} at most, a view offers ${actions.recordActionsMax} at most, an action asks for ${actions.inputMax} input fields at most (types ${actions.inputFieldTypes.join(", ")}); confirm tones ${actions.confirmTones.join(", ")}.`);
 lines.push("");
 lines.push("where a condition may appear (accepts: record+viewer = any condition; viewer = viewerIn, and, or, not; record = no viewerIn):");
 for (const place of contract.conditionPlaces) lines.push(`  ${place.path} [${place.kinds.join(", ")}] accepts ${place.accepts} -- ${place.description}`);

@@ -1,0 +1,395 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "record_version",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "key",
+        "type": "text",
+        "label": "Key",
+        "required": true
+      },
+      {
+        "id": "version",
+        "type": "number",
+        "label": "Version",
+        "min": 1,
+        "step": 1
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "current",
+            "superseded",
+            "deleted"
+          ]
+        }
+      },
+      {
+        "id": "changed_at",
+        "type": "datetime",
+        "label": "Changed at",
+        "required": true
+      },
+      {
+        "id": "author",
+        "type": "text",
+        "label": "Author"
+      },
+      {
+        "id": "body",
+        "type": "text",
+        "label": "Body"
+      },
+      {
+        "id": "previous_body",
+        "type": "text",
+        "label": "Body before the change"
+      }
+    ],
+    "actions": [
+      {
+        "id": "restore_version",
+        "label": "Restore",
+        "confirm": {
+          "title": "Restore version",
+          "message": "Make this version the current one? The current version is kept in the history.",
+          "confirmLabel": "Restore"
+        },
+        "visibleWhen": {
+          "op": "neq",
+          "field": "state",
+          "value": "current"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "decision",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "code",
+        "type": "text",
+        "label": "Code",
+        "required": true
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "pending",
+            "applied",
+            "rejected"
+          ]
+        }
+      },
+      {
+        "id": "kind",
+        "type": "select",
+        "label": "Kind",
+        "options": {
+          "source": "static",
+          "values": [
+            "merge",
+            "retire",
+            "rename"
+          ]
+        }
+      },
+      {
+        "id": "summary",
+        "type": "text",
+        "label": "Summary",
+        "required": true
+      },
+      {
+        "id": "confidence",
+        "type": "number",
+        "label": "Confidence",
+        "min": 0,
+        "max": 1,
+        "step": 0.01
+      },
+      {
+        "id": "created_at",
+        "type": "datetime",
+        "label": "Proposed at"
+      },
+      {
+        "id": "decided_at",
+        "type": "datetime",
+        "label": "Decided at"
+      },
+      {
+        "id": "decided_by",
+        "type": "text",
+        "label": "Decided by"
+      },
+      {
+        "id": "reject_reason",
+        "type": "text",
+        "label": "Reason"
+      },
+      {
+        "id": "evidence",
+        "type": "text",
+        "label": "Evidence"
+      }
+    ],
+    "actions": [
+      {
+        "id": "apply",
+        "label": "Apply",
+        "confirm": {
+          "message": "Apply this decision? It changes the records it names."
+        },
+        "visibleWhen": {
+          "op": "eq",
+          "field": "state",
+          "value": "pending"
+        }
+      },
+      {
+        "id": "reject",
+        "label": "Reject",
+        "confirm": {
+          "title": "Reject decision",
+          "message": "Reject this decision?",
+          "confirmLabel": "Reject",
+          "tone": "danger"
+        },
+        "input": [
+          {
+            "id": "reason",
+            "type": "text",
+            "label": "Reason (optional)"
+          }
+        ],
+        "visibleWhen": {
+          "op": "eq",
+          "field": "state",
+          "value": "pending"
+        }
+      },
+      {
+        "id": "restore",
+        "label": "Restore",
+        "confirm": {
+          "message": "Move this decision back to pending?"
+        },
+        "visibleWhen": {
+          "op": "in",
+          "field": "state",
+          "values": [
+            "applied",
+            "rejected"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "decision_record",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "decision_code",
+        "type": "text",
+        "label": "Decision code",
+        "required": true
+      },
+      {
+        "id": "record",
+        "type": "reference",
+        "label": "Record",
+        "entity": "record_version",
+        "display": "key"
+      },
+      {
+        "id": "role",
+        "type": "select",
+        "label": "Role",
+        "options": {
+          "source": "static",
+          "values": [
+            "subject",
+            "target"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 6,
+    "id": "recent_changes",
+    "entity": "record_version",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "changed_at"
+      },
+      {
+        "field": "key"
+      },
+      {
+        "field": "author"
+      },
+      {
+        "field": "body",
+        "compare": {
+          "field": "previous_body"
+        }
+      }
+    ],
+    "title": "Recent changes",
+    "sort": [
+      {
+        "field": "changed_at",
+        "dir": "desc"
+      }
+    ],
+    "quickFilters": [
+      {
+        "field": "changed_at"
+      },
+      {
+        "field": "author"
+      }
+    ],
+    "pageSize": 50,
+    "rowAction": {
+      "open": "record_history",
+      "bind": [
+        {
+          "field": "key",
+          "to": "key"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 6,
+    "id": "record_history",
+    "entity": "record_version",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "version"
+      },
+      {
+        "field": "changed_at"
+      },
+      {
+        "field": "author"
+      },
+      {
+        "field": "state"
+      },
+      {
+        "field": "body",
+        "compare": {
+          "to": "previousRow"
+        }
+      }
+    ],
+    "title": "Version history",
+    "sort": [
+      {
+        "field": "version",
+        "dir": "asc"
+      }
+    ],
+    "recordActions": [
+      "restore_version"
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 6,
+    "id": "pending_decisions",
+    "entity": "decision",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "kind"
+      },
+      {
+        "field": "summary"
+      },
+      {
+        "field": "confidence"
+      },
+      {
+        "field": "created_at"
+      },
+      {
+        "field": "evidence"
+      }
+    ],
+    "title": "Decisions",
+    "sort": [
+      {
+        "field": "created_at",
+        "dir": "desc"
+      }
+    ],
+    "quickFilters": [
+      {
+        "field": "state"
+      },
+      {
+        "field": "created_at"
+      }
+    ],
+    "recordActions": [
+      "apply",
+      "reject",
+      "restore"
+    ],
+    "rowAction": {
+      "open": "decision_records",
+      "bind": [
+        {
+          "field": "code",
+          "to": "decision_code"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 6,
+    "id": "decision_records",
+    "entity": "decision_record",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "record"
+      },
+      {
+        "field": "role"
+      }
+    ],
+    "title": "Records named by the decision"
+  }
+]

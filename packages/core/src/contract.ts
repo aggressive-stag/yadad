@@ -230,7 +230,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "sort", required: false, description: "Initial sort: an array of { field, dir: \"asc\" | \"desc\" }." },
       { key: "pageSize", required: false, description: "Rows per page, a whole number from 1 to 1000." },
       { key: "filter", required: false, description: "A condition every row must always match." },
-      { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number and date fields as a from/to range (either end may stay empty)." },
+      { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number, date and datetime fields as a from/to range (either end may stay empty)." },
       { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only. visibleWhen (a viewer condition) hides the action from viewers it does not hold for.` },
       { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each row, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a row only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
     ],
@@ -257,7 +257,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "editable", required: false, description: "Whether moving an entry to another day changes its date field. Defaults to false." },
       { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from an entry, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A calendar can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
-      { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each entry, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a entry only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
+      { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each entry, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on an entry only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
     ],
   },
   {
