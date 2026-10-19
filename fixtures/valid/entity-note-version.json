@@ -1,0 +1,14 @@
+{
+  "kind": "entity",
+  "specVersion": 6,
+  "id": "note_version",
+  "revision": 1,
+  "fields": [
+    { "id": "note", "type": "text", "label": "Note", "required": true },
+    { "id": "version", "type": "number", "label": "Version", "min": 1, "step": 1 },
+    { "id": "changed_at", "type": "datetime", "label": "Changed at", "required": true },
+    { "id": "author", "type": "text", "label": "Author" },
+    { "id": "body", "type": "text", "label": "Body" },
+    { "id": "previous_body", "type": "text", "label": "Body before the change" }
+  ]
+}

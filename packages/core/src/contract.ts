@@ -225,7 +225,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "entity", required: true, description: "The id of the entity whose records are shown." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "dataSource", required: true, description: "Key the host maps to a DataAdapter. Never a URL." },
-      { key: "columns", required: true, description: "An array of { field, editable?, visibleWhen?, editableWhen? }; at least one, each field once. visibleWhen and editableWhen are viewer conditions (viewerIn, and, or, not): the column is shown, or edited in place, only while they hold for the viewer. editableWhen needs editable: true and can only narrow it." },
+      { key: "columns", required: true, description: "An array of { field, editable?, visibleWhen?, editableWhen?, compare? }; at least one, each field once. compare (RFC 0007) shows what changed in a text field: { \"to\": \"previousRow\" | \"nextRow\" } diffs it against that neighbour in the table's own order, { \"field\": \"<other text field>\" } against another text field of the same record. The cell shows the column's value as the after; text fields only, never together with editable. visibleWhen and editableWhen are viewer conditions (viewerIn, and, or, not): the column is shown, or edited in place, only while they hold for the viewer. editableWhen needs editable: true and can only narrow it." },
       { key: "title", required: false, description: "Caption shown with the table." },
       { key: "sort", required: false, description: "Initial sort: an array of { field, dir: \"asc\" | \"desc\" }." },
       { key: "pageSize", required: false, description: "Rows per page, a whole number from 1 to 1000." },

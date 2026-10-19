@@ -1,0 +1,15 @@
+{
+  "kind": "table",
+  "specVersion": 6,
+  "id": "note_changes",
+  "entity": "note_version",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [
+    { "field": "changed_at" },
+    { "field": "note" },
+    { "field": "body", "compare": { "field": "previous_body" } },
+    { "field": "author", "visibleWhen": { "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] } }
+  ],
+  "sort": [{ "field": "changed_at", "dir": "desc" }]
+}

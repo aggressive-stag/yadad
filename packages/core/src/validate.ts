@@ -8,7 +8,7 @@
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
@@ -343,8 +343,9 @@ function validateTable(errors: Errors, doc: JsonObject): void {
       errors.add(path, "type", "A column must be a JSON object.", 'Use { "field": "<field id>" }.');
       return;
     }
-    checkKeys(errors, column, path, ["field"], ["editable", "visibleWhen", "editableWhen"]);
+    checkKeys(errors, column, path, ["field"], ["editable", "visibleWhen", "editableWhen", "compare"]);
     checkId(errors, column, path, "field");
+    checkCompare(errors, column, path);
     checkBoolean(errors, column, path, "editable");
     checkCondition(errors, column["visibleWhen"], [...path, "visibleWhen"], "viewer");
     checkCondition(errors, column["editableWhen"], [...path, "editableWhen"], "viewer");
@@ -834,6 +835,32 @@ function containsViewerLeaf(value: unknown, depth = 0): boolean {
 }
 
 /** `editableWhen` only narrows `editable: true`, so it needs it (RFC 0006). */
+/** Checks a column's `compare` (RFC 0007): exactly one of `to` and `field`, and not on an editable column. Field types are checked in the set pass. */
+function checkCompare(errors: Errors, column: JsonObject, path: Path): void {
+  const compare = column["compare"];
+  if (compare === undefined) return;
+  const cpath = [...path, "compare"];
+  if (!isObject(compare)) {
+    errors.add(cpath, "type", '"compare" must be an object.', 'Use { "to": "previousRow" } or { "field": "<text field id>" }.');
+    return;
+  }
+  checkKeys(errors, compare, cpath, [], ["to", "field"]);
+  const hasTo = compare["to"] !== undefined;
+  const hasField = compare["field"] !== undefined;
+  if (hasTo && hasField) {
+    errors.add(cpath, "invalid-value", '"compare" takes "to" or "field", not both.', 'Keep one: { "to": "previousRow" } or { "field": "<text field id>" }.');
+  } else if (!hasTo && !hasField && Object.keys(compare).every((k) => k === "to" || k === "field")) {
+    errors.add(cpath, "required", '"compare" needs "to" or "field".', 'Use { "to": "previousRow" } or { "field": "<text field id>" }.');
+  }
+  if (hasTo && !COMPARE_NEIGHBOURS.some((n) => n === compare["to"])) {
+    errors.add([...cpath, "to"], "invalid-value", `Unknown neighbour ${JSON.stringify(compare["to"])}.`, `Use one of: ${COMPARE_NEIGHBOURS.join(", ")}.`, COMPARE_NEIGHBOURS);
+  }
+  checkId(errors, compare, cpath, "field");
+  if (column["editable"] === true) {
+    errors.add(cpath, "invalid-value", "A column that compares cannot also be editable.", "An edited cell has no meaningful diff. Remove compare or editable.");
+  }
+}
+
 function checkEditableWhen(errors: Errors, owner: JsonObject, path: Path): void {
   if (owner["editableWhen"] !== undefined && owner["editable"] !== true) {
     errors.add([...path, "editableWhen"], "invalid-value", `"editableWhen" has no effect while "editable" is not true.`, "editableWhen only narrows editable: true. Set editable to true or remove editableWhen.");
@@ -1251,7 +1278,38 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   checkConditionFields(view.filter, ["filter"], checkField);
   checkDates(view.filter, ["filter"]);
   checkRecordActionRefs(errors, view, entity);
+  checkCompareFields(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+}
+
+/** Checks each `compare` column against its entity: both fields are text, and `compare.field` is another field than the column's (RFC 0007). */
+function checkCompareFields(errors: DocumentError[], view: TableView, entity: EntityDocument): void {
+  const textIds = entity.fields.filter((f) => f.type === "text").map((f) => f.id);
+  view.columns.forEach((column, i) => {
+    const compare = column.compare;
+    if (!compare) return;
+    const own = entity.fields.find((f) => f.id === column.field);
+    if (own && own.type !== "text") {
+      errors.push({
+        path: jsonPointer(["columns", i, "compare"]),
+        code: "invalid-value",
+        message: `"compare" works on text fields, but "${own.id}" is a ${own.type} field.`,
+        hint: textIds.length > 0 ? `Compare one of the text fields: ${textIds.join(", ")}.` : `Entity "${entity.id}" has no text field; remove compare.`,
+        document: view.id,
+        allowed: textIds,
+      });
+    }
+    if (compare.field === undefined) return;
+    const path: Path = ["columns", i, "compare", "field"];
+    const other = entity.fields.find((f) => f.id === compare.field);
+    if (!other) {
+      errors.push(refError(view.id, path, `Field "${compare.field}" is not on entity "${entity.id}".`, `Use a text field id on "${entity.id}".`, textIds));
+    } else if (other.type !== "text") {
+      errors.push({ path: jsonPointer(path), code: "invalid-value", message: `"compare.field" must be a text field, but "${other.id}" is a ${other.type} field.`, hint: textIds.length > 0 ? `Use one of: ${textIds.join(", ")}.` : `Entity "${entity.id}" has no text field.`, document: view.id, allowed: textIds });
+    } else if (other.id === column.field) {
+      errors.push({ path: jsonPointer(path), code: "invalid-value", message: `A column cannot compare "${other.id}" with itself.`, hint: `Use another text field${textIds.length > 1 ? `: ${textIds.filter((id) => id !== other.id).join(", ")}` : ""}, or compare with "to": "previousRow".`, document: view.id, allowed: textIds.filter((id) => id !== other.id) });
+    }
+  });
 }
 
 /** Checks a table's row action: the target is a table, the bound fields exist on both entities and have the same type. */

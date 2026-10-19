@@ -1,0 +1,16 @@
+{
+  "kind": "table",
+  "specVersion": 6,
+  "id": "note_history",
+  "entity": "note_version",
+  "revision": 1,
+  "dataSource": "default",
+  "title": "History",
+  "columns": [
+    { "field": "version" },
+    { "field": "changed_at" },
+    { "field": "author" },
+    { "field": "body", "compare": { "to": "previousRow" } }
+  ],
+  "sort": [{ "field": "version", "dir": "asc" }]
+}

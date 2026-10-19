@@ -1,0 +1,59 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "body",
+        "type": "text",
+        "label": "Body"
+      },
+      {
+        "id": "before",
+        "type": "text",
+        "label": "Before"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 6,
+    "id": "t",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "qty"
+      },
+      {
+        "field": "mood"
+      },
+      {
+        "field": "body",
+        "compare": {
+          "field": "missing"
+        }
+      }
+    ]
+  }
+]

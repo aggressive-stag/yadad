@@ -344,6 +344,20 @@ const expected: Record<string, Picked[]> = {
   "record-actions-repeated.json": [{ path: "/recordActions/2", code: "duplicate-id", document: "t" }],
   "record-actions-too-many.json": [{ path: "/recordActions", code: "invalid-value", document: "t" }],
   "record-actions-unknown-action.json": [{ path: "/recordActions/1", code: "unknown-reference", document: "t", allowed: ["act0","act1"] }],
+  "compare-bad-field-id.json": [{ path: "/columns/2/compare/field", code: "invalid-value", document: "t" }],
+  "compare-bad-neighbour.json": [{ path: "/columns/2/compare/to", code: "invalid-value", document: "t", allowed: ["previousRow","nextRow"] }],
+  "compare-both-members.json": [{ path: "/columns/2/compare", code: "invalid-value", document: "t" }],
+  "compare-empty.json": [{ path: "/columns/2/compare", code: "required", document: "t" }],
+  "compare-field-not-text.json": [{ path: "/columns/2/compare/field", code: "invalid-value", document: "t", allowed: ["body","before"] }],
+  "compare-field-same-as-column.json": [{ path: "/columns/2/compare/field", code: "invalid-value", document: "t", allowed: ["before"] }],
+  "compare-field-unknown.json": [{ path: "/columns/2/compare/field", code: "unknown-reference", document: "t", allowed: ["body","before"] }],
+  "compare-not-object.json": [{ path: "/columns/2/compare", code: "type", document: "t" }],
+  "compare-on-editable-column.json": [{ path: "/columns/2/compare", code: "invalid-value", document: "t" }],
+  "compare-on-non-text-column.json": [
+    { path: "/columns/0/compare", code: "invalid-value", document: "t", allowed: ["body","before"] },
+    { path: "/columns/1/compare", code: "invalid-value", document: "t", allowed: ["body","before"] },
+  ],
+  "compare-unknown-key.json": [{ path: "/columns/2/compare/against", code: "unknown-property", document: "t" }],
 };
 
 const validSetDir = new URL("../../fixtures/valid-sets/", import.meta.url);

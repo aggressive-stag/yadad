@@ -175,6 +175,19 @@ export interface FormView {
   readonly sections: readonly FormSection[];
 }
 
+/** Which neighbour a `compare` column diffs against: the row before or after it in the table's own order. */
+export const COMPARE_NEIGHBOURS = ["previousRow", "nextRow"] as const;
+export type CompareNeighbour = (typeof COMPARE_NEIGHBOURS)[number];
+
+/**
+ * What a column's text is compared with (RFC 0007), exactly one of two:
+ * the same field in a neighbouring row (`to`), or another text field of the
+ * same record (`field`). The cell shows the column's value as the "after".
+ */
+export type ColumnCompare =
+  | { readonly to: CompareNeighbour; readonly field?: never }
+  | { readonly field: string; readonly to?: never };
+
 export interface TableColumn {
   /** Id of a field on the view's entity. */
   readonly field: string;
@@ -184,6 +197,8 @@ export interface TableColumn {
   readonly visibleWhen?: ViewerCondition;
   /** Edit the column in place only while this holds for the viewer. Needs `editable: true`; can only narrow it (RFC 0006). */
   readonly editableWhen?: ViewerCondition;
+  /** Show what changed in this text field against a neighbouring row or another field (RFC 0007). Text fields only; not with `editable`. */
+  readonly compare?: ColumnCompare;
 }
 
 export interface SortSpec {

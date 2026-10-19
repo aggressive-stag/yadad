@@ -1,0 +1,10 @@
+{
+  "kind": "table",
+  "specVersion": 6,
+  "id": "note_history_newest_first",
+  "entity": "note_version",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [{ "field": "version" }, { "field": "changed_at" }, { "field": "body", "compare": { "to": "nextRow" } }],
+  "sort": [{ "field": "version", "dir": "desc" }]
+}
