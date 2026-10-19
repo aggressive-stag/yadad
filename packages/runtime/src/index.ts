@@ -6,6 +6,7 @@ export * from "./patch.js";
 export * from "./key-value-adapter.js";
 export * from "./http-adapter.js";
 export * from "./drafts.js";
+export * from "./datetime.js";
 export * from "./reference.js";
 export * from "./aggregate.js";
 export * from "./row-action.js";
