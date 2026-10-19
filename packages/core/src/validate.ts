@@ -1124,6 +1124,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   const checkDates = (condition: Condition | undefined, base: Path): void => {
     checkRelativeDateFields(errors, view.id, entity, condition, base);
     checkReferenceOps(errors, view.id, entity, condition, base);
+    checkDatetimeConditions(errors, view.id, entity, condition, base);
   };
   if (view.kind === "form") {
     view.sections.forEach((section, i) => {
@@ -1306,7 +1307,12 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
         path: jsonPointer(path),
         code: "invalid-value",
         message: `"${id}" is a ${field.type} field, but a calendar's ${role} must be a ${types.join(" or ")} field.`,
-        hint: allowed.length > 0 ? `Use one of: ${allowed.join(", ")}.` : `Entity "${entity.id}" has no ${types.join(" or ")} field; add one.`,
+        hint:
+          field.type === "datetime"
+            ? "Use a date field; placing instants on local days is not supported yet."
+            : allowed.length > 0
+              ? `Use one of: ${allowed.join(", ")}.`
+              : `Entity "${entity.id}" has no ${types.join(" or ")} field; add one.`,
         document: view.id,
         allowed,
       });
@@ -1353,6 +1359,7 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
   });
   checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
   checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
+  checkDatetimeConditions(errors, view.id, entity, view.filter, ["filter"]);
   view.sort?.forEach((key, i) => {
     if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
     else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
@@ -1394,7 +1401,9 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
           : `"${g.field}" is a ${field.type} field, but a board's groupBy must be a select, boolean or reference field.`,
         hint: required
           ? "Use a different field, or make it optional so it has two values."
-          : groupableIds.length > 0
+          : field.type === "datetime"
+            ? "Use a select, boolean or reference field; grouping by instants is not supported yet."
+            : groupableIds.length > 0
             ? `Use one of: ${groupableIds.join(", ")}.`
             : `Entity "${entity.id}" has no groupable field; add a select, boolean or reference field.`,
         document: view.id,
@@ -1456,6 +1465,7 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
   });
   checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
   checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
+  checkDatetimeConditions(errors, view.id, entity, view.filter, ["filter"]);
   view.sort?.forEach((key, i) => {
     if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
     else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
@@ -1518,6 +1528,7 @@ function checkReferenceOps(errors: DocumentError[], document: string, entity: En
       return;
     case "not":
       checkReferenceOps(errors, document, entity, condition.condition, [...base, "condition"]);
+      checkDatetimeConditions(errors, document, entity, condition.condition, [...base, "condition"]);
       return;
     case "viewerIn":
       return;
@@ -1531,6 +1542,46 @@ function checkReferenceOps(errors: DocumentError[], document: string, entity: En
         hint: `Use one of: ${REFERENCE_OPS.join(", ")}.`,
         document,
       });
+    }
+  }
+}
+
+/** Reports, on a datetime field, a `contains` or a value that is not an instant in the one stored form (RFC 0007). */
+function checkDatetimeConditions(errors: DocumentError[], document: string, entity: EntityDocument, condition: Condition | undefined, base: Path): void {
+  if (!condition) return;
+  switch (condition.op) {
+    case "and":
+    case "or":
+      condition.conditions.forEach((c, i) => checkDatetimeConditions(errors, document, entity, c, [...base, "conditions", i]));
+      return;
+    case "not":
+      checkDatetimeConditions(errors, document, entity, condition.condition, [...base, "condition"]);
+      return;
+    case "viewerIn":
+    case "empty":
+    case "notEmpty":
+      return;
+    default: {
+      const field = entity.fields.find((f) => f.id === condition.field);
+      if (field?.type !== "datetime") return;
+      const canonical = 'Write an instant like "2026-10-17T09:30:00.000Z": UTC, three fractional digits, a trailing Z.';
+      if (condition.op === "contains") {
+        errors.push({
+          path: jsonPointer([...base, "op"]),
+          code: "invalid-value",
+          message: `"contains" cannot be used on datetime field "${field.id}": it holds an instant.`,
+          hint: "Use one of: eq, neq, gt, gte, lt, lte, in, empty, notEmpty.",
+          document,
+        });
+        return;
+      }
+      const bad = (path: Path, value: unknown): void => {
+        if (isRelativeDate(value)) return; // reported by checkRelativeDateFields
+        if (typeof value === "string" && isIsoDatetime(value)) return;
+        errors.push({ path: jsonPointer(path), code: "invalid-value", message: `${JSON.stringify(value)} is not an instant in the stored form for datetime field "${field.id}".`, hint: canonical, document });
+      };
+      if (condition.op === "in") condition.values.forEach((v, i) => bad([...base, "values", i], v));
+      else bad([...base, "value"], condition.value);
     }
   }
 }
@@ -1571,7 +1622,7 @@ function checkRelativeDateFields(errors: DocumentError[], document: string, enti
 
 /** A correct example of this op on a field of this (non-date) type, for the hint. */
 function exampleFor(op: ConditionOp, type: FieldType): string {
-  const sample = type === "number" ? "5" : type === "boolean" ? "true" : '"text"';
+  const sample = type === "number" ? "5" : type === "boolean" ? "true" : type === "datetime" ? '"2026-10-17T09:30:00.000Z"' : '"text"';
   return `{ "op": "${op}", "field": "<${type} field>", "value": ${sample} }`;
 }
 
@@ -1647,6 +1698,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
       checkRelativeDateFields(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkReferenceOps(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
+      checkDatetimeConditions(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkConditionFields(item.filter, [...itemPath, "filter"], (fieldId, path) => {
         if (!fieldIds.includes(fieldId)) {
           errors.push(refError(doc.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));

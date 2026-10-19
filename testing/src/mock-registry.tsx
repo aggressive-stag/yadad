@@ -4,7 +4,7 @@ import type {
   ButtonProps,
   CalendarProps,
   CountWidgetProps,
-  DateField,
+  DateField, DatetimeField,
   DisplayProps,
   FieldDisplayProps,
   FieldInputProps,
@@ -36,6 +36,7 @@ export const mockRegistry: Registry<ReactNode> = {
     boolean: { type: "boolean", Input: MockBooleanInput, Display: MockDisplay },
     select: { type: "select", Input: MockSelectInput, Display: MockDisplay },
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
+    datetime: { type: "datetime", Input: MockDatetimeInput, Display: MockDisplay },
     reference: { type: "reference", Input: MockReferenceInput, Display: MockReferenceDisplay },
   },
   layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard },
@@ -98,6 +99,12 @@ function MockDateInput(props: InputProps<DateField, string>): ReactNode {
   return (
     <input {...controlProps(props)} type="date" min={field.min} max={field.max} value={value ?? ""} onChange={(e) => onChange(orUndefined(e.target.value))} />
   );
+}
+
+/** RFC 0007: card 36. A plain text box holding the stored instant; a real component converts to and from the viewer's zone. */
+function MockDatetimeInput(props: InputProps<DatetimeField, string>): ReactNode {
+  const { value, onChange } = props;
+  return <input {...controlProps(props)} type="text" value={value ?? ""} onChange={(e) => onChange(orUndefined(e.target.value))} />;
 }
 
 function MockReferenceInput(props: FieldInputProps<"reference">): ReactNode {

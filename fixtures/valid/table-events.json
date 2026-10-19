@@ -1,0 +1,19 @@
+{
+  "kind": "table",
+  "specVersion": 6,
+  "id": "events",
+  "entity": "event",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [{ "field": "happened_at" }, { "field": "kind" }, { "field": "title" }, { "field": "reviewed_at" }],
+  "sort": [{ "field": "happened_at", "dir": "desc" }],
+  "quickFilters": [{ "field": "happened_at" }, { "field": "kind" }],
+  "filter": {
+    "op": "and",
+    "conditions": [
+      { "op": "gte", "field": "happened_at", "value": "2026-01-01T00:00:00.000Z" },
+      { "op": "in", "field": "happened_at", "values": ["2026-10-17T09:30:00.000Z", "2026-10-18T09:30:00.000Z"] },
+      { "op": "notEmpty", "field": "reviewed_at" }
+    ]
+  }
+}

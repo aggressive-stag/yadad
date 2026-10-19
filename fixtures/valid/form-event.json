@@ -1,0 +1,19 @@
+{
+  "kind": "form",
+  "specVersion": 6,
+  "id": "event_form",
+  "entity": "event",
+  "revision": 1,
+  "dataSource": "default",
+  "sections": [
+    {
+      "id": "main",
+      "items": [
+        { "field": "title" },
+        { "field": "kind" },
+        { "field": "happened_at" },
+        { "field": "reviewed_at", "visibleWhen": { "op": "lt", "field": "happened_at", "value": "2026-01-01T00:00:00.000Z" } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At",
+        "min": "2026-10-17T09:30:00+02:00",
+        "max": "2026-10-17"
+      }
+    ]
+  }
+]

@@ -1,0 +1,33 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ]
+  },
+  {
+    "kind": "board",
+    "specVersion": 6,
+    "id": "b",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "groupBy": [
+      {
+        "field": "at"
+      }
+    ]
+  }
+]

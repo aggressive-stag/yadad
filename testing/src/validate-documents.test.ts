@@ -285,6 +285,21 @@ const expected: Record<string, Picked[]> = {
     { path: "/sections/0/items/0/visibleWhen/conditions/0/values/0", code: "type", document: "f" },
     { path: "/sections/0/items/0/visibleWhen/conditions/1/values/0", code: "type", document: "f" },
   ],
+  "datetime-field-bad-bounds.json": [
+    { path: "/fields/1/min", code: "invalid-value", document: "e" },
+    { path: "/fields/1/max", code: "invalid-value", document: "e" },
+  ],
+  "datetime-field-min-after-max.json": [{ path: "/fields/1/min", code: "invalid-value", document: "e" }],
+  "datetime-field-impossible-instant.json": [{ path: "/fields/1/min", code: "invalid-value", document: "e" }],
+  "datetime-condition-bad-value.json": [
+    { path: "/filter/conditions/0/value", code: "invalid-value", document: "t" },
+    { path: "/filter/conditions/1/value", code: "invalid-value", document: "t" },
+    { path: "/filter/conditions/2/values/1", code: "invalid-value", document: "t" },
+  ],
+  "datetime-condition-contains.json": [{ path: "/filter/op", code: "invalid-value", document: "t" }],
+  "datetime-condition-relative-date.json": [{ path: "/filter/value", code: "invalid-value", document: "t" }],
+  "datetime-calendar-date-field.json": [{ path: "/dateField", code: "invalid-value", document: "cal", allowed: [] }],
+  "datetime-board-group-by.json": [{ path: "/groupBy/0/field", code: "invalid-value", document: "b", allowed: [] }],
 };
 
 const validSetDir = new URL("../../fixtures/valid-sets/", import.meta.url);

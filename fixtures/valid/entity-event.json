@@ -1,0 +1,12 @@
+{
+  "kind": "entity",
+  "specVersion": 6,
+  "id": "event",
+  "revision": 1,
+  "fields": [
+    { "id": "title", "type": "text", "label": "Title", "required": true },
+    { "id": "kind", "type": "select", "label": "Kind", "options": { "source": "static", "values": ["created", "changed", "deleted"] } },
+    { "id": "happened_at", "type": "datetime", "label": "Happened at", "required": true, "min": "2020-01-01T00:00:00.000Z", "max": "2099-12-31T23:59:59.999Z" },
+    { "id": "reviewed_at", "type": "datetime", "label": "Reviewed at" }
+  ]
+}

@@ -38,6 +38,7 @@ const bool = (required?: boolean): Field => ({ id: "f", type: "boolean", label: 
 const sel = (required?: boolean): Field => ({ id: "f", type: "select", label: "F", options: { source: "static", values: ["a", "b"] }, ...(required ? { required } : {}) }) as Field;
 const ref = (required?: boolean): Field => ({ id: "f", type: "reference", label: "F", entity: "other", ...(required ? { required } : {}) }) as Field;
 const date = (extra: object = {}): Field => ({ id: "f", type: "date", label: "F", ...extra }) as Field;
+const dt = (extra: object = {}): Field => ({ id: "f", type: "datetime", label: "F", ...extra }) as Field;
 
 const CASES: Case[] = [
   // text
@@ -152,6 +153,31 @@ const CASES: Case[] = [
   c("date: min equals max", [date({ min: "2026-05-05", max: "2026-05-05" })], { f: "2026-05-05" }, true),
   c("date: null with bounds", [date({ min: "2026-01-01", max: "2026-12-31" })], { f: null }, true),
 
+  // datetime
+  c("datetime: valid", [dt({})], { f: "2026-10-17T09:30:00.000Z" }, true),
+  c("datetime: leap day", [dt({})], { f: "2028-02-29T23:59:59.999Z" }, true),
+  c("datetime: not a leap day", [dt({})], { f: "2026-02-29T00:00:00.000Z" }, false),
+  c("datetime: hour 24", [dt({})], { f: "2026-10-17T24:00:00.000Z" }, false),
+  c("datetime: no milliseconds", [dt({})], { f: "2026-10-17T09:30:00Z" }, false),
+  c("datetime: two fractional digits", [dt({})], { f: "2026-10-17T09:30:00.00Z" }, false),
+  c("datetime: offset instead of Z", [dt({})], { f: "2026-10-17T11:30:00.000+02:00" }, false),
+  c("datetime: no zone", [dt({})], { f: "2026-10-17T09:30:00.000" }, false),
+  c("datetime: lower case t and z", [dt({})], { f: "2026-10-17t09:30:00.000z" }, false),
+  c("datetime: a date only", [dt({})], { f: "2026-10-17" }, false),
+  c("datetime: trailing newline", [dt({})], { f: "2026-10-17T09:30:00.000Z\n" }, false),
+  c("datetime: number", [dt({})], { f: 1760693400000 }, false),
+  c("datetime: null", [dt({})], { f: null }, true),
+  c("datetime: required, null", [dt({ required: true })], { f: null }, false),
+  c("datetime: at min", [dt({ min: "2026-03-15T10:00:00.000Z" })], { f: "2026-03-15T10:00:00.000Z" }, true),
+  c("datetime: a millisecond before min", [dt({ min: "2026-03-15T10:00:00.000Z" })], { f: "2026-03-15T09:59:59.999Z" }, false),
+  c("datetime: a millisecond after min", [dt({ min: "2026-03-15T10:00:00.000Z" })], { f: "2026-03-15T10:00:00.001Z" }, true),
+  c("datetime: next day after min", [dt({ min: "2026-03-15T23:59:59.999Z" })], { f: "2026-03-16T00:00:00.000Z" }, true),
+  c("datetime: at max", [dt({ max: "2026-03-15T10:00:00.000Z" })], { f: "2026-03-15T10:00:00.000Z" }, true),
+  c("datetime: a millisecond after max", [dt({ max: "2026-03-15T10:00:00.000Z" })], { f: "2026-03-15T10:00:00.001Z" }, false),
+  c("datetime: earlier year than max", [dt({ max: "2026-01-01T00:00:00.000Z" })], { f: "2025-12-31T23:59:59.999Z" }, true),
+  c("datetime: inside min and max", [dt({ min: "2026-01-01T00:00:00.000Z", max: "2026-12-31T23:59:59.999Z" })], { f: "2026-06-15T12:00:00.000Z" }, true),
+  c("datetime: outside min and max, above", [dt({ min: "2026-01-01T00:00:00.000Z", max: "2026-12-31T23:59:59.999Z" })], { f: "2027-01-01T00:00:00.000Z" }, false),
+
   // the record as a whole
   c("record: unknown field", [text()], { f: "x", g: "y" }, false),
   c("record: unknown field, null", [text()], { g: null }, false),
@@ -171,6 +197,7 @@ const KNOWN_DIFFERENCES: { readonly name: string; readonly fields: Field[]; read
   { name: "boolean: empty string counts as empty", fields: [bool()], values: { f: "" }, validateRecord: true, schema: false },
   { name: "select: empty string counts as empty", fields: [sel()], values: { f: "" }, validateRecord: true, schema: false },
   { name: "date: empty string counts as empty", fields: [date()], values: { f: "" }, validateRecord: true, schema: false },
+  { name: "datetime: empty string counts as empty", fields: [dt()], values: { f: "" }, validateRecord: true, schema: false },
   // 0.1 is not a binary fraction, so the schema leaves the step to the description.
   { name: "number: step 0.1 is not enforced by the schema", fields: [num({ step: 0.1 })], values: { f: 0.25 }, validateRecord: false, schema: true },
   { name: "number: step counted from a min that is not a multiple", fields: [num({ step: 5, min: 2 })], values: { f: 3 }, validateRecord: false, schema: true },

@@ -1,0 +1,29 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 6,
+    "id": "cal",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "at"
+  }
+]
