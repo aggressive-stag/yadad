@@ -1,0 +1,58 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      }
+    ],
+    "actions": [
+      {
+        "id": "act0",
+        "label": "Act 0"
+      },
+      {
+        "id": "act1",
+        "label": "Act 1"
+      }
+    ]
+  },
+  {
+    "kind": "board",
+    "specVersion": 6,
+    "id": "b",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "groupBy": [
+      {
+        "field": "state"
+      }
+    ],
+    "recordActions": [
+      "nope"
+    ]
+  }
+]

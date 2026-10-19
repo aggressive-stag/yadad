@@ -1,0 +1,10 @@
+{
+  "kind": "table",
+  "specVersion": 6,
+  "id": "tickets",
+  "entity": "ticket",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [{ "field": "title" }, { "field": "state" }, { "field": "owner" }, { "field": "due_at" }],
+  "recordActions": ["close", "snooze", "archive"]
+}

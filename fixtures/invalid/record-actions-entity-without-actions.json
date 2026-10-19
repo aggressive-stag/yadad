@@ -1,0 +1,48 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 6,
+    "id": "t",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "recordActions": [
+      "act0"
+    ]
+  }
+]

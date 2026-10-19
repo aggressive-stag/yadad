@@ -1,0 +1,84 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 6,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "state",
+        "type": "select",
+        "label": "State",
+        "options": {
+          "source": "static",
+          "values": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      }
+    ],
+    "actions": [
+      {
+        "id": "act0",
+        "label": "Act 0"
+      },
+      {
+        "id": "act1",
+        "label": "Act 1"
+      },
+      {
+        "id": "act2",
+        "label": "Act 2"
+      },
+      {
+        "id": "act3",
+        "label": "Act 3"
+      },
+      {
+        "id": "act4",
+        "label": "Act 4"
+      },
+      {
+        "id": "act5",
+        "label": "Act 5"
+      },
+      {
+        "id": "act6",
+        "label": "Act 6"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 6,
+    "id": "t",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "recordActions": [
+      "act0",
+      "act1",
+      "act2",
+      "act3",
+      "act4",
+      "act5",
+      "act6"
+    ]
+  }
+]

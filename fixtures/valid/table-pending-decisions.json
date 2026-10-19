@@ -1,0 +1,13 @@
+{
+  "kind": "table",
+  "specVersion": 6,
+  "id": "pending_decisions",
+  "entity": "decision",
+  "revision": 1,
+  "dataSource": "default",
+  "title": "Pending decisions",
+  "columns": [{ "field": "kind" }, { "field": "summary" }, { "field": "confidence" }, { "field": "created_at" }, { "field": "evidence" }],
+  "sort": [{ "field": "created_at", "dir": "desc" }],
+  "filter": { "op": "eq", "field": "state", "value": "pending" },
+  "recordActions": ["apply", "reject"]
+}

@@ -99,6 +99,8 @@ export type Field = TextField | NumberField | BooleanField | SelectField | DateF
 /** An entity declares at most this many record actions, and an action at most this many input fields (RFC 0007). */
 export const ACTIONS_MAX = 12;
 export const ACTION_INPUT_MAX = 5;
+/** A table, board or calendar offers at most this many actions on a record. */
+export const RECORD_ACTIONS_MAX = 6;
 /** Field types an action's input fields may have: those with a plain input, not `reference` (a picker needs a target query). */
 export const ACTION_INPUT_FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime"] as const;
 export type ActionInputFieldType = (typeof ACTION_INPUT_FIELD_TYPES)[number];
@@ -211,6 +213,8 @@ export interface TableView {
   readonly quickFilters?: readonly QuickFilter[];
   /** Clicking a row opens another table view scoped to that row (RFC 0003). */
   readonly rowAction?: RowAction;
+  /** Ids of the entity's actions this view offers on each record, in this order (RFC 0007). 1 to `RECORD_ACTIONS_MAX`, each once. */
+  readonly recordActions?: readonly string[];
 }
 
 /** Row action modes. Slice 1 has `replace` only (the target takes the table's place, with Back). */
@@ -278,6 +282,8 @@ export interface CalendarView {
   readonly editableWhen?: ViewerCondition;
   /** Activating an entry opens a table view scoped to it, as on tables. A calendar can start a chain, never be a target. */
   readonly rowAction?: RowAction;
+  /** Ids of the entity's actions this view offers on each record, in this order (RFC 0007). 1 to `RECORD_ACTIONS_MAX`, each once. */
+  readonly recordActions?: readonly string[];
 }
 
 /** One field the viewer may group a board by. */
@@ -318,6 +324,8 @@ export interface BoardView {
   readonly editableWhen?: ViewerCondition;
   /** Activating a card opens a table view scoped to it, as on tables. A board can start a chain, never be a target. */
   readonly rowAction?: RowAction;
+  /** Ids of the entity's actions this view offers on each record, in this order (RFC 0007). 1 to `RECORD_ACTIONS_MAX`, each once. */
+  readonly recordActions?: readonly string[];
 }
 
 export interface QuickFilter {

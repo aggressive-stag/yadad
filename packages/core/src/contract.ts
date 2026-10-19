@@ -5,7 +5,7 @@
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
 import type { CalendarMode, Document, FieldType, MeasureOp, ViewerFactType, WidgetType } from "./document.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
 export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] as const;
@@ -162,6 +162,8 @@ export interface ContractDescription {
   };
   /** Limits of entity `actions` (RFC 0007). */
   readonly actions: {
+    /** A view offers at most this many of them (`recordActions`). */
+    readonly recordActionsMax: number;
     readonly max: number;
     readonly inputMax: number;
     readonly inputFieldTypes: readonly FieldType[];
@@ -230,6 +232,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "filter", required: false, description: "A condition every row must always match." },
       { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number and date fields as a from/to range (either end may stay empty)." },
       { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only. visibleWhen (a viewer condition) hides the action from viewers it does not hold for.` },
+      { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each row, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a row only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
     ],
   },
   {
@@ -254,6 +257,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "editable", required: false, description: "Whether moving an entry to another day changes its date field. Defaults to false." },
       { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from an entry, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A calendar can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
+      { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each entry, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a entry only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
     ],
   },
   {
@@ -275,6 +279,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "editable", required: false, description: "Whether dragging a card to another column changes the field currently grouping the board. Defaults to false." },
       { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from a card, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A board can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
+      { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each card, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a card only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
     ],
   },
   {
@@ -516,7 +521,7 @@ export function describeContract(): ContractDescription {
       titleFieldTypes: [...BOARD_TITLE_FIELD_TYPES],
     },
     viewer: { factTypes: [...VIEWER_FACT_TYPES], factsMax: VIEWER_FACTS_MAX, factValuesMax: VIEWER_FACT_VALUES_MAX, factValuesMin: VIEWER_FACT_VALUES_MIN, documentsMax: 1 },
-    actions: { max: ACTIONS_MAX, inputMax: ACTION_INPUT_MAX, inputFieldTypes: [...ACTION_INPUT_FIELD_TYPES], confirmTones: [...ACTION_CONFIRM_TONES] },
+    actions: { recordActionsMax: RECORD_ACTIONS_MAX, max: ACTIONS_MAX, inputMax: ACTION_INPUT_MAX, inputFieldTypes: [...ACTION_INPUT_FIELD_TYPES], confirmTones: [...ACTION_CONFIRM_TONES] },
     conditionPlaces: CONDITION_PLACE_SPECS,
     optionalRegistryKeys: [
       { key: "layout.Calendar", description: "Draws a calendar view (CalendarProps). Optional for now: without it a calendar view renders an error summary instead. It becomes required once the reference component set ships a calendar." },

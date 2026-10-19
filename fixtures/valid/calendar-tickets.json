@@ -1,0 +1,11 @@
+{
+  "kind": "calendar",
+  "specVersion": 6,
+  "id": "ticket_calendar",
+  "entity": "ticket",
+  "revision": 1,
+  "dataSource": "default",
+  "dateField": "due_on",
+  "titleField": "title",
+  "recordActions": ["snooze"]
+}

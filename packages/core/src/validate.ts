@@ -8,7 +8,7 @@
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
@@ -120,6 +120,31 @@ function validateActions(errors: Errors, doc: JsonObject): void {
     checkCondition(errors, action["visibleWhen"], [...path, "visibleWhen"]);
   });
   reportDuplicates(errors, ids, "action", "an entity");
+}
+
+/** Checks a view's `recordActions` (RFC 0007): 1 to RECORD_ACTIONS_MAX ids, each once. That each names an action of the entity is checked in the set pass. */
+function checkRecordActions(errors: Errors, value: unknown): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    errors.add(["recordActions"], "type", '"recordActions" must be an array.', 'Use [ "apply", "reject" ].');
+    return;
+  }
+  if (value.length === 0) {
+    errors.add(["recordActions"], "empty", '"recordActions" lists no actions.', 'Add an action id of the entity, or remove "recordActions".');
+  } else if (value.length > RECORD_ACTIONS_MAX) {
+    errors.add(["recordActions"], "invalid-value", `A view offers at most ${RECORD_ACTIONS_MAX} actions, but ${value.length} are listed.`, `Remove ${value.length - RECORD_ACTIONS_MAX}.`);
+  }
+  const ids: { id: string; path: Path }[] = [];
+  value.forEach((id: unknown, i) => {
+    if (typeof id !== "string") {
+      errors.add(["recordActions", i], "type", "An action id must be a string.", 'Use the id of an action of the entity, e.g. "apply".');
+    } else if (!ID_PATTERN.test(id)) {
+      errors.add(["recordActions", i], "invalid-value", `${JSON.stringify(id)} is not a valid id.`, ID_HINT);
+    } else {
+      ids.push({ id, path: ["recordActions", i] });
+    }
+  });
+  reportDuplicates(errors, ids, "action", "recordActions");
 }
 
 function validateActionConfirm(errors: Errors, confirm: unknown, path: Path): void {
@@ -285,9 +310,10 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters", "rowAction"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters", "rowAction", "recordActions"]);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
+  checkRecordActions(errors, doc["recordActions"]);
   const filters = checkArray(errors, doc, [], "quickFilters");
   const filtered: { id: string; path: Path }[] = [];
   filters?.forEach((f, i) => {
@@ -358,7 +384,7 @@ function checkSort(errors: Errors, doc: JsonObject, scope: string): void {
 const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField"] as const;
 
 function validateCalendar(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction", "recordActions"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -368,6 +394,7 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
   for (const key of CALENDAR_ID_KEYS) checkId(errors, doc, [], key);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
+  checkRecordActions(errors, doc["recordActions"]);
   checkSort(errors, doc, "a calendar's sort");
   checkBoolean(errors, doc, [], "editable");
   checkCondition(errors, doc["editableWhen"], ["editableWhen"], "viewer");
@@ -408,7 +435,7 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
 }
 
 function validateBoard(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction", "recordActions"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -418,6 +445,7 @@ function validateBoard(errors: Errors, doc: JsonObject): void {
   checkId(errors, doc, [], "titleField");
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
+  checkRecordActions(errors, doc["recordActions"]);
   checkSort(errors, doc, "a board's sort");
   checkBoolean(errors, doc, [], "editable");
   checkCondition(errors, doc["editableWhen"], ["editableWhen"], "viewer");
@@ -1222,6 +1250,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   });
   checkConditionFields(view.filter, ["filter"], checkField);
   checkDates(view.filter, ["filter"]);
+  checkRecordActionRefs(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
 }
 
@@ -1436,6 +1465,7 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
     if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
     else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
   });
+  checkRecordActionRefs(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
 }
 
@@ -1542,7 +1572,19 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
     if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
     else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
   });
+  checkRecordActionRefs(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+}
+
+/** Checks that each id in a view's `recordActions` is an action of the view's entity. */
+function checkRecordActionRefs(errors: DocumentError[], view: TableView | CalendarView | BoardView, entity: EntityDocument): void {
+  const ids = (entity.actions ?? []).map((a) => a.id);
+  view.recordActions?.forEach((id, i) => {
+    if (ids.includes(id)) return;
+    errors.push(
+      refError(view.id, ["recordActions", i], `"${id}" is not an action of entity "${entity.id}".`, ids.length > 0 ? `Use one of: ${ids.join(", ")}, or add the action to the entity first.` : `Entity "${entity.id}" declares no actions; add the action to the entity first.`, ids),
+    );
+  });
 }
 
 /** Checks that the fields an action's `visibleWhen` reads exist on its entity and fit the ops used on them (RFC 0007). */

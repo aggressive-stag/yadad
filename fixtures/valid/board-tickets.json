@@ -1,0 +1,12 @@
+{
+  "kind": "board",
+  "specVersion": 6,
+  "id": "ticket_board",
+  "entity": "ticket",
+  "revision": 1,
+  "dataSource": "default",
+  "groupBy": [{ "field": "state" }],
+  "titleField": "title",
+  "cardFields": ["owner", "due_at"],
+  "recordActions": ["close", "archive"]
+}

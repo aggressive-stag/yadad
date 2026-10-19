@@ -331,6 +331,19 @@ const expected: Record<string, Picked[]> = {
   "action-visible-when-no-viewer.json": [{ path: "/actions/0/visibleWhen/fact", code: "unknown-reference", document: "e", allowed: [] }],
   "action-visible-when-unknown-fact.json": [{ path: "/actions/0/visibleWhen/fact", code: "unknown-reference", document: "e", allowed: ["beta"] }],
   "action-visible-when-unknown-field.json": [{ path: "/actions/0/visibleWhen/conditions/1/field", code: "unknown-reference", document: "e", allowed: ["name","state","at"] }],
+  "record-actions-bad-entries.json": [
+    { path: "/recordActions/1", code: "type", document: "t" },
+    { path: "/recordActions/2", code: "invalid-value", document: "t" },
+  ],
+  "record-actions-board-unknown-action.json": [{ path: "/recordActions/0", code: "unknown-reference", document: "b", allowed: ["act0","act1"] }],
+  "record-actions-calendar-unknown-action.json": [{ path: "/recordActions/1", code: "unknown-reference", document: "cal", allowed: ["act0","act1"] }],
+  "record-actions-empty.json": [{ path: "/recordActions", code: "empty", document: "t" }],
+  "record-actions-entity-without-actions.json": [{ path: "/recordActions/0", code: "unknown-reference", document: "t", allowed: [] }],
+  "record-actions-not-array.json": [{ path: "/recordActions", code: "type", document: "t" }],
+  "record-actions-on-form.json": [{ path: "/recordActions", code: "unknown-property", document: "f" }],
+  "record-actions-repeated.json": [{ path: "/recordActions/2", code: "duplicate-id", document: "t" }],
+  "record-actions-too-many.json": [{ path: "/recordActions", code: "invalid-value", document: "t" }],
+  "record-actions-unknown-action.json": [{ path: "/recordActions/1", code: "unknown-reference", document: "t", allowed: ["act0","act1"] }],
 };
 
 const validSetDir = new URL("../../fixtures/valid-sets/", import.meta.url);
