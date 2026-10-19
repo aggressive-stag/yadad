@@ -13,9 +13,10 @@ import { createHttpAdapter } from "./http-adapter.js";
 import type { FetchLike } from "./http-adapter.js";
 import { createMemoryAdapter } from "./memory-adapter.js";
 import type { AdapterOptions } from "./memory-adapter.js";
+import { instantRangeBounds } from "./datetime.js";
 
 const ENTITY = "set";
-const FIELDS: AdapterOptions = { fields: { set: ["exercise", "weight", "reps", "due"] } };
+const FIELDS: AdapterOptions = { fields: { set: ["exercise", "weight", "reps", "due", "when"] } };
 const REVISION = 3;
 
 async function expectError(promise: Promise<unknown>): Promise<unknown> {
@@ -242,6 +243,74 @@ function runConformance(label: string, make: () => DataAdapter): void {
         }),
       ).toEqual(["Dated"]);
       expect(await names({ op: "empty", field: "due" })).toEqual(["Blank", "Cleared", "Missing"]);
+    });
+
+    // RFC 0007: datetime compares and sorts as canonical strings (string order
+    // is time order), and an instant-range quick filter's "to" bound is the
+    // last millisecond of its minute, so 10:00 to 10:30 includes 10:30:59.999.
+    test("datetime filters compare canonical instants, and empties match neither bound", async () => {
+      const db = make();
+      await db.create(ENTITY, { exercise: "At", when: "2026-10-15T09:30:00.000Z" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "After", when: "2026-10-15T09:30:00.001Z" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "Before", when: "2026-10-15T09:29:59.999Z" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "Cleared", when: "2026-10-15T09:30:00.500Z" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "Missing" }, { entityRevision: REVISION });
+      const cleared = (await db.find(ENTITY, { filter: { op: "eq", field: "exercise", value: "Cleared" } })).items[0];
+      await db.update(ENTITY, cleared?.id ?? "", { when: null }, { entityRevision: REVISION, baseVersion: cleared?.version ?? "" });
+      const names = async (filter: Condition) => (await db.find(ENTITY, { filter })).items.map((r) => r.values["exercise"]).sort();
+      const at = "2026-10-15T09:30:00.000Z";
+      expect(await names({ op: "eq", field: "when", value: at })).toEqual(["At"]);
+      // neq is the evaluator's `!==`: an empty value differs from the instant,
+      // so it matches (exactly as it does for date fields).
+      expect(await names({ op: "neq", field: "when", value: at })).toEqual(["After", "Before", "Cleared", "Missing"]);
+      expect(await names({ op: "in", field: "when", values: [at, "2026-10-15T09:29:59.999Z"] })).toEqual(["At", "Before"]);
+      expect(await names({ op: "gt", field: "when", value: at })).toEqual(["After"]);
+      expect(await names({ op: "gte", field: "when", value: at })).toEqual(["After", "At"]);
+      expect(await names({ op: "lt", field: "when", value: at })).toEqual(["Before"]);
+      expect(await names({ op: "lte", field: "when", value: at })).toEqual(["At", "Before"]);
+      // An empty value (null or missing) is above and below nothing.
+      expect(await names({ op: "gte", field: "when", value: "0000-01-01T00:00:00.000Z" })).toEqual(["After", "At", "Before"]);
+      expect(await names({ op: "lte", field: "when", value: "9999-12-31T23:59:59.999Z" })).toEqual(["After", "At", "Before"]);
+      expect(await names({ op: "empty", field: "when" })).toEqual(["Cleared", "Missing"]);
+      expect(await names({ op: "notEmpty", field: "when" })).toEqual(["After", "At", "Before"]);
+      // The range a from/to quick filter compiles to includes the last
+      // millisecond of the "to" minute; an instant one millisecond past it
+      // does not match.
+      const range = instantRangeBounds("2026-10-15T09:29", "2026-10-15T09:30", "UTC");
+      expect(range).toEqual({ from: "2026-10-15T09:29:00.000Z", to: "2026-10-15T09:30:59.999Z" });
+      expect(
+        await names({
+          op: "and",
+          conditions: [
+            { op: "gte", field: "when", value: range.from },
+            { op: "lte", field: "when", value: range.to },
+          ],
+        }),
+      ).toEqual(["After", "At", "Before"]);
+    });
+
+    test("datetime sorts as string order (time order), with empties last in both directions", async () => {
+      const db = make();
+      const instants = [
+        "2026-10-15T09:00:00.099Z",
+        "2026-10-15T09:00:00.100Z",
+        "2026-10-15T09:00:09.999Z",
+        "2026-10-15T09:00:10.000Z",
+        "2026-10-15T10:00:00.000Z",
+      ];
+      for (const [i, instant] of instants.entries()) {
+        await db.create(ENTITY, { exercise: `n${i}`, when: instant }, { entityRevision: REVISION });
+      }
+      await db.create(ENTITY, { exercise: "Cleared", when: "2026-10-15T09:30:00.000Z" }, { entityRevision: REVISION });
+      await db.create(ENTITY, { exercise: "Missing" }, { entityRevision: REVISION });
+      const cleared = (await db.find(ENTITY, { filter: { op: "eq", field: "exercise", value: "Cleared" } })).items[0];
+      await db.update(ENTITY, cleared?.id ?? "", { when: null }, { entityRevision: REVISION, baseVersion: cleared?.version ?? "" });
+      const expectOrder = (dir: "asc" | "desc") => {
+        const page = db.find(ENTITY, { sort: [{ field: "when", dir }] });
+        return page.then((p) => p.items.map((r) => r.values["exercise"]));
+      };
+      await expect(expectOrder("asc")).resolves.toEqual(["n0", "n1", "n2", "n3", "n4", "Cleared", "Missing"]);
+      await expect(expectOrder("desc")).resolves.toEqual(["n4", "n3", "n2", "n1", "n0", "Cleared", "Missing"]);
     });
 
     test("find sorts by a field", async () => {
