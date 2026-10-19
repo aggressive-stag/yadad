@@ -8,6 +8,7 @@ export * from "./http-adapter.js";
 export * from "./drafts.js";
 export * from "./datetime.js";
 export * from "./diff.js";
+export * from "./compare.js";
 export * from "./reference.js";
 export * from "./aggregate.js";
 export * from "./row-action.js";
