@@ -1,5 +1,15 @@
 # @yadad/renderer
 
+## 0.9.2
+
+### Patch Changes
+
+- d13f4cb: A `datetime` field rendered with a registry that has no `fields.datetime` entry now shows an error summary naming the missing key. The table reads `Page.total` as optional.
+- Updated dependencies [d13f4cb]
+- Updated dependencies [d13f4cb]
+  - @yadad/core@0.11.0
+  - @yadad/runtime@0.8.3
+
 ## 0.9.1
 
 ### Patch Changes

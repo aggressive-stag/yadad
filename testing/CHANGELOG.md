@@ -1,5 +1,15 @@
 # @yadad/testing
 
+## 0.6.5
+
+### Patch Changes
+
+- d13f4cb: The mock registry gains a `datetime` field, so documents with datetime fields render in tests. The contract kit leaves the optional `fields.datetime` entry unchecked for now.
+- Updated dependencies [d13f4cb]
+- Updated dependencies [d13f4cb]
+  - @yadad/core@0.11.0
+  - @yadad/runtime@0.8.3
+
 ## 0.6.4
 
 ### Patch Changes

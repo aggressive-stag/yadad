@@ -1,5 +1,15 @@
 # @yadad/editor
 
+## 0.11.2
+
+### Patch Changes
+
+- d13f4cb: The editor knows the `datetime` field type (label, condition operators; a plain text box stands in for the input while a registry has no `fields.datetime`).
+- Updated dependencies [d13f4cb]
+- Updated dependencies [d13f4cb]
+  - @yadad/core@0.11.0
+  - @yadad/runtime@0.8.3
+
 ## 0.11.1
 
 ### Patch Changes
