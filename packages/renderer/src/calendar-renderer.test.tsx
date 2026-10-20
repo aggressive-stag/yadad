@@ -474,7 +474,8 @@ describe("record actions on entries (RFC 0007)", () => {
     expect(within(screen.getByTestId(`entry-${ids["Call Ada"]}`)).queryByTestId("action-publish")).toBeNull(); // withheld by can.actions
     fireEvent.click(entryButton(ids["Pay rent"]!, "publish"));
     await waitFor(() => expect(acts).toBe(1));
-    expect(status()).toBe("Publish done"); // the calendar's live region carries it
+    // waitFor(acts) proves the handler ran; the live region lands a tick later.
+    await waitFor(() => expect(status()).toBe("Publish done")); // the calendar's live region carries it
     await waitFor(() => expect(screen.getByText("published:Pay rent")).toBeTruthy()); // reloaded with the new assignee
   });
 

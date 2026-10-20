@@ -440,7 +440,8 @@ describe("record actions on cards (RFC 0007)", () => {
     expect(within(screen.getByTestId(`card-${ids["Call Ada"]}`)).queryByTestId("action-publish")).toBeNull(); // withheld by can.actions
     fireEvent.click(cardButton(ids["Pay rent"]!, "publish"));
     await waitFor(() => expect(acts).toBe(1));
-    expect(status()).toBe("Publish done"); // the view's live region carries it
+    // waitFor(acts) proves the handler ran; the live region lands a tick later.
+    await waitFor(() => expect(status()).toBe("Publish done")); // the view's live region carries it
     await waitFor(() => expect(screen.getByText("published:Pay rent")).toBeTruthy()); // reloaded with the new notes
     expect(titles("v:Home").sort()).toEqual(["Book flights", "Pay rent"]);
   });
