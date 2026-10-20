@@ -1,5 +1,0 @@
----
-"@yadad/renderer": minor
----
-
-Boards and calendars offer record actions (RFC 0007): a board view or calendar view with `recordActions` now fills each `BoardCard.actions` and `CalendarEntry.actions` with the record's available actions (the components draw them next to the "Move to..." path / in the entry, as the RFC table says), through the same `useRecordActions` hook as tables — press runs `act` with the last-read `version` as guard, "<label> done" is announced in the view's own live region (board-status / calendar-status, now shared with moves) and the cards or the range reload; a refusal shows the view's ErrorSummary and reloads; confirm/input actions go through the same dialog. A withheld action (`can.actions[id] === false`, or a false `visibleWhen`) is not drawn. A view whose data source cannot run actions, or that offers an action needing a dialog in a registry without one, is replaced by the ErrorSummary like on tables. The hook takes an optional `announce` so a view with its own announcement state keeps one live region.
