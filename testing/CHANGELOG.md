@@ -1,5 +1,20 @@
 # @yadad/testing
 
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [c11cfb5]
+- Updated dependencies [407bc6c]
+- Updated dependencies [317cde1]
+- Updated dependencies [dbc6ded]
+- Updated dependencies [0b2e595]
+- Updated dependencies [6babd0d]
+- Updated dependencies [bc971b7]
+- Updated dependencies [7ca1105]
+- Updated dependencies [878bfa3]
+  - @yadad/runtime@0.9.0
+
 ## 0.6.5
 
 ### Patch Changes
