@@ -252,13 +252,16 @@ describe("moving a card", () => {
     await open({ adapter: { ...db, update: (...args) => (refuse ? Promise.reject(new ForbiddenError("No.")) : db.update(...args)) } });
     moveTo("Pay rent", "v:Work");
     await waitFor(() => expect(status()).toBe("Moved Pay rent to Work"));
-    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Move to… Pay rent/);
+    // The mock board puts focus back on the rebuilt card's button from an
+    // effect, which can settle after the status text: wait for it, as the
+    // calendar focus test does. Asserting synchronously raced the rebuild.
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Move to… Pay rent/));
     expect(column("v:Work").contains(document.activeElement)).toBe(true);
     refuse = true;
     moveTo("Pay rent", "v:Home");
     await screen.findByRole("alert");
     await waitFor(() => expect(titles("v:Work")).toContain("Pay rent"));
-    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Move to… Pay rent/);
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Move to… Pay rent/));
   });
 
   test("a validation error (400) shows the adapter's issues and reverts", async () => {
