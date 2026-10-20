@@ -1,11 +1,13 @@
-import { ForbiddenError, RecordConflictError, RecordNotFoundError, UnauthorizedError } from "@yadad/core";
-import type { DataAdapter, DataRecord, DocumentError, EntityDocument, RecordAction, RecordActionItem, Registry, ResolvedViewer } from "@yadad/core";
-import { actionNeedsDialog, availableActions } from "@yadad/runtime";
+import { ForbiddenError, RecordConflictError, RecordNotFoundError, RecordValidationError, UnauthorizedError, jsonPointer } from "@yadad/core";
+import type { DataAdapter, DataRecord, DocumentError, EntityDocument, Field, RecordAction, RecordActionItem, RecordValues, Registry, ResolvedViewer } from "@yadad/core";
+import { actionNeedsDialog, availableActions, validateActionInput } from "@yadad/runtime";
 import type { ActionsView } from "@yadad/runtime";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { renderInput } from "./fields.js";
+import type { ReferenceSupport } from "./references.js";
 
-/** What `useRecordActions` gives a view: the row's buttons, the failure summary, and the announcement. */
+/** What `useRecordActions` gives a view: the row's buttons, the failure summary, the announcement, and the open dialog. */
 export interface RecordActions {
   /** The record's available actions as ready-to-draw buttons (empty when the view offers none). */
   readonly items: (record: DataRecord) => readonly RecordActionItem[];
@@ -13,28 +15,49 @@ export interface RecordActions {
   readonly failures: readonly DocumentError[] | undefined;
   /** The last announcement, for a registry component with an `announcement` prop (board, calendar). */
   readonly announcement: { readonly seq: number; readonly text: string } | undefined;
+  /** The open confirm/input dialog, built for `layout.Dialog`; renders nothing when no dialog is open. */
+  readonly dialog: ReactNode;
 }
+
+/** The open dialog: the record, the action, what has been typed, what was refused, whether act is in flight. */
+interface OpenDialog {
+  readonly record: DataRecord;
+  readonly action: RecordAction;
+  readonly values: RecordValues;
+  readonly errors: readonly DocumentError[];
+  readonly working: boolean;
+}
+
+/** Action inputs are never references (the validator says so), so the picker support is never consulted. */
+const noReferences: ReferenceSupport = {
+  input: () => ({ options: { status: "ready", options: [], more: false } }),
+  display: (_field, id) => ({ label: id, status: "missing" }),
+};
 
 /**
  * Record actions for one view (RFC 0007): builds the available actions with
  * `availableActions`, runs them with `adapter.act` (the record's last-read
  * `version` as `baseVersion`, the entity's revision as the guard), tracks the
  * in-flight record, announces "<label> done" and reloads on success, and
- * shows the failure with an ErrorSummary and reloads on a refusal. Tables,
+ * shows the failure with an ErrorSummary and reloads on a refusal. Actions
+ * with `confirm` or `input` go through the dialog this hook builds for
+ * `layout.Dialog` — the component only provides the modal behaviour. Tables,
  * boards and calendars all draw the returned items with their own buttons.
  */
 export function useRecordActions(options: {
   readonly entity: EntityDocument;
   readonly view: ActionsView;
   readonly viewer: ResolvedViewer;
+  readonly registry: Registry<ReactNode>;
   readonly adapter: DataAdapter | undefined;
   /** Refresh the view's records after an action ran or was refused. */
   readonly reload: () => void;
 }): RecordActions {
-  const { entity, view, viewer, adapter, reload } = options;
+  const { entity, view, viewer, registry, adapter, reload } = options;
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const [failures, setFailures] = useState<readonly DocumentError[] | undefined>(undefined);
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
+  const [dialog, setDialog] = useState<OpenDialog | undefined>(undefined);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -43,22 +66,36 @@ export function useRecordActions(options: {
     };
   }, []);
 
-  const run = (record: DataRecord, action: RecordAction): void => {
+  const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
+
+  /** Run act and apply the outcome; the dialog path and the direct press share it (RFC 0007). */
+  const run = (record: DataRecord, action: RecordAction, input: RecordValues | undefined, fromDialog: OpenDialog | undefined): void => {
     if (adapter === undefined || adapter.act === undefined || pending.has(record.id)) return;
     const act = adapter.act.bind(adapter);
     setFailures(undefined);
     setPending((s) => new Set(s).add(record.id));
+    if (fromDialog !== undefined) {
+      setDialog((d) => (d === undefined ? d : { ...d, working: true }));
+      announce("Working...");
+    }
     void (async () => {
       try {
         // The guard is the version the client last read: a stale action is a conflict (RFC 0007).
-        await act(entity.id, record.id, action.id, { meta: { entityRevision: entity.revision, baseVersion: record.version } });
+        await act(entity.id, record.id, action.id, { ...(input === undefined ? {} : { input }), meta: { entityRevision: entity.revision, baseVersion: record.version } });
         if (!mounted.current) return;
-        setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text: `${action.label} done` }));
+        setDialog(undefined);
+        announce(`${action.label} done`);
         reload();
       } catch (error) {
         if (!mounted.current) return;
+        if (fromDialog !== undefined && !(error instanceof ForbiddenError) && !(error instanceof RecordConflictError) && !(error instanceof RecordNotFoundError)) {
+          // 400 or any other failure: the dialog stays open with the message (400 issues go to their fields) so the viewer can fix and retry.
+          setDialog((d) => (d === undefined ? d : { ...d, working: false, errors: error instanceof RecordValidationError ? error.issues : actionFailure(error) }));
+          return;
+        }
+        // 403/409/404 (and every direct press that fails): close the dialog, show the view's ErrorSummary, reload. Nothing is merged or retried.
+        setDialog(undefined);
         setFailures(actionFailure(error));
-        // A refusal may mean the record or its permissions changed: reload to refresh.
         reload();
       } finally {
         if (mounted.current) {
@@ -72,25 +109,66 @@ export function useRecordActions(options: {
     })();
   };
 
+  const openDialog = (record: DataRecord, action: RecordAction): void => {
+    setFailures(undefined);
+    setDialog({ record, action, values: {}, errors: [], working: false });
+  };
+
+  /** Confirm: validate first (the server never sees input the document rules already reject), then act. */
+  const confirmDialog = (): void => {
+    if (dialog === undefined || dialog.working) return;
+    const issues = validateActionInput(dialog.action, dialog.values);
+    if (issues.length > 0) {
+      setDialog({ ...dialog, errors: issues });
+      return;
+    }
+    run(dialog.record, dialog.action, Object.keys(dialog.values).length > 0 ? dialog.values : undefined, dialog);
+  };
+
   const items = (record: DataRecord): readonly RecordActionItem[] =>
-    offered(entity, view, record, viewer).map((action) => ({
+    availableActions(entity, view, record, viewer).map((action) => ({
       id: action.id,
       label: action.label,
       tone: action.confirm?.tone ?? "neutral",
       pending: pending.has(record.id),
-      onPress: () => run(record, action),
+      onPress: () => (actionNeedsDialog(action) ? openDialog(record, action) : run(record, action, undefined, undefined)),
     }));
 
-  return { items, failures, announcement };
-}
+  const { Dialog, FieldFrame, Button, ErrorSummary } = registry.layout;
+  const open = dialog;
+  const fieldErrors = (field: Field): readonly DocumentError[] => (open?.errors ?? []).filter((e) => e.path === jsonPointer(["input", field.id]));
+  const summaryErrors = (open?.errors ?? []).filter((e) => !open!.action.input?.some((f) => e.path === jsonPointer(["input", f.id])));
+  const rendered: ReactNode =
+    open === undefined || Dialog === undefined ? null : (
+      <Dialog label={open.action.confirm?.title ?? open.action.label} onClose={() => setDialog(undefined)}>
+        {open.action.confirm !== undefined && <p>{open.action.confirm.message}</p>}
+        {(open.action.input ?? []).map((field) => {
+          const errors = fieldErrors(field);
+          const inputId = `yadad-action-${open.action.id}-${open.record.id}-${field.id}`;
+          const errorId = `${inputId}-errors`;
+          return (
+            <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={field.label} required={field.required === true} errors={errors}>
+              {renderInput(registry, field, open.values[field.id], { inputId, invalid: errors.length > 0, ...(errors.length > 0 ? { describedBy: errorId } : {}) }, (v) =>
+                setDialog((d) => (d === undefined ? d : { ...d, values: { ...d.values, [field.id]: v ?? null } })),
+                noReferences,
+              )}
+            </FieldFrame>
+          );
+        })}
+        {summaryErrors.length > 0 && <ErrorSummary errors={summaryErrors} />}
+        <Button label="Cancel" type="button" variant="secondary" disabled={open.working} onPress={() => setDialog(undefined)} />
+        <Button
+          label={open.action.confirm?.confirmLabel ?? open.action.label}
+          type="button"
+          variant="primary"
+          disabled={open.working}
+          {...(open.action.confirm?.tone !== undefined ? { tone: open.action.confirm.tone } : {})}
+          onPress={confirmDialog}
+        />
+      </Dialog>
+    );
 
-/**
- * The view's actions a press can run right now: available for the record,
- * minus the ones that need a dialog.
- */
-function offered(entity: EntityDocument, view: ActionsView, record: DataRecord, viewer: ResolvedViewer): readonly RecordAction[] {
-  // RFC 0007: card 35g — an action with confirm or input must never run without its dialog; it is offered again when the dialog exists.
-  return availableActions(entity, view, record, viewer).filter((action) => !actionNeedsDialog(action));
+  return { items, failures, announcement, dialog: rendered };
 }
 
 /**

@@ -170,6 +170,8 @@ export interface ButtonProps {
   readonly type: "submit" | "button";
   readonly variant: "primary" | "secondary";
   readonly disabled: boolean;
+  /** "danger" marks a destructive action (an action confirm's tone, RFC 0007); absent is neutral. */
+  readonly tone?: "neutral" | "danger";
   readonly onPress?: () => void;
 }
 

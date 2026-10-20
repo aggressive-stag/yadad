@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { ForbiddenError, RecordConflictError } from "@yadad/core";
+import { ForbiddenError, RecordConflictError, RecordValidationError } from "@yadad/core";
 import type { EntityDocument, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
@@ -10,7 +10,7 @@ import { TableRenderer } from "./table-renderer.js";
 
 afterEach(cleanup);
 
-// publish runs on press; archive has a confirm, so 35g must build its dialog before it is offered.
+// publish runs on press; archive asks for a reason and has a danger confirm — both go through the dialog (35g).
 const entity: EntityDocument = {
   kind: "entity",
   specVersion: 1,
@@ -22,7 +22,12 @@ const entity: EntityDocument = {
   ],
   actions: [
     { id: "publish", label: "Publish" },
-    { id: "archive", label: "Archive", confirm: { message: "Archive this?", tone: "danger" } },
+    {
+      id: "archive",
+      label: "Archive",
+      confirm: { title: "Archive this", message: "Archive this record?", confirmLabel: "Reject", tone: "danger" },
+      input: [{ id: "reason", type: "text", label: "Reason", required: true }],
+    },
   ],
 };
 
@@ -52,9 +57,13 @@ function tagOf(n: number): string | undefined {
   const row = screen.getAllByRole("row").find((r) => r.querySelector("[data-testid='display-n']")?.textContent === String(n));
   return row?.querySelector("[data-testid='display-tag']")?.textContent ?? undefined;
 }
-const summary = () => document.querySelector("[data-testid='error-summary']");
+const summary = () => [...document.querySelectorAll("[data-testid='error-summary']")].find((el) => el.closest("[data-testid='dialog']") === null) ?? null;
+const dialog = () => document.querySelector("[data-testid='dialog']");
 const statusText = () => document.querySelector('[role="status"]')?.textContent;
 const press = (id: string) => fireEvent.click(document.querySelector(`[data-testid='action-${id}']`) as HTMLElement);
+const button = (name: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === name) as HTMLButtonElement;
+const reasonInput = () => document.querySelector("[data-testid='input-reason']") as HTMLInputElement;
+const typeReason = (v: string) => fireEvent.change(reasonInput(), { target: { value: v } });
 
 describe("record actions on tables (RFC 0007)", () => {
   test("pressing an action runs it, announces it and reloads the page", async () => {
@@ -65,6 +74,7 @@ describe("record actions on tables (RFC 0007)", () => {
     await waitFor(() => expect(statusText()).toBe("Publish done"));
     await waitFor(() => expect(tagOf(1)).toBe("live")); // the page reloaded with the new value
     expect(tagOf(2)).toBe("draft"); // only the pressed record changed
+    expect(dialog()).toBeNull(); // publish has no confirm and no input: no dialog
   });
 
   test("a 403 shows the ErrorSummary and reloads", async () => {
@@ -108,15 +118,6 @@ describe("record actions on tables (RFC 0007)", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 
-  test("a confirm-only action is not offered yet (35g builds its dialog)", async () => {
-    const db = await seeded({ actions: { "doc.publish": () => ({ values: { tag: "live" } }), "doc.archive": () => ({ remove: true }) } });
-    show(db); // mockRegistry HAS a Dialog: the exclusion is 35g's gate, not a missing component
-    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
-    expect(document.querySelector("[data-testid='action-archive']")).toBeNull(); // never runs without its confirmation
-    expect(tagOf(1)).toBe("draft");
-    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy(); // the column exists for publish alone
-  });
-
   test("a view with no recordActions gets no actions column and no errors", async () => {
     const db = await seeded();
     const { recordActions, ...plain } = view;
@@ -125,5 +126,166 @@ describe("record actions on tables (RFC 0007)", () => {
     await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
     expect(screen.queryByRole("columnheader", { name: "Actions" })).toBeNull();
     expect(summary()).toBeNull();
+  });
+});
+
+describe("the action dialog (RFC 0007)", () => {
+  test("press opens the dialog with its message; Confirm with a valid reason runs act", async () => {
+    let acts = 0;
+    const db = await seeded({
+      actions: {
+        "doc.archive": (record, input) => {
+          acts++;
+          expect(input?.reason).toBe("obsolete");
+          return { values: { tag: `archived:${String(record.values.n)}` } };
+        },
+      },
+    });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    expect(dialog()?.getAttribute("aria-label")).toBe("Archive this"); // confirm title, not the label
+    expect(dialog()?.textContent).toContain("Archive this record?"); // the message
+    // Confirm carries confirmLabel and the danger tone, Cancel is a plain secondary.
+    expect(button("Reject").getAttribute("data-variant")).toBe("primary");
+    expect(button("Reject").getAttribute("data-tone")).toBe("danger");
+    expect(button("Cancel").getAttribute("data-variant")).toBe("secondary");
+    typeReason("obsolete");
+    fireEvent.click(button("Reject"));
+    await waitFor(() => expect(statusText()).toBe("Archive done"));
+    expect(acts).toBe(1);
+    await waitFor(() => expect(tagOf(1)).toBe("archived:1"));
+    expect(dialog()).toBeNull();
+  });
+
+  test("Confirm validates the input first: a missing required reason never reaches act", async () => {
+    let acts = 0;
+    const db = await seeded({ actions: { "doc.archive": () => { acts++; return { remove: true }; } } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    fireEvent.click(button("Reject"));
+    expect(acts).toBe(0); // the document rules rejected it before the server saw it
+    expect(dialog()).not.toBeNull(); // stays open
+    expect(reasonInput().getAttribute("aria-invalid")).toBe("true");
+    // fixing it lets it through
+    typeReason("why not");
+    fireEvent.click(button("Reject"));
+    await waitFor(() => expect(acts).toBe(1));
+  });
+
+  test("a 400 keeps the dialog open and puts the /input/<id> issue on its field", async () => {
+    const db = await seeded({
+      actions: {
+        "doc.archive": () => {
+          throw new RecordValidationError("No.", [{ path: "/input/reason", code: "invalid-value", message: "Reason too short.", hint: "Say more." }]);
+        },
+      },
+    });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    typeReason("x");
+    fireEvent.click(button("Reject"));
+    await waitFor(() => expect(dialog()?.textContent).toContain("Reason too short.")); // the issue stays in the dialog, on the field
+    expect(summary()).toBeNull(); // no view ErrorSummary: the viewer fixes it
+    expect(reasonInput().getAttribute("aria-invalid")).toBe("true");
+  });
+
+  test("a 403 from Confirm closes the dialog, shows the ErrorSummary and reloads", async () => {
+    const db = await seeded({ actions: { "doc.archive": () => { throw new ForbiddenError("Archiving is for moderators."); } } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    typeReason("done with it");
+    fireEvent.click(button("Reject"));
+    await waitFor(() => expect(summary()?.textContent).toContain("Archiving is for moderators."));
+    expect(dialog()).toBeNull(); // closed, nothing kept, nothing retried
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+  });
+
+  test("a 409 from Confirm closes like a 403", async () => {
+    const db = await seeded({ actions: { "doc.archive": () => { throw new RecordConflictError("It changed while you were deciding.", null); } } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    typeReason("done");
+    fireEvent.click(button("Reject"));
+    await waitFor(() => expect(summary()?.textContent).toContain("It changed while you were deciding."));
+    expect(dialog()).toBeNull();
+  });
+
+  test("any other failure keeps the dialog open with the message so the viewer can retry", async () => {
+    let calls = 0;
+    const db = await seeded({ actions: { "doc.archive": () => { calls++; throw new Error("The server fell over."); } } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    typeReason("again");
+    fireEvent.click(button("Reject"));
+    await waitFor(() => expect(dialog()?.textContent).toContain("The server fell over."));
+    expect(dialog()).not.toBeNull(); // open, message shown, Confirm live again for a retry
+    expect(button("Reject").disabled).toBe(false);
+    expect(summary()).toBeNull(); // the message belongs to the dialog, not the view
+    expect(calls).toBe(1); // nothing auto-retried
+  });
+
+  test("Confirm shows pending: Working... announced, Confirm disabled while act runs", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const base = await seeded({ actions: { "doc.archive": () => ({ values: { tag: "archived" } }) } });
+    const inner = base.act!.bind(base);
+    // ActionHandler is synchronous; hold act open with a wrapper adapter instead.
+    const db = { ...base, act: async (entity: string, id: string, action: string, request: Parameters<NonNullable<typeof inner>>[3]) => { await gate; return inner(entity, id, action, request); } };
+    render(<TableRenderer entity={entity} view={view} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    typeReason("slow");
+    fireEvent.click(button("Reject"));
+    await waitFor(() => expect(statusText()).toBe("Working..."));
+    expect(button("Reject").disabled).toBe(true); // Confirm waits for the server
+    expect(dialog()).not.toBeNull();
+    release();
+    await waitFor(() => expect(statusText()).toBe("Archive done"));
+    expect(dialog()).toBeNull();
+  });
+
+  test("Cancel never calls act and returns focus to the pressed button", async () => {
+    let acts = 0;
+    const db = await seeded({ actions: { "doc.archive": () => { acts++; return { remove: true }; } } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    const opener = document.querySelector("[data-testid='action-archive']") as HTMLButtonElement;
+    opener.focus();
+    fireEvent.click(opener);
+    expect(dialog()).not.toBeNull();
+    fireEvent.click(button("Cancel"));
+    expect(dialog()).toBeNull();
+    expect(acts).toBe(0);
+    expect(document.activeElement).toBe(opener); // the modal gives focus back to who opened it
+  });
+
+  test("Escape closes without calling act", async () => {
+    let acts = 0;
+    const db = await seeded({ actions: { "doc.archive": () => { acts++; return { remove: true }; } } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    fireEvent.keyDown(dialog() as HTMLElement, { key: "Escape" });
+    expect(dialog()).toBeNull();
+    expect(acts).toBe(0);
+  });
+
+  test("a fresh press starts the dialog empty", async () => {
+    const db = await seeded({ actions: { "doc.archive": () => ({ remove: true }) } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-archive']")).not.toBeNull());
+    press("archive");
+    typeReason("typed");
+    fireEvent.click(button("Cancel"));
+    press("archive");
+    expect(reasonInput().value).toBe("");
   });
 });

@@ -223,7 +223,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
   // Record actions (RFC 0007): buttons the component draws from TableRow.actions.
-  const recordActions = useRecordActions({ entity, view, viewer, adapter, reload: () => setReloads((n) => n + 1) });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1) });
   const zone = viewerZone(formatting);
   const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter, zone), [view, entity, quick, baseFilter, zone]);
   // The query signature: sort, filter and page size. A change is a new question — the cursor stack is cleared (RFC 0007).
@@ -453,6 +453,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       />
       {recordActions.failures !== undefined && <ErrorSummary errors={recordActions.failures} />}
       {recordActions.announcement !== undefined && <div role="status">{recordActions.announcement.text}</div>}
+      {recordActions.dialog}
       {editErrors.length > 0 && <ErrorSummary id={editErrorsId} errors={editErrors} />}
       {cursorMode ? (
         <nav aria-label={`${view.title ?? entity.id} pages`} data-yadad-pager="">

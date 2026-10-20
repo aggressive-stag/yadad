@@ -256,9 +256,9 @@ function MockSection({ id, title, children }: SectionProps<ReactNode>): ReactNod
   );
 }
 
-function MockButton({ label, type, variant, disabled, onPress }: ButtonProps): ReactNode {
+function MockButton({ label, type, variant, disabled, tone, onPress }: ButtonProps): ReactNode {
   return (
-    <button type={type} data-variant={variant} disabled={disabled} onClick={onPress}>
+    <button type={type} data-variant={variant} {...(tone !== undefined ? { "data-tone": tone } : {})} disabled={disabled} onClick={onPress}>
       {label}
     </button>
   );
