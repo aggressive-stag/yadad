@@ -1,7 +1,7 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
 import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { bindFilter, canUpdate, columnEditable, emptyFormState, resolveRelativeDates, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
-import type { FormState } from "@yadad/runtime";
+import { bindFilter, canUpdate, columnEditable, compareCells, emptyFormState, neighbourQuery, resolveRelativeDates, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
+import type { CompareCell, CompareEdge, FormState } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DocumentSet } from "./document-set.js";
@@ -205,6 +205,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<Rows>({ status: "loading" });
+  // One extra row beyond the page edge per `to` compare column (RFC 0007), loaded beside the page and never displayed.
+  const [edges, setEdges] = useState<Readonly<Record<string, CompareEdge | undefined>>>({});
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [reloads, setReloads] = useState(0);
@@ -221,15 +223,30 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     let current = true;
     // Relative dates become fixed ones here, on every load, so adapters never see them and "today" stays today.
     const fixed = filter ? resolveRelativeDates(filter) : undefined;
-    // RFC 0007: card 35e (Previous and Next without a total)
-    adapter.find(entity.id, { sort, page: { offset: page * pageSize, limit: pageSize }, ...(fixed ? { filter: fixed } : {}) }).then(
-      (result) => current && setRows({ status: "loaded", items: result.items, total: result.total ?? result.items.length }),
+    const mainQuery = { sort, page: { offset: page * pageSize, limit: pageSize }, ...(fixed ? { filter: fixed } : {}) };
+    // A `to` compare column needs the row just outside the page edge (RFC 0007): neighbourQuery widens the query,
+    // and the extra row is kept for compareCells only — the page itself never shows it.
+    const compareCols = shownColumns.filter((c) => c.compare !== undefined && entity.fields.some((f) => f.id === c.field && f.type === "text"));
+    const prevCol = compareCols.find((c) => c.compare?.to === "previousRow");
+    const nextCol = compareCols.find((c) => c.compare?.to === "nextRow");
+    const prevLoad = prevCol !== undefined && page > 0 ? adapter.find(entity.id, neighbourQuery(mainQuery, prevCol)) : undefined;
+    const nextLoad = nextCol !== undefined ? adapter.find(entity.id, neighbourQuery(mainQuery, nextCol)) : undefined;
+    Promise.all([adapter.find(entity.id, mainQuery), prevLoad, nextLoad]).then(
+      ([result, prev, next]) => {
+        if (!current) return;
+        setRows({ status: "loaded", items: result.items, total: result.total ?? result.items.length });
+        const nextEdgeRow = next?.items[pageSize];
+        setEdges({
+          ...(prevCol !== undefined ? { [prevCol.field]: prev !== undefined && prev.items[0] !== undefined && prev.items[0].id !== result.items[0]?.id ? { items: prev.items } : undefined } : {}),
+          ...(nextCol !== undefined ? { [nextCol.field]: nextEdgeRow !== undefined ? { items: [nextEdgeRow] } : undefined } : {}),
+        });
+      },
       (error: unknown) => current && setRows({ status: "failed", message: error instanceof Error ? error.message : String(error) }),
     );
     return () => {
       current = false;
     };
-  }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloads]);
+  }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloads, shownColumns]);
 
   // Labels for the references on the loaded page; picker options only while a row is being edited.
   const referenceColumns = shownColumns.flatMap((c) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === c.field));
@@ -261,7 +278,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
 
   const columns = shownColumns.flatMap((c) => {
     const field = entity.fields.find((f) => f.id === c.field);
-    return field ? [{ field, editable: columnEditable(c, viewer) }] : [];
+    return field ? [{ field, editable: columnEditable(c, viewer), ...(c.compare !== undefined ? { compare: c.compare } : {}) }] : [];
   });
   if (shownColumns.length === 0) return <p data-yadad-table-view={view.id} data-yadad-table-nothing="">There is nothing to show you here.</p>;
   const hasActions = columns.some((c) => c.editable) || rowAction !== undefined;
@@ -304,8 +321,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
 
   const isEditing = (record: DataRecord): boolean => editing?.record.id === record.id && canUpdate(record);
 
-  const renderCell = (record: DataRecord, field: Field, editable: boolean): ReactNode => {
-    if (!editable || !editing || !isEditing(record)) return renderDisplay(registry, field, record.values[field.id], references, formatting);
+  const renderCell = (record: DataRecord, field: Field, editable: boolean, diff?: CompareCell): ReactNode => {
+    if (!editable || !editing || !isEditing(record)) return renderDisplay(registry, field, record.values[field.id], references, formatting, diff);
     const state = editing.state;
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
     const value = field.id in state.values ? state.values[field.id] : record.values[field.id];
@@ -345,9 +362,11 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     );
 
   const items = rows.status === "loaded" ? rows.items : [];
-  const tableRows: TableRow<ReactNode>[] = items.map((record) => ({
+  // RFC 0007 compare columns: the word diff of each row against its comparator; undefined for a row without a neighbour.
+  const columnDiffs = columns.map((c) => (c.compare !== undefined && c.field.type === "text" ? compareCells(items, { field: c.field.id, compare: c.compare }, edges[c.field.id]) : undefined));
+  const tableRows: TableRow<ReactNode>[] = items.map((record, rowIndex) => ({
     id: record.id,
-    cells: [...columns.map(({ field, editable }) => renderCell(record, field, editable)), ...(hasActions ? [renderActions(record)] : [])],
+    cells: [...columns.map(({ field, editable }, colIndex) => renderCell(record, field, editable, columnDiffs[colIndex]?.[rowIndex])), ...(hasActions ? [renderActions(record)] : [])],
   }));
   const total = rows.status === "loaded" ? rows.total : 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));

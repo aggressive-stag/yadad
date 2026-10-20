@@ -1,6 +1,7 @@
 import { formatDateTime, instantToLocal, localToInstant, LOCAL_DATETIME_PATTERN } from "@yadad/runtime";
+
 import { isIsoDatetime } from "@yadad/core";
-import type { Field, FieldValue, Registry } from "@yadad/core";
+import type { DiffSegment, Field, FieldValue, Registry } from "@yadad/core";
 import type { ReactNode } from "react";
 import type { ReferenceSupport } from "./references.js";
 
@@ -110,11 +111,18 @@ export function renderInput(
 }
 
 /** Renders the field's read-only Display from the registry. */
-export function renderDisplay(registry: Registry<ReactNode>, field: Field, value: FieldValue | undefined, references: ReferenceSupport, formatting?: FieldFormatting): ReactNode {
+export function renderDisplay(
+  registry: Registry<ReactNode>,
+  field: Field,
+  value: FieldValue | undefined,
+  references: ReferenceSupport,
+  formatting?: FieldFormatting,
+  diff?: readonly DiffSegment[],
+): ReactNode {
   switch (field.type) {
     case "text": {
       const { Display } = registry.fields.text;
-      return <Display field={field} value={asString(value)} />;
+      return <Display field={field} value={asString(value)} {...(diff !== undefined ? { diff } : {})} />;
     }
     case "number": {
       const { Display } = registry.fields.number;
