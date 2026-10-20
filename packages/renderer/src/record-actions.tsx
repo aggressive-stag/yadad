@@ -52,6 +52,8 @@ export function useRecordActions(options: {
   readonly adapter: DataAdapter | undefined;
   /** Refresh the view's records after an action ran or was refused. */
   readonly reload: () => void;
+  /** Where announcements go: a view with its own announcement state (board, calendar) injects it, so one live region carries everything. Without it the hook keeps its own. */
+  readonly announce?: (text: string) => void;
 }): RecordActions {
   const { entity, view, viewer, registry, adapter, reload } = options;
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
@@ -66,7 +68,10 @@ export function useRecordActions(options: {
     };
   }, []);
 
-  const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
+  const announce = (text: string): void => {
+    if (options.announce !== undefined) options.announce(text);
+    else setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
+  };
 
   /** Run act and apply the outcome; the dialog path and the direct press share it (RFC 0007). */
   const run = (record: DataRecord, action: RecordAction, input: RecordValues | undefined, fromDialog: OpenDialog | undefined): void => {

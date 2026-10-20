@@ -10,6 +10,7 @@ import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
+import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -310,7 +311,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] as const })),
     ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] as const })) : []),
   ];
-  const setupErrors: DocumentError[] = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors];
+  const setupErrors: DocumentError[] = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors, ...recordActionSetupErrors(entity, view, adapter, registry)];
   if (groupField && groupField.type !== "select" && groupField.type !== "boolean" && groupField.type !== "reference") {
     setupErrors.push({
       path: `/groupBy/0/field`,
@@ -328,13 +329,13 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
       hint: "Add a layout.Board component to the registry.",
     });
   }
+  const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), announce });
   if (setupErrors.length > 0 || !Board) return <ErrorSummary errors={setupErrors} />;
 
   const cardsLoading = cards === undefined;
   const targetsLoading = isReference && (!targetEntity || !targetState || targetState.status === "loading");
   const loading = cardsLoading || targetsLoading;
-
-  const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
 
   const recordTitle = (record: DataRecord): string => {
     const field = titleField === undefined ? undefined : entity.fields.find((f) => f.id === titleField);
@@ -366,6 +367,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         label: [title, ...details.map((f) => `${f.label}: ${plain(f, record)}`)].join(", "),
         movable: editable && canUpdate(record) && !isPending,
         pending: isPending,
+        actions: recordActions.items(record),
       };
     });
   const columns: BoardColumn<ReactNode>[] = [
@@ -481,6 +483,8 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         {...(onOpen ? { onOpenCard: (id: string) => { const record = loadedRecords?.find((r) => r.id === id); if (record) onOpen(record); } } : {})}
         {...(editable ? { onMove: move } : {})}
       />
+      {recordActions.failures !== undefined && <ErrorSummary errors={recordActions.failures} />}
+      {recordActions.dialog}
     </div>
   );
 }

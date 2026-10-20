@@ -10,6 +10,7 @@ import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
+import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -261,7 +262,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),
     ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
   ];
-  const setupErrors: DocumentError[] = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors];
+  const setupErrors: DocumentError[] = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors, ...recordActionSetupErrors(entity, view, adapter, registry)];
   const dateDef = entity.fields.find((f) => f.id === view.dateField);
   if (dateDef && dateDef.type !== "date") {
     setupErrors.push({ path: "/dateField", code: "invalid-value", message: `Field "${dateDef.id}" is a ${dateDef.type} field, not a date field.`, hint: "Use a date field as dateField." });
@@ -275,9 +276,10 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       hint: "Add a layout.Calendar component to the registry.",
     });
   }
+  const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), announce });
   if (setupErrors.length > 0 || !Calendar) return <ErrorSummary errors={setupErrors} />;
 
-  const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
   const navigate = (next: () => void): void => {
     setErrors([]);
     next();
@@ -322,6 +324,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       ...(color ? { color } : {}),
       movable: editable && canUpdate(record) && !isPending,
       pending: isPending,
+      actions: recordActions.items(record),
     };
   };
 
@@ -424,6 +427,8 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
           : {})}
         {...(editable ? { onMove: move } : {})}
       />
+      {recordActions.failures !== undefined && <ErrorSummary errors={recordActions.failures} />}
+      {recordActions.dialog}
     </div>
   );
 }

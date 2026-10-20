@@ -427,3 +427,89 @@ describe("calendar starting mode and anchor", () => {
     expect(screen.getAllByRole("gridcell")).toHaveLength(42);
   });
 });
+
+describe("record actions on entries (RFC 0007)", () => {
+  const actionsEntity: EntityDocument = {
+    ...entity,
+    actions: [{ id: "publish", label: "Publish" }, { id: "archive", label: "Archive", confirm: { message: "Archive it?", tone: "danger" }, input: [{ id: "reason", type: "text", label: "Reason" }] }],
+  };
+  const withActions: CalendarView = { ...calendar, recordActions: ["publish", "archive"] };
+
+  /** Buttons inside one entry (several entries offer the same actions). */
+  const entryButton = (id: string, action: string): HTMLButtonElement =>
+    within(screen.getByTestId(`entry-${id}`)).getByTestId(`action-${action}`) as HTMLButtonElement;
+  const confirmButton = (): HTMLButtonElement =>
+    [...(document.querySelector("[data-testid='dialog']")?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "Archive") as HTMLButtonElement;
+
+  /** Seed the two October tasks into an adapter built with these options; returns it with the record ids by title. */
+  async function seeded(options: Parameters<typeof createMemoryAdapter>[0]): Promise<{ db: ReturnType<typeof createMemoryAdapter>; ids: Record<string, string> }> {
+    const db = createMemoryAdapter(options);
+    const ids: Record<string, string> = {};
+    for (const values of [
+      { title: "Pay rent", due: "2026-10-15", list: "Home", assignee: "Ada" },
+      { title: "Call Ada", due: "2026-10-15", list: "Work" },
+    ]) {
+      const record = await db.create("task", values, { entityRevision: 1 });
+      ids[values.title] = record.id;
+    }
+    return { db, ids };
+  }
+
+  test("an entry offers its available actions, an action runs and reloads, and a withheld action is hidden", async () => {
+    let acts = 0;
+    const { db, ids } = await seeded({
+      actions: {
+        "task.publish": (record) => {
+          acts++;
+          return { values: { assignee: `published:${String(record.values.title)}` } };
+        },
+        "task.archive": () => ({ remove: true }),
+      },
+      recordPermissions: (record) => (record.values.title === "Call Ada" ? { actions: { publish: false } } : undefined),
+    });
+    render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
+    await screen.findByText("Pay rent");
+    expect(entryButton(ids["Pay rent"]!, "publish")).toBeTruthy();
+    expect(entryButton(ids["Pay rent"]!, "archive")).toBeTruthy();
+    expect(within(screen.getByTestId(`entry-${ids["Call Ada"]}`)).queryByTestId("action-publish")).toBeNull(); // withheld by can.actions
+    fireEvent.click(entryButton(ids["Pay rent"]!, "publish"));
+    await waitFor(() => expect(acts).toBe(1));
+    expect(status()).toBe("Publish done"); // the calendar's live region carries it
+    await waitFor(() => expect(screen.getByText("published:Pay rent")).toBeTruthy()); // reloaded with the new assignee
+  });
+
+  test("a press with no act: the data source replaced the calendar with an ErrorSummary", async () => {
+    const db = createMemoryAdapter();
+    await db.create("task", { title: "Pay rent", due: "2026-10-15", list: "Home" }, { entityRevision: 1 });
+    render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
+    await waitFor(() => expect(document.querySelector("[data-testid='error-summary']")?.textContent).toContain("The data source of view tasks_calendar cannot run actions."));
+    expect(screen.queryByRole("grid")).toBeNull();
+  });
+
+  test("an action refused shows the view's ErrorSummary and reloads the range", async () => {
+    const { db, ids } = await seeded({
+      actions: { "task.publish": () => { throw new ForbiddenError("Only editors may publish."); } },
+      recordPermissions: () => ({ actions: { archive: false } }),
+    });
+    render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
+    await screen.findByText("Pay rent");
+    fireEvent.click(entryButton(ids["Pay rent"]!, "publish"));
+    await waitFor(() => expect(document.querySelector("[data-testid='error-summary']")?.textContent).toContain("Only editors may publish."));
+    await waitFor(() => expect(screen.getByText("Ada")).toBeTruthy()); // reloaded; the entry is as it was
+  });
+
+  test("an action with confirm and input opens the dialog built for layout.Dialog", async () => {
+    const { db, ids } = await seeded({
+      actions: { "task.publish": () => ({ values: {} }), "task.archive": (record, input) => ({ values: { assignee: `archived:${String(input?.reason)}` } }) },
+      recordPermissions: () => ({ actions: { publish: false } }),
+    });
+    render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
+    await screen.findByText("Pay rent");
+    fireEvent.click(entryButton(ids["Pay rent"]!, "archive"));
+    expect(document.querySelector("[data-testid='dialog']")?.getAttribute("aria-label")).toBe("Archive");
+    expect(document.querySelector("[data-testid='dialog']")?.textContent).toContain("Archive it?");
+    fireEvent.change(document.querySelector("[data-testid='input-reason']")!, { target: { value: "done" } });
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(screen.getByText("archived:done")).toBeTruthy());
+  });
+});

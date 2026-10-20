@@ -384,6 +384,103 @@ describe("row action", () => {
   });
 });
 
+describe("record actions on cards (RFC 0007)", () => {
+  const withActions: BoardView = {
+    ...board,
+    recordActions: ["publish", "archive"],
+  };
+  const actionsEntity: EntityDocument = {
+    ...entity,
+    actions: [{ id: "publish", label: "Publish" }, { id: "archive", label: "Archive", confirm: { message: "Archive it?", tone: "danger" }, input: [{ id: "reason", type: "text", label: "Reason" }] }],
+  };
+
+  /** Buttons inside one card (several cards offer the same actions). */
+  const cardButton = (id: string, action: string): HTMLButtonElement =>
+    within(screen.getByTestId(`card-${id}`)).getByTestId(`action-${action}`) as HTMLButtonElement;
+  const confirmButton = (): HTMLButtonElement =>
+    [...(document.querySelector("[data-testid='dialog']")?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "Archive") as HTMLButtonElement;
+
+  /** Seed the four tasks into an adapter built with these options; returns it with the record ids by title. */
+  async function seeded(options: Parameters<typeof createMemoryAdapter>[0]): Promise<{ db: ReturnType<typeof createMemoryAdapter>; ids: Record<string, string> }> {
+    const db = createMemoryAdapter(options);
+    const ids: Record<string, string> = {};
+    for (const values of [
+      { title: "Pay rent", list: "Home", done: false, notes: "Due soon" },
+      { title: "Call Ada", list: "Work", done: true },
+      { title: "Book flights", list: "Home", done: false },
+      { title: "Unsorted" },
+    ]) {
+      const record = await db.create("task", values, { entityRevision: 1 });
+      ids[values.title] = record.id;
+    }
+    return { db, ids };
+  }
+
+  test("a card offers its available actions, an action runs and reloads, and a withheld action is hidden", async () => {
+    let acts = 0;
+    const { db, ids } = await seeded({
+      actions: {
+        "task.publish": (record) => {
+          acts++;
+          return { values: { notes: `published:${String(record.values.title)}` } };
+        },
+        "task.archive": () => ({ remove: true }),
+      },
+      recordPermissions: (record) => (record.values.title === "Call Ada" ? { actions: { publish: false } } : undefined),
+    });
+    render(
+      <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
+    );
+    await screen.findByText("Pay rent");
+    expect(cardButton(ids["Pay rent"]!, "publish")).toBeTruthy();
+    expect(cardButton(ids["Pay rent"]!, "archive")).toBeTruthy();
+    expect(within(screen.getByTestId(`card-${ids["Call Ada"]}`)).queryByTestId("action-publish")).toBeNull(); // withheld by can.actions
+    fireEvent.click(cardButton(ids["Pay rent"]!, "publish"));
+    await waitFor(() => expect(acts).toBe(1));
+    expect(status()).toBe("Publish done"); // the view's live region carries it
+    await waitFor(() => expect(screen.getByText("published:Pay rent")).toBeTruthy()); // reloaded with the new notes
+    expect(titles("v:Home").sort()).toEqual(["Book flights", "Pay rent"]);
+  });
+
+  test("a press with no act: the data source replaced the board with an ErrorSummary", async () => {
+    const { db } = await seed(); // no action handlers: the adapter does not advertise act
+    render(<BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />);
+    await waitFor(() => expect(document.querySelector("[data-testid='error-summary']")?.textContent).toContain("The data source of view tasks_board cannot run actions."));
+    expect(screen.queryByTestId("board-columns")).toBeNull();
+  });
+
+  test("an action refused shows the view's ErrorSummary and reloads the cards", async () => {
+    const { db, ids } = await seeded({
+      actions: { "task.publish": () => { throw new ForbiddenError("Only editors may publish."); } },
+      recordPermissions: () => ({ actions: { archive: false } }),
+    });
+    render(
+      <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
+    );
+    await screen.findByText("Pay rent");
+    fireEvent.click(cardButton(ids["Pay rent"]!, "publish"));
+    await waitFor(() => expect(document.querySelector("[data-testid='error-summary']")?.textContent).toContain("Only editors may publish."));
+    await waitFor(() => expect(screen.getByText("Due soon")).toBeTruthy()); // reloaded; the card is as it was
+  });
+
+  test("an action with confirm and input opens the dialog built for layout.Dialog", async () => {
+    const { db, ids } = await seeded({
+      actions: { "task.publish": () => ({ values: {} }), "task.archive": (record, input) => ({ values: { notes: `archived:${String(input?.reason)}` } }) },
+      recordPermissions: () => ({ actions: { publish: false } }),
+    });
+    render(
+      <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
+    );
+    await screen.findByText("Pay rent");
+    fireEvent.click(cardButton(ids["Pay rent"]!, "archive"));
+    expect(document.querySelector("[data-testid='dialog']")?.getAttribute("aria-label")).toBe("Archive");
+    expect(document.querySelector("[data-testid='dialog']")?.textContent).toContain("Archive it?");
+    fireEvent.change(document.querySelector("[data-testid='input-reason']")!, { target: { value: "done" } });
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(screen.getByText("archived:done")).toBeTruthy());
+  });
+});
+
 describe("in a dashboard", () => {
   const dashboard: DashboardView = {
     kind: "dashboard",
