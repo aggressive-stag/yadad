@@ -216,6 +216,43 @@ POST /api/records/set/_batch
 200 { "created": [ { "id": "s14", "entityId": "set", "entityRevision": 3, "version": "1", "values": { "weight": 110, "reps": 2, "day": "2026-10-07" } } ], "deleted": [ "s12" ] }
 ```
 
+**Action, allowed** (the entity declares `archive`, which removes the record):
+
+```
+POST /api/records/set/s12/actions/archive
+{ "entityRevision": 3, "baseVersion": "8" }
+
+204
+```
+
+**Action, kept** (the entity declares `note`, whose input is one text field; the record comes back with its new `can`):
+
+```
+POST /api/records/set/s12/actions/note
+{ "input": { "text": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
+
+200 { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "9", "values": { "weight": 100, "reps": 6, "day": "2026-10-05", "note": "personal record" }, "can": { "actions": { "note": false } } }
+```
+
+**Action, not allowed** (the viewer may not run it, or `can.actions` said so):
+
+```
+POST /api/records/set/s12/actions/note
+{ "input": { "text": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
+
+403 { "errors": [ { "path": "", "code": "forbidden", "message": "You are not allowed to run this action.", "hint": "Ask the owner." } ] }
+```
+
+**Action, stale** (`baseVersion` is checked before `input`, so a stale action with invalid input is still this):
+
+```
+POST /api/records/set/s12/actions/note
+{ "input": { "text": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
+
+409 { "errors": [ { "path": "/baseVersion", "code": "conflict", "message": "This set was changed since you loaded it.", "hint": "Reload it and try again." } ],
+      "current": { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "9", "values": { "weight": 100, "reps": 6, "day": "2026-10-05" } } }
+```
+
 **400, invalid value** (here in a batch, so `path` points into that request body):
 
 ```
