@@ -692,6 +692,68 @@ async function expectInstanceOf(promise: Promise<unknown>, type: new (...args: n
 runActionConformance("memory adapter", (o) => createMemoryAdapter(o));
 runActionConformance("key-value adapter", (o) => createKeyValueAdapter(freshStore(), "app", o));
 
+describe("http adapter: act on the wire", () => {
+  const acted: DataRecord = { id: "s12", entityId: ENTITY, entityRevision: REVISION, version: "9", values: { exercise: "Squat", reps: 7 } };
+  const reply = (status: number, payload?: unknown): { fetch: FetchLike; calls: { url: string; body?: string }[] } => {
+    const calls: { url: string; body?: string }[] = [];
+    return {
+      calls,
+      fetch: async (url, init) => {
+        calls.push({ url, ...(init?.body !== undefined ? { body: init.body } : {}) });
+        return { status, json: async () => payload };
+      },
+    };
+  };
+  const request = { input: { delta: 2 }, meta: { entityRevision: REVISION, baseVersion: "7" } };
+
+  test("posts input, entityRevision and baseVersion to the actions path and returns the record on 200", async () => {
+    const server = reply(200, acted);
+    const db = createHttpAdapter({ baseUrl: "/api/records/", fetch: server.fetch });
+    const result = await db.act!(ENTITY, "s12", "stamp", request);
+    expect(result).toEqual(acted);
+    expect(server.calls[0]?.url).toBe(`/api/records/${ENTITY}/s12/actions/stamp`);
+    expect(JSON.parse(server.calls[0]?.body ?? "{}")).toEqual({ input: { delta: 2 }, entityRevision: REVISION, baseVersion: "7" });
+  });
+
+  test("no input sends an empty object; a 204 returns null", async () => {
+    const server = reply(204);
+    const db = createHttpAdapter({ baseUrl: "/api/records", fetch: server.fetch });
+    expect(await db.act!(ENTITY, "s12", "archive", { meta: { entityRevision: REVISION, baseVersion: "7" } })).toBeNull();
+    expect(JSON.parse(server.calls[0]?.body ?? "{}")).toEqual({ input: {}, entityRevision: REVISION, baseVersion: "7" });
+  });
+
+  test("400 with /input paths is a RecordValidationError, 403 a ForbiddenError, 404 a RecordNotFoundError, 409 a RecordConflictError with current", async () => {
+    const bad = reply(400, { errors: [{ path: "/input/delta", code: "type", message: "Nope.", hint: "Numbers only." }] });
+    expect(await expectError(createHttpAdapter({ baseUrl: "/b", fetch: bad.fetch }).act!(ENTITY, "x", "a", request))).toBeInstanceOf(RecordValidationError);
+    const issues = (await expectError(createHttpAdapter({ baseUrl: "/b", fetch: bad.fetch }).act!(ENTITY, "x", "a", request))) as RecordValidationError;
+    expect(issues.issues.map((i) => [i.path, i.code])).toEqual([["/input/delta", "type"]]);
+
+    const forbidden = reply(403, { errors: [{ path: "", code: "forbidden", message: "Not allowed.", hint: "Ask." }] });
+    expect(await expectError(createHttpAdapter({ baseUrl: "/b", fetch: forbidden.fetch }).act!(ENTITY, "x", "a", request))).toBeInstanceOf(ForbiddenError);
+
+    const missing = reply(404, { errors: [{ path: "", code: "not-found", message: "No such action.", hint: "Check." }] });
+    expect(await expectError(createHttpAdapter({ baseUrl: "/b", fetch: missing.fetch }).act!(ENTITY, "x", "a", request))).toBeInstanceOf(RecordNotFoundError);
+
+    const stale = reply(409, { errors: [{ path: "/baseVersion", code: "conflict", message: "Stale.", hint: "Reload." }], current: acted });
+    const conflict = (await expectError(createHttpAdapter({ baseUrl: "/b", fetch: stale.fetch }).act!(ENTITY, "x", "a", request))) as RecordConflictError;
+    expect(conflict).toBeInstanceOf(RecordConflictError);
+    expect(conflict.current?.version).toBe("9");
+  });
+
+  test("the record act returns passes the same can validation as every other read", async () => {
+    const valid = reply(200, { ...acted, can: { actions: { stamp: false } } });
+    const kept = await createHttpAdapter({ baseUrl: "/b", fetch: valid.fetch }).act!(ENTITY, "s12", "stamp", request);
+    expect(kept?.can).toEqual({ actions: { stamp: false } });
+    const malformed = reply(200, { ...acted, can: { actions: { stamp: "no" } } });
+    const dropped = await createHttpAdapter({ baseUrl: "/b", fetch: malformed.fetch }).act!(ENTITY, "s12", "stamp", request);
+    expect(dropped !== null && dropped !== undefined && "can" in dropped).toBe(false);
+  });
+
+  test("the http adapter always offers act", () => {
+    expect(createHttpAdapter({ baseUrl: "/b", fetch: reply(200, acted).fetch }).act).toBeDefined();
+  });
+});
+
 describe("http adapter: can on the wire", () => {
   const record = (can: unknown) => ({ id: "1", entityId: ENTITY, entityRevision: REVISION, version: "v1", values: { exercise: "Squat" }, can });
   const serving = (payload: unknown): FetchLike => async () => ({ status: 200, json: async () => payload });

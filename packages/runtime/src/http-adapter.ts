@@ -180,6 +180,19 @@ export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
       const result = await post<BatchResult>(`${base}/${entity}/_batch`, payload);
       return Array.isArray(result?.created) ? { ...result, created: result.created.map(readRecord) } : result;
     },
+    // The HTTP adapter speaks the protocol, so act is always available: an
+    // unknown entity, record or action is the server's 404, not a missing
+    // host handler (that case is the in-process adapters).
+    async act(entity, id, action, request): Promise<DataRecord | null> {
+      const { status, body } = await send(
+        "POST",
+        `${base}/${entity}/${encodeURIComponent(id)}/actions/${encodeURIComponent(action)}`,
+        JSON.stringify({ input: request.input ?? {}, entityRevision: request.meta.entityRevision, baseVersion: request.meta.baseVersion }),
+      );
+      if (status === 204) return null; // the action removed the record
+      if (status < 200 || status >= 300) throwForStatus(status, body);
+      return readRecord(body as DataRecord);
+    },
   };
 }
 

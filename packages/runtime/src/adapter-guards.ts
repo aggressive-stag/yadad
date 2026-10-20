@@ -46,19 +46,38 @@ export function assertQueryHasNoViewer(query: Query): void {
 }
 
 
-const PERMISSION_KEYS: readonly string[] = ["update", "delete"];
+const PERMISSION_KEYS: readonly string[] = ["update", "delete", "actions"];
+
+/**
+ * `can.actions` (RFC 0007): an object from action id to boolean, where only
+ * `false` restricts. Anything else — not an object, a non-boolean value — is
+ * malformed and the whole `can` is dropped, as with the other keys: a hint,
+ * never an error.
+ */
+function validActions(value: unknown): Readonly<Record<string, boolean>> | false {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  if (entries.some(([, v]) => typeof v !== "boolean")) return false;
+  return Object.fromEntries(entries) as Record<string, boolean>;
+}
 
 /**
  * The `can` of a record from a server, if it is valid: an object of booleans
- * with only the known keys. A malformed `can` is dropped (undefined), never an
- * error: it is a hint.
+ * with only the known keys, plus `actions` as an object of booleans. A
+ * malformed `can` is dropped (undefined), never an error: it is a hint.
  */
 export function validCan(value: unknown): RecordPermissions | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const entries = Object.entries(value);
-  if (entries.some(([key, v]) => !PERMISSION_KEYS.includes(key) || typeof v !== "boolean")) return undefined;
-  const can = value as Record<string, boolean>;
-  return { ...(can["update"] !== undefined ? { update: can["update"] } : {}), ...(can["delete"] !== undefined ? { delete: can["delete"] } : {}) };
+  if (entries.some(([key, v]) => !PERMISSION_KEYS.includes(key) || (key !== "actions" && typeof v !== "boolean"))) return undefined;
+  const can = value as Record<string, unknown>;
+  const actions = can["actions"] === undefined ? undefined : validActions(can["actions"]);
+  if (actions === false) return undefined; // malformed actions drops the whole can
+  return {
+    ...(typeof can["update"] === "boolean" ? { update: can["update"] } : {}),
+    ...(typeof can["delete"] === "boolean" ? { delete: can["delete"] } : {}),
+    ...(actions !== undefined ? { actions } : {}),
+  };
 }
 
 /** The handler an adapter's options state for `<entity>.<action>`, or undefined. */
