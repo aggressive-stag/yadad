@@ -173,6 +173,8 @@ A filter never carries a viewer: the client refuses a `viewerIn` condition in a 
 
 **Count only** (`limit=0`): `GET /api/records/set?limit=0` returns `200 { "items": [], "total": 41 }`.
 
+**Cursor paging** (a server that does not count; the first request has no `cursor`): `GET /api/records/set?limit=2` returns `200 { "items": [ …2 records… ], "next": "9f3a" }`, then `GET /api/records/set?limit=2&cursor=9f3a` returns the following two, and the last page answers `"next": null` (or leaves `next` out). No `total` appears anywhere; the client passes `next` back untouched as `cursor`.
+
 **Get:**
 
 ```

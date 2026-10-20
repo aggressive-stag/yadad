@@ -1,5 +1,6 @@
 import type { Condition, DataAdapter, FieldValue, Measure, RecordValues } from "@yadad/core";
 import { resolveRelativeDates } from "./condition.js";
+import { walkWithNext } from "./memory-adapter.js";
 
 /** Records fetched per `find` call; the protocol's per-request cap. */
 export const AGGREGATE_PAGE_SIZE = 500;
@@ -115,9 +116,15 @@ export async function aggregate(adapter: DataAdapter, entityId: string, measure:
   const filter = options.filter ? resolveRelativeDates(options.filter, options.now) : undefined;
   const base = filter ? { filter } : {};
   if (measure.op === "count") {
-    // RFC 0007: card 34h (a count without a total walks the pages up to the cap)
-    const { total = 0 } = await adapter.find(entityId, { ...base, page: { offset: 0, limit: 0 } });
-    return { value: total, partial: false, read: total, total };
+    // `limit: 0` is the count request: one read, the total is the answer.
+    const first = await adapter.find(entityId, { ...base, page: { offset: 0, limit: 0 } });
+    if (first.total !== undefined) return { value: first.total, partial: false, read: first.total, total: first.total };
+    // A server that does not count has no total to ask (RFC 0007): walk the
+    // pages up to the same cap the other measures use and report what was read.
+    const maxRecords = options.maxRecords ?? AGGREGATE_MAX_RECORDS;
+    const pageSize = options.pageSize ?? AGGREGATE_PAGE_SIZE;
+    const walked = await walkWithNext(adapter, entityId, base, { maxRecords, pageSize });
+    return { value: walked.items.length, partial: walked.hasMore, read: walked.items.length, total: walked.items.length };
   }
   const maxRecords = options.maxRecords ?? AGGREGATE_MAX_RECORDS;
   const pageSize = options.pageSize ?? AGGREGATE_PAGE_SIZE;

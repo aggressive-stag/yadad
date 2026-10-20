@@ -37,6 +37,13 @@ export interface AdapterOptions {
    * code, not part of any document.
    */
   readonly actions?: Readonly<Record<string, ActionHandler>>;
+  /**
+   * `"cursor"`: page like a server that never counts (RFC 0007) — `find`
+   * returns no `total` and an opaque `next` (null on the last page), and
+   * `{ cursor, limit }` pages are accepted. Host code, like `recordPermissions`;
+   * the default keeps today's offset paging with a `total`.
+   */
+  readonly paging?: "cursor";
 }
 
 /** In-memory DataAdapter for tests, the showcase and local dev. Nothing persists. */
@@ -81,7 +88,7 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
 
   return {
     async find(entity, query) {
-      const page = runQuery([...table(entity).values()], query);
+      const page = runQuery([...table(entity).values()], query, options?.paging);
       return { ...page, items: page.items.map((r) => withPermissions(options, r)) };
     },
     async findOne(entity, id) {
@@ -170,16 +177,67 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
   };
 }
 
-/** Filter, then sort, then page: the query semantics every in-process adapter shares. A `viewerIn` leaf in the filter is rejected. */
-export function runQuery(records: readonly DataRecord[], query: Query): Page<DataRecord> {
+/** Filter, then sort, then page: the query semantics every in-process adapter shares. A `viewerIn` leaf in the filter is rejected. With `paging: "cursor"` the page carries no `total` and an opaque `next` (RFC 0007). */
+export function runQuery(records: readonly DataRecord[], query: Query, paging?: "cursor"): Page<DataRecord> {
   assertQueryHasNoViewer(query);
   const { filter } = query;
   const matching = records.filter((r) => !filter || evaluateCondition(filter, r.values));
   const all = sortRecords(matching, query.sort ?? []);
-  // RFC 0007: card 34e (cursor paging; until then a cursor is read as an offset)
+  if (paging === "cursor") {
+    const limit = query.page?.limit ?? all.length;
+    const offset = query.page === undefined || !("cursor" in query.page) ? 0 : decodeCursor(query.page.cursor);
+    const items = all.slice(offset, offset + limit);
+    return { items, next: offset + items.length < all.length ? encodeCursor(offset + items.length) : null };
+  }
+  // Without the cursor option a cursor query is read as an offset: a host that
+  // mixes both styles still gets a stable answer from this in-process store.
   const offset = query.page === undefined ? 0 : "cursor" in query.page ? Number.parseInt(query.page.cursor, 10) || 0 : query.page.offset;
   const items = query.page ? all.slice(offset, offset + query.page.limit) : all;
   return { items, total: all.length };
+}
+
+const CURSOR_PREFIX = "c0:"; // an encoded offset: reversed base36, so it never looks like a plain number
+
+/** Opaque continuation token (RFC 0007): only the memory adapters' runQuery produces and reads it. */
+function encodeCursor(offset: number): string {
+  return `${CURSOR_PREFIX}${offset.toString(36).split("").reverse().join("")}`;
+}
+
+function decodeCursor(token: string): number {
+  if (!token.startsWith(CURSOR_PREFIX)) return 0;
+  const chars = token
+    .slice(CURSOR_PREFIX.length)
+    .split("")
+    .reverse()
+    .join("");
+  const n = Number.parseInt(chars, 36);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Walk a server that does not count (no `total`, `next` instead) page by page
+ * up to the cap (RFC 0007). Pass the page the caller already fetched as
+ * `first` to continue from it; otherwise the walk starts at offset 0. The walk
+ * stops at an empty page or a page with no `next`; `hasMore` says the cap was
+ * reached while a `next` was still pending.
+ */
+export async function walkWithNext(
+  adapter: DataAdapter,
+  entityId: string,
+  base: Omit<Query, "page">,
+  options: { readonly first?: Page<DataRecord>; readonly maxRecords: number; readonly pageSize: number },
+): Promise<{ readonly items: DataRecord[]; readonly hasMore: boolean }> {
+  const items: DataRecord[] = [];
+  let cursor: string | null | undefined = options.first === undefined ? undefined : (options.first.next ?? null);
+  if (options.first !== undefined) items.push(...options.first.items);
+  while (items.length < options.maxRecords && cursor !== null) {
+    const limit = Math.min(options.pageSize, options.maxRecords - items.length);
+    const page = await adapter.find(entityId, { ...base, page: cursor === undefined ? { offset: items.length, limit } : { cursor, limit } });
+    items.push(...page.items);
+    cursor = page.next ?? null;
+    if (page.items.length === 0) return { items, hasMore: false };
+  }
+  return { items, hasMore: cursor !== null };
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });

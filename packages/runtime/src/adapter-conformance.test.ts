@@ -65,10 +65,12 @@ function makeFakeServer(options?: AdapterOptions): { adapter: DataAdapter; reque
     const filter = query["filter"];
     const sort = query["sort"];
     const offset = query["offset"];
+    const cursor = query["cursor"];
     const limit = query["limit"];
     return {
       ...(filter !== undefined ? { filter: JSON.parse(filter) } : {}),
       ...(sort !== undefined ? { sort: JSON.parse(sort) } : {}),
+      ...(cursor !== undefined && limit !== undefined ? { page: { cursor, limit: Number(limit) } } : {}),
       ...(offset !== undefined && limit !== undefined ? { page: { offset: Number(offset), limit: Number(limit) } } : {}),
     } as Query;
   };
@@ -785,5 +787,83 @@ describe("http adapter: can on the wire", () => {
     const adapter = createHttpAdapter({ baseUrl: "/api/records", fetch: async () => (calls++, { status: 200, json: async () => ({ items: [], total: 0 }) }) });
     expect(await expectError(adapter.find(ENTITY, { filter: VIEWER_FILTER }))).toBeInstanceOf(RecordValidationError);
     expect(calls).toBe(0);
+  });
+});
+
+// RFC 0007: a server that never counts answers with `next` and no `total`.
+// The in-process adapters imitate one with `paging: "cursor"`; the HTTP path
+// rides the same paging through the fake server, so all three share the check.
+describe("paging without a total", () => {
+  const cursorOptions: AdapterOptions = { ...FIELDS, paging: "cursor" };
+  const factories: readonly [string, () => DataAdapter, () => DataAdapter][] = [
+    ["memory adapter", () => createMemoryAdapter(cursorOptions), () => createMemoryAdapter(FIELDS)],
+    ["key-value adapter", () => createKeyValueAdapter(freshStore(), "app", cursorOptions), () => createKeyValueAdapter(freshStore(), "app", FIELDS)],
+    ["http adapter", () => makeFakeServer(cursorOptions).adapter, () => makeFakeServer(FIELDS).adapter],
+  ];
+
+  for (const [label, make, makeDefault] of factories) {
+    describe(label, () => {
+      const seed = async (count: number): Promise<DataAdapter> => {
+        const db = make();
+        for (let i = 0; i < count; i++) await db.create(ENTITY, { exercise: `e${String(i).padStart(3, "0")}`, weight: i }, { entityRevision: REVISION });
+        return db;
+      };
+
+      test("pages carry no total and an opaque next until the end", async () => {
+        const db = await seed(7);
+        const seen: string[] = [];
+        let cursor: string | null | undefined;
+        for (let guard = 0; guard < 10; guard++) {
+          // the first request is offset 0 (RFC 0007: "no cursor and offset 0"); the rest follow `next`
+          const nextCursor = cursor;
+          const page = await db.find(ENTITY, {
+            sort: [{ field: "weight", dir: "asc" }],
+            page: nextCursor === undefined || nextCursor === null ? { offset: 0, limit: 3 } : { cursor: nextCursor, limit: 3 },
+          });
+          expect("total" in page).toBe(false);
+          seen.push(...page.items.map((r) => r.values["exercise"] as string));
+          cursor = page.next ?? null;
+          if (cursor === null) break;
+          expect(typeof cursor).toBe("string");
+        }
+        expect(seen).toHaveLength(7);
+        expect(new Set(seen).size).toBe(7);
+      });
+
+      test("an exact-page boundary ends with next null, not an empty extra page", async () => {
+        const db = await seed(6);
+        const first = await db.find(ENTITY, { sort: [{ field: "weight", dir: "asc" }], page: { offset: 0, limit: 3 } });
+        expect(first.items).toHaveLength(3);
+        expect(first.next).not.toBeNull();
+        const second = await db.find(ENTITY, { sort: [{ field: "weight", dir: "asc" }], page: { cursor: first.next ?? "", limit: 3 } });
+        expect(second.items).toHaveLength(3);
+        expect(second.next ?? null).toBeNull();
+      });
+
+      test("limit=0 with no total is an empty page, never a total", async () => {
+        const db = await seed(4);
+        const page = await db.find(ENTITY, { page: { offset: 0, limit: 0 } });
+        expect(page.items).toHaveLength(0);
+        expect("total" in page).toBe(false);
+      });
+
+      test("the default adapters keep total and page by offset as before", async () => {
+        const db = makeDefault();
+        for (let i = 0; i < 4; i++) await db.create(ENTITY, { exercise: `e${String(i).padStart(3, "0")}`, weight: i }, { entityRevision: REVISION });
+        const page = await db.find(ENTITY, { page: { offset: 1, limit: 2 } });
+        expect(page.total).toBe(4);
+        expect(page.items).toHaveLength(2);
+        expect(page.next ?? null).toBeNull();
+      });
+    });
+  }
+
+  test("the http adapter sends cursor= and never offset= for a cursor page", async () => {
+    const { adapter, requests } = makeFakeServer(cursorOptions);
+    await adapter.find(ENTITY, { page: { cursor: "c0:abc", limit: 5 } });
+    const request = requests.find((r) => r.method === "GET" && r.path === `/${ENTITY}`);
+    expect(request?.query["cursor"]).toBe("c0:abc");
+    expect(request?.query["offset"]).toBeUndefined();
+    expect(request?.query["limit"]).toBe("5");
   });
 });

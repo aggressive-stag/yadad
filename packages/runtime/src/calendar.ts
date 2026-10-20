@@ -1,5 +1,6 @@
 import type { CalendarMode, CalendarView, Condition, DataAdapter, DataRecord, EntityDocument, FieldValue, Query, RecordValues, SortSpec } from "@yadad/core";
 import { localIsoDate, resolveRelativeDates } from "./condition.js";
+import { walkWithNext } from "./memory-adapter.js";
 
 /** Records fetched per `find` call; the protocol's per-request cap. */
 export const CALENDAR_PAGE_SIZE = 500;
@@ -231,10 +232,17 @@ export async function loadCalendarRange(adapter: DataAdapter, view: CalendarView
   const pageSize = options.pageSize ?? CALENDAR_PAGE_SIZE;
   const { maxRecords: _m, pageSize: _p, ...queryOptions } = options;
   const query = (offset: number, limit: number): Query => calendarQuery(view, range, { ...queryOptions, offset, limit });
+  const { page: _page, ...base } = query(0, 1);
   const first = await adapter.find(view.entity, query(0, Math.min(pageSize, maxRecords)));
+  if (first.total === undefined && first.next != null) {
+    // A server that does not count (RFC 0007): follow `next` up to the cap.
+    // `total` is then what was read (a lower bound when truncated).
+    const walked = await walkWithNext(adapter, view.entity, base, { first, maxRecords, pageSize });
+    return { records: dedupeById(walked.items, maxRecords), total: walked.items.length, truncated: walked.hasMore };
+  }
   const pages = [first.items];
   const stride = first.items.length; // an adapter may return fewer than asked; step by what it gave
-  const firstTotal = first.total ?? first.items.length; // RFC 0007: card 34h (cursor paging)
+  const firstTotal = first.total ?? first.items.length;
   if (stride > 0 && firstTotal > stride && stride < maxRecords) {
     const requests: Promise<readonly DataRecord[]>[] = [];
     for (let offset = stride; offset < Math.min(firstTotal, maxRecords); offset += stride) {
@@ -242,14 +250,20 @@ export async function loadCalendarRange(adapter: DataAdapter, view: CalendarView
     }
     pages.push(...(await Promise.all(requests)));
   }
-  const seen = new Set<string>();
-  const records: DataRecord[] = [];
-  for (const record of pages.flat()) {
-    if (seen.has(record.id) || records.length >= maxRecords) continue;
-    seen.add(record.id);
-    records.push(record);
-  }
+  const records = dedupeById(pages.flat(), maxRecords);
   return { records, total: firstTotal, truncated: firstTotal > records.length };
+}
+
+/** De-duplicate by id, keep input order, stop at the cap. Shared by the calendar and board loaders. */
+function dedupeById(records: readonly DataRecord[], maxRecords: number): DataRecord[] {
+  const seen = new Set<string>();
+  const kept: DataRecord[] = [];
+  for (const record of records) {
+    if (seen.has(record.id) || kept.length >= maxRecords) continue;
+    seen.add(record.id);
+    kept.push(record);
+  }
+  return kept;
 }
 
 /** Records keyed by their `dateField` day, in input order. Records with no date are left out. */

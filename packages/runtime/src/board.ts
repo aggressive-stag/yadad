@@ -1,5 +1,6 @@
 import type { BoardView, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, Query, RecordValues, ReferenceField, ReferenceOption } from "@yadad/core";
 import { resolveRelativeDates } from "./condition.js";
+import { walkWithNext } from "./memory-adapter.js";
 import { loadReferenceOptions } from "./reference.js";
 import type { ReferenceOptionsResult } from "./reference.js";
 
@@ -182,10 +183,17 @@ export async function loadBoardCards(adapter: DataAdapter, view: BoardView, opti
   const pageSize = options.pageSize ?? BOARD_PAGE_SIZE;
   const { maxCards: _maxCards, pageSize: _pageSize, ...queryOptions } = options;
   const query = (offset: number, limit: number): Query => boardQuery(view, { ...queryOptions, offset, limit });
+  const { page: _page, ...base } = query(0, 1);
   const first = await adapter.find(view.entity, query(0, Math.min(pageSize, maxCards)));
+  if (first.total === undefined && first.next != null) {
+    // A server that does not count (RFC 0007): follow `next` up to the cap.
+    // `total` is then what was read (a lower bound when truncated).
+    const walked = await walkWithNext(adapter, view.entity, base, { first, maxRecords: maxCards, pageSize });
+    return { records: dedupeById(walked.items, maxCards), total: walked.items.length, truncated: walked.hasMore };
+  }
   const pages = [first.items];
   const stride = first.items.length; // an adapter may return fewer than asked; step by what it gave
-  const firstTotal = first.total ?? first.items.length; // RFC 0007: card 34h (cursor paging)
+  const firstTotal = first.total ?? first.items.length;
   if (stride > 0 && firstTotal > stride && stride < maxCards) {
     const requests: Promise<readonly DataRecord[]>[] = [];
     for (let offset = stride; offset < Math.min(firstTotal, maxCards); offset += stride) {
@@ -193,14 +201,20 @@ export async function loadBoardCards(adapter: DataAdapter, view: BoardView, opti
     }
     pages.push(...(await Promise.all(requests)));
   }
-  const seen = new Set<string>();
-  const records: DataRecord[] = [];
-  for (const record of pages.flat()) {
-    if (seen.has(record.id) || records.length >= maxCards) continue;
-    seen.add(record.id);
-    records.push(record);
-  }
+  const records = dedupeById(pages.flat(), maxCards);
   return { records, total: firstTotal, truncated: firstTotal > records.length };
+}
+
+/** De-duplicate by id, keep input order, stop at the cap. Shared by the calendar and board loaders. */
+function dedupeById(records: readonly DataRecord[], maxRecords: number): DataRecord[] {
+  const seen = new Set<string>();
+  const kept: DataRecord[] = [];
+  for (const record of records) {
+    if (seen.has(record.id) || kept.length >= maxRecords) continue;
+    seen.add(record.id);
+    kept.push(record);
+  }
+  return kept;
 }
 
 /**

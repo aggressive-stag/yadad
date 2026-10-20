@@ -222,8 +222,8 @@ describe("boardQuery", () => {
 });
 
 describe("loadBoardCards", () => {
-  const seed = async (count: number) => {
-    const db = createMemoryAdapter({ fields: { task: ["title", "status"] } });
+  const seed = async (count: number, options?: { paging?: "cursor" }) => {
+    const db = createMemoryAdapter({ fields: { task: ["title", "status"] }, ...options });
     const meta = { entityRevision: 4 };
     for (let i = 0; i < count; i++) await db.create("task", { title: `t${String(i).padStart(5, "0")}`, status: "Todo" }, meta);
     return db;
@@ -256,6 +256,27 @@ describe("loadBoardCards", () => {
   test("an empty board", async () => {
     const db = await seed(0);
     expect(await loadBoardCards(db, view, { entity })).toEqual({ records: [], total: 0, truncated: false });
+  });
+
+  test("a counting-free server is walked by next up to the cap", async () => {
+    const db = await seed(1200, { paging: "cursor" });
+    let requests = 0;
+    const spy = { ...db, find: (e: string, q: Parameters<typeof db.find>[1]) => (requests++, db.find(e, q)) };
+    const load = await loadBoardCards(spy, view, { entity });
+    expect(load.records).toHaveLength(BOARD_MAX_CARDS);
+    expect(new Set(load.records.map((r) => r.id)).size).toBe(BOARD_MAX_CARDS);
+    expect(load.total).toBe(BOARD_MAX_CARDS);
+    expect(load.truncated).toBe(true);
+    expect(requests).toBe(Math.ceil(BOARD_MAX_CARDS / BOARD_PAGE_SIZE));
+  });
+
+  test("a counting-free server under the cap reads every card with no truncation", async () => {
+    const db = await seed(60, { paging: "cursor" });
+    const load = await loadBoardCards(db, view, { entity });
+    expect(load.records).toHaveLength(60);
+    expect(new Set(load.records.map((r) => r.id)).size).toBe(60);
+    expect(load.total).toBe(60);
+    expect(load.truncated).toBe(false);
   });
 });
 

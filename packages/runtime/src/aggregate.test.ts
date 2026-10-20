@@ -16,6 +16,15 @@ async function seeded(rows: readonly RecordValues[] = sets): Promise<DataAdapter
   return db;
 }
 
+/** A store of `count` numbered rows served by a counting-free server (RFC 0007 `paging: "cursor"`). */
+async function seededCursor(count: number): Promise<DataAdapter> {
+  const db = createMemoryAdapter({ paging: "cursor" });
+  for (const values of numbered(count)) await db.create("set", values, { entityRevision: 1 });
+  return db;
+}
+
+const numbered = (count: number): RecordValues[] => Array.from({ length: count }, (_, i) => ({ n: i }));
+
 describe("computeMeasure", () => {
   const run = (measure: Measure, rows: readonly RecordValues[] = sets) => computeMeasure(rows, measure);
   test("count counts every record, even with empty values", () => expect(run({ op: "count" })).toBe(4));
@@ -107,5 +116,31 @@ describe("aggregate through the adapter", () => {
     const db = await seeded();
     const broken: DataAdapter = { ...db, find: () => Promise.reject(new Error("down")) };
     await expect(aggregate(broken, "set", { op: "sum", field: "weight" })).rejects.toThrow("down");
+  });
+
+  // RFC 0007: a server that never counts answers `limit=0` with no `total`,
+  // so `count` walks the pages instead and reports what it read.
+  test("count without a total walks the pages and reports what it read", async () => {
+    const db = await seededCursor(1200);
+    const result = await aggregate(db, "set", { op: "count" });
+    expect(result).toEqual({ value: 1200, partial: false, read: 1200, total: 1200 });
+  });
+
+  test("count without a total is partial at the 5000 ceiling", async () => {
+    const db = await seededCursor(5200);
+    const limits: number[] = [];
+    const spy: DataAdapter = { ...db, find: (e, q) => (limits.push(q.page?.limit ?? -1), db.find(e, q)) };
+    const result = await aggregate(spy, "set", { op: "count" });
+    expect(result).toEqual({ value: 5000, partial: true, read: 5000, total: 5000 });
+    expect(limits).toEqual([0, ...Array.from({ length: 10 }, () => 500)]); // the count request, then the walk
+  });
+
+  test("count without a total keeps the filter across the walk", async () => {
+    const db = await seededCursor(30);
+    const seen: unknown[] = [];
+    const spy: DataAdapter = { ...db, find: (e, q) => (seen.push(q.filter), db.find(e, q)) };
+    const result = await aggregate(spy, "set", { op: "count" }, { filter: { op: "lte", field: "n", value: 1 }, pageSize: 4 });
+    expect(result).toEqual({ value: 2, partial: false, read: 2, total: 2 });
+    expect(seen.every((f) => JSON.stringify(f) === JSON.stringify({ op: "lte", field: "n", value: 1 }))).toBe(true);
   });
 });

@@ -200,8 +200,8 @@ describe("rangeCondition and calendarQuery", () => {
 
 describe("loadCalendarRange", () => {
   const range: DateRange = { first: "2026-10-01", last: "2026-10-31" };
-  const seed = async (count: number, extra?: { undated?: number; outside?: number }) => {
-    const db = createMemoryAdapter({ fields: { task: ["title", "due", "list"] } });
+  const seed = async (count: number, extra?: { undated?: number; outside?: number; paging?: "cursor" }) => {
+    const db = createMemoryAdapter({ fields: { task: ["title", "due", "list"] }, ...(extra?.paging !== undefined ? { paging: extra.paging } : {}) });
     const meta = { entityRevision: 4 };
     const create = (values: Record<string, string>) => db.create("task", values, meta);
     for (let i = 0; i < count; i++) await create({ title: `t${String(i).padStart(5, "0")}`, due: `2026-10-${String((i % 28) + 1).padStart(2, "0")}` });
@@ -262,6 +262,29 @@ describe("loadCalendarRange", () => {
   test("an empty range", async () => {
     const db = await seed(0);
     expect(await loadCalendarRange(db, view, range)).toEqual({ records: [], total: 0, truncated: false });
+  });
+
+  test("a counting-free server is walked by next up to the cap", async () => {
+    const db = await seed(2100, { paging: "cursor" });
+    let requests = 0;
+    const spy = { ...db, find: (e: string, q: Parameters<typeof db.find>[1]) => (requests++, db.find(e, q)) };
+    const load = await loadCalendarRange(spy, view, range, { entity });
+    expect(load.records).toHaveLength(CALENDAR_MAX_RECORDS);
+    expect(new Set(load.records.map((r) => r.id)).size).toBe(CALENDAR_MAX_RECORDS);
+    expect(load.total).toBe(CALENDAR_MAX_RECORDS);
+    expect(load.truncated).toBe(true);
+    expect(requests).toBe(Math.ceil(CALENDAR_MAX_RECORDS / CALENDAR_PAGE_SIZE));
+    // the cap cuts the latest days, not a random subset
+    const lastDay = load.records.at(-1)?.values["due"] as string;
+    expect(load.records.every((r) => (r.values["due"] as string) <= lastDay)).toBe(true);
+  });
+
+  test("a counting-free server under the cap reads the whole range", async () => {
+    const db = await seed(60, { paging: "cursor" });
+    const load = await loadCalendarRange(db, view, range, { entity });
+    expect(load.records).toHaveLength(60);
+    expect(load.total).toBe(60);
+    expect(load.truncated).toBe(false);
   });
 });
 
