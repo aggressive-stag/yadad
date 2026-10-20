@@ -199,7 +199,7 @@ export function runQuery(records: readonly DataRecord[], query: Query, paging?: 
 const CURSOR_PREFIX = "c0:"; // an encoded offset: reversed base36, so it never looks like a plain number
 
 /** Opaque continuation token (RFC 0007): only the memory adapters' runQuery produces and reads it. */
-function encodeCursor(offset: number): string {
+export function encodeCursor(offset: number): string {
   return `${CURSOR_PREFIX}${offset.toString(36).split("").reverse().join("")}`;
 }
 

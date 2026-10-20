@@ -4,7 +4,7 @@ import { combineAxes } from "./combine-axes.js";
 import type { CombinableAxis } from "./combine-axes.js";
 import { validateRecord } from "./record.js";
 import { viewStates } from "./view-states.js";
-import type { StateAxis, ViewStatesResult } from "./view-states.js";
+import type { StateAxis, ViewStateRender, ViewStatesResult } from "./view-states.js";
 
 const NOW = new Date(2026, 9, 17, 12, 0, 0); // 2026-10-17, local
 
@@ -178,7 +178,8 @@ describe("collection views", () => {
   it("table: records axis and labels", () => {
     const r = viewStates(table(eq("status", "done"), 10), docs, { now: NOW, limit: 100 });
     expect(labels(axis(r, "records"))).toEqual(["no records", "1 record", "1 record, optional values empty", "1 record, long text", "11 records"]);
-    const state = r.states.find((s) => s.label === "status = done · 1 record");
+    const state = r.states.find((s) => s.values["records"] === "one" && s.values["field:status"] === "v:done");
+    expect(state?.label).toBe("status = done · 1 record · pages by total"); // the paging axis names its value in the label
     expect(state?.render).toMatchObject({ kind: "table", pageSize: 10 });
     expect(state?.render.kind === "table" && state.render.matching).toEqual(["rec-1"]);
   });
@@ -429,7 +430,7 @@ const factValues = (state: { viewer: { facts: readonly { fact: string; value: st
 describe("viewer axes", () => {
   it("views that read no fact and have no edit surface are unchanged, with an empty or default viewer", () => {
     const plain = viewStates(table(), withViewer, { now: NOW });
-    expect(plain.axes.map((a) => a.id)).toEqual(["records"]);
+    expect(plain.axes.map((a) => a.id)).toEqual(["records", "paging"]); // paging is a table axis (RFC 0007); boards and calendars keep theirs
     expect(plain.states.some((s) => s.omitViewer)).toBe(false);
     expect(plain.states.every((s) => s.viewer.facts.length === 3)).toBe(true);
     expect(viewStates(table(), docs, { now: NOW }).states.every((s) => s.viewer.facts.length === 0)).toBe(true);
@@ -514,10 +515,133 @@ describe("permission axis", () => {
   it("combines with viewer axes, and the not-provided state is unrestricted", () => {
     const v: TableView = { ...editableTable, columns: [{ field: "title", editable: true, editableWhen: roleIn("editor", "owner") }] };
     const r = viewStates(v, [...withViewer, v], { now: NOW });
-    expect(r.axes.map((a) => a.id)).toEqual(["records", "viewer:role", "permission"]);
+    expect(r.axes.map((a) => a.id)).toEqual(["records", "paging", "viewer:role", "permission"]);
     const extra = r.states.find((s) => s.omitViewer);
     expect(extra?.values["permission"]).toBe("unrestricted");
     expect(extra?.render.kind === "table" && extra.render.records.every((rec) => rec.can === undefined)).toBe(true);
+  });
+});
+
+describe("action and paging axes (RFC 0007)", () => {
+  const actionsEntity: EntityDocument = {
+    ...entity,
+    actions: [
+      { id: "apply", label: "Apply" },
+      { id: "archive", label: "Archive", confirm: { message: "Archive this task?" } },
+      { id: "orphan", label: "Orphan" },
+    ],
+  };
+  const actionsTable: TableView = { ...table(), recordActions: ["apply", "archive"] };
+  const actionDocs: Document[] = [actionsEntity, actionsTable];
+
+  it("one axis per offered action, in the view's order, with available and withheld values", () => {
+    const r = viewStates(actionsTable, actionDocs, { now: NOW });
+    expect(r.axes.map((a) => a.id)).toEqual(["records", "action:apply", "action:archive", "paging"]);
+    expect(ids(axis(r, "action:apply"))).toEqual(["available", "withheld"]);
+    expect(labels(axis(r, "action:apply"))).toEqual(["apply available", "apply withheld on 1 record"]);
+    expect(axis(r, "action:archive").kind).toBe("action");
+  });
+
+  it("actions the view does not offer, and ids the entity does not declare, add no axis", () => {
+    const r = viewStates(actionsTable, actionDocs, { now: NOW });
+    expect(r.axes.some((a) => a.id === "action:orphan")).toBe(false);
+    const unknown: TableView = { ...table(), recordActions: ["apply", "nope"] };
+    const u = viewStates(unknown, [actionsEntity, unknown], { now: NOW });
+    expect(u.axes.map((a) => a.id)).toEqual(["records", "action:apply", "paging"]);
+  });
+
+  it("withheld sets can.actions on the first record only; available states state nothing", () => {
+    const r = viewStates(actionsTable, actionDocs, { now: NOW, limit: 64 }); // the full product fits
+    const both = r.states.filter((s) => s.values["action:apply"] === "withheld" && s.values["action:archive"] === "withheld" && s.render.kind === "table" && s.render.records.length > 1);
+    expect(both.length).toBeGreaterThan(0);
+    for (const s of both) {
+      if (s.render.kind !== "table") continue;
+      expect(s.render.records[0]?.can).toEqual({ actions: { apply: false, archive: false } });
+      expect(s.render.records.slice(1).every((rec) => rec.can === undefined)).toBe(true);
+    }
+    const open = r.states.filter((s) => s.values["action:apply"] === "available" && s.values["action:archive"] === "available");
+    expect(open.length).toBeGreaterThan(0);
+    expect(open.every((s) => s.render.kind === "table" && s.render.records.every((rec) => rec.can === undefined))).toBe(true);
+  });
+
+  it("a withheld action next to no records is left out, and the state label names the withholding", () => {
+    const r = viewStates(actionsTable, actionDocs, { now: NOW, limit: 64 });
+    expect(r.states.some((s) => s.values["records"] === "none" && s.values["action:apply"] === "withheld")).toBe(false);
+    const hit = r.states.find((s) => s.values["records"] === "one" && s.values["action:apply"] === "withheld");
+    expect(hit?.label).toContain("apply withheld on 1 record");
+  });
+
+  it("withheld combines with a locked record: can carries update false and the action false", () => {
+    const v: TableView = { ...actionsTable, columns: [{ field: "title", editable: true }] };
+    // Only actionsEntity and this table: findEntity/findView take the first match, so the plain entity/table in docs must stay out.
+    // 5 (records) x 2 x 2 (actions) x 3 (paging) x 2 (permission) = 120: under it the full product is taken.
+    const r = viewStates(v, [actionsEntity, viewerDoc, v], { now: NOW, limit: 128 });
+    const hit = r.states.find((s) => s.values["permission"] === "record-locked" && s.values["action:apply"] === "withheld" && s.render.kind === "table" && s.render.records.length > 1);
+    expect(hit).toBeDefined();
+    expect(hit?.render.kind === "table" && hit.render.records[0]?.can).toEqual({ update: false, actions: { apply: false } });
+  });
+
+  it("a table's paging axis carries total, cursor-more and cursor-end on the render", () => {
+    const r = viewStates(actionsTable, actionDocs, { now: NOW, limit: 48 });
+    const a = axis(r, "paging");
+    expect(ids(a)).toEqual(["total", "cursor-more", "cursor-end"]);
+    expect(a.kind).toBe("paging");
+    const one = (pick: string): Extract<ViewStateRender, { kind: "table" }> | undefined =>
+      r.states.find((s) => s.values["paging"] === pick && s.values["records"] === "one")?.render as Extract<ViewStateRender, { kind: "table" }> | undefined;
+    expect(one("total")).toMatchObject({ total: 1 });
+    expect(one("total")).not.toHaveProperty("next");
+    expect(one("cursor-more")).toMatchObject({ next: expect.stringMatching(/^c0:/) });
+    expect(one("cursor-more")).not.toHaveProperty("total");
+    expect(one("cursor-end")).toMatchObject({ next: null });
+    expect(one("cursor-end")).not.toHaveProperty("total");
+  });
+
+  it("calendars and boards have no paging axis", () => {
+    expect(viewStates(calendar, docs, { now: NOW }).axes.some((a) => a.kind === "paging")).toBe(false);
+    expect(viewStates(board, docs, { now: NOW }).axes.some((a) => a.kind === "paging")).toBe(false);
+  });
+
+  it("a dashboard embeds the action states inside its widget states", () => {
+    const dash: DashboardView = { ...base, kind: "dashboard", id: "dash-actions", tabs: [{ id: "t", title: "T", items: [{ id: "w", x: 0, y: 0, w: 12, h: 4, widget: "view", view: "task-table" }] }] };
+    const r = viewStates(dash, [...actionDocs, dash], { now: NOW, limit: 24, embeddedLimit: 12 });
+    const hit = r.states.flatMap((s) => (s.render.kind === "dashboard" ? s.render.widgets : [])).find((w) => w.state.values["action:apply"] === "withheld");
+    expect(hit?.state.render.kind === "table" && hit.state.render.records[0]?.can).toEqual({ actions: { apply: false } });
+  });
+
+  it("an old document without actions and without actions on the entity gains neither axis", () => {
+    const r = viewStates(table(), docs, { now: NOW });
+    expect(r.axes.some((a) => a.kind === "action")).toBe(false);
+    expect(r.states.every((s) => s.render.kind !== "table" || s.render.records.every((rec) => rec.can === undefined))).toBe(true);
+  });
+});
+
+describe("generated datetime (RFC 0007)", () => {
+  const timedEntity: EntityDocument = { ...entity, fields: [...entity.fields, { id: "started", label: "Started", type: "datetime" }] };
+  const timedTable: TableView = { ...table(), columns: [...table().columns, { field: "started" }] };
+  const timedForm: FormView = { ...form(), sections: [{ id: "main", items: [{ field: "title" }, { field: "started" }] }] };
+  const timedDocs: Document[] = [timedEntity, timedTable, timedForm];
+
+  it("generated records carry the fixed instant in the stored form, at 09:30 UTC by default", () => {
+    const r = viewStates(timedTable, timedDocs, { now: NOW });
+    const one = r.states.find((s) => s.values["records"] === "one");
+    expect(one?.render.kind === "table" && one.render.records[0]?.values["started"]).toBe("2026-10-17T09:30:00.000Z");
+    const many = r.states.find((s) => s.values["records"] === "many");
+    expect(many?.render.kind === "table" && many.render.records.every((rec) => rec.values["started"] === "2026-10-17T09:30:00.000Z")).toBe(true);
+  });
+
+  it("the timeZone option pins the instant to that zone's wall clock", () => {
+    const r = viewStates(timedTable, timedDocs, { now: NOW, timeZone: "Europe/Berlin" });
+    // 2026-10-17 is Berlin summer time (UTC+2): 09:30 there is 07:30 UTC.
+    const one = r.states.find((s) => s.values["records"] === "one")?.render;
+    expect(one?.kind === "table" && one.records[0]?.values["started"]).toBe("2026-10-17T07:30:00.000Z");
+  });
+
+  it("a filled form draft carries the same instant, and runs are deterministic", () => {
+    const r = viewStates(timedForm, timedDocs, { now: NOW });
+    const filled = r.states.find((s) => s.values["fill"] === "filled");
+    expect(filled?.render.kind === "form" && filled.render.values["started"]).toBe("2026-10-17T09:30:00.000Z");
+    const again = viewStates(timedForm, timedDocs, { now: NOW });
+    expect(again.states.map((s) => s.id)).toEqual(r.states.map((s) => s.id));
   });
 });
 

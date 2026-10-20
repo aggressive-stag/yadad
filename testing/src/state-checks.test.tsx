@@ -134,7 +134,7 @@ describe("checkViewStates", () => {
   test("a failed read with no visible message", async () => {
     const results = await run(table, (_s, c) => <FakeList adapter={c.adapter} showError={false} />);
     const failing = results.filter((r) => r.problems.length > 0);
-    expect(failing.map((r) => r.id)).toEqual(["records=none;source=error"]);
+    expect(failing.map((r) => r.id)).toEqual(["records=none;paging=total;source=error"]); // table state ids carry the paging axis (RFC 0007)
     expect(checks(results)).toEqual(["error-message"]);
     expect(problems(await run(table, (_s, c) => <FakeList adapter={c.adapter} showError />))).toEqual([]);
   });

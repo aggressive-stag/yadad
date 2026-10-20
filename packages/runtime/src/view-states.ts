@@ -11,6 +11,7 @@ import type {
   Field,
   FieldValue,
   FormView,
+  RecordAction,
   RecordValues,
   ResolvedViewer,
   Scalar,
@@ -18,6 +19,7 @@ import type {
   ViewDocument,
 } from "@yadad/core";
 import { BOARD_MAX_CARDS, boardGroupChoices } from "./board.js";
+import { encodeCursor } from "./memory-adapter.js";
 import { CALENDAR_MAX_RECORDS, calendarToday, visibleDays, visibleRange } from "./calendar.js";
 import type { DateRange } from "./calendar.js";
 import { combineAxes } from "./combine-axes.js";
@@ -34,7 +36,7 @@ export const VIEW_STATES_DEFAULT_EMBEDDED_LIMIT = 3;
 export const TABLE_DEFAULT_PAGE_SIZE = 25;
 
 /** What an axis varies. New kinds are added to this union as new axes appear. */
-export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission";
+export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission" | "action" | "paging";
 
 export interface StateAxisValue {
   /** Stable within its axis. */
@@ -47,8 +49,9 @@ export interface StateAxisValue {
  * One dimension a view varies along, as data: a stable id, a label and the
  * values it takes. A state picks one value id per axis (`ViewState.values`).
  * Field axes are called "field:<fieldId>", embedded dashboard views
- * "widget:<gridItemId>", viewer facts "viewer:<factId>"; the others are
- * "fill", "records", "mode", "group", "tab" and "permission".
+ * "widget:<gridItemId>", viewer facts "viewer:<factId>" and record actions
+ * "action:<actionId>"; the others are "fill", "records", "mode", "group",
+ * "tab" and "permission".
  */
 export interface StateAxis {
   readonly id: string;
@@ -77,6 +80,13 @@ interface CollectionRenderBase {
 export interface TableStateRender extends CollectionRenderBase {
   readonly kind: "table";
   readonly pageSize: number;
+  /**
+   * The page shape the `paging` axis picked (RFC 0007): `total` counts the
+   * matching records for the counting pager; `next` is the opaque token of a
+   * cursor server (`null` on the last page, absent when the axis is `total`).
+   */
+  readonly total?: number;
+  readonly next?: string | null;
 }
 
 export interface CalendarStateRender extends CollectionRenderBase {
@@ -140,6 +150,12 @@ export interface ViewStatesOptions {
   readonly embeddedLimit?: number;
   /** Records in the "many records" state of a table, calendar or board. Defaults to one more than a table's page size, or than the calendar's or board's cap (so the load is truncated). */
   readonly manyRecords?: number;
+  /**
+   * The zone generated `datetime` values are rendered in (RFC 0007). They are
+   * fixed instants relative to `now`; this option picks their printed offset
+   * so a snapshot does not drift with the machine's zone. Defaults to "UTC".
+   */
+  readonly timeZone?: string;
 }
 
 export interface ViewStatesResult {
@@ -181,8 +197,42 @@ function firstValid(field: Field, candidates: readonly FieldValue[]): FieldValue
   return null;
 }
 
-/** A plain, valid value for a field, or null when none could be found. */
-function typicalValue(field: Field, today: string): FieldValue {
+/** The wall-clock date and time of an instant in an IANA zone, as stored-form pieces. */
+function zoneStamp(instant: Date, timeZone: string): { date: string; clock: string } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(instant);
+  const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? "00";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, clock: `${get("hour")}:${get("minute")}` };
+}
+
+/**
+ * The generated `datetime` value (RFC 0007): 09:30 on `now`'s day in `timeZone`,
+ * as a fixed instant in the one stored form. The zone's offset at 09:30 UTC that
+ * day corrects the guess once; the value is pinned to the wall clock.
+ */
+function typicalDatetime(now: Date, timeZone: string): string {
+  const day = zoneStamp(now, timeZone).date;
+  const target = Date.parse(`${day}T09:30:00.000Z`); // the wall clock we want, read as if UTC
+  let instant = new Date(target);
+  for (let i = 0; i < 3; i++) {
+    // What the zone shows for the current guess, read back as UTC: the gap to the wall clock we want.
+    const stamp = zoneStamp(instant, timeZone);
+    const corrected = new Date(instant.getTime() + (target - Date.parse(`${stamp.date}T${stamp.clock}:00.000Z`)));
+    if (corrected.getTime() === instant.getTime()) break;
+    instant = corrected;
+  }
+  return instant.toISOString();
+}
+
+/** A plain, valid value for a field, or null when none could be found. `datetime` is the instant generated `datetime` fields carry. */
+function typicalValue(field: Field, today: string, datetime?: string): FieldValue {
   switch (field.type) {
     case "text":
       return SAMPLE_TEXT;
@@ -197,16 +247,16 @@ function typicalValue(field: Field, today: string): FieldValue {
     case "date":
       return firstValid(field, [today, field.min, field.max].filter((v): v is string => v !== undefined));
     case "datetime":
-      // RFC 0007: card 34h (the state grid's datetime value, rendered in options.timeZone)
-      return firstValid(field, [`${today}T09:30:00.000Z`, field.min, field.max].filter((v): v is string => v !== undefined));
+      // RFC 0007: the generated instant (relative to options.now, rendered in options.timeZone); field bounds still win when they exclude it.
+      return firstValid(field, [datetime, `${today}T09:30:00.000Z`, field.min, field.max].filter((v): v is string => v !== undefined));
     case "reference":
       return SAMPLE_REFERENCE;
   }
 }
 
 /** The value of the i-th record of a "many records" load: varied, so every select option, both booleans and several references appear. */
-function variedValue(field: Field, index: number, today: string): FieldValue {
-  const base = typicalValue(field, today);
+function variedValue(field: Field, index: number, today: string, datetime?: string): FieldValue {
+  const base = typicalValue(field, today, datetime);
   switch (field.type) {
     case "text":
       return `${SAMPLE_TEXT} ${index + 1}`;
@@ -221,10 +271,10 @@ function variedValue(field: Field, index: number, today: string): FieldValue {
   }
 }
 
-function longValue(field: Field, today: string): FieldValue {
+function longValue(field: Field, today: string, datetime?: string): FieldValue {
   if (field.type === "text") return LONG_TEXT;
-  if (field.type === "select") return [...field.options.values].sort((a, b) => b.length - a.length)[0] ?? typicalValue(field, today);
-  return typicalValue(field, today);
+  if (field.type === "select") return [...field.options.values].sort((a, b) => b.length - a.length)[0] ?? typicalValue(field, today, datetime);
+  return typicalValue(field, today, datetime);
 }
 
 // --- date helpers (calendar dates as "YYYY-MM-DD", via UTC so nothing shifts) ---
@@ -308,6 +358,8 @@ function unique<T>(items: readonly T[]): T[] {
 
 interface CandidateContext {
   readonly today: string;
+  /** The generated `datetime` instant (RFC 0007), from `options.now` and `options.timeZone`. */
+  readonly datetime: string;
   /** Form values may be incomplete or out of range (a draft); record values must validate. */
   readonly draft: boolean;
 }
@@ -345,7 +397,7 @@ function fieldCandidates(field: Field, probes: Probes, ctx: CandidateContext): F
         values.push(roundTo(Math.max(...members) + (field.step ?? 1)));
       }
       if (values.length === 0) {
-        const typical = typicalValue(field, ctx.today);
+        const typical = typicalValue(field, ctx.today, ctx.datetime);
         if (typeof typical === "number") values.push(typical);
       }
       all.push(emptyCandidate, ...unique(values).sort((a, b) => a - b).map((v) => valued(v)));
@@ -356,7 +408,7 @@ function fieldCandidates(field: Field, probes: Probes, ctx: CandidateContext): F
       for (const v of strings(probes.thresholds).filter(isIsoDate)) values.push(shiftDate(v, -1), v, shiftDate(v, 1));
       values.push(...strings(probes.members).filter(isIsoDate));
       if (values.length === 0) {
-        const typical = typicalValue(field, ctx.today);
+        const typical = typicalValue(field, ctx.today, ctx.datetime);
         if (typeof typical === "string") values.push(typical);
       }
       const dateCandidate = (v: string): Candidate => {
@@ -405,6 +457,8 @@ interface Context {
   readonly documents: readonly Document[];
   readonly now: Date;
   readonly today: string;
+  /** The generated `datetime` instant (RFC 0007): 09:30 on `now`'s day in `options.timeZone`. */
+  readonly datetime: string;
   readonly options: ViewStatesOptions;
 }
 
@@ -461,7 +515,7 @@ function planForm(view: FormView, ctx: Context): Plan {
   const entity = findEntity(ctx, view.entity);
   if (!entity) return missing(`entity "${view.entity}" is not among the documents`);
   const conditions = formItems(view).flatMap((i) => [i.visibleWhen, i.requiredWhen].filter((c): c is Condition => c !== undefined));
-  const found = buildFieldAxes(entity, collectProbes(conditions, ctx.now), { today: ctx.today, draft: true });
+  const found = buildFieldAxes(entity, collectProbes(conditions, ctx.now), { today: ctx.today, datetime: ctx.datetime, draft: true });
   const fill: StateAxis = {
     id: "fill",
     label: "Other fields",
@@ -479,7 +533,7 @@ function planForm(view: FormView, ctx: Context): Plan {
       const values: Record<string, FieldValue> = {};
       if (selection["fill"] === "filled") {
         for (const field of formFields) {
-          const value = typicalValue(field, ctx.today);
+          const value = typicalValue(field, ctx.today, ctx.datetime);
           if (value !== null) values[field.id] = value;
         }
       }
@@ -518,7 +572,7 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
   const probes = collectProbes(view.filter ? [view.filter] : [], ctx.now);
   // A row action copies a field of the clicked row into the target's filter: both an empty and a set value matter.
   for (const binding of view.rowAction?.bind ?? []) if (!probes.has(binding.field)) probes.set(binding.field, { thresholds: [], members: [], contains: [] });
-  const found = buildFieldAxes(entity, probes, { today: ctx.today, draft: false });
+  const found = buildFieldAxes(entity, probes, { today: ctx.today, datetime: ctx.datetime, draft: false });
 
   const defaultMany = view.kind === "table" ? (view.pageSize ?? TABLE_DEFAULT_PAGE_SIZE) + 1 : (view.kind === "calendar" ? CALENDAR_MAX_RECORDS : BOARD_MAX_CARDS) + 1;
   const manyCount = Math.max(2, ctx.options.manyRecords ?? defaultMany);
@@ -537,6 +591,35 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
 
   const dateFieldId = view.kind === "calendar" ? view.dateField : undefined;
 
+  // RFC 0007: one axis per action the view offers, each varying the first record's can.actions.
+  const offered = (view.recordActions ?? [])
+    .map((id) => entity.actions?.find((a) => a.id === id))
+    .filter((a): a is RecordAction => a !== undefined);
+  for (const action of offered) {
+    axes.push({
+      id: `${ACTION_AXIS}${action.id}`,
+      label: action.label,
+      kind: "action",
+      values: [
+        { id: "available", label: `${action.id} available` },
+        { id: WITHHELD, label: `${action.id} withheld on 1 record` },
+      ],
+    });
+  }
+  // RFC 0007: a table also varies how its page is described — counted, a cursor page with more, the last cursor page.
+  if (view.kind === "table") {
+    axes.push({
+      id: PAGING_AXIS,
+      label: "Paging",
+      kind: "paging",
+      values: [
+        { id: "total", label: "pages by total" },
+        { id: "cursor-more", label: "cursor page, more to come" },
+        { id: "cursor-end", label: "cursor page, last" },
+      ],
+    });
+  }
+
   return {
     axes,
     skipped: found.skipped,
@@ -552,14 +635,14 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         const values: Record<string, FieldValue> = {};
         for (const field of entity.fields) {
           values[field.id] =
-            shape === "empty" ? (field.required === true ? typicalValue(field, ctx.today) : null) : shape === "long" ? longValue(field, ctx.today) : typicalValue(field, ctx.today);
+            shape === "empty" ? (field.required === true ? typicalValue(field, ctx.today, ctx.datetime) : null) : shape === "long" ? longValue(field, ctx.today, ctx.datetime) : typicalValue(field, ctx.today, ctx.datetime);
         }
         for (const [fieldId, value] of fromAxes) values[fieldId] = value;
         return values;
       };
       const varied = (index: number): RecordValues => {
         const values: Record<string, FieldValue> = {};
-        for (const field of entity.fields) values[field.id] = variedValue(field, index, ctx.today);
+        for (const field of entity.fields) values[field.id] = variedValue(field, index, ctx.today, ctx.datetime);
         if (dateFieldId !== undefined && days.length > 0) values[dateFieldId] = days[index % days.length] ?? ctx.today;
         return values;
       };
@@ -576,14 +659,25 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
       }
 
       const records: DataRecord[] = valueList.map((values, i) => ({ id: `rec-${i + 1}`, entityId: entity.id, entityRevision: entity.revision, version: "1", values }));
-      for (const record of records) {
+      // "withheld" sets can.actions[id] = false on the first generated record, as the permission axis does with update.
+      const withheld = offered.filter((a) => selection[`${ACTION_AXIS}${a.id}`] === WITHHELD).map((a) => a.id);
+      const marked =
+        records.length === 0 || withheld.length === 0
+          ? records
+          : records.map((r, i) => (i === 0 ? { ...r, can: { ...r.can, actions: { ...r.can?.actions, ...Object.fromEntries(withheld.map((id) => [id, false])) } } } : r));
+      for (const record of marked) {
         const problem = validateRecord(entity, record.values)[0];
         if (problem) return { ok: false, reason: `generated record ${record.id} is not valid: ${problem.message}` };
       }
       const filter = view.filter;
-      const matching = records.filter((r) => filter === undefined || evaluateCondition(filter, r.values, ctx.now)).map((r) => r.id);
-      const base = { view: view.id, records, matching, now: ctx.now };
-      if (view.kind === "table") return { ok: true, render: { kind: "table", ...base, pageSize: view.pageSize ?? TABLE_DEFAULT_PAGE_SIZE } };
+      const matching = marked.filter((r) => filter === undefined || evaluateCondition(filter, r.values, ctx.now)).map((r) => r.id);
+      const base = { view: view.id, records: marked, matching, now: ctx.now };
+      if (view.kind === "table") {
+        const pageSize = view.pageSize ?? TABLE_DEFAULT_PAGE_SIZE;
+        const paging = selection[PAGING_AXIS] ?? "total";
+        const pageFields = paging === "cursor-more" ? { next: encodeCursor(pageSize) } : paging === "cursor-end" ? { next: null } : { total: matching.length };
+        return { ok: true, render: { kind: "table", ...base, pageSize, ...pageFields } };
+      }
       if (view.kind === "calendar") return { ok: true, render: { kind: "calendar", ...base, mode, anchor: ctx.today, range } };
       const groupBy = groupFields.find((f) => f === selection["group"]) ?? groupFields[0] ?? "";
       return { ok: true, render: { kind: "board", ...base, groupBy } };
@@ -596,6 +690,9 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
 const VIEWER_AXIS = "viewer:";
 const PERMISSION_AXIS = "permission";
 const RECORD_LOCKED = "record-locked";
+const ACTION_AXIS = "action:";
+const WITHHELD = "withheld";
+const PAGING_AXIS = "paging";
 /** Id of the extra state that renders with the viewer omitted. */
 export const VIEWER_NOT_PROVIDED_STATE = "viewer-not-provided";
 
@@ -677,6 +774,10 @@ function buildViewerPlan(view: ViewDocument, ctx: Context): ViewerPlan {
   };
 }
 
+/** True when the selection marks a record: locked or withheld states are impossible next to "no records". */
+const needsRecord = (selection: AxisSelection): boolean =>
+  selection[PERMISSION_AXIS] === RECORD_LOCKED || Object.entries(selection).some(([axisId, value]) => axisId.startsWith(ACTION_AXIS) && value === WITHHELD);
+
 /** True when a render has a record to lock: "1 record locked" is impossible next to "no records". */
 function hasRecordToLock(render: ViewStateRender): boolean {
   return (render.kind === "table" || render.kind === "calendar" || render.kind === "board") && render.records.length > 0;
@@ -688,7 +789,7 @@ function lockRecords(render: ViewStateRender, selection: AxisSelection): ViewSta
   if (render.kind !== "table" && render.kind !== "calendar" && render.kind !== "board") return render;
   const [first, ...rest] = render.records;
   if (!first) return render;
-  return { ...render, records: [{ ...first, can: { update: false } }, ...rest] };
+  return { ...render, records: [{ ...first, can: { ...first.can, update: false } }, ...rest] };
 }
 
 // --- assembling states ---
@@ -715,8 +816,8 @@ function assemble(view: ViewDocument, plan: Plan, limit: number, viewer: ViewerP
   const skipped = [...plan.skipped];
   const stateFor = (id: string, label: string, selection: AxisSelection, extra?: { omitViewer: true }): void => {
     const built = plan.build(selection);
-    // An impossible combination ("no records" with "1 record locked") is left out, not reported.
-    if (built.ok && selection[PERMISSION_AXIS] === RECORD_LOCKED && !hasRecordToLock(built.render)) return;
+    // An impossible combination ("no records" with "1 record locked" or a withheld action) is left out, not reported.
+    if (built.ok && needsRecord(selection) && !hasRecordToLock(built.render)) return;
     if (built.ok) states.push({ id, label, values: selection, render: lockRecords(built.render, selection), viewer: viewer.viewerFor(selection), ...extra });
     else if (!skipped.some((s) => s.id === "view")) skipped.push({ id, reason: built.reason });
   };
@@ -856,6 +957,7 @@ function viewStatesIn(view: ViewDocument, ctx: Context, limit: number, embedded 
 export function viewStates(view: ViewDocument, documents: readonly Document[], options: ViewStatesOptions): ViewStatesResult {
   const limit = options.limit ?? VIEW_STATES_DEFAULT_LIMIT;
   if (!Number.isInteger(limit) || limit < 1) throw new RangeError(`limit must be a positive integer, got ${limit}`);
-  const ctx: Context = { documents, now: options.now, today: calendarToday(options.now), options };
+  const today = calendarToday(options.now);
+  const ctx: Context = { documents, now: options.now, today, datetime: typicalDatetime(options.now, options.timeZone ?? "UTC"), options };
   return viewStatesIn(view, ctx, limit);
 }
