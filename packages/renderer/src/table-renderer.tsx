@@ -80,7 +80,7 @@ interface Editing {
   readonly state: FormState;
 }
 
-type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readonly items: readonly DataRecord[]; readonly total: number } | { readonly status: "failed"; readonly message: string };
+type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readonly items: readonly DataRecord[]; readonly total?: number; readonly next?: string | null } | { readonly status: "failed"; readonly message: string };
 
 /**
  * Renders a table view: rows from the data adapter, sortable column headers,
@@ -204,6 +204,12 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
+  // RFC 0007 cursor paging: the cursors visited so Previous works without backward cursors.
+  // Keyed by the query signature; a sort, quick filter or page-size change is a new signature and clears the stack.
+  const [paging, setPaging] = useState<{ readonly sig: string; readonly cursors: readonly (string | undefined)[]; readonly mode: "offset" | "cursor" }>({ sig: "", cursors: [undefined], mode: "offset" });
+  // Read in the load effect without re-triggering it: the stack updates after every load.
+  const pagingRef = useRef(paging);
+  pagingRef.current = paging;
   const [rows, setRows] = useState<Rows>({ status: "loading" });
   // One extra row beyond the page edge per `to` compare column (RFC 0007), loaded beside the page and never displayed.
   const [edges, setEdges] = useState<Readonly<Record<string, CompareEdge | undefined>>>({});
@@ -217,13 +223,18 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
   const zone = viewerZone(formatting);
   const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter, zone), [view, entity, quick, baseFilter, zone]);
+  // The query signature: sort, filter and page size. A change is a new question — the cursor stack is cleared (RFC 0007).
+  const sig = JSON.stringify([sort, filter, pageSize]);
 
   useEffect(() => {
     if (!adapter) return;
     let current = true;
     // Relative dates become fixed ones here, on every load, so adapters never see them and "today" stays today.
     const fixed = filter ? resolveRelativeDates(filter) : undefined;
-    const mainQuery = { sort, page: { offset: page * pageSize, limit: pageSize }, ...(fixed ? { filter: fixed } : {}) };
+    // RFC 0007: the first request has no cursor and offset 0; a visited page goes by its saved cursor.
+    const visited = pagingRef.current;
+    const cursor = page > 0 && visited.sig === sig ? visited.cursors[page] : undefined;
+    const mainQuery = { sort, page: cursor !== undefined ? { cursor, limit: pageSize } : { offset: page * pageSize, limit: pageSize }, ...(fixed ? { filter: fixed } : {}) };
     // A `to` compare column needs the row just outside the page edge (RFC 0007): neighbourQuery widens the query,
     // and the extra row is kept for compareCells only — the page itself never shows it.
     const compareCols = shownColumns.filter((c) => c.compare !== undefined && entity.fields.some((f) => f.id === c.field && f.type === "text"));
@@ -234,7 +245,16 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     Promise.all([adapter.find(entity.id, mainQuery), prevLoad, nextLoad]).then(
       ([result, prev, next]) => {
         if (!current) return;
-        setRows({ status: "loaded", items: result.items, total: result.total ?? result.items.length });
+        setRows({ status: "loaded", items: result.items, ...(result.total !== undefined ? { total: result.total } : {}), ...(result.next !== undefined ? { next: result.next } : {}) });
+        // The response decides: total keeps offset paging; next with no total switches to cursors (RFC 0007).
+        setPaging((prev) => {
+          const base = prev.sig === sig ? prev : { sig, cursors: [undefined] as (string | undefined)[], mode: "offset" as "offset" | "cursor" };
+          if (result.total !== undefined) return base.mode === "offset" && base === prev ? prev : { ...base, mode: "offset" };
+          const mode = result.next != null || base.mode === "cursor" ? "cursor" : "offset";
+          const cursors = [...base.cursors];
+          cursors[page + 1] = result.next ?? undefined;
+          return { sig, cursors, mode };
+        });
         const nextEdgeRow = next?.items[pageSize];
         setEdges({
           ...(prevCol !== undefined ? { [prevCol.field]: prev !== undefined && prev.items[0] !== undefined && prev.items[0].id !== result.items[0]?.id ? { items: prev.items } : undefined } : {}),
@@ -368,7 +388,9 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     id: record.id,
     cells: [...columns.map(({ field, editable }, colIndex) => renderCell(record, field, editable, columnDiffs[colIndex]?.[rowIndex])), ...(hasActions ? [renderActions(record)] : [])],
   }));
-  const total = rows.status === "loaded" ? rows.total : 0;
+  // A server that returns neither total nor next cannot say "there is more": its page is the last (RFC 0007).
+  const cursorMode = paging.mode === "cursor" && paging.sig === sig;
+  const total = rows.status === "loaded" ? rows.total ?? 0 : 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const editErrors = editing?.state.errors ?? [];
 
@@ -423,14 +445,22 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
         empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? "No records to show." : filter ? "No records match the filters." : "No records yet."}
       />
       {editErrors.length > 0 && <ErrorSummary id={editErrorsId} errors={editErrors} />}
-      {pages > 1 && (
+      {cursorMode ? (
         <nav aria-label={`${view.title ?? entity.id} pages`} data-yadad-pager="">
           <Button label="Previous" type="button" variant="secondary" disabled={page === 0} onPress={() => setPage((p) => p - 1)} />
-          <span>
-            Page {page + 1} of {pages}
-          </span>
-          <Button label="Next" type="button" variant="secondary" disabled={page >= pages - 1} onPress={() => setPage((p) => p + 1)} />
+          <span>Page {page + 1}</span>
+          <Button label="Next" type="button" variant="secondary" disabled={rows.status !== "loaded" || rows.next == null} onPress={() => setPage((p) => p + 1)} />
         </nav>
+      ) : (
+        pages > 1 && (
+          <nav aria-label={`${view.title ?? entity.id} pages`} data-yadad-pager="">
+            <Button label="Previous" type="button" variant="secondary" disabled={page === 0} onPress={() => setPage((p) => p - 1)} />
+            <span>
+              Page {page + 1} of {pages}
+            </span>
+            <Button label="Next" type="button" variant="secondary" disabled={page >= pages - 1} onPress={() => setPage((p) => p + 1)} />
+          </nav>
+        )
       )}
     </div>
   );

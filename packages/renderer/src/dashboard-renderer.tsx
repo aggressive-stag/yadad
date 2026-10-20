@@ -13,7 +13,7 @@ import type {
   TableView,
 } from "@yadad/core";
 import { conditionFields, jsonPointer } from "@yadad/core";
-import { aggregate, visibleItems, visibleTabs } from "@yadad/runtime";
+import { AGGREGATE_MAX_RECORDS, aggregate, visibleItems, visibleTabs } from "@yadad/runtime";
 import type { AggregateResult } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
@@ -214,7 +214,11 @@ function CountLoader({
     const { ErrorSummary } = registry.layout;
     return <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${failure}`, hint: "Reload the page or try again later." }]} />;
   }
-  if (widget.widget === "count") return <Count label={widget.label} value={result?.total} />;
+  if (widget.widget === "count") {
+    // A counting server answers `total` in one read; a counting-free one walked pages up to the cap, and the cap with more pending shows "5000+" (RFC 0007).
+    const capped = result !== undefined && result.partial && result.read === AGGREGATE_MAX_RECORDS;
+    return <Count label={widget.label} value={result?.total} {...(capped ? { text: `${NUMBER_FORMAT.format(AGGREGATE_MAX_RECORDS)}+` } : {})} />;
+  }
   const value = typeof result?.value === "number" ? result.value : undefined;
   return (
     <>
