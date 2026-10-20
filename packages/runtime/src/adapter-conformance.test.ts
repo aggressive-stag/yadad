@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { BatchOperations, Condition, DataAdapter, Query, RecordValues } from "@yadad/core";
+import type { BatchOperations, Condition, DataAdapter, DataRecord, Query, RecordValues, RecordPermissions } from "@yadad/core";
 import {
   ForbiddenError,
   RecordConflictError,
@@ -14,6 +14,7 @@ import type { FetchLike } from "./http-adapter.js";
 import { createMemoryAdapter } from "./memory-adapter.js";
 import type { AdapterOptions } from "./memory-adapter.js";
 import { instantRangeBounds } from "./datetime.js";
+import type { ActionHandler } from "./actions.js";
 
 const ENTITY = "set";
 const FIELDS: AdapterOptions = { fields: { set: ["exercise", "weight", "reps", "due", "when"] } };
@@ -582,6 +583,114 @@ function runPermissionConformance(label: string, make: (options: AdapterOptions)
 runPermissionConformance("memory adapter", (o) => createMemoryAdapter(o));
 runPermissionConformance("key-value adapter", (o) => createKeyValueAdapter(freshStore(), "app", o));
 runPermissionConformance("http adapter", (o) => makeFakeServer(o).adapter);
+
+// --- record actions on the in-process adapters (RFC 0007, card 34f) ---
+
+const ACTORS: Record<string, ActionHandler> = {
+  "set.stamp": (record, input) => ({ values: { reps: (record.values["reps"] as number) + (input["delta"] as number) } }),
+  "set.archive": () => ({ remove: true }),
+  "set.conflict": () => {
+    throw new RecordConflictError("no longer applicable", null);
+  },
+  "set.noop": () => ({}),
+};
+const ACT_OPTIONS: AdapterOptions = { ...FIELDS, actions: ACTORS };
+const PERMISSIONED = (record: { values: RecordValues }): RecordPermissions | undefined =>
+  record.values["exercise"] === "Guarded" ? { actions: { stamp: false } } : undefined;
+const GUARDED_OPTIONS: AdapterOptions = { ...ACT_OPTIONS, recordPermissions: PERMISSIONED };
+
+function runActionConformance(label: string, make: (options: AdapterOptions) => DataAdapter): void {
+  describe(`${label}: record actions`, () => {
+    test("a values outcome patches with a fresh version and returns the stored record (200)", async () => {
+      const db = make(ACT_OPTIONS);
+      const record = await db.create(ENTITY, { exercise: "Squat", reps: 5 }, { entityRevision: REVISION });
+      const acted = await db.act!(ENTITY, record.id, "stamp", { input: { delta: 2 }, meta: { entityRevision: REVISION, baseVersion: record.version } });
+      expect(acted?.values["reps"]).toBe(7);
+      expect(acted?.version).not.toBe(record.version);
+      expect((await db.findOne(ENTITY, record.id))?.values["reps"]).toBe(7);
+    });
+
+    test("a remove outcome deletes and returns null (204)", async () => {
+      const db = make(ACT_OPTIONS);
+      const record = await db.create(ENTITY, { exercise: "Squat" }, { entityRevision: REVISION });
+      const acted = await db.act!(ENTITY, record.id, "archive", { meta: { entityRevision: REVISION, baseVersion: record.version } });
+      expect(acted).toBeNull();
+      expect(await db.findOne(ENTITY, record.id)).toBeNull();
+    });
+
+    test("an empty outcome is a no-op patch: the record survives with a fresh version", async () => {
+      const db = make(ACT_OPTIONS);
+      const record = await db.create(ENTITY, { exercise: "Squat" }, { entityRevision: REVISION });
+      const acted = await db.act!(ENTITY, record.id, "noop", { meta: { entityRevision: REVISION, baseVersion: record.version } });
+      expect(acted?.values["exercise"]).toBe("Squat");
+    });
+
+    test("an unknown action is a RecordNotFoundError, checked before the record", async () => {
+      const db = make(ACT_OPTIONS);
+      await expectInstanceOf(db.act!(ENTITY, "nope", "ghost", { meta: { entityRevision: REVISION, baseVersion: "x" } }), RecordNotFoundError);
+      await expectInstanceOf(db.act!(ENTITY, "nope", "stamp", { meta: { entityRevision: REVISION, baseVersion: "x" } }), RecordNotFoundError);
+    });
+
+    test("a stale baseVersion is a RecordConflictError carrying the current record", async () => {
+      const db = make(ACT_OPTIONS);
+      const record = await db.create(ENTITY, { exercise: "Squat", reps: 1 }, { entityRevision: REVISION });
+      const saved = await db.update(ENTITY, record.id, { reps: 2 }, { entityRevision: REVISION, baseVersion: record.version });
+      const error = (await expectError(
+        db.act!(ENTITY, record.id, "stamp", { input: { delta: 1 }, meta: { entityRevision: REVISION, baseVersion: record.version } }),
+      )) as RecordConflictError;
+      expect(error).toBeInstanceOf(RecordConflictError);
+      expect(error.current?.values["reps"]).toBe(2);
+      expect(error.current?.version).toBe(saved.version);
+    });
+
+    test("can.actions[id] false is a ForbiddenError, and the check comes after the version check", async () => {
+      const db = make(GUARDED_OPTIONS);
+      const guarded = await db.create(ENTITY, { exercise: "Guarded", reps: 1 }, { entityRevision: REVISION });
+      await expectInstanceOf(
+        db.act!(ENTITY, guarded.id, "stamp", { input: { delta: 1 }, meta: { entityRevision: REVISION, baseVersion: guarded.version } }),
+        ForbiddenError,
+      );
+      // Stale version wins over forbidden: the current record comes back.
+      const changed = await db.update(ENTITY, guarded.id, { reps: 2 }, { entityRevision: REVISION, baseVersion: guarded.version });
+      const error = (await expectError(
+        db.act!(ENTITY, guarded.id, "stamp", { input: { delta: 1 }, meta: { entityRevision: REVISION, baseVersion: guarded.version } }),
+      )) as RecordConflictError;
+      expect(error).toBeInstanceOf(RecordConflictError);
+      expect(error.current?.version).toBe(changed.version);
+    });
+
+    test("a handler-thrown RecordConflictError passes through", async () => {
+      const db = make(ACT_OPTIONS);
+      const record = await db.create(ENTITY, { exercise: "Squat" }, { entityRevision: REVISION });
+      const error = (await expectError(
+        db.act!(ENTITY, record.id, "conflict", { meta: { entityRevision: REVISION, baseVersion: record.version } }),
+      )) as RecordConflictError;
+      expect(error).toBeInstanceOf(RecordConflictError);
+      expect(error.message).toBe("no longer applicable");
+    });
+
+    test("the handler sees the record with permissions applied", async () => {
+      let seen: DataRecord | undefined;
+      const db = make({ ...GUARDED_OPTIONS, actions: { ...ACTORS, "set.peep": (record) => ((seen = record), { values: {} }) } });
+      const guarded = await db.create(ENTITY, { exercise: "Guarded", reps: 1 }, { entityRevision: REVISION });
+      await db.act!(ENTITY, guarded.id, "peep", { meta: { entityRevision: REVISION, baseVersion: guarded.version } });
+      expect(seen?.can).toEqual({ actions: { stamp: false } });
+    });
+
+    test("an adapter without the actions option has no act at all", async () => {
+      const db = make(FIELDS);
+      expect(db.act).toBeUndefined();
+    });
+  });
+}
+
+async function expectInstanceOf(promise: Promise<unknown>, type: new (...args: never[]) => Error): Promise<void> {
+  const error = await expectError(promise);
+  if (!(error instanceof type)) throw new Error(`expected ${type.name}, got ${String(error)}`);
+}
+
+runActionConformance("memory adapter", (o) => createMemoryAdapter(o));
+runActionConformance("key-value adapter", (o) => createKeyValueAdapter(freshStore(), "app", o));
 
 describe("http adapter: can on the wire", () => {
   const record = (can: unknown) => ({ id: "1", entityId: ENTITY, entityRevision: REVISION, version: "v1", values: { exercise: "Squat" }, can });

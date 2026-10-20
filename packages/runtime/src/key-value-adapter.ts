@@ -1,6 +1,6 @@
 import type { BatchOperations, BatchResult, DataAdapter, DataRecord, DocumentError } from "@yadad/core";
 import { RecordConflictError, RecordNotFoundError, RecordValidationError } from "@yadad/core";
-import { assertPermitted, withPermissions } from "./adapter-guards.js";
+import { assertPermitted, withPermissions, assertActionRunnable, actEffect } from "./adapter-guards.js";
 import { runQuery, validateFieldIds } from "./memory-adapter.js";
 import type { AdapterOptions } from "./memory-adapter.js";
 
@@ -47,6 +47,28 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
   let counter = 0;
   const newToken = () => `${Date.now().toString(36)}-${session}-${(counter++).toString(36)}`;
 
+  // Present only when the host supplied handlers (as in the memory adapter).
+  const act: DataAdapter["act"] =
+    options?.actions === undefined
+      ? undefined
+      : async (entity, id, action, request) => {
+          const records = load(entity);
+          const { handler, record: existing } = assertActionRunnable(options, entity, id, action, records.find((r) => r.id === id), request);
+          const effect = actEffect(handler(withPermissions(options, existing), request.input ?? {}));
+          if (effect.kind === "remove") {
+            save(entity, records.filter((r) => r.id !== id));
+            return null;
+          }
+          const record: DataRecord = {
+            ...existing,
+            entityRevision: request.meta.entityRevision,
+            version: newToken(),
+            values: { ...existing.values, ...effect.values },
+          };
+          save(entity, records.map((r) => (r.id === id ? record : r)));
+          return withPermissions(options, record);
+        };
+
   return {
     async find(entity, query) {
       const page = runQuery(load(entity), query);
@@ -89,6 +111,7 @@ export function createKeyValueAdapter(store: KeyValueStore, prefix: string, opti
       }
       save(entity, records.filter((r) => r.id !== id));
     },
+    ...(act === undefined ? {} : { act }),
     async batch(entity, ops: BatchOperations, meta): Promise<BatchResult> {
       const records = load(entity);
       const creates = ops.create ?? [];

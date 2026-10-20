@@ -12,8 +12,9 @@ import type {
   SortSpec,
 } from "@yadad/core";
 import { jsonPointer, RecordConflictError, RecordNotFoundError, RecordValidationError } from "@yadad/core";
-import { assertQueryHasNoViewer, withPermissions, assertPermitted } from "./adapter-guards.js";
+import { assertQueryHasNoViewer, withPermissions, assertPermitted, assertActionRunnable, actEffect } from "./adapter-guards.js";
 import { evaluateCondition } from "./condition.js";
+import type { ActionHandler } from "./actions.js";
 
 /**
  * Options for the in-process adapters. `fields` maps an entity id to the list of
@@ -29,6 +30,13 @@ export interface AdapterOptions {
    * throws a ForbiddenError, as a server's 403 would. Host code, not a document.
    */
   readonly recordPermissions?: (record: DataRecord) => RecordPermissions | undefined;
+  /**
+   * Host- or test-supplied action handlers (RFC 0007), keyed `<entity>.<action>`
+   * (id patterns contain no dot, so the key is unambiguous). `act` runs the
+   * handler after the 404/409/403 checks; like `recordPermissions` it is host
+   * code, not part of any document.
+   */
+  readonly actions?: Readonly<Record<string, ActionHandler>>;
 }
 
 /** In-memory DataAdapter for tests, the showcase and local dev. Nothing persists. */
@@ -46,6 +54,30 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
     return t;
   };
   const newVersion = (): string => String(nextVersion++);
+
+  // Present only when the host supplied handlers: an adapter that cannot run
+  // any action must not advertise act (RFC 0007 renders that case as an
+  // ErrorSummary, not as buttons whose every press 404s).
+  const act: DataAdapter["act"] =
+    options?.actions === undefined
+      ? undefined
+      : async (entity, id, action, request) => {
+          const t = table(entity);
+          const { handler, record: existing } = assertActionRunnable(options, entity, id, action, t.get(id), request);
+          const effect = actEffect(handler(withPermissions(options, existing), request.input ?? {}));
+          if (effect.kind === "remove") {
+            t.delete(id);
+            return null;
+          }
+          const record: DataRecord = {
+            ...existing,
+            entityRevision: request.meta.entityRevision,
+            version: newVersion(),
+            values: { ...existing.values, ...effect.values },
+          };
+          t.set(id, record);
+          return withPermissions(options, record);
+        };
 
   return {
     async find(entity, query) {
@@ -97,6 +129,7 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
       }
       table(entity).delete(id);
     },
+    ...(act === undefined ? {} : { act }),
     async batch(entity, ops: BatchOperations, meta): Promise<BatchResult> {
       const t = table(entity);
       const creates = ops.create ?? [];
