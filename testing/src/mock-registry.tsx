@@ -5,6 +5,8 @@ import type {
   CalendarProps,
   CountWidgetProps,
   DateField, DatetimeField,
+  DialogProps,
+  DiffSegment,
   DisplayProps,
   FieldDisplayProps,
   FieldInputProps,
@@ -14,6 +16,7 @@ import type {
   InputProps,
   NumberField,
   PanelProps,
+  RecordActionItem,
   Registry,
   SectionProps,
   SelectField,
@@ -31,15 +34,15 @@ import { useEffect, useId, useRef, useState } from "react";
  */
 export const mockRegistry: Registry<ReactNode> = {
   fields: {
-    text: { type: "text", Input: MockTextInput, Display: MockDisplay },
+    text: { type: "text", Input: MockTextInput, Display: MockTextDisplay },
     number: { type: "number", Input: MockNumberInput, Display: MockDisplay },
     boolean: { type: "boolean", Input: MockBooleanInput, Display: MockDisplay },
     select: { type: "select", Input: MockSelectInput, Display: MockDisplay },
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
-    datetime: { type: "datetime", Input: MockDatetimeInput, Display: MockDisplay },
+    datetime: { type: "datetime", Input: MockDatetimeInput, Display: MockDatetimeDisplay },
     reference: { type: "reference", Input: MockReferenceInput, Display: MockReferenceDisplay },
   },
-  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard },
+  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard, Dialog: MockDialog },
   widgets: { count: MockCount },
 };
 
@@ -101,10 +104,10 @@ function MockDateInput(props: InputProps<DateField, string>): ReactNode {
   );
 }
 
-/** RFC 0007: card 36. A plain text box holding the stored instant; a real component converts to and from the viewer's zone. */
+/** RFC 0007: the stored instant in the input the browser provides for a date and time; a real component converts to and from the viewer's zone. */
 function MockDatetimeInput(props: InputProps<DatetimeField, string>): ReactNode {
   const { value, onChange } = props;
-  return <input {...controlProps(props)} type="text" value={value ?? ""} onChange={(e) => onChange(orUndefined(e.target.value))} />;
+  return <input {...controlProps(props)} type="datetime-local" value={value ?? ""} onChange={(e) => onChange(orUndefined(e.target.value))} />;
 }
 
 function MockReferenceInput(props: FieldInputProps<"reference">): ReactNode {
@@ -140,6 +143,87 @@ function MockReferenceDisplay({ field, label, status }: FieldDisplayProps<"refer
 function MockDisplay({ field, value }: DisplayProps<Field, string | number | boolean>): ReactNode {
   const text = value === undefined ? "" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
   return <span data-testid={`display-${field.id}`}>{text}</span>;
+}
+
+/** RFC 0007: the instant as a `<time>` element; the text is the stored instant, a real component formats it for the viewer's zone. */
+function MockDatetimeDisplay({ field, value }: FieldDisplayProps<"datetime">): ReactNode {
+  if (value === undefined) return <span data-testid={`display-${field.id}`} />;
+  return (
+    <time data-testid={`display-${field.id}`} dateTime={value}>
+      {value}
+    </time>
+  );
+}
+
+/** The text Display. With `diff` (a `compare` column) it marks additions and removals without relying on colour. */
+function MockTextDisplay({ field, value, diff }: FieldDisplayProps<"text">): ReactNode {
+  const text = value ?? "";
+  if (diff === undefined) return <span data-testid={`display-${field.id}`}>{text}</span>;
+  return (
+    <span data-testid={`display-${field.id}`}>
+      {diff.map((segment, i) => (
+        <MockDiffSegment key={i} segment={segment} />
+      ))}
+    </span>
+  );
+}
+
+function MockDiffSegment({ segment }: { segment: DiffSegment }): ReactNode {
+  if (segment.kind === "added") {
+    return (
+      <ins>
+        <span className="sr-only" data-testid="diff-added-label">
+          {"added: "}
+        </span>
+        {segment.text}
+      </ins>
+    );
+  }
+  if (segment.kind === "removed") {
+    return (
+      <del>
+        <span className="sr-only" data-testid="diff-removed-label">
+          {"removed: "}
+        </span>
+        {segment.text}
+      </del>
+    );
+  }
+  return <>{segment.text}</>;
+}
+
+/**
+ * RFC 0007: the one modal the renderer opens (a confirm, or an action with an
+ * input). The renderer builds the children; this provides the modal behaviour:
+ * focus moves in on open, Escape and the close control call onClose, and focus
+ * returns to the opener on close.
+ */
+function MockDialog({ label, onClose, children }: DialogProps<ReactNode>): ReactNode {
+  // Captured during render: by the time effects run, focus has already moved into the dialog.
+  const [opener] = useState<HTMLElement | null>(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    dialogRef.current?.focus();
+    return () => opener?.focus();
+  }, [opener]);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      data-testid="dialog"
+      tabIndex={-1}
+      ref={dialogRef}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
+      <button type="button" aria-label="Close" onClick={onClose}>
+        ×
+      </button>
+      {children}
+    </div>
+  );
 }
 
 function MockFieldFrame({ inputId, errorId, label, required, errors, children }: FieldFrameProps<ReactNode>): ReactNode {
@@ -182,7 +266,29 @@ function MockButton({ label, type, variant, disabled, onPress }: ButtonProps): R
 
 const ariaSort = (sort: "asc" | "desc" | undefined) => (sort === "asc" ? "ascending" : sort === "desc" ? "descending" : undefined);
 
-function MockTable({ caption, columns, rows, onSort, empty }: TableProps<ReactNode>): ReactNode {
+/** RFC 0007: one button per available action, named by its label, disabled while that record has an action in flight. */
+function MockActionButtons({ actions }: { actions: readonly RecordActionItem[] }): ReactNode {
+  return (
+    <>
+      {actions.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          data-testid={`action-${action.id}`}
+          data-tone={action.tone}
+          data-pending={action.pending}
+          disabled={action.pending}
+          onClick={action.onPress}
+        >
+          {action.label}
+        </button>
+      ))}
+    </>
+  );
+}
+
+function MockTable({ caption, columns, rows, onSort, empty, actionsLabel }: TableProps<ReactNode>): ReactNode {
+  const withActions = actionsLabel !== undefined && rows.some((row) => row.actions !== undefined && row.actions.length > 0);
   return (
     <table>
       <caption>{caption}</caption>
@@ -199,12 +305,13 @@ function MockTable({ caption, columns, rows, onSort, empty }: TableProps<ReactNo
               )}
             </th>
           ))}
+          {withActions && <th scope="col">{actionsLabel}</th>}
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
           <tr>
-            <td colSpan={columns.length}>{empty}</td>
+            <td colSpan={columns.length + (withActions ? 1 : 0)}>{empty}</td>
           </tr>
         ) : (
           rows.map((row) => (
@@ -212,6 +319,11 @@ function MockTable({ caption, columns, rows, onSort, empty }: TableProps<ReactNo
               {row.cells.map((cell, i) => (
                 <td key={columns[i]?.id ?? i}>{cell}</td>
               ))}
+              {withActions && (
+                <td data-testid={`row-actions-${row.id}`}>
+                  {row.actions !== undefined && row.actions.length > 0 && <MockActionButtons actions={row.actions} />}
+                </td>
+              )}
             </tr>
           ))
         )}
@@ -400,6 +512,7 @@ function MockCalendar({
                             Move to day…
                           </button>
                         )}
+                        {entry.actions !== undefined && entry.actions.length > 0 && <MockActionButtons actions={entry.actions} />}
                         {onMove && moving === entry.id && (
                           <form
                             onSubmit={(e) => {
@@ -526,6 +639,7 @@ function MockBoard({
                       Move to…
                     </button>
                   )}
+                  {card.actions !== undefined && card.actions.length > 0 && <MockActionButtons actions={card.actions} />}
                   {onMove && moving === card.id && (
                     <form
                       onSubmit={(e) => {
