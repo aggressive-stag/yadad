@@ -4,7 +4,7 @@ import { createMemoryAdapter, formatDateTime } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, test } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderInput } from "./fields.js";
 import type { ReferenceSupport } from "./references.js";
 import { TableRenderer } from "./table-renderer.js";
@@ -113,3 +113,47 @@ describe("datetime input", () => {
     expect(inputEl(undefined, () => {}, "UTC").props.value).toBe("");
   });
 });
+
+describe("datetime quick filter", () => {
+  const filterTable = (): TableView => ({ ...table(), quickFilters: [{ field: "when" }] });
+  const titles = () => screen.getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[0]?.textContent);
+
+  async function seededPair(): Promise<ReturnType<typeof createMemoryAdapter>> {
+    const db = createMemoryAdapter();
+    await db.create("meet", { title: "boundary", when: "2026-10-17T10:30:59.999Z" }, { entityRevision: 1 });
+    await db.create("meet", { title: "later", when: "2026-10-17T10:31:00.000Z" }, { entityRevision: 1 });
+    return db;
+  }
+
+  async function setup(timeZone: string): Promise<void> {
+    const db = await seededPair();
+    render(<TableRenderer entity={entity} view={filterTable()} registry={mockRegistry} dataSources={new Map([["default", db]])} formatting={{ locale: "en-US", timeZone }} />);
+    await waitFor(() => expect(titles()).toEqual(["boundary", "later"]));
+  }
+
+  const bar = () => screen.getByRole("group", { name: "Filter" });
+
+  test("a range typed as 10:00 to 10:30 keeps 10:30:59.999 and drops 10:31", async () => {
+    await setup("UTC");
+    fireEvent.change(within(bar()).getByLabelText(/When from/), { target: { value: "2026-10-17T10:00" } });
+    fireEvent.change(within(bar()).getByLabelText(/When to/), { target: { value: "2026-10-17T10:30" } });
+    await waitFor(() => expect(titles()).toEqual(["boundary"]));
+  });
+
+  test("the range is read in the viewer's zone, not the environment's", async () => {
+    await setup("America/New_York");
+    // 06:00-06:30 in New York is 10:00-10:30 UTC: the same boundary keeps, the same later drops.
+    fireEvent.change(within(bar()).getByLabelText(/When from/), { target: { value: "2026-10-17T06:00" } });
+    fireEvent.change(within(bar()).getByLabelText(/When to/), { target: { value: "2026-10-17T06:30" } });
+    await waitFor(() => expect(titles()).toEqual(["boundary"]));
+  });
+
+  test("one end alone filters by that end; clearing both shows everything", async () => {
+    await setup("UTC");
+    fireEvent.change(within(bar()).getByLabelText(/When from/), { target: { value: "2026-10-17T10:31" } });
+    await waitFor(() => expect(titles()).toEqual(["later"]));
+    fireEvent.change(within(bar()).getByLabelText(/When from/), { target: { value: "" } });
+    await waitFor(() => expect(titles()).toEqual(["boundary", "later"]));
+  });
+});
+

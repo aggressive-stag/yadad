@@ -6,6 +6,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
+import { instantRangeBounds, localToInstant, LOCAL_DATETIME_PATTERN } from "@yadad/runtime";
 import { renderDisplay, renderInput } from "./fields.js";
 import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
@@ -212,7 +213,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
 
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
-  const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter), [view, entity, quick, baseFilter]);
+  const zone = viewerZone(formatting);
+  const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter, zone), [view, entity, quick, baseFilter, zone]);
 
   useEffect(() => {
     if (!adapter) return;
@@ -366,7 +368,9 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
           {quickFields.map((field) =>
             isRangeFilter(field) ? (
               RANGE_ENDS.map(({ end, word }) => {
-                const control = { ...filterControl(field), label: `${field.label} ${word}` };
+                const control = field.type === "datetime" && formatting?.timeZone !== undefined
+                  ? { ...filterControl(field), label: `${field.label} ${word} (${formatting.timeZone})` }
+                  : { ...filterControl(field), label: `${field.label} ${word}` };
                 const key = rangeKey(end, field.id);
                 const inputId = `${tableId}-filter-${field.id}-${end}`;
                 return (
@@ -416,7 +420,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
 const BOOLEAN_CHOICES = ["Yes", "No"];
 
 /** Number and date fields filter as a from/to range; the other types match one value. */
-const isRangeFilter = (field: Field): boolean => field.type === "number" || field.type === "date";
+const isRangeFilter = (field: Field): boolean => field.type === "number" || field.type === "date" || field.type === "datetime";
+
 
 const RANGE_ENDS = [
   { end: "from", word: "from", op: "gte" },
@@ -426,14 +431,18 @@ const RANGE_ENDS = [
 /** Where a range end is kept among the quick values. A colon can never be in a field id, so it cannot collide with one. */
 const rangeKey = (end: "from" | "to", fieldId: string): string => `${end}:${fieldId}`;
 
-/** The control a quick filter shows: the field itself (never required), or Yes/No for a checkbox. */
+/** The control a quick filter shows: the field itself (never required), Yes/No for a checkbox, or a plain text box for a datetime range — the viewer types a local time there, and combineFilters converts it to instants. */
 function filterControl(field: Field): Field {
   if (field.type === "boolean") return { id: field.id, type: "select", label: field.label, options: { source: "static", values: BOOLEAN_CHOICES } };
+  if (field.type === "datetime") return { id: field.id, type: "text", label: field.label };
   return { ...field, required: false };
 }
 
+/** The zone the quick filter's local times are read in: the viewer's, else the environment's. */
+const viewerZone = (formatting?: FieldFormatting): string => formatting?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /** The view's fixed filter and every quick filter the viewer has set, combined with "and". */
-function combineFilters(view: TableView, entity: EntityDocument, quick: RecordValues, baseFilter: Condition | undefined): Condition | undefined {
+function combineFilters(view: TableView, entity: EntityDocument, quick: RecordValues, baseFilter: Condition | undefined, zone: string): Condition | undefined {
   const parts: Condition[] = baseFilter ? [baseFilter] : [];
   for (const { field: id } of view.quickFilters ?? []) {
     const field = entity.fields.find((f) => f.id === id);
@@ -441,7 +450,17 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
       // A range filter is a from and a to bound; either end may stay empty.
       for (const { end, op } of RANGE_ENDS) {
         const bound = quick[rangeKey(end, id)];
-        if ((field.type === "number" && typeof bound === "number") || (field.type === "date" && typeof bound === "string" && bound !== "")) parts.push({ op, field: id, value: bound });
+        if (typeof bound === "number" && field.type === "number") parts.push({ op, field: id, value: bound });
+        else if (typeof bound === "string" && bound !== "" && field.type === "date") parts.push({ op, field: id, value: bound });
+        else if (field.type === "datetime" && typeof bound === "string" && LOCAL_DATETIME_PATTERN.test(bound)) {
+          // The viewer typed a local time; compare instants; "to" covers its whole minute (RFC 0007).
+          // With only this end set, the other bound is a placeholder — the pushed one is what filters.
+          const other = quick[rangeKey(op === "gte" ? "to" : "from", id)];
+          const bounds = typeof other === "string" && other !== ""
+            ? instantRangeBounds(op === "gte" ? bound : other, op === "gte" ? other : bound, zone)
+            : { from: localToInstant(bound, zone), to: new Date(new Date(localToInstant(bound, zone)).getTime() + 59_999).toISOString() };
+          parts.push({ op, field: id, value: op === "gte" ? bounds.from : bounds.to });
+        }
       }
       continue;
     }
