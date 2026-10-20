@@ -11,6 +11,7 @@ import { renderDisplay, renderInput } from "./fields.js";
 import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import { useViewerSetup } from "./viewer.js";
+import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 
 export interface TableRendererProps {
   readonly entity: EntityDocument;
@@ -221,6 +222,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
 
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
+  // Record actions (RFC 0007): buttons the component draws from TableRow.actions.
+  const recordActions = useRecordActions({ entity, view, viewer, adapter, reload: () => setReloads((n) => n + 1) });
   const zone = viewerZone(formatting);
   const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter, zone), [view, entity, quick, baseFilter, zone]);
   // The query signature: sort, filter and page size. A change is a new question — the cursor stack is cleared (RFC 0007).
@@ -292,7 +295,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
     ...(view.quickFilters ?? []).map((f, i) => ({ field: f.field, path: ["quickFilters", i, "field"] })),
   ];
-  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors];
+  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors, ...recordActionSetupErrors(entity, view, adapter, registry)];
   const { Table, Button, ErrorSummary, Section, FieldFrame } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
@@ -384,9 +387,12 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const items = rows.status === "loaded" ? rows.items : [];
   // RFC 0007 compare columns: the word diff of each row against its comparator; undefined for a row without a neighbour.
   const columnDiffs = columns.map((c) => (c.compare !== undefined && c.field.type === "text" ? compareCells(items, { field: c.field.id, compare: c.compare }, edges[c.field.id]) : undefined));
+  // Record actions (RFC 0007): the component draws these buttons; the renderer never builds one.
+  const rowActions = items.map((record) => recordActions.items(record));
   const tableRows: TableRow<ReactNode>[] = items.map((record, rowIndex) => ({
     id: record.id,
     cells: [...columns.map(({ field, editable }, colIndex) => renderCell(record, field, editable, columnDiffs[colIndex]?.[rowIndex])), ...(hasActions ? [renderActions(record)] : [])],
+    ...(rowActions[rowIndex]!.length > 0 ? { actions: rowActions[rowIndex] } : {}),
   }));
   // A server that returns neither total nor next cannot say "there is more": its page is the last (RFC 0007).
   const cursorMode = paging.mode === "cursor" && paging.sig === sig;
@@ -443,7 +449,10 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
         rows={tableRows}
         onSort={onSort}
         empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? "No records to show." : filter ? "No records match the filters." : "No records yet."}
+        {...(rowActions.some((a) => a.length > 0) ? { actionsLabel: "Actions" } : {})}
       />
+      {recordActions.failures !== undefined && <ErrorSummary errors={recordActions.failures} />}
+      {recordActions.announcement !== undefined && <div role="status">{recordActions.announcement.text}</div>}
       {editErrors.length > 0 && <ErrorSummary id={editErrorsId} errors={editErrors} />}
       {cursorMode ? (
         <nav aria-label={`${view.title ?? entity.id} pages`} data-yadad-pager="">

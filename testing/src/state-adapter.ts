@@ -156,6 +156,17 @@ export function createStateAdapter(seed: ViewState | readonly DataRecord[], opti
       }
       table(entity).delete(id);
     },
+    async act(entity, id, action, request) {
+      // A working source can run actions (RFC 0007): same guard order as the memory adapter —
+      // unknown record and stale baseVersion first, then the source's refusal, then a no-op patch.
+      const existing = table(entity).get(id);
+      if (!existing) throw new RecordNotFoundError(`No "${entity}" record with id "${id}".`);
+      if (existing.version !== request.meta.baseVersion) {
+        throw new RecordConflictError(`The "${entity}" record was changed since you loaded it.`, existing);
+      }
+      refuse(entity, id);
+      return existing; // a no-op patch: the record comes back unchanged
+    },
     async batch(entity, ops: BatchOperations, meta): Promise<BatchResult> {
       refuse(entity, ops.delete?.[0]?.id);
       const t = table(entity);
