@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DocumentSet } from "./document-set.js";
 import { renderDisplay } from "./fields.js";
+import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
@@ -41,6 +42,8 @@ export interface CalendarRendererProps {
   readonly initialMode?: CalendarMode;
   /** The day ("YYYY-MM-DD") whose month or week the calendar opens on; defaults to today. Read on the first render only. An invalid date falls back to today. */
   readonly initialAnchor?: string;
+  /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
+  readonly formatting?: FieldFormatting;
 }
 
 const DEFAULT_MODES: readonly CalendarMode[] = ["month", "week"];
@@ -70,7 +73,7 @@ interface Opened {
  * container, with the target table filtered by that record and a Back button.
  * The calendar stays mounted (hidden), so Back returns to the same period.
  */
-export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp, initialMode, initialAnchor }: CalendarRendererProps): ReactNode {
+export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp, initialMode, initialAnchor, formatting }: CalendarRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -136,6 +139,7 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
           viewer={viewer}
           {...(initialMode ? { initialMode } : {})}
           {...(initialAnchor !== undefined ? { initialAnchor } : {})}
+          {...(formatting ? { formatting } : {})}
           {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
         />
       </div>
@@ -147,7 +151,7 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
               {opened.heading}
             </h2>
           </div>
-          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />
+          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />
         </div>
       )}
     </div>
@@ -167,6 +171,7 @@ interface CalendarBodyProps {
   readonly onOpen?: (record: DataRecord) => void;
   readonly initialMode?: CalendarMode;
   readonly initialAnchor?: string;
+  readonly formatting?: FieldFormatting;
 }
 
 const rangeKey = (range: DateRange): string => `${range.first}/${range.last}`;
@@ -182,7 +187,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The entry is back on its day. Reload if the problem stays." }];
 }
 
-function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen, initialMode, initialAnchor }: CalendarBodyProps): ReactNode {
+function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen, initialMode, initialAnchor, formatting }: CalendarBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
   const modes = view.modes ?? DEFAULT_MODES;
   const weekStartsOn = view.weekStartsOn ?? 1;
@@ -308,7 +313,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
           <span data-yadad-calendar-title="">{title}</span>
           {details.map((field) => (
             <small key={field.id} data-yadad-calendar-detail={field.id}>
-              {renderDisplay(registry, field, record.values[field.id], references)}
+              {renderDisplay(registry, field, record.values[field.id], references, formatting)}
             </small>
           ))}
         </>

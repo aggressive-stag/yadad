@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
 import { renderDisplay, renderInput } from "./fields.js";
+import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -35,6 +36,8 @@ export interface TableRendererProps {
    * reads a viewer fact and cannot find the document shows an error.
    */
   readonly viewer?: ResolvedViewer;
+  /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
+  readonly formatting?: FieldFormatting;
 }
 
 /** What the table shows for a row's action: its accessible name and what happens on activation. */
@@ -88,7 +91,7 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * and a Back button. Earlier tables stay mounted (hidden), so Back restores
  * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting }: TableRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [stack, setStack] = useState<readonly Level[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -187,6 +190,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
             reloadKey={reloadKey}
             baseFilter={level.baseFilter}
             lockedFields={level.lockedFields}
+            {...(formatting ? { formatting } : {})}
             {...resolveAction(i)}
           />
         </div>
@@ -195,7 +199,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   );
 }
 
-function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [] }: TableBodyProps): ReactNode {
+function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -299,7 +303,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const isEditing = (record: DataRecord): boolean => editing?.record.id === record.id && canUpdate(record);
 
   const renderCell = (record: DataRecord, field: Field, editable: boolean): ReactNode => {
-    if (!editable || !editing || !isEditing(record)) return renderDisplay(registry, field, record.values[field.id], references);
+    if (!editable || !editing || !isEditing(record)) return renderDisplay(registry, field, record.values[field.id], references, formatting);
     const state = editing.state;
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
     const value = field.id in state.values ? state.values[field.id] : record.values[field.id];
@@ -317,6 +321,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       },
       onChange,
       references,
+      formatting,
     );
   };
 

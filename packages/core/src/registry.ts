@@ -121,14 +121,19 @@ export interface TextDisplayExtras {
   readonly diff?: readonly DiffSegment[];
 }
 
-/** Extra Display props per field type; only text and reference have any. */
+/** Extra Display props for a datetime (RFC 0007): the formatted text the renderer produced with `formatDateTime`, beside the stored instant in `value`. */
+export interface DatetimeDisplayExtras {
+  readonly text?: string;
+}
+
+/** Extra Display props per field type; only text, datetime and reference have any. */
 export interface FieldDisplayExtras {
   readonly text: TextDisplayExtras;
   readonly number: Record<never, never>;
   readonly boolean: Record<never, never>;
   readonly select: Record<never, never>;
   readonly date: Record<never, never>;
-  readonly datetime: Record<never, never>;
+  readonly datetime: DatetimeDisplayExtras;
   readonly reference: ReferenceDisplayExtras;
 }
 

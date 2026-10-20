@@ -18,6 +18,7 @@ import type { AggregateResult } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { DocumentSet } from "./document-set.js";
+import type { FieldFormatting } from "./fields.js";
 import { BoardRenderer } from "./board-renderer.js";
 import { CalendarRenderer } from "./calendar-renderer.js";
 import { FormRenderer } from "./form-renderer.js";
@@ -45,6 +46,8 @@ export interface DashboardRendererProps {
    * find the document shows an error.
    */
   readonly viewer?: ResolvedViewer;
+  /** The viewer's locale and zone for datetime fields (RFC 0007), passed to every embedded view; absent, the environment's. */
+  readonly formatting?: FieldFormatting;
 }
 
 const DEFAULT_COLUMNS = 12;
@@ -76,7 +79,7 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables, counts and stats.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting }: DashboardRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, dashboard, documents);
   const tabs = useMemo(() => visibleTabs(dashboard, viewer), [dashboard, viewer]);
   const [rootRef, width] = useWidth();
@@ -100,17 +103,17 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return view.kind === "table" ? <CountLoader widget={item} view={view} entity={entity} registry={registry} dataSources={dataSources} reloadKey={reloadKey} /> : null;
     }
     if (view.kind === "form") {
-      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} />;
+      return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} {...(formatting ? { formatting } : {})} />;
     }
     if (view.kind === "table") {
-      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />;
+      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />;
     }
     if (view.kind === "calendar") {
-      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />;
+      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />;
     }
     if (view.kind === "board") {
       // The group-by choice is uncontrolled inside a cell (RFC 0005).
-      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />;
+      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />;
     }
     return null;
   };

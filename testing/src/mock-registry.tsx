@@ -145,12 +145,12 @@ function MockDisplay({ field, value }: DisplayProps<Field, string | number | boo
   return <span data-testid={`display-${field.id}`}>{text}</span>;
 }
 
-/** RFC 0007: the instant as a `<time>` element; the text is the stored instant, a real component formats it for the viewer's zone. */
-function MockDatetimeDisplay({ field, value }: FieldDisplayProps<"datetime">): ReactNode {
+/** RFC 0007: the `<time>` element carries the stored instant in dateTime and the renderer's formatted text as its content (fallback: the raw instant). */
+function MockDatetimeDisplay({ field, value, text }: FieldDisplayProps<"datetime">): ReactNode {
   if (value === undefined) return <span data-testid={`display-${field.id}`} />;
   return (
     <time data-testid={`display-${field.id}`} dateTime={value}>
-      {value}
+      {text ?? value}
     </time>
   );
 }

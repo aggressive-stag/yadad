@@ -1,3 +1,5 @@
+import { formatDateTime, instantToLocal, localToInstant, LOCAL_DATETIME_PATTERN } from "@yadad/runtime";
+import { isIsoDatetime } from "@yadad/core";
 import type { Field, FieldValue, Registry } from "@yadad/core";
 import type { ReactNode } from "react";
 import type { ReferenceSupport } from "./references.js";
@@ -9,6 +11,18 @@ export interface CommonInputProps {
   readonly describedBy?: string;
   readonly labelledBy?: string;
 }
+
+/**
+ * The viewer's locale and zone (RFC 0007). Renderers take it as an optional
+ * `formatting` prop; absent, the environment's are used.
+ */
+export interface FieldFormatting {
+  readonly locale?: string;
+  readonly timeZone?: string;
+}
+
+/** The environment's IANA zone, for the picker conversions when `formatting` has none. */
+const environmentTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const asString = (v: FieldValue | undefined): string | undefined => (typeof v === "string" ? v : undefined);
 const asNumber = (v: FieldValue | undefined): number | undefined => (typeof v === "number" ? v : undefined);
@@ -42,6 +56,7 @@ export function renderInput(
   common: CommonInputProps,
   onChange: (value: FieldValue | undefined) => void,
   references: ReferenceSupport,
+  formatting?: FieldFormatting,
 ): ReactNode {
   switch (field.type) {
     case "text": {
@@ -67,7 +82,24 @@ export function renderInput(
     case "datetime": {
       if (!registry.fields.datetime) return missingDatetime(registry, field);
       const { Input } = registry.fields.datetime;
-      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+      // RFC 0007: the picker shows the local wall time in the viewer's zone; onChange stores the instant back.
+      const stored = asString(value);
+      const zone = formatting?.timeZone ?? environmentTimeZone();
+      const local = stored !== undefined && isIsoDatetime(stored) ? instantToLocal(stored, zone) : "";
+      return (
+        <Input
+          {...common}
+          field={field}
+          value={local}
+          onChange={(v) => {
+            const localValue = asString(v);
+            if (localValue === undefined || localValue === "") return onChange(undefined);
+            // A malformed value reaches the Input only from a bad document; pass it through for the validation error.
+            if (!LOCAL_DATETIME_PATTERN.test(localValue)) return onChange(localValue);
+            onChange(localToInstant(localValue, zone));
+          }}
+        />
+      );
     }
     case "reference": {
       const { Input } = registry.fields.reference;
@@ -78,7 +110,7 @@ export function renderInput(
 }
 
 /** Renders the field's read-only Display from the registry. */
-export function renderDisplay(registry: Registry<ReactNode>, field: Field, value: FieldValue | undefined, references: ReferenceSupport): ReactNode {
+export function renderDisplay(registry: Registry<ReactNode>, field: Field, value: FieldValue | undefined, references: ReferenceSupport, formatting?: FieldFormatting): ReactNode {
   switch (field.type) {
     case "text": {
       const { Display } = registry.fields.text;
@@ -103,7 +135,10 @@ export function renderDisplay(registry: Registry<ReactNode>, field: Field, value
     case "datetime": {
       if (!registry.fields.datetime) return missingDatetime(registry, field);
       const { Display } = registry.fields.datetime;
-      return <Display field={field} value={asString(value)} />;
+      const stored = asString(value);
+      // RFC 0007: the Display gets the formatted text and the stored instant (for a <time dateTime>). A value the document should not have (not an instant) has no formatting: show it raw, the validation error names it.
+      const text = stored !== undefined && isIsoDatetime(stored) ? formatDateTime(stored, formatting) : stored;
+      return <Display field={field} value={stored} {...(text !== undefined ? { text } : {})} />;
     }
     case "reference": {
       const { Display } = registry.fields.reference;

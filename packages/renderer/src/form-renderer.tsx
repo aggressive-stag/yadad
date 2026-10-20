@@ -7,7 +7,7 @@ import type { FormEvent, ReactNode } from "react";
 import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
 import { renderInput } from "./fields.js";
-import type { CommonInputProps } from "./fields.js";
+import type { CommonInputProps, FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -41,6 +41,8 @@ export interface FormRendererProps {
    * viewer fact and has neither shows an error.
    */
   readonly documents?: DocumentSet;
+  /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
+  readonly formatting?: FieldFormatting;
 }
 
 /**
@@ -48,7 +50,7 @@ export interface FormRendererProps {
  * the Save button) comes from the injected registry; saving goes through
  * runtime and the data adapter.
  */
-export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents }: FormRendererProps): ReactNode {
+export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents, formatting }: FormRendererProps): ReactNode {
   const formId = useId();
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const store = drafts?.store;
@@ -146,7 +148,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
     };
     return (
       <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={field.label} required={field.required === true || rules.required.has(field.id)} errors={errors}>
-        {renderInput(registry, field, state.values[field.id], common, onChange, references)}
+        {renderInput(registry, field, state.values[field.id], common, onChange, references, formatting)}
       </FieldFrame>
     );
   };

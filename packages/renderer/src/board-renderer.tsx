@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DocumentSet } from "./document-set.js";
 import { renderDisplay } from "./fields.js";
+import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
@@ -45,6 +46,8 @@ export interface BoardRendererProps {
    * fact and cannot find the document shows an error.
    */
   readonly viewer?: ResolvedViewer;
+  /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
+  readonly formatting?: FieldFormatting;
 }
 
 type CardState =
@@ -77,7 +80,7 @@ interface Opened {
  * container, with the target table filtered by that card and a Back button.
  * The board stays mounted (hidden), so Back returns to the same grouping.
  */
-export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, onGroupByChange, viewer: viewerProp }: BoardRendererProps): ReactNode {
+export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, onGroupByChange, viewer: viewerProp, formatting }: BoardRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -142,6 +145,7 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
           viewer={viewer}
           {...(groupBy !== undefined ? { groupBy } : {})}
           {...(onGroupByChange ? { onGroupByChange } : {})}
+          {...(formatting ? { formatting } : {})}
           {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
         />
       </div>
@@ -153,7 +157,7 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
               {opened.heading}
             </h2>
           </div>
-          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} />
+          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />
         </div>
       )}
     </div>
@@ -173,6 +177,7 @@ interface BoardBodyProps {
   readonly groupBy?: string;
   readonly onGroupByChange?: (field: string) => void;
   readonly onOpen?: (record: DataRecord) => void;
+  readonly formatting?: FieldFormatting;
 }
 
 function failureMessage(error: unknown): string {
@@ -186,7 +191,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The card is back in its column. Reload if the problem stays." }];
 }
 
-function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, onGroupByChange, onOpen }: BoardBodyProps): ReactNode {
+function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, onGroupByChange, onOpen, formatting }: BoardBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
 
   // The grouping choice: uncontrolled state by default, host-controlled when `groupBy` is set.
@@ -353,7 +358,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
             <span data-yadad-board-title="">{title}</span>
             {details.map((field) => (
               <small key={field.id} data-yadad-board-detail={field.id}>
-                {renderDisplay(registry, field, record.values[field.id], references)}
+                {renderDisplay(registry, field, record.values[field.id], references, formatting)}
               </small>
             ))}
           </>
