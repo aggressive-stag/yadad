@@ -4,8 +4,8 @@
 // `render` function that wires its own.
 
 import { act, render as mount } from "@testing-library/react";
-import type { BoardProps, CalendarProps, DataAdapter, Document, EntityDocument, FormView, Registry, ResolvedViewer, TableProps, TabsProps, ViewDocument } from "@yadad/core";
-import { canUpdate, columnEditable, createDraftStore, evaluateFormRules, rowActionVisible, viewEditable, viewStates, visibleColumns, visibleTabs } from "@yadad/runtime";
+import type { BoardProps, CalendarProps, DataAdapter, DataRecord, DiffSegment, Document, EntityDocument, FieldDisplayProps, FormView, Registry, ResolvedViewer, TableProps, TabsProps, ViewDocument } from "@yadad/core";
+import { availableActions, canUpdate, columnEditable, compareCells, createDraftStore, evaluateFormRules, rowActionVisible, viewEditable, viewStates, visibleColumns, visibleTabs } from "@yadad/runtime";
 import type { DraftStore, ViewStatesOptions } from "@yadad/runtime";
 import axe from "axe-core";
 import type { ReactNode } from "react";
@@ -29,7 +29,11 @@ export type StateCheck =
   | "editable-missing"
   | "group-by-ignored"
   | "mode-ignored"
-  | "anchor-ignored";
+  | "anchor-ignored"
+  | "action-offered"
+  | "action-missing"
+  | "diff-missing"
+  | "diff-offered";
 
 export interface StateProblem {
   readonly check: StateCheck;
@@ -161,7 +165,7 @@ async function checkState(
 ): Promise<StateProblem[]> {
   const found: StateProblem[] = [];
   const adapter = state.adapter();
-  const seen: Seen = { tables: [], tabs: [], calendars: [], boards: [] };
+  const seen: Seen = { tables: [], tabs: [], calendars: [], boards: [], displays: [] };
   const observed = observe(registry, seen);
   const dataSources = new Map<string, DataAdapter>([...keys].map((k) => [k, adapter]));
   const drafts = draftsFor(state, entity);
@@ -194,6 +198,10 @@ async function checkState(
     found.push(...viewerChecks(container, view, state, seen));
     found.push(...groupChecks(state, seen));
     found.push(...calendarChecks(state, seen));
+    if (entity) {
+      found.push(...actionChecks(entity, view, documents, state, seen));
+      found.push(...diffChecks(entity, view, state, seen));
+    }
     if (!skip.has("accessible-name")) found.push(...(await nameChecks(container)));
     if (!skip.has("error-message") && state.source === "error") found.push(...errorChecks(container, adapter));
   } finally {
@@ -305,14 +313,32 @@ interface Seen {
   readonly tabs: TabsProps<ReactNode>[];
   readonly calendars: CalendarProps<ReactNode>[];
   readonly boards: BoardProps<ReactNode>[];
+  /** One entry per field value the registry's Display components rendered, in order (RFC 0007 props checks). */
+  readonly displays: Displayed[];
+}
+
+/** One text value as the registry's Display got it: what the compare checks read. */
+interface Displayed {
+  /** The `diff` extras the text Display was given, if any (RFC 0007 compare columns). */
+  readonly diff: readonly DiffSegment[] | undefined;
 }
 
 /** The registry with its layout components wrapped to record their props. It knows no component. */
 function observe(registry: Registry<ReactNode>, seen: Seen): Registry<ReactNode> {
   const layout = registry.layout;
   const { Table, Tabs, Calendar, Board } = layout;
+  const textEntry = registry.fields.text;
+  const TextDisplay = textEntry.Display;
   return {
     ...registry,
+    fields: {
+      ...registry.fields,
+      text: {
+        ...textEntry,
+        // Records the `diff` each text value was given; the compare checks read it.
+        Display: (props: FieldDisplayProps<"text">) => (seen.displays.push({ diff: props.diff }), TextDisplay(props)),
+      },
+    },
     layout: {
       ...layout,
       Table: (props) => (seen.tables.push(props), Table(props)),
@@ -341,6 +367,99 @@ function calendarChecks(state: SourceViewState, seen: Seen): StateProblem[] {
   const last = calendar.days.at(-1)?.date;
   if (first === range.first && last === range.last) return [];
   return [{ check: "anchor-ignored", message: `this state is anchored on ${anchor} (${range.first} to ${range.last}) but the calendar shows ${first ?? "nothing"} to ${last ?? "nothing"}` }];
+}
+
+interface ActionUnit {
+  readonly kind: "table" | "calendar" | "board";
+  readonly viewId: string;
+  readonly records: readonly DataRecord[];
+  readonly items: readonly { readonly id: string; readonly actions: readonly string[] | undefined }[];
+}
+
+/**
+ * RFC 0007: the action buttons the registry was given must be exactly the
+ * actions the record allows — `availableActions` is the one answer, so a
+ * withheld action (`can.actions[id] === false`), one whose `visibleWhen` is
+ * false for this state, or one that should be there and is not, all surface.
+ */
+function actionChecks(entity: EntityDocument, view: ViewDocument, documents: readonly Document[], state: SourceViewState, seen: Seen): StateProblem[] {
+  const out: StateProblem[] = [];
+  const views = new Map(documents.filter((d): d is ViewDocument => isView(d)).map((d) => [d.id, d]));
+  const units: ActionUnit[] = [];
+  const walk = (v: ViewDocument, render: SourceViewState["render"]): void => {
+    if (v.kind === "table" && render.kind === "table") {
+      const table = seen.tables.at(-1);
+      if (table) units.push({ kind: "table", viewId: v.id, records: render.records, items: table.rows.map((r) => ({ id: r.id, actions: r.actions?.map((a) => a.id) })) });
+    } else if (v.kind === "calendar" && render.kind === "calendar") {
+      const calendar = seen.calendars.at(-1);
+      if (calendar) units.push({ kind: "calendar", viewId: v.id, records: render.records, items: calendar.days.flatMap((d) => d.entries).map((e) => ({ id: e.id, actions: e.actions?.map((a) => a.id) })) });
+    } else if (v.kind === "board" && render.kind === "board") {
+      const board = seen.boards.at(-1);
+      if (board) units.push({ kind: "board", viewId: v.id, records: render.records, items: board.columns.flatMap((c) => c.cards).map((k) => ({ id: k.id, actions: k.actions?.map((a) => a.id) })) });
+    } else if (v.kind === "dashboard" && render.kind === "dashboard") {
+      for (const widget of render.widgets) {
+        const target = views.get(widget.view);
+        if (target) walk(target, widget.state.render);
+      }
+    }
+  };
+  walk(view, state.render);
+  for (const unit of units) {
+    const unitView = views.get(unit.viewId);
+    const offered = unitView !== undefined && "recordActions" in unitView ? unitView.recordActions : undefined;
+    if (offered === undefined) continue;
+    for (const item of unit.items) {
+      const record = unit.records.find((r) => r.id === item.id);
+      if (record === undefined) continue;
+      const expected = availableActions(entity, { recordActions: offered }, record, state.viewer).map((a) => a.id);
+      const actual = item.actions ?? [];
+      for (const id of actual) {
+        if (!expected.includes(id)) out.push({ check: "action-offered", message: `${unit.kind} "${unit.viewId}" offers "${id}" on "${item.id}" but it is withheld or its visibleWhen is false for this state` });
+      }
+      for (const id of expected) {
+        if (!actual.includes(id)) out.push({ check: "action-missing", message: `${unit.kind} "${unit.viewId}" hides "${id}" on "${item.id}" although this state allows it` });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * RFC 0007: a `compare` column's cells are word diffs against the comparator,
+ * so a drawn row WITH a neighbour must reach its text Display with `diff`, and
+ * a drawn row without one must not. The registry's text Display was wrapped to
+ * record its props; `compareCells` is the one answer for who has a neighbour.
+ */
+function diffChecks(entity: EntityDocument, view: ViewDocument, state: SourceViewState, seen: Seen): StateProblem[] {
+  const out: StateProblem[] = [];
+  const render = state.render;
+  if (view.kind !== "table" || render.kind !== "table" || render.records.length === 0) return out;
+  const table = seen.tables.at(-1);
+  if (table === undefined) return out;
+  // The rows the component actually drew, in the order it drew them — the
+  // positional compares (previousRow/nextRow) depend on the display order.
+  const drawn = table.rows
+    .map((r) => render.records.find((rec) => rec.id === r.id))
+    .filter((r): r is DataRecord => r !== undefined);
+  if (drawn.length === 0) return out;
+  for (const column of view.columns) {
+    if (column.compare === undefined) continue;
+    const field = entity.fields.find((f) => f.id === column.field);
+    if (field === undefined || field.type !== "text") continue; // the renderer only diffs text columns; validation owns the rest
+    const cells = compareCells(drawn, { field: column.field, compare: column.compare });
+    // A row whose comparator side is both-empty gets an EMPTY diff from
+    // compareCells — it still has a neighbour, so a Display given `diff={[]}`
+    // counts as given a diff. Any text Display reached with a `diff` prop does.
+    const gotDiff = seen.displays.some((d) => d.diff !== undefined);
+    const anyNeighbour = cells.some((c) => c !== undefined);
+    if (anyNeighbour && !gotDiff) {
+      out.push({ check: "diff-missing", message: `column "${column.field}" compares and a neighbour is present, but its Display was given no diff` });
+    }
+    if (!anyNeighbour && gotDiff) {
+      out.push({ check: "diff-offered", message: `column "${column.field}" compared every shown row against nothing, yet its Display was given a diff` });
+    }
+  }
+  return out;
 }
 
 const buttonsNamed = (container: HTMLElement, match: (text: string) => boolean): number => [...container.querySelectorAll("button")].filter((b) => match(b.textContent?.trim() ?? "")).length;
