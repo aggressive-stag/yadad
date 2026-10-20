@@ -4,9 +4,10 @@
 // the mock registry. Needs a DOM: call it from a test file with
 // `// @vitest-environment jsdom`.
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { FIELD_TYPES } from "@yadad/core";
-import type { BoardProps, CalendarDayProps, CalendarProps, DocumentError, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, Registry, RequiredFieldEntries } from "@yadad/core";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createMemoryAdapter } from "@yadad/runtime";
+import { FIELD_TYPES, ForbiddenError, SPEC_VERSION } from "@yadad/core";
+import type { BoardProps, CalendarDayProps, CalendarProps, DataAdapter, DataRecord, DatetimeField, DiffSegment, DocumentError, EntityDocument, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, RecordValues, Registry, RequiredFieldEntries, TableView, TextField } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -163,11 +164,165 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * one at a time (await each), never concurrently.
  */
 export function registryContractChecks(registry: Registry<ReactNode>, samples: FieldSamples = defaultSamples): readonly ContractCheck[] {
-  return [...CHECKED_FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)), ...layoutChecks(registry), ...calendarChecks(registry), ...boardChecks(registry)];
+  return [
+    ...CHECKED_FIELD_TYPES.flatMap((type) => checksFor(type, registry, samples)),
+    ...layoutChecks(registry),
+    ...calendarChecks(registry),
+    ...boardChecks(registry),
+    ...dialogChecks(registry),
+    ...datetimeChecks(registry),
+    ...actionButtonChecks(registry),
+  ];
 }
 
 function checksFor<K extends CheckedFieldType>(type: K, registry: Registry<ReactNode>, samples: FieldSamples): ContractCheck[] {
-  return fieldChecks(type, registry, samples[type], drivers[type]);
+  const base = fieldChecks(type, registry, samples[type], drivers[type]);
+  // RFC 0007: a compare column's word diff is drawn by the text Display. The
+  // check runs with the entry, so a component set cannot skip it silently.
+  if (type === "text") {
+    const TextDisplay = registry.fields.text.Display;
+    base.push(
+      namedCheck("text: marks a diff's additions and removals with ins and del", (problems) => {
+        const diff: readonly DiffSegment[] = [
+          { kind: "removed", text: "draft" },
+          { kind: "same", text: " then " },
+          { kind: "added", text: "live" },
+        ];
+        render(<Host component={TextDisplay} props={displayProps<"text">({ field: KIT_NOTES_FIELD, value: "live" }, { diff })} />);
+        const ins = screen.queryAllByRole("insertion");
+        const del = screen.queryAllByRole("deletion");
+        if (ins.length === 0 || !ins.some((el) => el.textContent?.includes("live"))) problems.push("An added DiffSegment must be shown in an <ins> containing its text.");
+        if (del.length === 0 || !del.some((el) => el.textContent?.includes("draft"))) problems.push("A removed DiffSegment must be shown in a <del> containing its text.");
+        if (!(document.body.textContent ?? "").includes(" then ")) problems.push("A same DiffSegment's text must be shown unchanged.");
+      }),
+    );
+  }
+  return base;
+}
+
+const KIT_NOTES_FIELD: TextField = { id: "notes", type: "text", label: "Notes" };
+
+/**
+ * Checks for the optional `fields.datetime` key (RFC 0007): a registry without
+ * one has no datetime checks; one with it must show the formatted `text` the
+ * renderer produced on the element whose `dateTime` is the stored instant. The
+ * reference component uses a `<time>` element, which carries role `time`;
+ * role and attribute are the requirements, the tag the convention.
+ */
+function datetimeChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const entry = registry.fields.datetime;
+  if (entry === undefined) return [];
+  const DatetimeDisplay = entry.Display;
+  const field: DatetimeField = { id: "due", type: "datetime", label: "Due" };
+  const value = "2026-10-15T14:30:00.000Z";
+  const text = "15 Oct 2026, 15:30";
+  return [
+    namedCheck("datetime: shows the given text on an element carrying the stored instant", (problems) => {
+      render(<Host component={DatetimeDisplay} props={displayProps<"datetime">({ field, value }, { text })} />);
+      const el = screen.queryByRole("time");
+      if (!el) {
+        problems.push('The datetime Display must show the value in an element with role="time" (a <time> element).');
+      } else {
+        if (el.textContent !== text) problems.push(`The element must show the formatted text prop "${text}", got "${el.textContent}".`);
+        if (el.getAttribute("datetime") !== value) problems.push(`The element's dateTime must be the stored instant "${value}", got "${el.getAttribute("datetime")}".`);
+      }
+      cleanup();
+      render(<Host component={DatetimeDisplay} props={displayProps<"datetime">({ field, value: undefined }, {})} />);
+      if (screen.queryByText(value)) problems.push("An undefined value must not render the stored instant as text.");
+    }),
+  ];
+}
+
+/**
+ * Buttons for `TableRow.actions` (RFC 0007): the Table draws each row's
+ * actions with its own controls, so the check drives them through a Table.
+ */
+function actionButtonChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const { Table } = registry.layout;
+  const columns = [{ id: "a", headerId: "kit-act-col", label: "A", sortable: false }];
+  const pressed: string[] = [];
+  const rows = [
+    { id: "r1", cells: ["first"], actions: [{ id: "publish", label: "Publish", tone: "neutral" as const, pending: false, onPress: () => pressed.push("publish") }] },
+    { id: "r2", cells: ["second"], actions: [{ id: "archive", label: "Archive", tone: "danger" as const, pending: true, onPress: () => pressed.push("archive") }] },
+  ];
+  return [
+    namedCheck("actions: buttons are named by their labels, disabled while pending, and fire onPress otherwise", async (problems) => {
+      const { container } = render(<Table caption="Kit actions" columns={columns} rows={rows} onSort={() => {}} empty="none" actionsLabel="Actions" />);
+      const publish = screen.queryByRole("button", { name: "Publish" });
+      if (!publish) {
+        problems.push('A row action must render a button named by its label ("Publish").');
+      } else {
+        if (publish.hasAttribute("disabled") || publish.getAttribute("aria-disabled") === "true") problems.push("A row action button must not be disabled while its record has nothing in flight.");
+        fireEvent.click(publish);
+        if (pressed.join() !== "publish") problems.push("Pressing a row action button must call its onPress.");
+      }
+      const archive = screen.queryByRole("button", { name: "Archive" });
+      if (!archive) {
+        problems.push('A pending row action must still render its button ("Archive").');
+      } else {
+        if (!archive.hasAttribute("disabled") && archive.getAttribute("aria-disabled") !== "true") problems.push("While a record has an action in flight (pending: true) its buttons must be disabled.");
+        const before = pressed.length;
+        fireEvent.click(archive);
+        if (pressed.length !== before) problems.push("A disabled button must not fire onPress.");
+      }
+      if (!screen.queryByText("Actions")) problems.push('The actions column must be headed by actionsLabel ("Actions").');
+      problems.push(...(await axeProblems(container, "row actions")));
+    }),
+  ];
+}
+
+/**
+ * `layout.Dialog` must provide the modal behaviour RFC 0007 asks for; the
+ * renderer owns the content, so the check builds its own. Skipped when the
+ * registry has no Dialog key (optional until a component set ships one).
+ */
+function dialogChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const maybeDialog = registry.layout.Dialog;
+  const { Button } = registry.layout;
+  if (maybeDialog === undefined) return [];
+  const Dialog: NonNullable<Registry<ReactNode>["layout"]["Dialog"]> = maybeDialog;
+  return [
+    namedCheck("layout: Dialog is named by its label, takes focus, closes on Escape and gives focus back", async (problems) => {
+      let closeCalls = 0;
+      function Harness(): ReactNode {
+        const [open, setOpen] = useState(false);
+        return (
+          <div>
+            <Button label="Open archive" type="button" variant="primary" disabled={false} onPress={() => setOpen(true)} />
+            {open ? (
+              <Dialog
+                label="Archive this"
+                onClose={() => {
+                  closeCalls += 1;
+                  setOpen(false);
+                }}
+              >
+                <p>Archive this record?</p>
+              </Dialog>
+            ) : null}
+          </div>
+        );
+      }
+      render(<Harness />);
+      const opener = screen.getByRole("button", { name: "Open archive" });
+      opener.focus(); // fireEvent.click does not focus in jsdom; the dialog captures the opener at render
+      fireEvent.click(opener);
+      const dialog = screen.queryByRole("dialog");
+      if (!dialog) {
+        problems.push('Dialog must render role="dialog" when open.');
+        return;
+      }
+      if (dialog.getAttribute("aria-modal") !== "true") problems.push('Dialog must set aria-modal="true".');
+      const name = dialog.getAttribute("aria-label") ?? (dialog.getAttribute("aria-labelledby") ? (document.getElementById(dialog.getAttribute("aria-labelledby")!)?.textContent ?? "") : "");
+      if (name.trim() !== "Archive this") problems.push(`Dialog must be named by its label prop ("Archive this"), got "${name}".`);
+      if (!dialog.contains(document.activeElement)) problems.push("Opening must move focus into the dialog.");
+      problems.push(...(await axeProblems(dialog, "dialog")));
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      if (closeCalls === 0) problems.push("Escape must call onClose.");
+      if (screen.queryByRole("dialog")) problems.push("After onClose the dialog must be removed.");
+      if (document.activeElement !== opener) problems.push("After close, focus must return to the button that opened the dialog.");
+    }),
+  ];
 }
 
 /** Registers one Vitest test per contract check. */
@@ -177,6 +332,293 @@ export function describeRegistryContract(registry: Registry<ReactNode>, samples:
       test(check.name, async () => {
         expect(await check.run()).toEqual([]);
       });
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Action scenarios (RFC 0007). Dialog flows are not state-grid axes — a state
+// is a rendering and these need a press (RFC 0007 line 285) — so they live
+// here, driven through a real renderer and the memory adapter. Like
+// `state-checks`, this never imports a renderer: the host passes `mount`.
+// Everything is found by role and accessible name, never by test id.
+// ---------------------------------------------------------------------------
+
+/** What `mount` receives: the documents, the seeded adapter and the registry. */
+export interface ActionScenarioContext {
+  readonly entity: EntityDocument;
+  readonly view: TableView;
+  readonly registry: Registry<ReactNode>;
+  /** The seeded adapter, registered by the host under the view's `dataSource` key. */
+  readonly adapter: DataAdapter;
+  /** The two records every scenario starts with (ids assigned by the adapter). */
+  readonly records: readonly DataRecord[];
+}
+
+export interface ActionScenarioOptions {
+  /** Mounts the view — this is the one line of host wiring, like state-checks' `render`. */
+  readonly mount: (context: ActionScenarioContext) => ReactNode;
+  /** Passed to `mount` as `context.registry`: every registry must pass the scenarios. */
+  readonly registry: Registry<ReactNode>;
+}
+
+/** The kit's action documents: Publish runs on press; Archive confirms (danger) and asks for a required Reason. */
+const SCENARIO_ENTITY: EntityDocument = {
+  kind: "entity",
+  specVersion: SPEC_VERSION,
+  id: "kitdoc",
+  revision: 1,
+  fields: [{ id: "tag", type: "text", label: "Tag" }],
+  actions: [
+    { id: "publish", label: "Publish" },
+    {
+      id: "archive",
+      label: "Archive",
+      confirm: { title: "Archive this", message: "Archive this record?", confirmLabel: "Reject", tone: "danger" },
+      input: [{ id: "reason", type: "text", label: "Reason", required: true }],
+    },
+  ],
+};
+
+const SCENARIO_VIEW: TableView = {
+  kind: "table",
+  specVersion: SPEC_VERSION,
+  id: "kit_rows",
+  entity: "kitdoc",
+  revision: 1,
+  dataSource: "default",
+  columns: [{ field: "tag" }],
+  recordActions: ["publish", "archive"],
+};
+
+/** One call the handler saw: which record, what input. */
+interface HandlerCall {
+  readonly recordId: string;
+  readonly input: RecordValues;
+}
+
+/** Everything a scenario run shares: the seeded adapter and the handler call log. */
+async function scenarioSetup(handlers: Readonly<Record<string, (call: HandlerCall) => void | { values?: RecordValues }>>): Promise<{ adapter: DataAdapter; calls: HandlerCall[]; records: DataRecord[] }> {
+  const calls: HandlerCall[] = [];
+  const wrapped: Record<string, (record: DataRecord, input: RecordValues) => { values?: RecordValues }> = {};
+  for (const [key, handler] of Object.entries(handlers)) {
+    wrapped[key] = (record, input) => {
+      // Logged before the handler runs: a handler that throws (403, 409) must
+      // still show that act reached the source.
+      calls.push({ recordId: record.id, input });
+      const outcome = handler({ recordId: record.id, input });
+      return outcome ?? { values: { tag: "done" } };
+    };
+  }
+  // The memory adapter answers like a working source; handlers log the call
+  // and return what the scenario says.
+  const adapter = createMemoryAdapter({ actions: wrapped });
+  const first = await adapter.create("kitdoc", { tag: "first" }, { entityRevision: 1 });
+  const second = await adapter.create("kitdoc", { tag: "second" }, { entityRevision: 1 });
+  return { adapter, calls, records: [first, second] };
+}
+
+const text = (el: Element | null): string => el?.textContent ?? "";
+
+/** Waits for a scenario condition; a timeout becomes a thrown problem, caught by runScenario. */
+async function settle(check: () => boolean, what: string): Promise<void> {
+  await waitFor(() => {
+    if (!check()) throw new Error(`timeout: ${what}`);
+  });
+}
+
+/** The scenario checks for one mount wiring (see `ActionScenarioOptions`). */
+export function actionScenarioChecks(options: ActionScenarioOptions): readonly ContractCheck[] {
+  const registry = options.registry;
+  const runScenario = async (
+    handlers: Readonly<Record<string, (call: HandlerCall) => void | { values?: RecordValues }>>,
+    body: (ctx: { readonly calls: HandlerCall[]; readonly adapter: DataAdapter; readonly records: readonly DataRecord[]; readonly rows: () => HTMLElement[]; readonly rowFor: (tag: string) => HTMLElement | undefined; readonly buttonIn: (row: HTMLElement, name: string) => HTMLButtonElement | undefined; readonly status: () => string; readonly alerts: () => HTMLElement[]; readonly dialog: () => HTMLElement | null }) => Promise<void>,
+  ): Promise<readonly string[]> => {
+    const problems: string[] = [];
+    try {
+      const { adapter, calls, records } = await scenarioSetup(handlers);
+      const context: ActionScenarioContext = { entity: SCENARIO_ENTITY, view: SCENARIO_VIEW, registry, adapter, records };
+      render(options.mount(context));
+      const rows = () => screen.queryAllByRole("row");
+      const rowFor = (tag: string) => rows().find((r) => text(r).includes(tag));
+      const buttonIn = (row: HTMLElement, name: string) => within(row).queryAllByRole("button").find((b) => text(b) === name) as HTMLButtonElement | undefined;
+      const status = () => text(document.querySelector('[role="status"]'));
+      const alerts = () => Array.from(document.querySelectorAll('[role="alert"]')) as HTMLElement[];
+      const dialog = () => screen.queryByRole("dialog");
+      await waitFor(() => {
+        if (!rows().some((r) => text(r).includes("first") && text(r).includes("second"))) throw new Error("the seeded rows never appeared");
+      });
+      await body({ calls, adapter, records, rows, rowFor, buttonIn, status, alerts, dialog });
+    } catch (e) {
+      problems.push(e instanceof Error ? e.message : String(e));
+    } finally {
+      cleanup();
+    }
+    return problems;
+  };
+
+  return [
+    namedCheck("scenarios: pressing an action runs it, announces it and reloads the row", async (problems) => {
+      await runScenario({ "kitdoc.publish": () => ({ values: { tag: "live" } }) }, async ({ calls, rowFor, buttonIn, status, dialog }) => {
+        const row = rowFor("first");
+        if (!row) return;
+        const publish = buttonIn(row, "Publish");
+        if (!publish) {
+          problems.push('The row must offer a button named "Publish".');
+          return;
+        }
+        fireEvent.click(publish);
+        await settle(() => calls.length === 1, "the handler was never reached");
+        await settle(() => status().includes("Publish done"), '"Publish done" was never announced');
+        await settle(() => text(rowFor("live") ?? document.createElement("i")).includes("live"), "the row never showed the new value");
+        if (dialog() !== null) problems.push("An action with no confirm and no input must not open a dialog.");
+        const untouched = rowFor("second");
+        if (untouched && !text(untouched).includes("second")) problems.push("Only the pressed record may change.");
+      });
+    }),
+
+    namedCheck("scenarios: a confirm is asked before the action runs; Cancel answers it without running", async (problems) => {
+      await runScenario({ "kitdoc.archive": () => ({ values: { tag: "archived" } }) }, async ({ calls, rowFor, buttonIn, dialog }) => {
+        const row = rowFor("first");
+        if (!row) return;
+        const archive = buttonIn(row, "Archive");
+        if (!archive) {
+          problems.push('The row must offer a button named "Archive".');
+          return;
+        }
+        fireEvent.click(archive);
+        const open = dialog();
+        if (!open) {
+          problems.push("An action with a confirm must open a dialog on press, before running.");
+          return;
+        }
+        if (calls.length > 0) problems.push("The action must not run before the dialog is confirmed.");
+        if (!text(open).includes("Archive this record?")) problems.push("The dialog must show the confirm message.");
+        const cancel = within(open).queryAllByRole("button").find((b) => text(b) === "Cancel");
+        if (!cancel) {
+          problems.push('The dialog must offer a "Cancel" button.');
+          return;
+        }
+        fireEvent.click(cancel);
+        if (dialog() !== null) problems.push("Cancel must close the dialog.");
+        if (calls.length > 0) problems.push("Cancel must not run the action.");
+      });
+    }),
+
+    namedCheck("scenarios: the dialog validates its input, then answers the action with it", async (problems) => {
+      await runScenario({ "kitdoc.archive": (call) => (call.input.reason === "cleanup" ? { values: { tag: "archived" } } : { values: { tag: "wrong" } }) }, async ({ calls, rowFor, buttonIn, status, alerts, dialog }) => {
+        const row = rowFor("first");
+        if (!row) return;
+        const archive = buttonIn(row, "Archive");
+        if (!archive) {
+          problems.push('The row must offer a button named "Archive".');
+          return;
+        }
+        fireEvent.click(archive);
+        let open = dialog();
+        if (!open) {
+          problems.push("The Archive action must open a dialog.");
+          return;
+        }
+        // Submit without the required Reason: validation must stop it at the dialog.
+        const confirm = within(open).queryAllByRole("button").find((b) => text(b) === "Reject");
+        if (!confirm) {
+          problems.push('The dialog\'s confirm button must be named by confirmLabel ("Reject").');
+          return;
+        }
+        fireEvent.click(confirm);
+        if (calls.length > 0) problems.push("A missing required input must be caught before act is called.");
+        open = dialog();
+        if (!open) {
+          problems.push("Invalid input must keep the dialog open for correction.");
+          return;
+        }
+        if (alerts().filter((a) => open?.contains(a)).length === 0) problems.push("The dialog must show what is wrong with the input (a role=\"alert\" inside it).");
+        // Answer the input and confirm.
+        const reason = within(open).queryByLabelText(/Reason/) as HTMLInputElement | null;
+        if (!reason) {
+          problems.push('The dialog must ask for the input field labelled "Reason".');
+          return;
+        }
+        fireEvent.change(reason, { target: { value: "cleanup" } });
+        fireEvent.click(within(open).queryAllByRole("button").find((b) => text(b) === "Reject") ?? confirm);
+        await settle(() => calls.length === 1, "the handler was never reached");
+        if (calls[0] && calls[0].input.reason !== "cleanup") problems.push(`act must receive the typed input, got ${JSON.stringify(calls[0]?.input)}.`);
+        await settle(() => dialog() === null, "the dialog stayed open");
+        await settle(() => status().includes("Archive done"), '"Archive done" was never announced');
+        await settle(() => text(rowFor("archived") ?? document.createElement("i")).includes("archived"), "the row never showed the new value");
+      });
+    }),
+
+    namedCheck("scenarios: a refused action (403) closes the dialog and reports through the view", async (problems) => {
+      await runScenario({ "kitdoc.publish": () => {
+        throw new ForbiddenError("You may not publish that.");
+      } }, async ({ calls, rowFor, buttonIn, status, alerts, dialog }) => {
+        const row = rowFor("first");
+        if (!row) return;
+        const publish = buttonIn(row, "Publish");
+        if (!publish) {
+          problems.push('The row must offer a button named "Publish".');
+          return;
+        }
+        fireEvent.click(publish);
+        await settle(() => calls.length === 1, "the handler was never reached");
+        await settle(() => alerts().some((a) => text(a).includes("You may not publish that.")), "the refusal never reached an alert");
+        if (dialog() !== null) problems.push("A refusal must not leave a dialog open.");
+        await settle(() => {
+          const still = rowFor("first");
+          return still !== undefined && text(still).includes("first");
+        }, "the row did not survive the reload");
+        if (status().includes("done")) problems.push("A refused action must not be announced as done.");
+      });
+    }),
+
+    namedCheck("scenarios: acting on a stale record (409) reports the conflict and reloads", async (problems) => {
+      // The record changes behind the client's back: its version moves, so the
+      // client's last-read version is stale and act must be refused as a conflict.
+      await runScenario({ "kitdoc.archive": () => ({ values: { tag: "archived" } }) }, async ({ calls, adapter, records, rowFor, buttonIn, alerts, dialog }) => {
+        await adapter.update("kitdoc", records[0]!.id, { tag: "edited-elsewhere" }, { entityRevision: 1 });
+        // The table still shows the stale copy until the reload; press on it anyway.
+        const row = rowFor("first");
+        if (!row) return;
+        const archive = buttonIn(row, "Archive");
+        if (!archive) {
+          problems.push('The row must offer a button named "Archive".');
+          return;
+        }
+        fireEvent.click(archive);
+        const open = dialog();
+        if (!open) {
+          problems.push("The Archive action must open a dialog.");
+          return;
+        }
+        const reason = within(open).queryByLabelText(/Reason/) as HTMLInputElement | null;
+        if (!reason) {
+          problems.push('The dialog must ask for the input field labelled "Reason".');
+          return;
+        }
+        fireEvent.change(reason, { target: { value: "stale" } });
+        const confirm = within(open).queryAllByRole("button").find((b) => text(b) === "Reject");
+        if (!confirm) {
+          problems.push('The dialog\'s confirm button must be named by confirmLabel ("Reject").');
+          return;
+        }
+        fireEvent.click(confirm);
+        await settle(() => alerts().some((a) => text(a).toLowerCase().includes("changed")), "the conflict never reached an alert");
+        if (calls.length > 0) problems.push("A stale act must be refused before the handler runs.");
+        await settle(() => dialog() === null, "the dialog stayed open");
+      });
+    }),
+  ];
+}
+
+/** Registers one Vitest test per action scenario (RFC 0007 dialog flows). */
+export function describeActionScenarios(options: ActionScenarioOptions): void {
+  describe("yadad record-action scenarios", () => {
+    for (const check of actionScenarioChecks(options)) {
+      test(check.name, async () => {
+        expect(await check.run()).toEqual([]);
+      }, 20_000);
     }
   });
 }
@@ -343,6 +785,24 @@ function fieldChecks<K extends CheckedFieldType>(
 function layoutCheck(name: string, inspect: (problems: string[]) => void | Promise<void>): ContractCheck {
   return {
     name: `layout: ${name}`,
+    async run() {
+      const problems: string[] = [];
+      try {
+        await inspect(problems);
+      } catch (e) {
+        problems.push(e instanceof Error ? e.message : String(e));
+      } finally {
+        cleanup();
+      }
+      return problems;
+    },
+  };
+}
+
+/** A check under an explicit prefix (field-key and scenario checks besides the layout ones). */
+function namedCheck(name: string, inspect: (problems: string[]) => void | Promise<void>): ContractCheck {
+  return {
+    name,
     async run() {
       const problems: string[] = [];
       try {

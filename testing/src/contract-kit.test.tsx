@@ -77,7 +77,11 @@ describe("the kit catches broken components", () => {
         ),
       },
     };
-    expect(await failing(registry)).toEqual(["layout: Table is named by its caption, with sortable headers and rows"]);
+    expect(await failing(registry)).toEqual([
+      "layout: Table is named by its caption, with sortable headers and rows",
+      // makeRows seeds row actions; this fake table renders none of them.
+      "actions: buttons are named by their labels, disabled while pending, and fire onPress otherwise",
+    ]);
     const problems = await registryContractChecks(registry).find((c) => c.name.startsWith("layout: Table"))!.run();
     expect(problems).toEqual(
       expect.arrayContaining([expect.stringContaining('id="kit-col-day"'), expect.stringContaining("button to sort"), expect.stringContaining("empty content")]),
@@ -207,5 +211,86 @@ describe("the kit's board checks find the board by role and name", () => {
     expect(problems).toEqual([]);
     const unnamed = await run(withBoard((props) => <div>{props.columns.map((c) => <section key={c.id} aria-label={`${c.label}, ${c.count} cards`} />)}</div>));
     expect(unnamed).toEqual(expect.arrayContaining([expect.stringContaining("named by its label")]));
+  });
+});
+
+describe("the kit's RFC 0007 checks (dialog, datetime, diff, row actions)", () => {
+  const run = async (registry: Registry<ReactNode>, name: string) => (await registryContractChecks(registry).find((c) => c.name.startsWith(name))!.run());
+
+  test("a registry without datetime or Dialog has no checks for them", () => {
+    const { datetime: _datetime, ...fields } = mockRegistry.fields;
+    const { Dialog: _dialog, ...layout } = mockRegistry.layout;
+    const stripped: Registry<ReactNode> = { ...mockRegistry, fields, layout };
+    expect(registryContractChecks(stripped).filter((c) => c.name.startsWith("datetime:"))).toEqual([]);
+    expect(registryContractChecks(stripped).filter((c) => c.name.startsWith("layout: Dialog"))).toEqual([]);
+    expect(registryContractChecks(mockRegistry).filter((c) => c.name.startsWith("datetime:")).length).toBeGreaterThan(0);
+    expect(registryContractChecks(mockRegistry).filter((c) => c.name.startsWith("layout: Dialog")).length).toBeGreaterThan(0);
+    // The mock passes all of them (describeRegistryContract registers the pass case).
+    expect(registryContractChecks(mockRegistry).filter((c) => c.name.startsWith("actions:")).length).toBe(1);
+  });
+
+  test("a datetime Display that shows the raw instant fails", async () => {
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      fields: { ...mockRegistry.fields, datetime: { type: "datetime", Input: mockRegistry.fields.datetime!.Input, Display: ({ value }) => <time>{value ?? ""}</time> } },
+    };
+    const found = await run(registry, "datetime:");
+    // A <time> without the machine-readable attribute, showing the raw instant instead of the text prop.
+    expect(found).toEqual(expect.arrayContaining([expect.stringContaining("formatted text prop"), expect.stringContaining("dateTime")]));
+  });
+
+  test("a Dialog that never takes or returns focus fails", async () => {
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      layout: { ...mockRegistry.layout, Dialog: ({ label, children }) => <div role="dialog" aria-modal="true" aria-label={label}>{children}</div> },
+    };
+    const found = await run(registry, "layout: Dialog");
+    expect(found).toEqual(expect.arrayContaining([expect.stringContaining("move focus into the dialog"), expect.stringContaining("Escape must call onClose")]));
+  });
+
+  test("a text Display that flattens the diff fails", async () => {
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      fields: { ...mockRegistry.fields, text: { ...mockRegistry.fields.text, Display: ({ value }) => <span>{value ?? ""}</span> } },
+    };
+    const found = await run(registry, "text: marks a diff");
+    expect(found).toEqual(expect.arrayContaining([expect.stringContaining("<ins>"), expect.stringContaining("<del>")]));
+  });
+
+  test("row action buttons that ignore pending fail", async () => {
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      layout: {
+        ...mockRegistry.layout,
+        Table: ({ caption, columns, rows }) => (
+          <table>
+            <caption>{caption}</caption>
+            <thead>
+              <tr>
+                {columns.map((c) => (
+                  <th key={c.id} id={c.headerId}>{c.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  {r.cells.map((cell, i) => (<td key={i}>{cell}</td>))}
+                  {(r.actions ?? []).map((a) => (
+                    <td key={a.id}>
+                      <button type="button" onClick={a.onPress}>{a.label}</button>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ),
+      },
+    };
+    const found = await run(registry, "actions:");
+    expect(found).toEqual(
+      expect.arrayContaining([expect.stringContaining("disabled"), expect.stringContaining("must not fire onPress"), expect.stringContaining("actionsLabel")]),
+    );
   });
 });
