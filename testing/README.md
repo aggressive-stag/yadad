@@ -37,6 +37,8 @@ adapter.configure({ source: "ready" }); // switch while the test runs
 - `"refused"`: writes throw a `RecordValidationError` with one field error (400, the default, pointing at `field`) or a `ForbiddenError` (`status: 403`).
 - `"conflict"`: writes throw a `RecordConflictError` (409) carrying the stored record.
 
+`act` works on every source: the same guard order as the memory adapter (unknown record, then stale `baseVersion`, then the source's refusal), then a no-op — the record comes back unchanged. A confirm dialog and its failure states are testable without a server.
+
 `sourceStates(viewStates(view, documents, { now }), documents)` adds a `source` axis to the view's data states. Every data state stays once with `source: "ready"`; each other source that makes sense for the view (a save can only be refused or conflict where the view writes) gets one state. Each state has `adapter()`, a fresh adapter seeded with its records and put in its source state.
 
 ## Check every state of your views
@@ -86,8 +88,12 @@ Checks per state, each a named problem:
 | `viewer-visibility` | a dashboard tab or table column is shown, or missing, against what the state's viewer may see |
 | `editable-offered` | an inline edit, move or open handler is offered where the viewer condition is false or the record is locked |
 | `editable-missing` | the reverse: it is withheld where the viewer may use it |
+| `action-offered` | a table, calendar or board offers a record action the state withholds (`can.actions` false or `visibleWhen` false) |
+| `action-missing` | the reverse: an action `availableActions` allows is not offered |
+| `diff-offered` | a text column's Display was given a `diff` although the column does not compare |
+| `diff-missing` | a comparing column's Display got no `diff` while its comparator is present |
 
-`problems(results)` flattens the results into one line per problem, `"<state label> [<state id>]: <check>: <message>"`, so a failing `expect(problems(...)).toEqual([])` lists every failing state. `skip: ["accessible-name"]` leaves a check out. `limit` caps the data states (24 by default); lower `manyRecords` to keep the "many records" states fast.
+`problems(results)` flattens the results into one line per problem, `"<state label> [<state id>]: <check>: <message>"`, so a failing `expect(problems(...)).toEqual([])` lists every failing state. Pass `timeZone` to have generated `datetime` values rendered in a zone other than UTC (it goes to `viewStates`; a datetime quick-filter state then compares against 09:30 in that zone). `skip: ["accessible-name"]` leaves a check out. `limit` caps the data states (24 by default); lower `manyRecords` to keep the "many records" states fast.
 
 ## Contract kit
 
@@ -102,6 +108,6 @@ describeRegistryContract(myRegistry);
 
 - `registryContractChecks(registry, samples?)` returns the checks as `{ name, run() }` objects, for use outside Vitest. Run them one at a time.
 - `defaultSamples` is the fixture per field type; pass your own `FieldSamples` to override them.
-- The `layout.Calendar` and `layout.Board` keys are optional, so their checks only run when the registry has them; the mock registry's calendar and board (a plain board with a "Move to…" action and no drag) pass them.
+- The `layout.Calendar`, `layout.Board` and `layout.Dialog` keys and the `fields.datetime` key are optional, so their checks only run when the registry has them. `layout.Dialog` is checked for the modal behaviour RFC 0007 needs: named by its label, focus taken on open and returned on close, Escape closes. `fields.datetime` is checked for a `<time>` element whose `dateTime` is the stored instant, showing the formatted `text` it was given. The mock registry ships all of them (a plain board with a "Move to…" action and no drag, a datetime input over `datetime-local`, a minimal dialog) and passes the kit.
 
 See the [repo README](../README.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).
