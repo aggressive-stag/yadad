@@ -34,7 +34,7 @@ import "@yadad/components/styles.css";
 import { useState } from "react";
 
 const entity: EntityDocument = {
-  kind: "entity", specVersion: 5, id: "workout_set", revision: 1,
+  kind: "entity", specVersion: 6, id: "workout_set", revision: 1,
   fields: [
     { id: "day", type: "date", label: "Day", required: true },
     { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat", "Bench press"] } },
@@ -43,12 +43,12 @@ const entity: EntityDocument = {
 };
 
 const form: FormView = {
-  kind: "form", specVersion: 5, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "form", specVersion: 6, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
   sections: [{ id: "set", title: "Log a set", items: [{ field: "day" }, { field: "exercise" }, { field: "reps" }] }],
 };
 
 const table: TableView = {
-  kind: "table", specVersion: 5, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "table", specVersion: 6, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
   columns: [{ field: "day" }, { field: "exercise" }, { field: "reps" }],
   filter: { op: "gte", field: "day", value: { daysFromToday: -7 } },
   quickFilters: [{ field: "exercise" }],
@@ -73,6 +73,17 @@ Documents that come from a database or a user are untrusted JSON: run them throu
 
 A screen is more than the one state you looked at. `viewStates` in `@yadad/runtime` lists the states a view can be in, read from its conditions (a field hidden by `visibleWhen`, no records, many records, a locked record, each role), and `checkViewStates` in `@yadad/testing/state-checks` renders every one with your renderers and reports the ones that throw, log errors, show a field that should be hidden, lack an accessible name or offer an edit the viewer may not make. The editor package has a `StatesPreview` that shows the same states next to a view as you edit it. See [`@yadad/testing`](testing) for a test you can paste.
 
+## Review screens
+
+A review screen — changes, a version history, decisions to act on — is a table, a `datetime` field, a compare column and record actions, all from the documents.
+
+- **Record actions.** An entity declares what a record can do (`actions`: `apply`, `reject`, `restore`, ... each `id`, `label`, optional `confirm` message, optional typed `input` fields, optional `visibleWhen`), and a table, calendar or board offers them per row with `recordActions`. A press runs, or asks first in a dialog built by the renderer and drawn through the registry's `layout.Dialog`. The adapter runs it (`POST .../actions/{action}` with the required `baseVersion`) and the row updates with the record's new `can`. `availableActions` in `@yadad/runtime` answers "may this row offer this action" for the renderer and the editor alike; an action withheld by `visibleWhen` or `can.actions` is not rendered, not greyed out.
+- **Datetimes.** A `datetime` field stores one canonical string — UTC, milliseconds, `Z` — so sorting and filtering never parse; cells show the viewer's zone and locale via `formatDateTime`, and a from/to quick filter reads the viewer's clock (a range typed 10:00–10:30 includes 10:30:59.999).
+- **What changed.** `compare` on a text column diffs the cell against the previous or next row, or against another text field of the same record — a version history shows the edit as words, marked up by the component (`diff` prop on the text `Display`). The diff is computed in `runtime` and checked by the state grid.
+- **Paging without a count.** `Page.total` is optional: a server that answers `next` gets cursor paging with Previous and Next (the table keeps the cursors it visited; "Load more" is rejected), and a count widget walks pages to the 5,000 cap and says "5000+".
+
+The showcase's review page is a worked example: changes, version history with compare, and decisions with apply, reject and restore, every action editable and previewable. See [ARCHITECTURE.md](ARCHITECTURE.md) §6 and [RFC 0007](rfcs/0007-review-screens.md).
+
 ## Packages
 
 | Package | What it is |
@@ -94,7 +105,7 @@ A screen is more than the one state you looked at. `viewStates` in `@yadad/runti
 - **Conditions.** A JSON AST (`eq`, `gt`, `in`, `and`, `not`, ...) drives `visibleWhen`, `requiredWhen` and filters; there are no string expressions. Date comparisons accept a relative date, `{ "daysFromToday": n }` (0 is today, -7 a week ago), resolved from the viewer's local date.
 - **Viewer facts.** A `viewer` document lists facts (`select` or `boolean`, each with a default). The host resolves them for the current user with `resolveViewer` and passes the result to a renderer's `viewer` prop. A `viewerIn` condition on a column, form field, tab, widget, row action or `editableWhen` shows or allows it only for matching viewers; hidden things are not rendered, not greyed out. A record may also carry `can: { update?, delete? }`, which can only take rights away. The server still decides: a refused write is a 403. See [ARCHITECTURE.md](ARCHITECTURE.md) and [RFC 0006](rfcs/0006-viewer.md).
 - **Quick filters.** A table's `quickFilters` lets the viewer filter by a field: exact for select and boolean, substring for text, a from/to range for number and date.
-- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 5) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
+- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 6) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
 - **Document ids.** Document, field, section, tab and grid-item ids all match `[a-z][a-z0-9_]*`: lowercase letters, digits and underscores, starting with a letter. Use `workout_set`, not `workout-set`, `WorkoutSet` or `1st_set`. Grid-item ids only need to be unique within their tab.
 
 ## Documentation

@@ -33,12 +33,12 @@ A board shows records as cards in columns, one per value of a select, boolean or
 import type { BoardView, ViewerDocument } from "@yadad/core";
 
 const viewer: ViewerDocument = {
-  kind: "viewer", specVersion: 5, id: "viewer", revision: 1,
+  kind: "viewer", specVersion: 6, id: "viewer", revision: 1,
   facts: [{ id: "role", label: "Role", type: "select", options: { source: "static", values: ["viewer", "editor"] }, default: "viewer" }],
 };
 
 const board: BoardView = {
-  kind: "board", specVersion: 5, id: "task_board", entity: "task", revision: 1, dataSource: "default",
+  kind: "board", specVersion: 6, id: "task_board", entity: "task", revision: 1, dataSource: "default",
   groupBy: [{ field: "status" }, { field: "owner" }], // the viewer picks one; the first is the default
   titleField: "title",
   editable: true, // dragging a card to another column changes the grouping field...
@@ -59,7 +59,7 @@ Viewer conditions may appear only where `describeContract().conditionPlaces` lis
 
 ## Rules worth knowing
 
-- `specVersion` is the document format (currently 5); `revision` counts user edits to a document and is data.
+- `specVersion` is the document format (currently 6); `revision` counts user edits to a document and is data.
 - Ids (documents, fields, sections, tabs, grid items) match `[a-z][a-z0-9_]*`, e.g. `workout_set`; grid-item ids need only be unique within their tab.
 - Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`; `viewerIn` tests a viewer fact.
 

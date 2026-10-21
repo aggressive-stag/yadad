@@ -242,7 +242,7 @@ The contract itself is also machine-readable: `describeContract()` in `core` is 
 | Migration | Pure `migrate(doc, from, to)` in `core`, plus a before/after fixture pair | None for additive edits. Destructive edits (delete a field, change its type) go through an explicit editor transform. |
 | Records | n/a | Store `{ entityId, entityRevision }`. Old records are upcast lazily on read. If one fails validation, show "saved under revision N" instead of crashing. |
 
-Documents use `specVersion: 5`; the validator also accepts the older versions 0 to 4, which `migrate()` stamps step by step. Each step so far was additive, so every older document stays valid: 1 added relative dates in conditions (D22), 2 the `stat` widget, `reference` field and `rowAction`, 3 the `calendar` view, 4 the `board` view and 5 the `viewer` document, the `viewerIn` op and the viewer-only keys. Any other value is rejected (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
+Documents use `specVersion: 6`; the validator also accepts the older versions 0 to 5, which `migrate()` stamps step by step. Each step so far was additive, so every older document stays valid: 1 added relative dates in conditions (D22), 2 the `stat` widget, `reference` field and `rowAction`, 3 the `calendar` view, 4 the `board` view, 5 the `viewer` document, the `viewerIn` op and the viewer-only keys, and 6 the `datetime` field type, entity `actions`, view `recordActions`, the column `compare` setting and optional page totals (RFC 0007, D45). Any other value is rejected (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
 
 ## 9. Registry contract and ownership
 
@@ -300,7 +300,7 @@ Interface, `Query` and the typed adapter errors in `core`. The memory, key-value
 ## 11. Stability policy
 
 - Fixed package list; new packages and new dependencies need an RFC.
-- The contract is in flux: `specVersion` is `5`, and no `contract-vN` freeze or tag is planned (D13). When the format does change, it ships with a `specVersion` bump, a `migrate()` step and a before/after fixture pair (AGENTS.md rule 8) — a future freeze is a separate decision, not a deadline.
+- The contract is in flux: `specVersion` is `6`, and no `contract-vN` freeze or tag is planned (D13). When the format does change, it ships with a `specVersion` bump, a `migrate()` step and a before/after fixture pair (AGENTS.md rule 8) — a future freeze is a separate decision, not a deadline.
 - Agents land and release their own work (D14): changes to a published package carry a changeset; breaking changes carry a `BREAKING CHANGE:` note that says exactly what consumers must change. Consumers adopt the new version, and the components repo widens its peer range when a release falls outside it.
 - Deprecations last at least one minor with a runtime warning.
 - Public API reports and size budgets (size-limit) are the next CI gates (see `.github/workflows/ci.yml`).
