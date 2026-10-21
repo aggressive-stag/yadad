@@ -222,6 +222,68 @@ describe("EntityFieldsEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     expect(screen.getByRole("table", { name: "Actions of set" }).textContent).toContain("Ship");
   });
+
+  /** Opens the edit panel for a fresh "ship" action. */
+  function openShipPanel() {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Ship" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Ship" }));
+  }
+
+  const inputTable = () => screen.getByRole("table", { name: 'What "ship" asks for' });
+  const inputPanelSel = () => screen.getByRole("group", { name: /Ask for a field|Edit "/ });
+
+  test("an action asks for a choice-list input; it appears in the dialog table", () => {
+    openShipPanel();
+    expect(inputTable().textContent).toContain("runs on a plain confirm");
+    fireEvent.click(screen.getByRole("button", { name: "Ask for another field" }));
+    fireEvent.change(within(inputPanelSel()).getByLabelText(/What should they type\?/), { target: { value: "Choice list" } });
+    fireEvent.change(within(inputPanelSel()).getByLabelText(/^Id/), { target: { value: "reason" } });
+    fireEvent.change(within(inputPanelSel()).getByLabelText(/^Label/), { target: { value: "Reason" } });
+    fireEvent.change(within(inputPanelSel()).getByLabelText(/Choices, separated by commas/), { target: { value: "slip, weather" } });
+    fireEvent.click(within(inputPanelSel()).getByRole("button", { name: "Add field" }));
+    expect(inputTable().textContent).toContain("Reason");
+    expect(inputTable().textContent).toContain("Choice list");
+  });
+
+  test("removing the last input leaves the action asking for nothing", () => {
+    openShipPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Ask for another field" }));
+    fireEvent.change(within(inputPanelSel()).getByLabelText(/^Id/), { target: { value: "note" } });
+    fireEvent.change(within(inputPanelSel()).getByLabelText(/^Label/), { target: { value: "Note" } });
+    fireEvent.click(within(inputPanelSel()).getByRole("button", { name: "Add field" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note" }));
+    expect(inputTable().textContent).toContain("runs on a plain confirm");
+  });
+
+  test("a visibility condition applies, shows in words, saves, and can be cleared", () => {
+    const saved: EntityDocument[] = [];
+    cleanup();
+    render(<EntityFieldsEditor entity={entity} views={[table]} registry={mockRegistry} onSave={(e) => saved.push(e)} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Ship" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Ship" }));
+    const builder = document.querySelector("[data-yadad-rule-builder]") as HTMLElement;
+    fireEvent.change(builder.querySelector('[id$="-field-0"]') as HTMLSelectElement, { target: { value: "Spare" } });
+    fireEvent.change(builder.querySelector('[id$="-value-0"]') as HTMLInputElement, { target: { value: "done" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply visibility" }));
+    expect(screen.getByText(/Shown when Spare is done/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(saved[0]?.actions?.[0]?.visibleWhen).toEqual({ op: "eq", field: "spare", value: "done" });
+    cleanup();
+    const cleared: EntityDocument[] = [];
+    render(<EntityFieldsEditor entity={saved[0] as EntityDocument} views={[table]} registry={mockRegistry} onSave={(e) => cleared.push(e)} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Ship" }));
+    fireEvent.click(screen.getByRole("button", { name: "Always show" }));
+    expect(screen.queryByText(/Shown when/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(cleared[0]?.actions?.[0]?.visibleWhen).toBeUndefined();
+  });
 });
 
 describe("EntityFieldsEditor reference fields", () => {

@@ -1,12 +1,14 @@
-import { FIELD_TYPES } from "@yadad/core";
-import type { ActionConfirm, ActionConfirmTone, DocumentError, EntityDocument, Field, FieldType, FieldValue, RecordAction, RecordValues, Registry, SelectField, ViewDocument } from "@yadad/core";
+import { ACTION_INPUT_FIELD_TYPES, FIELD_TYPES } from "@yadad/core";
+import type { ActionConfirm, ActionConfirmTone, ActionInputField, DocumentError, EntityDocument, Field, FieldType, FieldValue, RecordAction, RecordValues, Registry, SelectField, ViewerDocument, ViewDocument } from "@yadad/core";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { COMMON_PROPERTIES, FIELD_PROPERTIES, FIELD_TYPE_LABELS, fieldFromProperties, propertiesFromField } from "./field-options.js";
-import { addAction, moveAction, removeAction, updateAction } from "./actions.js";
+import { addAction, addActionInput, moveAction, removeAction, removeActionInput, setActionVisibleWhen, updateAction, updateActionInput } from "./actions.js";
+import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
+import type { ConditionDraft } from "./condition-builder.js";
 import { addField, removeField, updateField } from "./fields.js";
 import { renderInput } from "./inputs.js";
-import { choiceField, propertyInput, warningList } from "./ui.js";
+import { choiceField, describeCondition, propertyInput, warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 
@@ -20,6 +22,11 @@ export interface EntityFieldsEditorProps {
    * field from lists. Without it those are typed as ids.
    */
   readonly entities?: readonly EntityDocument[];
+  /**
+   * The set's viewer document: with it, an action's visibility condition can
+   * compare against viewer facts too (RFC 0007).
+   */
+  readonly viewer?: ViewerDocument | undefined;
   /** Receives the edited entity with its revision bumped. */
   readonly onSave: (entity: EntityDocument) => void;
   readonly onCancel: () => void;
@@ -37,7 +44,27 @@ interface ActionPanelState {
   /** The action being edited, or undefined when adding a new one. */
   readonly editing?: string;
   readonly values: RecordValues;
+  /** The draft of the visibility condition, kept while the panel is open. */
+  readonly draft?: ConditionDraft | undefined;
 }
+
+/** The panel for one input field of an action: same shape as the field panel, minus reference. */
+interface InputPanelState {
+  /** The input field being edited, or undefined when adding a new one. */
+  readonly editing?: string;
+  readonly type: (typeof ACTION_INPUT_FIELD_TYPES)[number];
+  readonly values: RecordValues;
+}
+
+const INPUT_TYPE_LABELS = ACTION_INPUT_FIELD_TYPES.map((t) => FIELD_TYPE_LABELS[t]);
+
+const inputTypeChooser: SelectField = {
+  id: "type",
+  type: "select",
+  label: "What should they type?",
+  required: true,
+  options: { source: "static", values: INPUT_TYPE_LABELS },
+};
 
 const CONFIRM_TONE_LABELS: { readonly [K in ActionConfirmTone]: string } = { neutral: "Neutral", danger: "Danger" };
 
@@ -89,11 +116,12 @@ const typeChooser: SelectField = {
  * options or required flag, or remove one no view uses. Ids and types of
  * existing fields are fixed, since saved records depend on them.
  */
-export function EntityFieldsEditor({ entity, views, registry, entities, onSave, onCancel }: EntityFieldsEditorProps): ReactNode {
+export function EntityFieldsEditor({ entity, views, registry, entities, viewer, onSave, onCancel }: EntityFieldsEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<EntityDocument>>(() => startSession(entity));
   const [panel, setPanel] = useState<PanelState | undefined>(undefined);
   const [actionPanel, setActionPanel] = useState<ActionPanelState | undefined>(undefined);
+  const [inputPanel, setInputPanel] = useState<InputPanelState | undefined>(undefined);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const { Table, Button, Section, FieldFrame, ErrorSummary } = registry.layout;
   const current = session.current;
@@ -133,6 +161,42 @@ export function EntityFieldsEditor({ entity, views, registry, entities, onSave, 
   };
 
   const setActionValue = (key: string, value: FieldValue | undefined) => setActionPanel((p) => (p ? { ...p, values: { ...p.values, [key]: value ?? null } } : p));
+
+  const setInputDraft = (draft: ConditionDraft | undefined) => setActionPanel((p) => (p ? { ...p, draft } : p));
+
+  const applyVisibility = () => {
+    if (!actionPanel?.editing) return;
+    const condition = builtOf(actionPanel.draft);
+    const result = setActionVisibleWhen(current, actionPanel.editing, condition);
+    if (!result.ok) setProblems([result.error]);
+    else applyPatch(edit(session, result.patch));
+  };
+
+  const clearVisibility = () => {
+    if (!actionPanel?.editing) return;
+    const result = setActionVisibleWhen(current, actionPanel.editing, undefined);
+    if (!result.ok) setProblems([result.error]);
+    else applyPatch(edit(session, result.patch));
+  };
+
+  const applyInputPanel = () => {
+    if (!inputPanel || !actionPanel?.editing) return;
+    const draft = fieldFromProperties(inputPanel.type, inputPanel.values) as ActionInputField;
+    const result = inputPanel.editing === undefined ? addActionInput(current, actionPanel.editing, draft) : updateActionInput(current, actionPanel.editing, inputPanel.editing, draft);
+    if (!result.ok) setProblems([result.error]);
+    else applyPatch(edit(session, result.patch), () => setInputPanel(undefined));
+  };
+
+  const removeInputRow = (fieldId: string) => {
+    if (!actionPanel?.editing) return;
+    const result = removeActionInput(current, actionPanel.editing, fieldId);
+    if (!result.ok) setProblems([result.error]);
+    else applyPatch(edit(session, result.patch));
+  };
+
+  const setInputValue = (key: string, value: FieldValue | undefined) => setInputPanel((p) => (p ? { ...p, values: { ...p.values, [key]: value ?? null } } : p));
+
+  const inputProperty = (field: Field): ReactNode => propertyInput(registry, `${base}-input-prop-${field.id}`, field, inputPanel?.values[field.id] ?? undefined, (v) => setInputValue(field.id, v));
 
   const actionProperty = (field: Field): ReactNode => propertyInput(registry, `${base}-action-prop-${field.id}`, field, actionPanel?.values[field.id] ?? undefined, (v) => setActionValue(field.id, v));
 
@@ -199,12 +263,87 @@ export function EntityFieldsEditor({ entity, views, registry, entities, onSave, 
     <Section id="action-panel" title={actionPanel.editing ? `Edit action "${actionPanel.editing}"` : "Add an action"}>
       {actionPanel.editing !== undefined && (
         <p>
-          Id: {actionPanel.editing} (fixed: views offer actions by id; input fields and visibility come in the next card)
+          Id: {actionPanel.editing} (fixed: views offer actions by id)
         </p>
       )}
       {actionPanelFields.map(actionProperty)}
+      {actionPanel.editing !== undefined && (() => {
+        const action = (current.actions ?? []).find((a) => a.id === actionPanel.editing);
+        if (action === undefined) return null;
+        const input = action.input ?? [];
+        const inputColumns = ["Label", "Id", "Type", "Required", "Actions"].map((label) => ({ id: `action-input-${label.toLowerCase()}`, headerId: `${base}-action-input-col-${label}`, label, sortable: false }));
+        const inputRows = input.map((f) => ({
+          id: f.id,
+          cells: [
+            f.label,
+            f.id,
+            FIELD_TYPE_LABELS[f.type],
+            f.required === true ? "Yes" : "No",
+            <span key="actions" style={{ display: "inline-flex", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+              <Button label={`Edit ${f.label}`} type="button" variant="secondary" disabled={false} onPress={() => setInputPanel({ editing: f.id, type: f.type, values: propertiesFromField(f) })} />
+              <Button label={`Remove ${f.label}`} type="button" variant="secondary" disabled={false} onPress={() => removeInputRow(f.id)} />
+            </span>,
+          ],
+        }));
+        return (
+          <>
+            <Table
+              caption={`What "${action.id}" asks for`}
+              columns={inputColumns}
+              rows={inputRows}
+              onSort={() => {}}
+              empty="Nothing: the action runs on a plain confirm. Add up to five fields to ask for."
+            />
+            <Button label="Ask for another field" type="button" variant="secondary" disabled={input.length >= 5} onPress={() => setInputPanel({ type: "text", values: {} })} />
+            <div data-yadad-rule-builder="" style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+              <ConditionBuilder
+                id={`${base}-action-${action.id}-visibleWhen`}
+                label="Show only when"
+                registry={registry}
+                entity={current}
+                viewer={viewer}
+                draft={actionPanel.draft ?? draftFor(current, action.visibleWhen)}
+                onChange={setInputDraft}
+                current={action.visibleWhen}
+                onReplace={() => setInputDraft(draftFor(current, undefined))}
+              />
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                <Button
+                  label="Apply visibility"
+                  type="button"
+                  variant="primary"
+                  disabled={builtOf(actionPanel.draft) === undefined || JSON.stringify(builtOf(actionPanel.draft)) === JSON.stringify(action.visibleWhen)}
+                  onPress={applyVisibility}
+                />
+                {action.visibleWhen !== undefined && <Button label="Always show" type="button" variant="secondary" disabled={false} onPress={clearVisibility} />}
+              </div>
+              {action.visibleWhen !== undefined && (
+                <p>Shown when {describeCondition(action.visibleWhen, (fieldId) => current.fields.find((f) => f.id === fieldId)?.label ?? fieldId, (factId) => viewer?.facts.find((fc) => fc.id === factId)?.label ?? factId)}.</p>
+              )}
+            </div>
+          </>
+        );
+      })()}
+      {inputPanel && (
+        <Section id="action-input-panel" title={inputPanel.editing ? `Edit "${inputPanel.editing}"` : "Ask for a field"}>
+          {inputPanel.editing ? (
+            <p>
+              Type: {FIELD_TYPE_LABELS[inputPanel.type]} (changing it would invalidate what the dialog collects)
+            </p>
+          ) : (
+            propertyInput(registry, `${base}-input-type`, inputTypeChooser, FIELD_TYPE_LABELS[inputPanel.type], (label) => {
+              const type = ACTION_INPUT_FIELD_TYPES.find((t) => FIELD_TYPE_LABELS[t] === label);
+              if (type !== undefined) setInputPanel((p) => (p ? { ...p, type } : p));
+            })
+          )}
+          {COMMON_PROPERTIES.filter((p) => !(inputPanel.editing !== undefined && p.id === "id")).map(inputProperty)}
+          {FIELD_PROPERTIES[inputPanel.type].map(inputProperty)}
+          <Button label={inputPanel.editing ? "Apply changes" : "Add field"} type="button" variant="primary" disabled={false} onPress={applyInputPanel} />
+          <Button label="Close" type="button" variant="secondary" disabled={false} onPress={() => setInputPanel(undefined)} />
+        </Section>
+      )}
       <Button label={actionPanel.editing ? "Apply changes" : "Add action"} type="button" variant="primary" disabled={false} onPress={applyActionPanel} />
-      <Button label="Close" type="button" variant="secondary" disabled={false} onPress={() => setActionPanel(undefined)} />
+      <Button label="Close" type="button" variant="secondary" disabled={false} onPress={() => { setActionPanel(undefined); setInputPanel(undefined); }} />
     </Section>
   );
 

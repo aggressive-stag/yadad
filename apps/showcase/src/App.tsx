@@ -344,7 +344,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
             {mode.kind === "layout" && mode.id === id && view?.kind === "dashboard" ? (
               <DashboardLayoutEditor dashboard={view} registry={registry} {...(documents.viewer ? { viewer: documents.viewer } : {})} onSave={save} onCancel={close} describeView={(v) => describe(v, documents)} views={[...documents.views.values()]} entities={documents.entities} />
             ) : mode.kind === "fields" && entity && mode.id === entity.id ? (
-              <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} onSave={save} onCancel={close} />
+              <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} {...(documents.viewer ? { viewer: documents.viewer } : {})} onSave={save} onCancel={close} />
             ) : (mode.kind === "form" || mode.kind === "table" || mode.kind === "calendar" || mode.kind === "board") && editing ? (
               viewEditor(mode, documents, registry, save, close)
             ) : (
