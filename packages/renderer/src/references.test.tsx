@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { DataAdapter, EntityDocument, FormView, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { FormRenderer } from "./form-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
 
@@ -123,5 +123,37 @@ describe("reference field in a table", () => {
     fireEvent.change(select, { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByTestId("display-exercise").textContent).toBe("Bench"));
+  });
+
+  test("a table whose reference target was never wired warns once and keeps the raw id", async () => {
+    const db = await seeded();
+    await db.create("set_entry", { exercise: "1", reps: 5 }, { entityRevision: 1 });
+    await db.create("set_entry", { exercise: "2", reps: 3 }, { entityRevision: 1 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      // Only the row's own entity is passed; the reference target is missing.
+      const partial = new Map([["set_entry", entry]]);
+      render(<TableRenderer entity={entry} view={table} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={partial} />);
+      // The raw ids stay on screen: no contract change, the warning is the signal.
+      await waitFor(() => expect(screen.getAllByTestId("display-exercise").map((e) => e.textContent)).toEqual(["1", "2"]));
+      // Two rows, one target entity: exactly one warning per mount.
+      await waitFor(() => expect(warn).toHaveBeenCalledTimes(1));
+      expect(warn.mock.calls[0]?.[0]).toBe('yadad: reference field "exercise" points at entity "exercise", which was not passed in the renderer\'s "entities" prop, so its cells show raw ids.');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("a wired reference target does not warn", async () => {
+    const db = await seeded();
+    await db.create("set_entry", { exercise: "1", reps: 5 }, { entityRevision: 1 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(<TableRenderer entity={entry} view={table} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={entities} />);
+      await waitFor(() => expect(screen.getByTestId("display-exercise").textContent).toBe("Squat"));
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

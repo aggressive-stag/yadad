@@ -1,6 +1,6 @@
 import type { DataAdapter, EntityDocument, ReferenceDisplayExtras, ReferenceField, ReferenceInputExtras, ReferenceOptions } from "@yadad/core";
 import { loadReferenceOptions, resolveReferenceLabels } from "@yadad/runtime";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** The label of a record that no longer exists. */
 export const UNKNOWN_REFERENCE_LABEL = "Unknown";
@@ -23,6 +23,22 @@ export interface ReferenceWant {
 }
 
 /**
+ * A reference target that was never wired looks like data on screen (the cell
+ * keeps today's raw-id label), so the only honest signal is the console. One
+ * warning per renderer mount and target entity: a hundred rows must not print
+ * a hundred copies, and a fresh mount warns again. Card 40c turns this into a
+ * state-check problem in @yadad/testing.
+ */
+function useUnwiredTargetWarning(): (entity: string, fieldId: string) => void {
+  const warned = useRef<Set<string>>(new Set());
+  return useCallback((entity: string, fieldId: string) => {
+    if (warned.current.has(entity)) return;
+    warned.current.add(entity);
+    console.warn(`yadad: reference field "${fieldId}" points at entity "${entity}", which was not passed in the renderer's "entities" prop, so its cells show raw ids.`);
+  }, []);
+}
+
+/**
  * Loads picker options (for `pickers`) and resolves labels (for `wants`) from
  * the target entities' records. Records come from `adapter`, which is the
  * data source of the view being rendered: one adapter serves every entity of
@@ -31,6 +47,7 @@ export interface ReferenceWant {
 export function useReferences(adapter: DataAdapter | undefined, targets: Targets | undefined, pickers: readonly ReferenceField[], wants: readonly ReferenceWant[], reloadKey?: unknown): ReferenceSupport {
   const [options, setOptions] = useState<ReadonlyMap<string, ReferenceOptions>>(new Map());
   const [labels, setLabels] = useState<ReadonlyMap<string, LabelEntry>>(new Map());
+  const warnUnwired = useUnwiredTargetWarning();
 
   const pickerKey = JSON.stringify(pickers.map((f) => [f.id, f.entity, f.display ?? null]));
   const wantKey = JSON.stringify([...new Set(wants.map((w) => labelKey(w.field, w.id)))].sort());
@@ -41,6 +58,7 @@ export function useReferences(adapter: DataAdapter | undefined, targets: Targets
     for (const field of pickers) {
       const target = targets?.get(field.entity);
       if (!target) {
+        warnUnwired(field.entity, field.id);
         setOptions((m) => new Map(m).set(field.id, { status: "error", message: `Entity "${field.entity}" was not provided to the renderer.` }));
         continue;
       }
@@ -54,7 +72,7 @@ export function useReferences(adapter: DataAdapter | undefined, targets: Targets
       current = false;
     };
     // pickerKey stands for `pickers`.
-  }, [adapter, targets, pickerKey, reloadKey]);
+  }, [adapter, targets, pickerKey, reloadKey, warnUnwired]);
 
   useEffect(() => {
     if (!adapter) return;
@@ -73,6 +91,7 @@ export function useReferences(adapter: DataAdapter | undefined, targets: Targets
         return next;
       });
       if (!target) {
+        warnUnwired(field.entity, field.id);
         settle(() => ({ status: "error" }));
         continue;
       }
@@ -85,7 +104,7 @@ export function useReferences(adapter: DataAdapter | undefined, targets: Targets
       current = false;
     };
     // wantKey stands for `wants`.
-  }, [adapter, targets, wantKey, reloadKey]);
+  }, [adapter, targets, wantKey, reloadKey, warnUnwired]);
 
   return useMemo<ReferenceSupport>(
     () => ({
