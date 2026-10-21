@@ -33,7 +33,14 @@ export type SubmitResult =
  * changed, nothing is sent and the record comes back as it was.
  */
 export async function submitEdit(entity: EntityDocument, record: DataRecord, patch: RecordValues, adapter: DataAdapter): Promise<SubmitResult> {
-  const errors = validateRecord(entity, { ...record.values, ...patch });
+  // A records host may serve values the entity does not declare (computed or
+  // server-managed fields). Those keys belong to the server, not to this edit:
+  // keep them out of the merge, or one of them refuses every edit of every
+  // record of the entity. Keys the *patch* introduces stay under validation
+  // below, so a record the client builds is still checked strictly.
+  const declared = new Set(entity.fields.map((f) => f.id));
+  const served = Object.fromEntries(Object.entries(record.values).filter(([key]) => declared.has(key)));
+  const errors = validateRecord(entity, { ...served, ...patch });
   if (errors.length > 0) return { ok: false, errors };
   // A missing value and null both mean empty, so clearing an empty field is no change.
   const changed = Object.fromEntries(Object.entries(patch).filter(([key, value]) => (record.values[key] ?? null) !== value));

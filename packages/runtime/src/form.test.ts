@@ -117,6 +117,30 @@ describe("form state", () => {
     expect(patches).toEqual([{ note: "hi" }]);
   });
 
+  test("submitEdit ignores values the server sent for undeclared fields", async () => {
+    // A records host may serve computed / server-managed values the entity
+    // document never declared. They must not refuse the edit, and none of them
+    // may ride along in the patch.
+    const db = createMemoryAdapter();
+    const served = await db.create("hello", { name: "Ada", note: "x", is_home: true, open_tasks: 3 }, { entityRevision: 4 });
+    const patches: object[] = [];
+    const spy = { ...db, update: (...args: Parameters<typeof db.update>) => (patches.push(args[2]), db.update(...args)) };
+    const edited = await submitEdit(entity, served, { name: "Grace" }, spy);
+    if (!edited.ok) throw new Error(`edit refused: ${JSON.stringify(edited.errors)}`);
+    expect(patches).toEqual([{ name: "Grace" }]);
+    expect(edited.record.values).toMatchObject({ name: "Grace", is_home: true, open_tasks: 3 });
+  });
+
+  test("submitEdit still refuses an undeclared key the client puts in the patch", async () => {
+    const db = createMemoryAdapter();
+    const created = await submitForm(entity, { name: "Ada" }, db);
+    if (!created.ok) throw new Error("setup");
+    const result = await submitEdit(entity, created.record, { name: "Grace", is_home: true }, db);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.errors.map((e) => [e.path, e.code])).toEqual([["/is_home", "unknown-property"]]);
+  });
+
   test("invalid submit returns errors and writes nothing", async () => {
     const db = createMemoryAdapter();
     const result = await submitForm(entity, {}, db);
