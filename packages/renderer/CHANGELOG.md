@@ -1,5 +1,15 @@
 # @yadad/renderer
 
+## 0.10.1
+
+### Patch Changes
+
+- b56f232: README documents the review screen: per-row record actions offered only where `availableActions` allows and drawn through `layout.Dialog`, compare columns handing the text Display a `diff`, datetime cells formatted for the viewer's zone, and cursor paging (Previous/Next over a visited-cursor stack) when a page carries no total.
+- Updated dependencies [cb8579e]
+- Updated dependencies [f8bad61]
+  - @yadad/core@0.12.1
+  - @yadad/runtime@0.9.2
+
 ## 0.10.0
 
 ### Minor Changes

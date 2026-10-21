@@ -1,5 +1,13 @@
 # @yadad/runtime
 
+## 0.9.2
+
+### Patch Changes
+
+- f8bad61: README documents the review-screen logic: running actions through the adapters (the `actions` handler option, `act`'s conflict semantics, cursor-paging option), the datetime functions and the one canonical instant, `availableActions` as the single answer for offer-or-withhold, and the word diff and compare helpers with the neighbour-window rule.
+- Updated dependencies [cb8579e]
+  - @yadad/core@0.12.1
+
 ## 0.9.1
 
 ### Patch Changes

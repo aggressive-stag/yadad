@@ -1,5 +1,15 @@
 # @yadad/testing
 
+## 0.8.1
+
+### Patch Changes
+
+- 27b07f1: README documents the RFC 0007 test surface: the `action-offered` / `action-missing` and `diff-offered` / `diff-missing` state checks, `checkViewStates`' `timeZone` for generated datetime values, `act` on the state adapter, and the contract kit's optional `layout.Dialog` and `fields.datetime` checks.
+- Updated dependencies [cb8579e]
+- Updated dependencies [f8bad61]
+  - @yadad/core@0.12.1
+  - @yadad/runtime@0.9.2
+
 ## 0.8.0
 
 ### Minor Changes

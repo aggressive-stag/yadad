@@ -1,5 +1,15 @@
 # @yadad/editor
 
+## 0.12.1
+
+### Patch Changes
+
+- cc55b2e: README documents authoring the review screen: the entity editor's Actions section (confirm, input fields, visibleWhen, refusal while a view offers the action), the "Offer actions" panel on the table, calendar and board editors, compare on a text column, and the states preview naming the action and paging axes.
+- Updated dependencies [cb8579e]
+- Updated dependencies [f8bad61]
+  - @yadad/core@0.12.1
+  - @yadad/runtime@0.9.2
+
 ## 0.12.0
 
 ### Minor Changes
