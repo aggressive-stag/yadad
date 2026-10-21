@@ -45,6 +45,18 @@ const { viewer } = resolveViewer(viewerDocument, [{ fact: "role", value: user.ro
 
 Without a `viewer` prop, a renderer that is given the document set (`documents`, whose `viewer` field holds the viewer document) uses the document's defaults; a bare view that reads a viewer fact and cannot find the document shows an error summary at `/viewer`. Views that read no viewer fact need nothing. The server stays the authority: a refused write (403) still reverts the change and reloads the records, which refreshes `can`.
 
+## Review screens
+
+A table, calendar or board whose entity declares `actions` and whose view lists `recordActions` shows them per row — offered in the view's order, and only where `availableActions` allows it (the action's `visibleWhen` for the record and viewer, and `can.actions` not saying false). An action with a `confirm` or `input` opens a dialog the renderer builds and draws through the registry's `layout.Dialog` (an optional key; without it a view that needs one gets an error at `/layout/Dialog`). A press runs `adapter.act` with the record's last-read `baseVersion`; the row updates with the record the action returned, including its new `can`, and a removal drops the row. An action nothing may offer is not rendered at all — never greyed out.
+
+```tsx
+<TableRenderer entity={change} view={history} registry={registry} dataSources={dataSources} />
+```
+
+- **What changed.** A column with `compare` shows its text as a word diff against a neighbouring row or another text field of the record (RFC 0007). The renderer reads the one extra row the first/last cell needs (through `neighbourQuery`, or the previous page's last row for a cursor page), runs `compareCells`, and hands the text `Display` a `diff` prop — the component draws the `<del>`/`<ins>`, the renderer computes nothing into the markup.
+- **Datetimes.** A `datetime` cell goes through `formatDateTime` and reaches the `Display` as `text` plus the stored `value`, for a `<time dateTime>`; the raw string is shown only when it is not an instant at all, and the validation error names it then. A from/to quick filter on a datetime field reads the viewer's clock via `instantRangeBounds`.
+- **Paging without a count.** A page that answers `total` keeps the numbered pager; one that answers only `next` switches the table to cursor paging — Previous and Next, with the cursors it has visited kept so Previous works even though the server only hands out forward tokens. A change of sort, filter or page size is a new question: the cursor stack clears. There is deliberately no "Load more".
+
 ## Reference fields
 
 A `reference` field stores another entity's record id. Pass the documents of the target entities as `entities` (a `Map` by id; a dashboard takes them from `documents.entities`). The picker's options (up to 200, sorted by the display field) and the table's labels are read from the **view's own data source**: one adapter serves every entity, so a form or table whose `dataSource` is `"default"` also reads the targets from `"default"`. A table shows the label of each id on the page, the raw id while it loads, and "Unknown" when the record no longer exists. Without `entities`, the picker shows an error state.
