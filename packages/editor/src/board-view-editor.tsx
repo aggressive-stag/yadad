@@ -35,6 +35,7 @@ import {
   setBoardTitle,
   setBoardTitleField,
 } from "./views.js";
+import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
 
 export interface BoardViewEditorProps {
@@ -449,6 +450,7 @@ export function BoardViewEditor({ view, entity, registry, context, viewer, onSav
           )}
         </Section>
       )}
+      <RecordActionsPanel view={current} entity={entity} registry={registry} run={run} announce={announce} base={base} surface="card" />
       <p aria-live="polite" data-yadad-editor-status="">
         {status}
       </p>

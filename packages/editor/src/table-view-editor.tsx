@@ -13,6 +13,7 @@ import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import { ViewerRule } from "./viewer-rule.js";
 import { rowActionTargets, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
+import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
 
 export interface TableViewEditorProps {
@@ -360,6 +361,7 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
         </div>
         {columnIndicatorAfterTable && <DropIndicator />}
       </Section>
+      <RecordActionsPanel view={current} entity={entity} registry={registry} run={run} announce={announce} base={base} surface="row" />
       <p aria-live="polite" data-yadad-editor-status="">
         {status}
       </p>

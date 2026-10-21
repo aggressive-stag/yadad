@@ -1,4 +1,4 @@
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, jsonPointer, validateDocuments } from "@yadad/core";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, jsonPointer, validateDocuments } from "@yadad/core";
 import type { BoardView, CalendarMode, CalendarView, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
@@ -6,7 +6,7 @@ import type { Json, PatchOperation } from "@yadad/runtime";
 // entity fields by id, so every edit here is safe for saved records. Each
 // patch starts with a `test` so it refuses to apply to a stale document.
 
-type Result = { ok: true; patch: PatchOperation[] } | { ok: false; error: DocumentError };
+export type Result = { ok: true; patch: PatchOperation[] } | { ok: false; error: DocumentError };
 
 const ok = (patch: PatchOperation[]): Result => ({ ok: true, patch });
 const fail = (path: (string | number)[], message: string, hint: string): Result => ({ ok: false, error: { path: jsonPointer(path), code: "invalid-value", message, hint } });
@@ -221,6 +221,54 @@ export function setRowActionVisibleWhen(view: TableView | CalendarView | BoardVi
   if (!action) return fail(["rowAction"], "This view has no row action.", "Set a row action first.");
   const ops = setOptional(action.visibleWhen !== undefined, "/rowAction/visibleWhen", condition as unknown as Json | undefined);
   return ok(ops.length === 0 ? [] : [{ op: "test", path: "/id", value: view.id }, ...ops]);
+}
+
+/** A table, calendar or board: the three views that offer record actions (RFC 0007). */
+export type ActionOfferingView = TableView | CalendarView | BoardView;
+
+/**
+ * Offers the entity's actions on the view's records, in this order (RFC 0007):
+ * 1 to RECORD_ACTIONS_MAX ids, each once, each an action of the entity. An
+ * empty list removes `recordActions` — offering nothing is the same as the
+ * key being absent, and the validator refuses an empty array. The candidate
+ * document goes through the validator, so a stale or unknown action id is
+ * refused here rather than at save time.
+ */
+export function setRecordActions(view: ActionOfferingView, entity: EntityDocument, ids: readonly string[]): Result {
+  const declared = new Set((entity.actions ?? []).map((a) => a.id));
+  for (const id of ids) {
+    if (!declared.has(id)) return fail(["recordActions"], `"${id}" is not an action of entity "${entity.id}".`, declared.size > 0 ? `Use one of: ${[...declared].join(", ")}, or add the action to the entity first.` : `Entity "${entity.id}" declares no actions; add the action to the entity first.`);
+  }
+  if (ids.length > RECORD_ACTIONS_MAX) return fail(["recordActions"], `A view offers at most ${RECORD_ACTIONS_MAX} actions, but ${ids.length} are listed.`, "Remove some.");
+  if (JSON.stringify(view.recordActions ?? []) === JSON.stringify(ids)) return ok([]);
+  const ops = setOptional(view.recordActions !== undefined, "/recordActions", ids.length > 0 ? ([...ids] as unknown as Json) : undefined);
+  return ok(ops.length === 0 ? [] : [{ op: "test", path: "/id", value: view.id }, ...ops]);
+}
+
+/** Adds an action to what the view offers, at the end. Refused when it is already offered or the cap is reached. */
+export function offerRecordAction(view: ActionOfferingView, entity: EntityDocument, actionId: string): Result {
+  const offered = view.recordActions ?? [];
+  if (offered.includes(actionId)) return fail(["recordActions"], `The view already offers "${actionId}".`, "It is in the offered list already.");
+  if (offered.length >= RECORD_ACTIONS_MAX) return fail(["recordActions"], `A view offers at most ${RECORD_ACTIONS_MAX} actions.`, "Remove one before adding another.");
+  return setRecordActions(view, entity, [...offered, actionId]);
+}
+
+/** Stops the view offering an action, keeping the order of the rest. */
+export function unofferRecordAction(view: ActionOfferingView, entity: EntityDocument, actionId: string): Result {
+  const offered = view.recordActions ?? [];
+  if (!offered.includes(actionId)) return fail(["recordActions"], `The view does not offer "${actionId}".`, "Nothing to remove.");
+  return setRecordActions(view, entity, offered.filter((id) => id !== actionId));
+}
+
+/** Moves an offered action one place, keeping the rest in order. */
+export function moveOfferedRecordAction(view: ActionOfferingView, entity: EntityDocument, actionId: string, by: -1 | 1): Result {
+  const offered = [...(view.recordActions ?? [])];
+  const from = offered.indexOf(actionId);
+  if (from < 0) return fail(["recordActions"], `The view does not offer "${actionId}".`, "Offer it first.");
+  const to = from + by;
+  if (to < 0 || to >= offered.length) return fail(["recordActions"], `"${actionId}" is already ${by < 0 ? "first" : "last"}.`, "Move it the other way.");
+  [offered[from], offered[to]] = [offered[to] as string, offered[from] as string];
+  return setRecordActions(view, entity, offered);
 }
 
 /** Sets or clears the viewer condition that lists a dashboard tab. */

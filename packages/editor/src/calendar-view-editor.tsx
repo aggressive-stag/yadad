@@ -34,6 +34,7 @@ import {
   setCalendarWeekStartsOn,
   toggleCalendarMode,
 } from "./views.js";
+import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
 
 export interface CalendarViewEditorProps {
@@ -410,6 +411,7 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
         <Table caption={`Detail fields of ${current.title ?? current.id}`} columns={columns} rows={rows} onSort={() => {}} empty="No detail fields." />
         {detailIndicatorAfterTable && <DropIndicator />}
       </Section>
+      <RecordActionsPanel view={current} entity={entity} registry={registry} run={run} announce={announce} base={base} surface="entry" />
       <p aria-live="polite" data-yadad-editor-status="">
         {status}
       </p>

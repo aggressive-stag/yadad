@@ -92,3 +92,20 @@ describe("CalendarViewEditor", () => {
     expect(screen.getByText("Activating an entry does nothing.")).toBeTruthy();
   });
 });
+
+describe("CalendarViewEditor offer actions", () => {
+  const bookingEntity: EntityDocument = { ...entity, actions: [{ id: "confirm", label: "Confirm" }, { id: "cancel", label: "Cancel" }] };
+
+  test("offers entry actions in order, moves and saves them", () => {
+    const saved: CalendarView[] = [];
+    render(<CalendarViewEditor view={view} entity={bookingEntity} registry={mockRegistry} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    press("Offer this action");
+    fireEvent.change(screen.getByLabelText("Action"), { target: { value: "Cancel (cancel)" } });
+    press("Offer this action");
+    const rows = () => within(screen.getByRole("table", { name: /offered on each entry/ })).getAllByRole("row").slice(1).map((r) => r.textContent ?? "");
+    expect(rows()).toEqual([expect.stringContaining("Confirm"), expect.stringContaining("Cancel")]);
+    press("Move Cancel up");
+    press("Save calendar");
+    expect(saved[0]?.recordActions).toEqual(["cancel", "confirm"]);
+  });
+});

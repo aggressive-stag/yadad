@@ -1,10 +1,10 @@
 import { validateDocument, validateDocuments } from "@yadad/core";
-import type { DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { BoardView, CalendarView, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { describe, expect, test } from "vitest";
 import { blankDashboard, blankEntity, blankForm, blankTable } from "./blank.js";
 import { addTab, addWidget, freeSpot, removeTab, removeWidget, renameTab, uniqueItemId } from "./layout.js";
-import { edit, startSession } from "./session.js";
+import { edit, finish, startSession } from "./session.js";
 import type { EditSession } from "./session.js";
 import {
   addColumn,
@@ -16,8 +16,10 @@ import {
   moveColumnTo,
   moveFieldTo,
   moveFormItem,
+  moveOfferedRecordAction,
   moveSection,
   moveSectionTo,
+  offerRecordAction,
   removeColumn,
   removeFormItem,
   removeSection,
@@ -27,10 +29,12 @@ import {
   setFormItemCondition,
   setPageSize,
   setQuickFilter,
+  setRecordActions,
   setSectionTitle,
   setTableFilter,
   setTableSort,
   setTableTitle,
+  unofferRecordAction,
 } from "./views.js";
 
 const entity: EntityDocument = {
@@ -324,5 +328,86 @@ describe("quick filter support", () => {
     expect(canQuickFilter(undefined)).toBe(false);
     expect(QUICK_FILTER_KINDS.number).toBe("range");
     expect(QUICK_FILTER_KINDS.date).toBe("range");
+  });
+});
+
+describe("record actions offered by views (RFC 0007)", () => {
+  const offered: EntityDocument = {
+    ...entity,
+    actions: [
+      { id: "apply", label: "Apply" },
+      { id: "reject", label: "Reject", confirm: { message: "Reject it?" } },
+      { id: "close", label: "Close" },
+    ],
+  };
+  const board: BoardView = { kind: "board", specVersion: 0, id: "tasks_board", entity: "task", revision: 1, dataSource: "default", groupBy: [{ field: "done" }] };
+  const calendar: CalendarView = { kind: "calendar", specVersion: 0, id: "tasks_cal", entity: "task", revision: 1, dataSource: "default", dateField: "due" };
+
+  const applyOffer = <T extends TableView | BoardView | CalendarView>(s: EditSession<T>, result: PatchOperation[] | { ok: true; patch: PatchOperation[] } | { ok: false; error: { message: string } }): EditSession<T> => {
+    if (!Array.isArray(result) && !result.ok) throw new Error(`helper refused: ${result.error.message}`);
+    const next = edit(s, Array.isArray(result) ? result : result.patch);
+    expect(next.rejected).toEqual([]);
+    return next;
+  };
+
+  test("offering actions on a table writes the key in order and finishes dirty", () => {
+    const s = applyOffer(startSession(table), setRecordActions(table, offered, ["apply", "reject"]));
+    expect(finish(s).recordActions).toEqual(["apply", "reject"]);
+  });
+
+  test("offering nothing removes the key; offering the same list changes nothing", () => {
+    const withOffer = { ...table, recordActions: ["apply", "close"] };
+    let s = applyOffer(startSession(withOffer), setRecordActions(withOffer, offered, []));
+    expect(finish(s).recordActions).toBeUndefined();
+    expect(setRecordActions(withOffer, offered, ["apply", "close"])).toEqual({ ok: true, patch: [] });
+  });
+
+  test("offer, unoffer and move keep the order", () => {
+    let s = applyOffer(startSession(table), offerRecordAction(table, offered, "close"));
+    s = applyOffer(s, offerRecordAction(s.current, offered, "apply"));
+    expect(s.current.recordActions).toEqual(["close", "apply"]);
+    s = applyOffer(s, moveOfferedRecordAction(s.current, offered, "apply", -1));
+    expect(s.current.recordActions).toEqual(["apply", "close"]);
+    s = applyOffer(s, unofferRecordAction(s.current, offered, "close"));
+    expect(s.current.recordActions).toEqual(["apply"]);
+  });
+
+  test("an id the entity does not declare is refused with the list of real ones", () => {
+    const result = setRecordActions(table, offered, ["ghost"]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('"ghost" is not an action of entity "task"');
+    const empty = setRecordActions(table, { ...entity }, ["apply"]);
+    expect(!empty.ok && empty.error.hint).toContain("declares no actions");
+  });
+
+  test("a seventh offer is refused by the helper and by the validator", () => {
+    const seven = ["apply", "reject", "close", "a", "b", "c", "d"];
+    const withSeven: EntityDocument = { ...offered, actions: seven.map((id) => ({ id, label: id })) };
+    const result = setRecordActions({ ...table, recordActions: ["apply"] }, withSeven, seven);
+    expect(result.ok).toBe(false);
+    const checked = validateDocument({ ...table, recordActions: seven });
+    expect(!checked.ok && checked.errors.some((e) => e.path === "/recordActions")).toBe(true);
+  });
+
+  test("offering the same action twice is refused", () => {
+    const result = offerRecordAction({ ...table, recordActions: ["apply"] }, offered, "apply");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain("already offers");
+  });
+
+  test("board and calendar offer actions the same way", () => {
+    const b = applyOffer(startSession(board), setRecordActions(board, offered, ["reject", "apply"]));
+    expect(finish(b).recordActions).toEqual(["reject", "apply"]);
+    const s = applyOffer(startSession(calendar), offerRecordAction(calendar, offered, "close"));
+    expect(finish(s).recordActions).toEqual(["close"]);
+  });
+
+  test("the patch is guarded: it refuses to apply to a view whose id moved", () => {
+    const patch = setRecordActions(table, offered, ["apply"]);
+    if (Array.isArray(patch) || !patch.ok) throw new Error("expected a patch");
+    const renamed: TableView = { ...table, id: "other" };
+    const s = edit(startSession(renamed), patch.patch);
+    expect(s.applied.length).toBe(0);
+    expect(s.rejected.length).toBe(1);
   });
 });

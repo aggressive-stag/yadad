@@ -131,3 +131,26 @@ describe("BoardViewEditor", () => {
     expect(screen.getByText("Activating a card does nothing.")).toBeTruthy();
   });
 });
+
+describe("BoardViewEditor offer actions", () => {
+  const boardEntity: EntityDocument = { ...entity, actions: [{ id: "apply", label: "Apply" }, { id: "reject", label: "Reject" }] };
+
+  test("offers, orders and stops offering card actions, saving recordActions", () => {
+    const saved: BoardView[] = [];
+    render(<BoardViewEditor view={view} entity={boardEntity} registry={mockRegistry} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Action"), { target: { value: "Reject (reject)" } });
+    press("Offer this action");
+    press("Offer this action");
+    expect(rowsOf(/offered on each card/)).toEqual([expect.stringContaining("Reject"), expect.stringContaining("Apply")]);
+    press("Move Apply up");
+    press("Stop offering Reject");
+    press("Save board");
+    expect(saved[0]?.recordActions).toEqual(["apply"]);
+  });
+
+  test("an entity with no actions says so and offers no chooser", () => {
+    render(<BoardViewEditor view={view} entity={entity} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+    expect(rowsOf(/offered on each card/).join(" ")).toContain("declares no actions");
+    expect(screen.queryByRole("button", { name: "Offer this action" })).toBeNull();
+  });
+});

@@ -288,3 +288,22 @@ describe("TableViewEditor row action", () => {
     expect(options).not.toContain("Title");
   });
 });
+
+describe("TableViewEditor offer actions", () => {
+  const taskEntity: EntityDocument = { ...entity, actions: [{ id: "apply", label: "Apply" }, { id: "reject", label: "Reject" }] };
+  const tasksTable: TableView = { kind: "table", specVersion: 0, id: "tasks", entity: "task", revision: 1, dataSource: "default", columns: [{ field: "title" }] };
+
+  test("offers row actions, refuses a stale entity, and saves recordActions", () => {
+    const saved: TableView[] = [];
+    render(<TableViewEditor view={tasksTable} entity={taskEntity} registry={mockRegistry} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Action"), { target: { value: "Reject (reject)" } });
+    press("Offer this action");
+    press("Offer this action");
+    const rows = () => within(screen.getByRole("table", { name: /offered on each row/ })).getAllByRole("row").slice(1).map((r) => r.textContent ?? "");
+    expect(rows()).toEqual([expect.stringContaining("Reject"), expect.stringContaining("Apply")]);
+    press("Offer nothing");
+    press("Offer this action");
+    press("Save table");
+    expect(saved[0]?.recordActions).toEqual(["reject"]);
+  });
+});
