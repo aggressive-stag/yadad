@@ -314,11 +314,29 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
             />
             <span role="status">Then press an action on that row: it reports a conflict, as a concurrent write would.</span>
           </div>
-          {REVIEW_ROOTS.map((id) => (
-            <section key={id} aria-label={id}>
-              {renderRoot(id, documents, registry, dataSources, draftStore, viewer)}
-            </section>
-          ))}
+          {REVIEW_ROOTS.map((id) => {
+            const view = documents.views.get(id);
+            const entityId = view && view.kind !== "dashboard" ? view.entity : undefined;
+            const entity = entityId === undefined ? undefined : documents.entities.get(entityId);
+            // The review example is editable like any other page (RFC 0007):
+            // the same buttons the views page offers, and the table editors
+            // wrapped in the states preview through `viewEditor`.
+            return (
+              <section key={id} aria-label={id}>
+                <div data-showcase-toolbar="">
+                  {entity && <Button label={`Edit ${entity.id} fields`} type="button" variant="secondary" disabled={false} onPress={() => setMode({ kind: "fields", id: entity.id })} />}
+                  {view && view.kind !== "dashboard" && <Button label={`Edit ${describe(id, documents).toLowerCase()}`} type="button" variant="secondary" disabled={false} onPress={() => setMode({ kind: view.kind, id })} />}
+                </div>
+                {mode.kind === "fields" && entityId !== undefined && mode.id === entityId && entity ? (
+                  <EntityFieldsEditor entity={entity} views={[...documents.views.values()]} registry={registry} {...(documents.viewer ? { viewer: documents.viewer } : {})} onSave={save} onCancel={close} />
+                ) : (mode.kind === "table" || mode.kind === "form" || mode.kind === "calendar" || mode.kind === "board") && mode.id === id ? (
+                  viewEditor(mode, documents, registry, save, close)
+                ) : (
+                  renderRoot(id, documents, registry, dataSources, draftStore, viewer)
+                )}
+              </section>
+            );
+          })}
         </Fragment>
       )}
       {page === "views" && allRoots.map((id) => {

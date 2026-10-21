@@ -158,3 +158,35 @@ describe("StatesPreview", () => {
     expect(ids()).toEqual([]);
   });
 });
+
+describe("StatesPreview product axes (RFC 0007)", () => {
+  const actionEntity: EntityDocument = {
+    ...entity,
+    actions: [
+      { id: "apply", label: "Apply" },
+      { id: "archive", label: "Archive", confirm: { message: "Archive it?" } },
+    ],
+  };
+  const table = {
+    kind: "table",
+    specVersion: 4,
+    id: "task_table",
+    entity: "task",
+    revision: 1,
+    dataSource: "default",
+    columns: [{ field: "title" }, { field: "status" }],
+    recordActions: ["apply"],
+  } as const;
+
+  test("names the offered action and the paging axis, and an added record action shows as a new axis", () => {
+    render(<StatesPreview view={table} saved={table} documents={[actionEntity]} now={now} renderState={renderState} />);
+    const line = document.querySelector("[data-yadad-states-product-axes]")?.textContent ?? "";
+    expect(line).toContain("action Apply (available, withheld)");
+    expect(line).toContain("paging (total, cursor-more, cursor-end)");
+    expect(line).not.toContain("Archive"); // only what the view offers
+    const withArchive = { ...table, recordActions: ["apply", "archive"] };
+    render(<StatesPreview view={withArchive} saved={table} documents={[actionEntity]} now={now} renderState={renderState} />);
+    const lines = document.querySelectorAll("[data-yadad-states-product-axes]");
+    expect(lines[lines.length - 1]?.textContent).toContain("action Archive (available, withheld)");
+  });
+});

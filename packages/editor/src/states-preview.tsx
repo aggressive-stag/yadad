@@ -204,6 +204,10 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
 
   const { states, skipped, complete, axes } = built.result;
   const viewerAxes = axes.filter((a) => a.kind === "viewer");
+  // RFC 0007: the record-action axes (`action:<id>`, one per offered action)
+  // and the table's `paging` axis are named in their own line, the way the
+  // viewer-fact line names the facts this view reads.
+  const productAxes = axes.filter((a) => a.kind === "action" || a.kind === "paging");
   const changeOf = (id: string): StateChange => comparison?.changes.get(id) ?? "unchanged";
   const changedCount = states.filter((s) => changeOf(s.id) !== "unchanged").length;
   const shown = changedOnly ? states.filter((s) => changeOf(s.id) !== "unchanged") : states;
@@ -228,6 +232,11 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
       {viewerAxes.length > 0 && (
         <p data-yadad-states-viewer-axes="">
           Viewer facts this view reads: {viewerAxes.map((a) => `${a.label} (${a.values.map((v) => v.label.replace(/^[^=]*= /, "")).join(", ")})`).join("; ")}.
+        </p>
+      )}
+      {productAxes.length > 0 && (
+        <p data-yadad-states-product-axes="">
+          States this view varies: {productAxes.map((a) => `${a.id.startsWith("action:") ? `action ${a.label}` : a.label.toLowerCase()} (${a.values.map((v) => v.id).join(", ")})`).join("; ")}.
         </p>
       )}
       {comparison && comparison.removed.length > 0 && (

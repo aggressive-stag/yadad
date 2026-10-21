@@ -83,3 +83,19 @@ test("the team page has a View as control and renders for the default (least pri
   expect(html).toContain("<option value=\"owner\"");
   expect(html).not.toContain("document-errors");
 });
+
+test("the review page is editable: every root offers its editors", () => {
+  const html = renderToStaticMarkup(<App registry={mockRegistry} initialPage="review" />);
+  expect(html).toContain(">Edit decision fields</button>");
+  expect(html).toContain(">Edit record_version fields</button>");
+  expect(html).toContain(">Edit table: decisions</button>");
+  expect(html).toContain(">Edit table: changes</button>");
+});
+
+test("an edited decision document saved from the editor replaces the loaded one", () => {
+  const editedDecision = { kind: "table", specVersion: 4, id: "review_decisions", entity: "decision", revision: 2, dataSource: "review", title: "Decisions renamed", columns: [{ field: "kind" }, { field: "summary" }] };
+  const saved = [editedDecision];
+  const storage = { getItem: (k: string) => (k === "yadad-showcase:documents" ? JSON.stringify(saved) : null), setItem: () => {}, removeItem: () => {} };
+  const html = renderToStaticMarkup(<App registry={mockRegistry} initialPage="review" storage={storage} onReset={() => {}} />);
+  expect(html).toContain("Decisions renamed");
+});
