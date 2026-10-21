@@ -1,5 +1,11 @@
 # @yadad/testing
 
+## 0.8.0
+
+### Minor Changes
+
+- f34f54e: `checkViewStates` takes a `timeZone`, passed through to `viewStates` so generated `datetime` values render in a chosen zone instead of only the default UTC.
+
 ## 0.7.0
 
 ### Minor Changes

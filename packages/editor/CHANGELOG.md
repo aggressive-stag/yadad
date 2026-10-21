@@ -1,5 +1,15 @@
 # @yadad/editor
 
+## 0.12.0
+
+### Minor Changes
+
+- 13ecfdf: Action panels on the entity editor now author the dialog: up to five input fields (all types but reference, reusing the field property machinery) and a `visibleWhen` condition built with the shared condition builder over record fields and viewer facts.
+- 4ea9d59: datetime fields and compare columns are editable. The fields panel gives a datetime field its `min` and `max` as canonical instants (the native box types a local time, read as UTC; the stored form is accepted verbatim, and anything else the document validator refuses, naming the form). A datetime column can be a quick filter — a from/to range, like `date`. Each table column gains a Compare choice: the previous row, the next row, or another text field of the same entity; an editable column, a non-text column, a comparator that is not another text field, and a column comparing with itself are all refused against the live entity, each naming the real reason.
+- 9febbd2: The entity editor gained an Actions section: add, rename, set the confirm (title, message, confirmLabel, tone), reorder, and remove an entity's record actions, each as an undoable JSON Patch. Removal is refused while a view still offers the action, naming the views. New helpers in `@yadad/editor`: `addAction`, `updateAction`, `moveAction`, `removeAction`, `actionReferences`.
+- 2761512: Table, board and calendar editors gained an "Offer actions" panel: an ordered pick of the entity's actions (1 to 6, each once) that writes the view's `recordActions`, with move up/down, stop-offering and offer-nothing. An id the entity no longer declares is refused against the live entity, naming the real ones.
+- b7b83d0: The states preview names the RFC 0007 axes the grid already varied: one line lists the offered record actions (`action:<id>`, available / withheld) and, for a table, the paging axis (total / cursor-more / cursor-end), the way the viewer-fact line names the facts a view reads.
+
 ## 0.11.4
 
 ### Patch Changes
