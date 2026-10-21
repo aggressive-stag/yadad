@@ -138,12 +138,34 @@ Every non-2xx response has the same body shape as document errors in `@yadad/cor
 - `403` the viewer may not run it (or `can.actions` said so); `404` unknown entity, record or action; `409` stale **or** no longer applicable (the message says why, `current` is the record now). A client reloads on both and does not retry.
 - `can.actions` is an object from action id to boolean; only `false` restricts, and a malformed one is dropped as a whole, like the rest of `can`.
 - To guard an action by more than the record's own change, make `version` cover that other state (several records may share a version when stored together).
+- **Datetimes in `input`** travel in the one stored form, exactly as a `datetime` field's value does — see "Datetimes on the wire" below. An input of type `datetime` whose value is not canonical is a `400` at `/input/<field>`, like any other invalid value.
 
 The adapter turns these into typed errors; it does not retry writes on its own.
 
+## Datetimes on the wire
+
+A `datetime` field's value is an instant, and it travels in exactly one form: `YYYY-MM-DDTHH:MM:SS.sssZ` — UTC, always three fractional digits, always the trailing `Z` (what `Date.prototype.toISOString` prints). One form means string order is time order, so every adapter, the in-memory sort and a SQL `ORDER BY` agree without parsing.
+
+- A server holding finer precision truncates to milliseconds on the wire.
+- An offset (`+02:00`), a missing `Z`, other precision or a calendar-invalid value (`2026-02-30T00:00:00.000Z`) is `invalid-value` with a hint that shows the form. `null` is empty.
+- `min` and `max` properties are canonical instants, like a `date`'s. `recordJsonSchema` emits `format: "date-time"` plus a `pattern` for the canonical form; the exact range check and the calendar-validity check are stated in the field's `description` and enforced by `validateRecord`, as with `date` (see "Where the schema and `validateRecord` differ").
+- Conditions on a `datetime` take `eq neq gt gte lt lte in empty notEmpty` — never `contains` — with a canonical instant as the value.
+- Everything human-facing is the viewer's business, not the wire's: the renderer formats with `formatDateTime` in the viewer's zone and locale, and the quick filter converts a from/to range typed in the viewer's zone to instants (the from is the start of its minute, the to the last millisecond of its minute, so 10:00–10:30 includes 10:30:59.999).
+
+## Paging without a total
+
+`total` is optional and a continuation token is available, so a server that never counts can still page (see "Listing" for the parameters):
+
+- `{ "items": Record[], "total"?: number, "next"?: string | null }`. A server may return `total` (as the counting adapters do), `next` alone (cursor only), or both. A response with neither has no way to say "there is more", so the client treats it as the last page.
+- `next` is **opaque**: the client passes it back untouched as `cursor` and never parses it. `null` or absent means the end.
+- The client's rule: no `total` and a `next` switches it to cursors, and it keeps a stack of the cursors it visited so Previous works without the server supporting backward cursors; the pager shows "Page 2" with no "of N". Changing the sort, a quick filter or the page size clears the stack.
+- The table never "loads more": appending rows without bound changes where focus goes, so the client keeps Previous and Next on both paths.
+- `limit=0` is the count request and needs `total`. A count widget against a counting-free server walks pages up to the 5,000-record cap and shows what it read, or "5000+" when the cap was hit with more pending.
+- `cursor` and `offset` together is a `400`.
+
 ## Examples
 
-Compact request and response pairs for each endpoint, for an entity `set` (fields `weight`, `reps`, `day`).
+Compact request and response pairs for each endpoint, for an entity `set` (fields `weight`, `reps`, `day`, `notes`; `notes` is a text field).
 
 **List with filter and sort.** `filter` is `{"op":"gte","field":"weight","value":100}` and `sort` is `[{"field":"day","dir":"desc"}]`, URL-encoded:
 
@@ -227,32 +249,32 @@ POST /api/records/set/s12/actions/archive
 204
 ```
 
-**Action, kept** (the entity declares `note`, whose input is one text field; the record comes back with its new `can`):
+**Action, kept** (the entity declares `note`, whose input is one text field; the record comes back with its new `can` — the server says the viewer may not run `note` a second time):
 
 ```
 POST /api/records/set/s12/actions/note
-{ "input": { "text": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
+{ "input": { "notes": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
 
-200 { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "9", "values": { "weight": 100, "reps": 6, "day": "2026-10-05", "note": "personal record" }, "can": { "actions": { "note": false } } }
+200 { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "9", "values": { "weight": 100, "reps": 6, "day": "2026-10-05", "notes": "personal record" }, "can": { "actions": { "note": false } } }
 ```
 
-**Action, not allowed** (the viewer may not run it, or `can.actions` said so):
+**Action, not allowed** (the viewer may not run it, or `can.actions` said so — this is the same request whose `200` is just above, sent after that response; the `200` carried `"can": { "actions": { "note": false } }`):
 
 ```
 POST /api/records/set/s12/actions/note
-{ "input": { "text": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
+{ "input": { "notes": "personal record" }, "entityRevision": 3, "baseVersion": "9" }
 
 403 { "errors": [ { "path": "", "code": "forbidden", "message": "You are not allowed to run this action.", "hint": "Ask the owner." } ] }
 ```
 
-**Action, stale** (`baseVersion` is checked before `input`, so a stale action with invalid input is still this):
+**Action, stale** (`baseVersion` is checked before `input`, so a stale action with invalid input is still this; the `409` for "no longer applicable" looks the same and the client reloads on both):
 
 ```
 POST /api/records/set/s12/actions/note
-{ "input": { "text": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
+{ "input": { "notes": "personal record" }, "entityRevision": 3, "baseVersion": "8" }
 
 409 { "errors": [ { "path": "/baseVersion", "code": "conflict", "message": "This set was changed since you loaded it.", "hint": "Reload it and try again." } ],
-      "current": { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "9", "values": { "weight": 100, "reps": 6, "day": "2026-10-05" } } }
+      "current": { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "9", "values": { "weight": 100, "reps": 6, "day": "2026-10-05", "notes": "personal record" } } }
 ```
 
 **400, invalid value** (here in a batch, so `path` points into that request body):
@@ -272,4 +294,20 @@ PATCH /api/records/set/s12
 
 409 { "errors": [ { "path": "/baseVersion", "code": "conflict", "message": "This set was changed since you loaded it.", "hint": "Reload it and try again." } ],
       "current": { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "8", "values": { "weight": 100, "reps": 6, "day": "2026-10-05" } } }
+```
+
+**Datetime value** (the entity also declares a `datetime` field `loggedAt`), and the same field refusing a non-canonical string:
+
+```
+PATCH /api/records/set/s12
+{ "values": { "loggedAt": "2026-10-05T18:22:07.123Z" }, "entityRevision": 3, "baseVersion": "9" }
+
+200 { "id": "s12", "entityId": "set", "entityRevision": 3, "version": "10", "values": { "weight": 100, "reps": 7, "day": "2026-10-05", "loggedAt": "2026-10-05T18:22:07.123Z" } }
+```
+
+```
+PATCH /api/records/set/s12
+{ "values": { "loggedAt": "2026-10-05T20:22:07+02:00" }, "entityRevision": 3, "baseVersion": "10" }
+
+400 { "errors": [ { "path": "/values/loggedAt", "code": "invalid-value", "message": "\"loggedAt\" must be a UTC instant like 2026-10-05T18:22:07.123Z.", "hint": "Send UTC with milliseconds and a trailing Z." } ] }
 ```

@@ -19,7 +19,7 @@ Positioning: Puck is a visual page builder for content. This engine is for data-
 | Repo | Contains | Depends on | Role |
 | --- | --- | --- | --- |
 | `yadad` (this repo) | Schema format, runtime, renderer, editor, theme, fixtures, test kit, showcase | React (renderer/editor only) | The open-source project. Gets the README, docs and polish. |
-| `yadad-components` | Styled field, layout and widget components (including `layout.Calendar` and `layout.Board`), the base registry | `@yadad/core` as a peer dependency (a published version range); `@yadad/testing` as a dev dependency | Reference component set. Users can bring their own instead. |
+| `yadad-components` | Styled field, layout and widget components (including `layout.Calendar`, `layout.Board` and `layout.Dialog`, and the optional `fields.datetime`), the base registry | `@yadad/core` as a peer dependency (a published version range); `@yadad/testing` as a dev dependency | Reference component set. Users can bring their own instead. |
 
 The engine never imports from the components repo. Components implement the engine's contract and are handed to the engine through an injected registry. Separate repos make that boundary physical. The components repo is mirrored on the same GitLab instance and publishes to the same npm registry (D17).
 
@@ -145,7 +145,7 @@ Document kinds (`pnpm describe-registry` prints the exact shapes):
 | --- | --- |
 | `entity` | The data model: fields, types, validation |
 | `form` | Sections of fields, with per-field `visibleWhen` and `requiredWhen` |
-| `table` | Columns, initial sort, `pageSize`, a fixed `filter`, `quickFilters`, inline-edit flags, an optional `rowAction` |
+| `table` | Columns, initial sort, `pageSize`, a fixed `filter`, `quickFilters`, inline-edit flags, an optional `rowAction`, and the `recordActions` this view offers on each row |
 | `calendar` | Records placed on the days of a month or week by one date field; optional editing moves an entry to another day (RFC 0004) |
 | `board` | Records as cards in columns, one column per value of a select, boolean or reference field; the viewer picks among the `groupBy` fields; optional editing moves a card to another column (RFC 0005) |
 | `dashboard` | Tabs of grid items `{x, y, w, h, widget}`; widgets: `view` (embeds a form, table, calendar or board), `count`, `stat` |
@@ -183,6 +183,39 @@ The `viewerIn` op (`{ "op": "viewerIn", "fact": "role", "values": ["editor", "ow
 **Per-record permissions** travel with the data, not the document. A record may carry `can: { update?, delete? }` (see `docs/records-protocol.md`). It states what the current viewer may do with that record and can only restrict: a missing `can` or key means "offered", and `true` enables nothing the document does not already offer. The renderers withhold in-place edit and "Move to…" on a record whose `can.update` is `false`. The server still decides: a refused write is a 403, the card or cell goes back and the record list reloads, which also refreshes `can`. The memory and key-value adapters take a `recordPermissions` option that states and enforces `can`, so a demo behaves like a server.
 
 All of this narrows what is offered. It is not authorization: the server checks every write.
+
+### Actions: the document through the registry dialog
+
+An **action** is a command the entity declares and a view offers — approve, restore, close — a thing a record *does* rather than a value it holds, so it lives in neither the field list nor the layout.
+
+- **Document** (`core`): an entity declares at most 12 `actions`, each `{ id, label, confirm?, input?, visibleWhen? }`. `confirm` is `{ message, title?, confirmLabel?, tone?: "neutral" | "danger" }`; `input` is 1 to 5 fields typed text, number, boolean, select, date or datetime — never `reference`, because a record the viewer picked from another entity has no meaning to the server running the command. `visibleWhen` mixes record and viewer leaves: the action is offered on a record only while it holds. A view (table, calendar or board) offers at most 6 of its entity's action ids by `recordActions`, in the order they appear on the row; a dashboard embedding the view inherits them. Caps and shapes live in `core` and print from `pnpm describe-registry`.
+- **Runtime**: `availableActions(record, view, action...)` is the one answer to "may this row offer this action" — declared on the entity, offered by the view, `visibleWhen` holds for this record and viewer, and `can.actions[id]` does not say `false`. The renderer and the editor both call it, so an editor preview cannot drift from what the table draws. `actionNeedsDialog` says whether a press runs immediately or asks first: an action with `input` always asks, one with only `confirm` asks, a bare one runs.
+- **Adapter**: `act(entity, id, action, request)` on `DataAdapter` (optional until the next major). A view whose adapter has none shows an error instead of buttons that would fail. The request carries the input values and the required `baseVersion`; the response is the record after the action (with its new `can`) or `null` when the action removed it. The HTTP adapter posts the protocol's actions endpoint; the memory and key-value adapters take an `actions` handler map and enforce the same order of refusals (`adapter-guards`). A refusal is a `ForbiddenError`, a stale or no-longer-applicable action a `RecordConflictError`, bad input a `RecordValidationError`.
+- **Registry**: a dialog-requiring action renders through `layout.Dialog` — the component supplies only modal behaviour, the renderer supplies the title, message, confirm button and the input fields (drawn with the registry's own `Input`s). `Dialog` is optional like `layout.Calendar`: a view with such an action against a registry without it shows an `ErrorSummary` naming the missing key. Actions are never retried, and a row's button is `pending` until the response, so at most one is in flight per record.
+
+### `datetime`
+
+A field type holding an instant, stored in one string form so that comparing, sorting and paging never parse (`docs/records-protocol.md`, "Datetimes on the wire").
+
+- **Engine** (`runtime/datetime.ts`): `formatDateTime` (Intl, locale and zone), `instantToLocal` / `localToInstant` (DST-safe — a local time that does not exist or occurs twice resolves to the earlier valid instant), and `instantRangeBounds` for the quick filter's from/to (from = start of its minute, to = last millisecond, so 10:00–10:30 includes 10:30:59.999). `core` validates the shape and gives `recordJsonSchema` its `format: "date-time"` plus pattern.
+- **Renderer** formats for the viewer and hands the component both: the stored string for `<time dateTime>` and the formatted text in the Display's `text` extra. Renderers take an optional `formatting?: { locale?, timeZone? }`; absent, the environment's. A cell shows the viewer's wall-clock time, never the raw `...T18:22:07.123Z`.
+- **Input** receives and returns the stored form; the component presents a native `datetime-local` or its own picker in the viewer's zone (the renderer converts at the boundary).
+- **Registry**: `fields.datetime` is optional, like `layout.Calendar` — existing registries keep type-checking, and a document that uses the type against a registry without the key renders an `ErrorSummary` naming it. The reference components and the mock registry gained it in the same release as the type.
+- **Editor**: the author panel and the compare/bound controls edit the canonical string; the panel reads a bare local time as UTC rather than the machine's zone, so a document says the same instant on every machine.
+- Out of slice 1: relative values (`{ hoursFromNow }`), a calendar `dateField`, a board `groupBy`, and number/datetime `min`/`max` measures — all documented refusals, not omissions.
+
+### Compare
+
+`compare` on a table column shows what changed in a text field: `{ "to": "previousRow" | "nextRow" }` diffs it against that neighbour in the table's own order, or `{ "field": "<other text field>" }` against another text field of the same record. The cell's value is the *after*; the comparator is the *before*. Text fields only, never together with `editable`.
+
+- **Runtime** (`runtime/compare.ts`): `diffWords` produces the segments, `neighbourQuery` widens an offset page by one row so the first and last row of a page still have their neighbour (a cursor page cannot be widened backwards, so the table passes the previous page's last row as an explicit `edge`), and `compareCells` pairs each row with its comparator.
+- **Renderer** hands the segments to the text Display's `diff` extra; the component marks them `<ins>`/`<del>` with hidden "added:"/"removed:" text.
+- **Testing** keeps it honest: the state grid's `diff-missing` / `diff-offered` checks fail when a compared column with a neighbour shows no diff, or a column compared against nothing shows one.
+- The editor builds and refuses the value in `setColumnCompare` (`editor/views.ts`): an editable column cannot compare (an edited cell has no meaningful diff), and only text columns may (a select is a value, not a text, and numbers have no words). The columns table's Compare control writes the same shape the runtime reads.
+
+### The new state axes
+
+The grid grew three axis families past the condition and kind axes (§13): one `action:<id>` axis per offered action (`available`, `withheld on 1 record` — withheld sets `can.actions[id] = false` on the first generated record), a `paging` axis on tables (`pages by total`, `cursor page, more to come`, `cursor page, last`), and the `viewer:<fact>` and `permission` axes from RFC 0006. `checkViewStates` gained the matching checks: `action-offered` / `action-missing` (nothing withheld may be offered, nothing allowed may hide) and the two diff checks above. `StatesPreview` (`editor`) names the action and paging axes on their own line — "States this view varies" — because they answer what the *product* varies, while the viewer axes answer what the viewer is told.
 
 ## 7. Validation: two kinds, one owner each
 
@@ -223,9 +256,9 @@ interface FieldTypeEntry<K extends FieldType, N> {
 }
 
 interface Registry<N> {
-  fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> }; // mapped type, no index signature
+  fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> }; // mapped type, no index signature; `datetime` is optional until the reference set ships it (RFC 0007), like Calendar below
   layout: { FieldFrame; Section; Button; Table; ErrorSummary; Tabs; Panel;
-            Calendar?; Board? };                                // optional keys: without one, that view kind renders an error summary
+            Calendar?; Board?; Dialog? };                      // optional keys: without one, that view kind (or, for Dialog, an action needing a dialog) renders an error summary
   widgets: { count: Component<CountWidgetProps, N> };         // "view" widgets render through the renderer itself; "stat" shows its number through "count"
 }
 ```
@@ -254,10 +287,12 @@ interface DataAdapter {
   update(entity: string, id: string, patch: RecordValues, meta: WriteMeta): Promise<DataRecord>;
   delete(entity: string, id: string, meta?: WriteMeta): Promise<void>;
   batch(entity: string, ops: BatchOperations, meta: WriteMeta): Promise<BatchResult>;
+  act?(entity: string, id: string, action: string, request: ActionRequest): Promise<DataRecord | null>; // RFC 0007; a view with recordActions and an adapter without it shows an error
 }
 // WriteMeta = { entityRevision: number; baseVersion?: string }
 // Records carry an opaque `version`; writes send it back as `baseVersion`, and a stale one is a conflict.
-// Query = { filter?: Condition, sort?: {field, dir}[], page?: {offset, limit} }
+// Query = { filter?: Condition, sort?: {field, dir}[], page?: {offset, limit} | {cursor, limit} }
+// Page<T> = { items; total?: number; next?: string | null } — `next` is an opaque cursor (RFC 0007); the client passes it back untouched.
 ```
 
 Interface, `Query` and the typed adapter errors in `core`. The memory, key-value and HTTP adapters in `runtime` all implement record versions and optimistic concurrency; the HTTP adapter (`createHttpAdapter`) speaks the records protocol in `docs/records-protocol.md` to a same-origin backend. A Supabase adapter can live here (depending on `core` only) or in the host app; none exists yet.
@@ -297,9 +332,9 @@ flowchart LR
   chk --> grid
 ```
 
-1. **`viewStates(view, documents, { now, limit? })`** (`runtime`) is a pure function of the documents and `now`. It reads the view's conditions and kind and builds **axes**: each condition's field with boundary values by type, the view kind's own axes (a form's `fill`, the record count of a table, calendar or board, a calendar's `mode`, a board's `group`, a dashboard's `tab` and embedded views), one `viewer:<fact>` axis per viewer fact the view reads, and a `permission` axis on views with an edit surface (`unrestricted` or `record-locked`, where the first record carries `can: { update: false }`). A **state** picks one value per axis and carries what to render: form values, or validated records and the ids matching the filter, a viewer, and `now`. When the full product fits in `limit` (24 by default) all combinations are listed; otherwise a deterministic pairwise cover keeps every pair of values from two axes in at least one state, and `complete` says whether even that fit. States that cannot exist are pruned (a locked record with no records, a dashboard tab the viewer cannot see). One extra state, `viewer-not-provided`, renders with no `viewer` prop to prove it looks like the all-defaults viewer.
+1. **`viewStates(view, documents, { now, limit? })`** (`runtime`) is a pure function of the documents and `now`. It reads the view's conditions and kind and builds **axes**: each condition's field with boundary values by type, the view kind's own axes (a form's `fill`, the record count of a table, calendar or board, a calendar's `mode`, a board's `group`, a dashboard's `tab` and embedded views, a table's `paging` — RFC 0007), one `viewer:<fact>` axis per viewer fact the view reads, one `action:<id>` axis per action the view offers (RFC 0007), and a `permission` axis on views with an edit surface (`unrestricted` or `record-locked`, where the first record carries `can: { update: false }`). A **state** picks one value per axis and carries what to render: form values, or validated records and the ids matching the filter, a viewer, and `now`. When the full product fits in `limit` (24 by default) all combinations are listed; otherwise a deterministic pairwise cover keeps every pair of values from two axes in at least one state, and `complete` says whether even that fit. States that cannot exist are pruned (a locked record with no records, a dashboard tab the viewer cannot see). One extra state, `viewer-not-provided`, renders with no `viewer` prop to prove it looks like the all-defaults viewer.
 2. **`sourceStates`** and **`createStateAdapter`** (`testing`) add the data source's states to those: loading, failed to load, a save refused (400 or 403) and a conflict (409), each only where it makes sense for the view. Each state gets a seeded adapter in that condition.
-3. **`checkViewStates`** (`testing/state-checks`) renders every state through a `render` function the host passes in (`testing` never imports a renderer), and checks it: it must not throw or log a console error, forms must show and require exactly the fields the conditions say, every control needs an accessible name, a failed load must say so, and for the viewer axes nothing hidden may be shown and nothing the viewer may not use may be offered (`viewer-visibility`, `editable-offered`, `editable-missing`), and a board or calendar must use the grouping, mode and range the state names (`group-by-ignored`, `mode-ignored`, `anchor-ignored`).
+3. **`checkViewStates`** (`testing/state-checks`) renders every state through a `render` function the host passes in (`testing` never imports a renderer), and checks it: it must not throw or log a console error, forms must show and require exactly the fields the conditions say, every control needs an accessible name, a failed load must say so, and for the viewer axes nothing hidden may be shown and nothing the viewer may not use may be offered (`viewer-visibility`, `editable-offered`, `editable-missing`), and a board or calendar must use the grouping, mode and range the state names (`group-by-ignored`, `mode-ignored`, `anchor-ignored`), and RFC 0007's action and compare axes are checked the same way (`action-offered`, `action-missing`, `diff-missing`, `diff-offered`, §6).
 4. **Consumers.** The showcase's States page renders the whole grid for any view with the checks beside it, and `StatesPreview` (`editor`) sits next to a view editor and marks states that are new or differ from the saved revision. The editor cannot import `testing`, so the host passes `renderState` and, optionally, `checkStates` as props.
 
 The states are documents-in, pictures-out: adding a condition to a document changes its grid without anyone writing a test.
