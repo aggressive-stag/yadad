@@ -44,7 +44,7 @@ const root = document.getElementById("root");
 if (!root) throw new Error('index.html is missing <div id="root">.');
 createRoot(root).render(
   <StrictMode>
-    <App registry={registry} initialPage={window.location.hash === "#states" ? "states" : "views"} {...persistence()} />
+    <App registry={registry} initialPage={window.location.hash === "#states" ? "states" : window.location.hash === "#review" ? "review" : "views"} {...persistence()} />
   </StrictMode>,
 );
 

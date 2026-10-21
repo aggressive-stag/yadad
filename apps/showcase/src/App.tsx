@@ -11,6 +11,8 @@ import type { ReactNode } from "react";
 import { bookingEntity, bookingsAdapter } from "./bookings";
 import { personEntity, taskEntity, tasksAdapter } from "./tasks";
 import { teamAdapter, teamViewer, teamViews } from "./team";
+import { DECISION_CODES, NOTE_KEYS, reviewDocuments, reviewStore } from "./review";
+import type { ReviewStore } from "./review";
 import dashboardTraining from "../../../fixtures/valid/dashboard-training.json?raw";
 import entityHello from "../../../fixtures/valid/entity-hello.json?raw";
 import entityWorkoutSet from "../../../fixtures/valid/entity-workout-set.json?raw";
@@ -27,6 +29,9 @@ export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, 
 
 /** Views rendered at the top level of the page, by id. */
 export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_home", "team_home"];
+
+/** The review page's sections, in reading order: changes, history, decisions, the join. */
+const REVIEW_ROOTS: readonly string[] = ["review_changes", "review_history", "review_decisions", "review_decision_records"];
 
 /** The bookings table the calendar's row action opens for a booking. */
 const bookingsTable: TableView = {
@@ -107,6 +112,10 @@ function withBookings(base: DocumentSet): DocumentSet {
   views.set(bookingsView.id, bookingsView);
   views.set(bookingsTable.id, bookingsTable);
   for (const view of teamViews) views.set(view.id, view);
+  for (const doc of reviewDocuments) {
+    if (doc.kind === "entity") entities.set(doc.id, doc);
+    else if (doc.kind !== "viewer") views.set(doc.id, doc);
+  }
   return { ...base, entities, views, viewer: base.viewer ?? teamViewer };
 }
 
@@ -125,7 +134,7 @@ export interface AppProps {
   readonly initialStatesView?: string;
 }
 
-export type Page = "views" | "states";
+export type Page = "views" | "states" | "review";
 
 const PREFIX = "yadad-showcase";
 const DOCUMENTS_KEY = `${PREFIX}:documents`;
@@ -165,11 +174,14 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   // The host decides which adapter backs each dataSource key. The calendar demo keeps its own
   // seeded bookings on a dedicated data source, with a wrapper that refuses moves into the past.
   const roleRef = useRef("viewer");
+  // The review demo reads the same "View as" role; only the owner may apply decisions.
+  const [review] = useState<ReviewStore>(() => reviewStore(() => (roleRef.current === "owner" ? "owner" : "editor")));
   const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => {
     const map = new Map<string, DataAdapter>([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]);
     map.set("bookings", bookingsAdapter());
     map.set("tasks", tasksAdapter());
     map.set("team", teamAdapter(() => roleRef.current));
+    map.set("review", review.adapter);
     return map;
   });
   // Documents saved from the editors replace the loaded ones, and persist when storage is given.
@@ -182,6 +194,8 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const loaded = loadDocumentSet(sources);
   const documents = overlay(withBookings(loaded.documents), edited);
   const [appName, setAppName] = useState("");
+  // What the review page's "Simulate another editor" button will bump.
+  const [simTarget, setSimTarget] = useState("v|note_1|2");
   // "View as": what the host knows about the viewer. The renderers get the resolved facts; the data source reads the role.
   const [viewerInput, setViewerInput] = useState<readonly ViewerFactValue[]>([]);
   const viewer = resolveViewer(documents.viewer, viewerInput).viewer;
@@ -223,9 +237,9 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
     <main>
       <h1>yadad showcase</h1>
       <nav aria-label="Pages" data-showcase-toolbar="">
-        {(["views", "states"] as const).map((p) => (
-          <button key={p} type="button" aria-current={page === p ? "page" : undefined} onClick={() => { setPage(p); try { window.history.replaceState(null, "", p === "states" ? "#states" : "#"); } catch { /* no history in this environment */ } }}>
-            {p === "views" ? "Views" : "States"}
+        {(["views", "states", "review"] as const).map((p) => (
+          <button key={p} type="button" aria-current={page === p ? "page" : undefined} onClick={() => { setPage(p); try { window.history.replaceState(null, "", p === "views" ? "#" : `#${p}`); } catch { /* no history in this environment */ } }}>
+            {p === "views" ? "Views" : p === "states" ? "States" : "Review"}
           </button>
         ))}
       </nav>
@@ -255,6 +269,58 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
       )}
       {page === "views" && documents.viewer && <ViewAs document={documents.viewer} viewer={viewer} onChange={(fact, value) => setViewerInput([...viewer.facts.filter((f) => f.fact !== fact), { fact, value }])} />}
       {page === "states" && <StatesPage documents={documents} registry={registry} {...(initialStatesView ? { initialView: initialStatesView } : {})} />}
+      {page === "review" && (
+        <Fragment key={viewerKey}>
+          {documents.viewer && (
+            <ViewAs
+              document={{ ...documents.viewer, facts: documents.viewer.facts.filter((f) => f.id === "role") }}
+              viewer={viewer}
+              onChange={(fact, value) => setViewerInput([...viewer.facts.filter((f) => f.fact !== fact), { fact, value }])}
+            />
+          )}
+          <div data-showcase-toolbar="">
+            <label>
+              Simulate another editor{" "}
+              <select value={simTarget} onChange={(e) => setSimTarget(e.target.value)}>
+                <optgroup label="note versions">
+                  {NOTE_KEYS.flatMap((key) => [1, 2, 3].map((v) => (
+                    <option key={`${key}:${v}`} value={`v|${key}|${v}`}>
+                      {key} v{v}
+                    </option>
+                  )))}
+                </optgroup>
+                <optgroup label="decisions">
+                  {DECISION_CODES.map((code) => (
+                    <option key={code} value={`d|${code}`}>
+                      {code}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
+            <Button
+              label="Simulate another editor"
+              type="button"
+              variant="secondary"
+              disabled={false}
+              onPress={() => {
+                // Rewrites the record's own values, which bumps its version. The tables on
+                // screen still hold the version they loaded, so the next action pressed on
+                // that row earns a 409 from the adapter's staleness guard.
+                const parts = simTarget.split("|");
+                if (parts[0] === "v") void review.simulateAnotherEditor("record_version", review.versionId(parts[1] ?? "", Number(parts[2] ?? "1")));
+                else void review.simulateAnotherEditor("decision", review.decisionId(parts[1] ?? ""));
+              }}
+            />
+            <span role="status">Then press an action on that row: it reports a conflict, as a concurrent write would.</span>
+          </div>
+          {REVIEW_ROOTS.map((id) => (
+            <section key={id} aria-label={id}>
+              {renderRoot(id, documents, registry, dataSources, draftStore, viewer)}
+            </section>
+          ))}
+        </Fragment>
+      )}
       {page === "views" && allRoots.map((id) => {
         const view = documents.views.get(id);
         const entityId = view?.kind === "dashboard" ? firstEntity(view.id, documents) : view?.entity;

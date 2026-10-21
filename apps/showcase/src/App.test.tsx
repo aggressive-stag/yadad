@@ -68,6 +68,15 @@ test("the States page lists the states of a view with their labels", () => {
   expect(html).not.toContain('<section aria-label="hello_form">');
 });
 
+test("the review page renders its demo: role switch, staleness button, all four tables", () => {
+  const html = renderToStaticMarkup(<App registry={mockRegistry} initialPage="review" />);
+  expect(html).toContain("<legend>View as</legend>"); // the same role switch the team demo uses
+  expect(html).toContain("Simulate another editor");
+  expect(html).toContain("Version history");
+  expect(html).toContain("Records named by the decision");
+  expect(html).not.toContain("document-errors"); // the review documents validate inside the app too
+});
+
 test("the team page has a View as control and renders for the default (least privileged) viewer", () => {
   const html = renderToStaticMarkup(<App registry={mockRegistry} roots={["team_home"]} />);
   expect(html).toContain("<legend>View as</legend>");
