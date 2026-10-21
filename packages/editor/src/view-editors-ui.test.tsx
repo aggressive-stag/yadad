@@ -307,3 +307,52 @@ describe("TableViewEditor offer actions", () => {
     expect(saved[0]?.recordActions).toEqual(["reject"]);
   });
 });
+
+describe("TableViewEditor compare and datetime (RFC 0007)", () => {
+  const revision: EntityDocument = {
+    ...entity,
+    id: "revision",
+    fields: [
+      { id: "body", type: "text", label: "Body" },
+      { id: "note", type: "text", label: "Note" },
+      { id: "stamp", type: "datetime", label: "Stamp" },
+    ],
+  };
+  const revisions: TableView = { kind: "table", specVersion: 0, id: "revisions", entity: "revision", revision: 1, dataSource: "default", columns: [{ field: "body" }, { field: "stamp" }] };
+  const compareSelect = () => screen.getByLabelText("Compare Body") as HTMLSelectElement;
+
+  test("offers previous row, next row and another text field, and saves the compare", () => {
+    const saved: TableView[] = [];
+    render(<TableViewEditor view={revisions} entity={revision} registry={mockRegistry} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    expect(compareSelect().value).toBe("Plain text");
+    fireEvent.change(compareSelect(), { target: { value: "Changed from the previous row" } });
+    press("Save table");
+    expect(saved[0]?.columns[0]?.compare).toEqual({ to: "previousRow" });
+  });
+
+  test("a compare against another text field lands as { field }", () => {
+    const saved: TableView[] = [];
+    render(<TableViewEditor view={revisions} entity={revision} registry={mockRegistry} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    fireEvent.change(compareSelect(), { target: { value: "Changed from Note" } });
+    press("Save table");
+    expect(saved[0]?.columns[0]?.compare).toEqual({ field: "note" });
+  });
+
+  test("an editable text column is refused a compare, naming why", () => {
+    const editable: TableView = { ...revisions, columns: [{ field: "body", editable: true }, { field: "stamp" }] };
+    render(<TableViewEditor view={editable} entity={revision} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+    fireEvent.change(compareSelect(), { target: { value: "Changed from the previous row" } });
+    expect(screen.getByTestId("error-summary").textContent).toContain("editable in place");
+    expect(compareSelect().value).toBe("Plain text");
+  });
+
+  function setupRevisions() {
+    render(<TableViewEditor view={revisions} entity={revision} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+  }
+
+  test("a datetime column can be a quick filter", () => {
+    setupRevisions();
+    press("Filter by Stamp");
+    expect(button("Remove Stamp filter")).toBeTruthy();
+  });
+});

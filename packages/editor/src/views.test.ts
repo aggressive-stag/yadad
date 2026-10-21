@@ -1,5 +1,5 @@
 import { validateDocument, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarView, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { BoardView, CalendarView, ColumnCompare, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { describe, expect, test } from "vitest";
 import { blankDashboard, blankEntity, blankForm, blankTable } from "./blank.js";
@@ -25,6 +25,7 @@ import {
   removeSection,
   setColumnEditable,
   setClearWhenHidden,
+  setColumnCompare,
   setCountWidgetFilter,
   setFormItemCondition,
   setPageSize,
@@ -322,12 +323,67 @@ describe("blank documents", () => {
 });
 
 describe("quick filter support", () => {
-  test("every field type can be a quick filter, number and date as a range", async () => {
+  test("every field type can be a quick filter, number, date and datetime as a range", async () => {
     const { canQuickFilter, QUICK_FILTER_KINDS } = await import("./views.js");
-    for (const type of ["text", "number", "boolean", "select", "date"] as const) expect(canQuickFilter(type)).toBe(true);
+    for (const type of ["text", "number", "boolean", "select", "date", "datetime"] as const) expect(canQuickFilter(type)).toBe(true);
     expect(canQuickFilter(undefined)).toBe(false);
+    expect(canQuickFilter("reference")).toBe(false);
     expect(QUICK_FILTER_KINDS.number).toBe("range");
     expect(QUICK_FILTER_KINDS.date).toBe("range");
+    expect(QUICK_FILTER_KINDS.datetime).toBe("range");
+  });
+});
+
+describe("compare columns (RFC 0007)", () => {
+  const history: EntityDocument = {
+    ...entity,
+    id: "history",
+    fields: [
+      { id: "body", type: "text", label: "Body" },
+      { id: "note", type: "text", label: "Note" },
+      { id: "when", type: "datetime", label: "When" },
+      { id: "flag", type: "boolean", label: "Flag" },
+    ],
+  };
+  const historyTable: TableView = { kind: "table", specVersion: 0, id: "history", entity: "history", revision: 1, dataSource: "default", columns: [{ field: "body" }, { field: "note" }, { field: "when" }] };
+
+  test("sets previousRow, nextRow and another text field, and clears them", () => {
+    let s = startSession(historyTable);
+    s = apply(s, setColumnCompare(s.current, "body", { to: "previousRow" }, history));
+    expect(s.current.columns[0]?.compare).toEqual({ to: "previousRow" });
+    s = apply(s, setColumnCompare(s.current, "body", { to: "nextRow" }, history));
+    expect(s.current.columns[0]?.compare).toEqual({ to: "nextRow" });
+    s = apply(s, setColumnCompare(s.current, "body", { field: "note" }, history));
+    expect(s.current.columns[0]?.compare).toEqual({ field: "note" });
+    s = apply(s, setColumnCompare(s.current, "body", undefined, history));
+    expect(s.current.columns[0]?.compare).toBeUndefined();
+    // Clearing what is not set is a no-op, not a patch.
+    expect(setColumnCompare(s.current, "body", undefined, history)).toEqual({ ok: true, patch: [] });
+  });
+
+  test("refuses a non-text column, an unknown or non-text comparator, itself, and both members at once", () => {
+    expect(setColumnCompare(historyTable, "when", { to: "previousRow" }, history)).toMatchObject({ ok: false, error: { path: "/columns/2/compare", message: expect.stringContaining("datetime") } });
+    expect(setColumnCompare(historyTable, "body", { field: "nope" }, history)).toMatchObject({ ok: false, error: { path: "/columns/0/compare/field", message: expect.stringContaining('"nope" is not a field') } });
+    expect(setColumnCompare(historyTable, "body", { field: "flag" }, history)).toMatchObject({ ok: false, error: { path: "/columns/0/compare/field", message: expect.stringContaining("boolean, not text") } });
+    expect(setColumnCompare(historyTable, "body", { field: "body" }, history)).toMatchObject({ ok: false, error: { path: "/columns/0/compare/field", message: expect.stringContaining("itself") } });
+    // The union type forbids these shapes; the guards are the runtime backstop for documents from elsewhere.
+    expect(setColumnCompare(historyTable, "body", { to: "previousRow", field: "note" } as ColumnCompare, history)).toMatchObject({ ok: false, error: { path: "/columns/0/compare" } });
+    expect(setColumnCompare(historyTable, "body", {} as ColumnCompare, history)).toMatchObject({ ok: false, error: { path: "/columns/0/compare" } });
+    expect(setColumnCompare(historyTable, "gone", { to: "previousRow" }, history)).toMatchObject({ ok: false, error: { path: "/columns" } });
+  });
+
+  test("refuses a compare on an editable column, naming why", () => {
+    const editable: TableView = { ...historyTable, columns: [{ field: "body", editable: true }] };
+    const refused = setColumnCompare(editable, "body", { to: "previousRow" }, history);
+    expect(refused).toMatchObject({ ok: false, error: { path: "/columns/0/compare", hint: expect.stringContaining("no meaningful diff") } });
+  });
+
+  test("a patch built against a stale view is refused by its test /id guard", () => {
+    const result = setColumnCompare(historyTable, "body", { to: "previousRow" }, history);
+    if (!result.ok) throw new Error("helper should have accepted it");
+    const stale = { ...historyTable, columns: [{ field: "note" }, { field: "body" }] };
+    const next = edit(startSession(stale), [{ op: "test", path: "/id", value: "wrong" }, ...result.patch]);
+    expect(next.rejected.length).toBeGreaterThan(0);
   });
 });
 

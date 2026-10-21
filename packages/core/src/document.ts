@@ -224,7 +224,7 @@ export interface TableView {
   readonly pageSize?: number;
   /** Rows must always match this. */
   readonly filter?: Condition;
-  /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring, number and date fields as a from/to range (gte/lte, either end optional). */
+  /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring, number, date and datetime fields as a from/to range (gte/lte, either end optional). */
   readonly quickFilters?: readonly QuickFilter[];
   /** Clicking a row opens another table view scoped to that row (RFC 0003). */
   readonly rowAction?: RowAction;

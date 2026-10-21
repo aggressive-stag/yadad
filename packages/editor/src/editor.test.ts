@@ -99,3 +99,39 @@ describe("field edits", () => {
     expect(edit(startSession(entity), spare.patch).current.fields.map((f) => f.id)).toEqual(["felt", "notes"]);
   });
 });
+
+describe("datetime property-panel values (RFC 0007)", () => {
+  test("a native box value becomes the UTC instant; the stored form is kept; blanks drop", async () => {
+    const { instantFromPanel, panelFromInstant } = await import("./field-options.js");
+    expect(instantFromPanel("2026-10-17T09:30")).toBe("2026-10-17T09:30:00.000Z");
+    expect(instantFromPanel(" 2026-10-17T09:30 ")).toBe("2026-10-17T09:30:00.000Z");
+    expect(instantFromPanel("2026-10-17T09:30:00.000Z")).toBe("2026-10-17T09:30:00.000Z");
+    expect(instantFromPanel("")).toBeUndefined();
+    expect(instantFromPanel(undefined)).toBeUndefined();
+    expect(instantFromPanel(7)).toBeUndefined();
+    expect(panelFromInstant("2026-10-17T09:30:00.000Z")).toBe("2026-10-17T09:30");
+    expect(panelFromInstant(undefined)).toBeNull();
+  });
+
+  test("a shape that is neither form is kept verbatim so the validator refuses it, naming the stored form", async () => {
+    const { fieldFromProperties } = await import("./field-options.js");
+    const { validateDocument } = await import("@yadad/core");
+    const field = fieldFromProperties("datetime", { id: "when", label: "When", min: "17 October 2026, 9:30" });
+    expect(field).toMatchObject({ min: "17 October 2026, 9:30" });
+    const doc = { kind: "entity", specVersion: 0, id: "e", revision: 1, fields: [field] } as const;
+    const result = validateDocument(doc);
+    expect(result.ok).toBe(false);
+    const error = result.ok ? undefined : result.errors[0];
+    expect(error?.message).toContain('2026-10-17T09:30:00.000Z');
+  });
+
+  test("min above max is the validator's refusal, not the panel's", async () => {
+    const { fieldFromProperties } = await import("./field-options.js");
+    const { validateDocument } = await import("@yadad/core");
+    const field = fieldFromProperties("datetime", { id: "when", label: "When", min: "2026-10-17T17:00", max: "2026-10-17T09:00" });
+    const doc = { kind: "entity", specVersion: 0, id: "e", revision: 1, fields: [field] } as const;
+    const result = validateDocument(doc);
+    expect(result.ok).toBe(false);
+    expect(result.ok ? undefined : result.errors[0]?.message).toContain('is above "max"');
+  });
+});

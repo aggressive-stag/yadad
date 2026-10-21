@@ -1,4 +1,4 @@
-import { isIsoDate } from "@yadad/core";
+import { isIsoDate, isIsoDatetime } from "@yadad/core";
 import type { Field, FieldType, FieldValue, RecordValues } from "@yadad/core";
 
 /**
@@ -20,8 +20,12 @@ export const FIELD_PROPERTIES: { readonly [K in FieldType]: readonly Field[] } =
     { id: "min", type: "date", label: "Earliest date" },
     { id: "max", type: "date", label: "Latest date" },
   ],
-  // RFC 0007: card 37d (min and max of a datetime need an instant input)
-  datetime: [],
+  // RFC 0007: min and max are canonical instants. The panel accepts the stored
+  // form or a bare local time, which is read as UTC (37d).
+  datetime: [
+    { id: "min", type: "datetime", label: "Earliest instant" },
+    { id: "max", type: "datetime", label: "Latest instant" },
+  ],
   // The entity editor swaps these for pickers when it knows the other entities.
   reference: [
     { id: "entity", type: "text", label: "Target entity id", required: true },
@@ -50,6 +54,32 @@ const str = (v: FieldValue | undefined): string | undefined => (typeof v === "st
 const num = (v: FieldValue | undefined): number | undefined => (typeof v === "number" ? v : undefined);
 const date = (v: FieldValue | undefined): string | undefined => (typeof v === "string" && isIsoDate(v) ? v : undefined);
 
+const BARE_LOCAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+/**
+ * A datetime property-panel value as the stored instant. The panel accepts the
+ * stored form itself and the bare `YYYY-MM-DDTHH:MM` a native box gives, which
+ * is read as UTC — the property panel keeps one clock (the stored one) so the
+ * same document shows the same bounds on every machine. Anything else is kept
+ * verbatim so the document validator refuses it, naming the stored form.
+ */
+export function instantFromPanel(value: FieldValue | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const v = value.trim();
+  if (v === "") return undefined;
+  if (isIsoDatetime(v)) return v;
+  if (BARE_LOCAL.test(v)) {
+    const d = new Date(`${v}:00.000Z`);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return v;
+}
+
+/** The stored instant in the form a native datetime box shows (UTC, minute precision), or null when absent. */
+export function panelFromInstant(instant: string | undefined): string | null {
+  return instant !== undefined && isIsoDatetime(instant) ? instant.slice(0, 16) : null;
+}
+
 /** Builds a field definition from property panel values; validation of the result happens in the edit session. */
 export function fieldFromProperties(type: FieldType, v: RecordValues): Field {
   const base = { id: str(v["id"]) ?? "", label: str(v["label"]) ?? "", ...(v["required"] === true ? { required: true } : {}) };
@@ -64,7 +94,7 @@ export function fieldFromProperties(type: FieldType, v: RecordValues): Field {
     case "date":
       return { ...base, type, ...opt("min", date(v["min"])), ...opt("max", date(v["max"])) };
     case "datetime":
-      return { ...base, type };
+      return { ...base, type, ...opt("min", instantFromPanel(v["min"])), ...opt("max", instantFromPanel(v["max"])) };
     case "reference":
       return { ...base, type, entity: str(v["entity"]) ?? "", ...opt("display", str(v["display"])) };
     case "select": {
@@ -85,6 +115,8 @@ export function propertiesFromField(field: Field): RecordValues {
       return { ...base, min: field.min ?? null, max: field.max ?? null, step: field.step ?? null, unit: field.unit ?? null };
     case "date":
       return { ...base, min: field.min ?? null, max: field.max ?? null };
+    case "datetime":
+      return { ...base, min: panelFromInstant(field.min), max: panelFromInstant(field.max) };
     case "reference":
       return { ...base, entity: field.entity, display: field.display ?? null };
     case "select":

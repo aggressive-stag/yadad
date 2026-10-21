@@ -304,3 +304,61 @@ describe("EntityFieldsEditor reference fields", () => {
     expect(saved[0]?.fields.at(-1)).toEqual({ id: "lift", type: "reference", label: "Lift", entity: "exercise", display: "name" });
   });
 });
+
+describe("EntityFieldsEditor datetime bounds (RFC 0007)", () => {
+  const slotEntity: EntityDocument = {
+    kind: "entity",
+    specVersion: 0,
+    id: "slot",
+    revision: 1,
+    fields: [
+      { id: "when", type: "datetime", label: "When" },
+      { id: "earliest", type: "datetime", label: "Earliest", min: "2026-10-17T09:30:00.000Z" },
+    ],
+  };
+
+  function slotSetup() {
+    const saved: EntityDocument[] = [];
+    render(<EntityFieldsEditor entity={slotEntity} views={[]} registry={mockRegistry} onSave={(e) => saved.push(e)} onCancel={() => {}} />);
+    const panel = () => screen.getByRole("group", { name: /Add a field|Edit "/ });
+    return { saved, panel };
+  }
+
+  test("adds a datetime field whose bounds are typed as a local time, stored as UTC instants", () => {
+    const { saved, panel } = slotSetup();
+    fireEvent.click(screen.getByRole("button", { name: "New field" }));
+    fireEvent.change(within(panel()).getByLabelText(/^Field type/), { target: { value: "Date and time" } });
+    fireEvent.change(within(panel()).getByLabelText(/^Id/), { target: { value: "start" } });
+    fireEvent.change(within(panel()).getByLabelText(/^Label/), { target: { value: "Start" } });
+    fireEvent.change(within(panel()).getByLabelText("Earliest instant"), { target: { value: "2026-10-17T09:30" } });
+    fireEvent.change(within(panel()).getByLabelText("Latest instant"), { target: { value: "2026-10-17T17:45" } });
+    fireEvent.click(within(panel()).getByRole("button", { name: "Add field" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(saved[0]?.fields.at(-1)).toEqual({ id: "start", type: "datetime", label: "Start", min: "2026-10-17T09:30:00.000Z", max: "2026-10-17T17:45:00.000Z" });
+  });
+
+  const datetimeMin = (saved: readonly EntityDocument[], id: string): string | undefined | "missing" => {
+    const f = saved[0]?.fields.find((x) => x.id === id);
+    return f?.type === "datetime" ? f.min : "missing";
+  };
+
+  test("a stored instant shows in the native box at minute precision and round-trips unchanged", () => {
+    const { saved, panel } = slotSetup();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Earliest" }));
+    // The native datetime-local box keeps minute precision; the seconds and Z
+    // are the document's, not the widget's (RFC 0007).
+    expect((within(panel()).getByLabelText("Earliest instant") as HTMLInputElement).value).toBe("2026-10-17T09:30");
+    fireEvent.click(within(panel()).getByRole("button", { name: "Apply changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(datetimeMin(saved, "earliest")).toBe("2026-10-17T09:30:00.000Z");
+  });
+
+  test("clearing the native box clears the bound", () => {
+    const { saved, panel } = slotSetup();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Earliest" }));
+    fireEvent.change(within(panel()).getByLabelText("Earliest instant"), { target: { value: "" } });
+    fireEvent.click(within(panel()).getByRole("button", { name: "Apply changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(datetimeMin(saved, "earliest")).toBeUndefined();
+  });
+});

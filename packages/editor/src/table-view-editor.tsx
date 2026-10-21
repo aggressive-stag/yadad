@@ -1,4 +1,4 @@
-import type { DocumentError, EntityDocument, Field, FieldValue, Registry, RowAction, TableView, ViewerDocument } from "@yadad/core";
+import type { ColumnCompare, DocumentError, EntityDocument, Field, FieldValue, Registry, RowAction, TableView, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -12,7 +12,7 @@ import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import { ViewerRule } from "./viewer-rule.js";
-import { rowActionTargets, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
+import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
 import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
 
@@ -154,7 +154,24 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
   const filtered = new Set(current.quickFilters?.map((f) => f.field));
   const fieldType = (id: string) => entity.fields.find((f) => f.id === id)?.type;
 
-  const columns = ["Column", "Edit in place", "Quick filter", ...(viewer ? ["Viewers"] : []), "Actions"].map((name) => ({ id: name.toLowerCase().replace(/ /g, "_"), headerId: `${base}-col-${name}`, label: name, sortable: false }));
+  // The compare chooser (RFC 0007): the cell shows this column's value as the
+  // after and the comparator's as the before. Text columns only; an editable
+  // text column still shows the choice and is refused, naming why.
+  const COMPARE_NONE = "Plain text";
+  const COMPARE_PREV = "Changed from the previous row";
+  const COMPARE_NEXT = "Changed from the next row";
+  const compareChoices = (fieldId: string): readonly string[] => [COMPARE_NONE, COMPARE_PREV, COMPARE_NEXT, ...entity.fields.filter((f) => f.type === "text" && f.id !== fieldId).map((f) => `Changed from ${f.label}`)];
+  const compareChoice = (compare: ColumnCompare | undefined): string =>
+    compare === undefined ? COMPARE_NONE : compare.to !== undefined ? (compare.to === "previousRow" ? COMPARE_PREV : COMPARE_NEXT) : `Changed from ${label(compare.field)}`;
+  const compareFromChoice = (choice: string | undefined, fieldId: string): ColumnCompare | undefined => {
+    if (choice === undefined || choice === COMPARE_NONE) return undefined;
+    if (choice === COMPARE_PREV) return { to: "previousRow" };
+    if (choice === COMPARE_NEXT) return { to: "nextRow" };
+    const other = entity.fields.find((f) => f.type === "text" && f.id !== fieldId && `Changed from ${f.label}` === choice);
+    return { field: other?.id ?? choice };
+  };
+
+  const columns = ["Column", "Edit in place", "Quick filter", "Compare", ...(viewer ? ["Viewers"] : []), "Actions"].map((name) => ({ id: name.toLowerCase().replace(/ /g, "_"), headerId: `${base}-col-${name}`, label: name, sortable: false }));
   const rows = current.columns.map((column, i) => {
     const name = label(column.field);
     const editable = column.editable === true;
@@ -184,6 +201,15 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
         </span>,
         editable ? "Yes" : "No",
         quick ? "Yes" : canFilter ? "No" : <span key="quick" title={QUICK_FILTER_REASON}>Not available. {QUICK_FILTER_REASON}</span>,
+        <span key="compare">
+          {propertyInput(
+            registry,
+            `${base}-compare-${column.field}`,
+            choiceField(`${base}-compare-${column.field}`, `Compare ${name}`, compareChoices(column.field)),
+            compareChoice(column.compare),
+            (v) => run(setColumnCompare(current, column.field, compareFromChoice(asText(v), column.field), entity), () => announce(`${name}: ${compareChoice(compareFromChoice(asText(v), column.field)).toLowerCase()}.`)),
+          )}
+        </span>,
         ...(viewer
           ? [
               <span key="viewers">

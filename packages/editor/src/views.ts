@@ -1,5 +1,5 @@
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, jsonPointer, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarMode, CalendarView, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView, ViewerCondition } from "@yadad/core";
+import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -215,6 +215,35 @@ export function setColumnEditableWhen(view: TableView, fieldId: string, conditio
   return ok(ops.length === 0 ? [] : [{ op: "test", path: `/columns/${c}/field`, value: fieldId }, ...ops]);
 }
 
+/**
+ * Sets, changes or clears a column's compare setting (RFC 0007): the cell
+ * shows the column's value as the after and the comparator's as the before.
+ * Text columns only, never an editable column (an edited cell has no
+ * meaningful diff), and `field` names another text field of the same entity.
+ */
+export function setColumnCompare(view: TableView, fieldId: string, compare: ColumnCompare | undefined, entity: EntityDocument): Result {
+  const c = columnIndex(view, fieldId);
+  if (c < 0) return fail(["columns"], `"${fieldId}" is not a column.`, "Add it first.");
+  const guard: PatchOperation = { op: "test", path: `/columns/${c}/field`, value: fieldId };
+  if (compare === undefined) {
+    const ops = view.columns[c]?.compare !== undefined ? [{ op: "remove" as const, path: `/columns/${c}/compare` }] : [];
+    return ok(ops.length === 0 ? [] : [guard, ...ops]);
+  }
+  const column = view.columns[c];
+  if (column?.editable === true) return fail(["columns", c, "compare"], `${fieldId} is editable in place.`, "A column that compares cannot also be editable — an edited cell has no meaningful diff. Make it read-only first.");
+  const type = entity.fields.find((f) => f.id === fieldId)?.type;
+  if (type !== "text") return fail(["columns", c, "compare"], `A compare column must show text; ${fieldId} is ${type ?? "not a field of this entity"}.`, "Only text columns compare — a select is a value, not a text, and numbers have no words.");
+  const hasTo = compare.to !== undefined;
+  const hasField = compare.field !== undefined;
+  if (hasTo === hasField) return fail(["columns", c, "compare"], "A compare takes the previous row, the next row, or another text field — not both, and not neither.", 'Use { "to": "previousRow" } or { "field": "<text field id>" }.');
+  if (hasField) {
+    const other = entity.fields.find((f) => f.id === compare.field);
+    if (compare.field === fieldId) return fail(["columns", c, "compare", "field"], "A column cannot compare with itself.", "Pick another text field, or compare with a neighbouring row.");
+    if (other?.type !== "text") return fail(["columns", c, "compare", "field"], other === undefined ? `"${compare.field}" is not a field of entity "${entity.id}".` : `"${compare.field}" is ${other.type}, not text.`, `Use another text field of ${entity.id}: ${entity.fields.filter((f) => f.type === "text" && f.id !== fieldId).map((f) => f.id).join(", ") || "(none left)"}.`);
+  }
+  return ok([guard, ...setOptional(column?.compare !== undefined, `/columns/${c}/compare`, compare as unknown as Json)]);
+}
+
 /** Sets or clears the viewer condition under which the row action opens its target (RFC 0006). Works on a table, calendar or board. */
 export function setRowActionVisibleWhen(view: TableView | CalendarView | BoardView, condition: ViewerCondition | undefined): Result {
   const action = view.rowAction;
@@ -335,12 +364,12 @@ export const QUICK_FILTER_KINDS: { readonly [K in FieldType]: "match" | "contain
   text: "contains",
   number: "range",
   date: "range",
-  datetime: undefined, // RFC 0007: card 35g (the renderer's from/to quick filter for instants)
+  datetime: "range", // RFC 0007: a from/to range; the viewer types it in its zone, the renderer converts (35c)
   reference: undefined,
 };
 
 /** Said where a field cannot be a quick filter. */
-export const QUICK_FILTER_REASON = "Quick filters work on select, boolean, text, number and date fields.";
+export const QUICK_FILTER_REASON = "Quick filters work on select, boolean, text, number, date and datetime fields.";
 
 /** Whether a field of this type can be a quick filter. */
 export function canQuickFilter(type: FieldType | undefined): boolean {
