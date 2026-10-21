@@ -357,7 +357,7 @@ describe("record actions offered by views (RFC 0007)", () => {
 
   test("offering nothing removes the key; offering the same list changes nothing", () => {
     const withOffer = { ...table, recordActions: ["apply", "close"] };
-    let s = applyOffer(startSession(withOffer), setRecordActions(withOffer, offered, []));
+    const s = applyOffer(startSession(withOffer), setRecordActions(withOffer, offered, []));
     expect(finish(s).recordActions).toBeUndefined();
     expect(setRecordActions(withOffer, offered, ["apply", "close"])).toEqual({ ok: true, patch: [] });
   });
