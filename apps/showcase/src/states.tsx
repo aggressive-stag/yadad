@@ -224,6 +224,9 @@ type CheckRun = { readonly key: string; readonly status: "running" | "done" | "f
 /** The checks that are running or waiting: axe-core refuses to start a second run while one is going. */
 let queue: Promise<void> = Promise.resolve();
 
+/** The moment every state on this page resolves against; UTC keeps the wall clock identical everywhere. */
+export const STATES_NOW = new Date("2026-10-17T10:00:00Z");
+
 /** Runs a check after the ones already waiting; the editor preview shares the queue with this page. */
 export function enqueueChecks<T>(task: () => Promise<T>): Promise<T> {
   const started = queue.then(task);
@@ -239,11 +242,8 @@ export function StatesPage({ documents, registry, initialView }: StatesPageProps
   const [fullLoad, setFullLoad] = useState(false);
   const [open, setOpen] = useState<string | undefined>(undefined);
   const lastOpened = useRef<string | undefined>(undefined);
-  const [now] = useState(() => {
-    const d = new Date();
-    d.setHours(10, 0, 0, 0);
-    return d;
-  });
+  // A fixed instant (RFC 0007, card 36b): the review views' relative dates must not drift with the clock.
+  const now = STATES_NOW;
   const [run, setRun] = useState<CheckRun | undefined>(undefined);
 
   const docs = useMemo<Document[]>(() => [...documents.entities.values(), ...documents.views.values(), ...(documents.viewer ? [documents.viewer] : [])], [documents]);
@@ -257,7 +257,7 @@ export function StatesPage({ documents, registry, initialView }: StatesPageProps
     const { docs: current } = stable.current;
     if (!view) return undefined;
     try {
-      const result = sourceStates(viewStates(view, current, { now, ...(fullLoad ? {} : { manyRecords: QUICK_MANY }) }), current);
+      const result = sourceStates(viewStates(view, current, { now, timeZone: "UTC", ...(fullLoad ? {} : { manyRecords: QUICK_MANY }) }), current);
       return { result };
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
@@ -278,6 +278,7 @@ export function StatesPage({ documents, registry, initialView }: StatesPageProps
       documents: current,
       registry,
       now,
+      timeZone: "UTC",
       ...(fullLoad ? {} : { manyRecords: QUICK_MANY }),
       render: (state, context) => renderState(state, context, set),
     })));

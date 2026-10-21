@@ -70,6 +70,8 @@ export interface StateRenderContext {
 }
 
 export interface CheckViewStatesOptions {
+  /** Zone generated `datetime` values are rendered in; passed to `viewStates` (defaults to "UTC" there). */
+  readonly timeZone?: string;
   /** The view document, or its id among `documents`. */
   readonly view: ViewDocument | string;
   /** Every document the view needs: its entity, and for a dashboard the views it embeds. */
@@ -134,6 +136,7 @@ export async function checkViewStates(options: CheckViewStatesOptions): Promise<
     ...(options.limit !== undefined ? { limit: options.limit } : {}),
     ...(options.embeddedLimit !== undefined ? { embeddedLimit: options.embeddedLimit } : {}),
     ...(options.manyRecords !== undefined ? { manyRecords: options.manyRecords } : {}),
+    ...(options.timeZone !== undefined ? { timeZone: options.timeZone } : {}),
   };
   const states = sourceStates(viewStates(view, documents, stateOptions), documents).states;
 
