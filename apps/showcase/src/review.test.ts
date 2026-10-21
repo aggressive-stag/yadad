@@ -1,4 +1,4 @@
-import { RecordConflictError, validateDocuments } from "@yadad/core";
+import { isIsoDatetime, RecordConflictError, validateDocuments } from "@yadad/core";
 import type { Query } from "@yadad/core";
 import { expect, test } from "vitest";
 import { ForbiddenError } from "@yadad/core";
@@ -25,6 +25,26 @@ const findDecision = async (adapter: ReturnType<typeof store>["adapter"], code: 
 test("the review documents validate as a set", async () => {
   const result = validateDocuments(reviewDocuments);
   expect(result.ok === true ? [] : result.errors.map((e) => `${e.document ?? e.path}: ${e.message} ${e.hint}`)).toEqual([]);
+});
+
+test("every seeded datetime value is in the one canonical stored form", async () => {
+  // The browser check caught this: a seeded instant written ":00Z" instead of
+  // ":00.000Z" is not isIsoDatetime, so the field renders raw ISO and a real
+  // server would reject it. Records bypass validateDocuments, hence this test.
+  const adapter = store("owner").adapter;
+  const entities = reviewDocuments.filter((d) => d.kind === "entity");
+  const offenders: string[] = [];
+  for (const entity of entities) {
+    for (const field of entity.fields) {
+      if (field.type !== "datetime") continue;
+      const items = await rows(adapter, entity.id, {});
+      for (const record of items) {
+        const value = record.values[field.id];
+        if (typeof value === "string" && !isIsoDatetime(value)) offenders.push(`${entity.id}/${String(record["id"])}.${field.id}=${value}`);
+      }
+    }
+  }
+  expect(offenders).toEqual([]);
 });
 
 test("changes are paged by cursor, like a server that never counts", async () => {

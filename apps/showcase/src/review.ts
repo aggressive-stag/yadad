@@ -212,9 +212,14 @@ const LINES = [
   "Water the ferns on Fridays.",
 ] as const;
 
-/** Zero-padded ISO instants, so the adapter's text sort is also the date order. */
+/**
+ * Zero-padded instants in the one canonical stored form ("YYYY-MM-DDTHH:MM:SS.sssZ",
+ * what `toISOString` prints), so the adapter's text sort is also the date order and
+ * `isIsoDatetime` accepts every seeded value. The `.000` is not decoration: without
+ * it the field renders raw ISO and validation would reject the document.
+ */
 const ts = (day: number, minuteOfDay: number): string =>
-  `2026-10-${String(day).padStart(2, "0")}T${String(Math.floor(minuteOfDay / 60) % 24).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}:00Z`;
+  `2026-10-${String(day).padStart(2, "0")}T${String(Math.floor(minuteOfDay / 60) % 24).padStart(2, "0")}:${String(minuteOfDay % 60).padStart(2, "0")}:00.000Z`;
 
 /** Indexes a const array without the `| undefined` the checked build would otherwise spread. */
 function pick<T>(xs: readonly T[], i: number): T {
