@@ -77,6 +77,39 @@ describe("record actions on tables (RFC 0007)", () => {
     expect(dialog()).toBeNull(); // publish has no confirm and no input: no dialog
   });
 
+  test("a protocol 400 from a direct press keeps each entry's own message and hint, with no reload advice", async () => {
+    // The server located the refusal in its own errors[]: the summary shows
+    // those, not a generic line telling the viewer to reload what reloading
+    // cannot fix. A /values/<field> path marks the field (pinned in the form
+    // tests); here the record's fields are the columns, shown via tag.
+    const db = await seeded({
+      actions: {
+        "doc.publish": () => {
+          throw new RecordValidationError("The server rejected the request.", [
+            { path: "/values/tag", code: "invalid-value", message: "only drafts may publish", hint: "unpublish it first" },
+          ]);
+        },
+      },
+    });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
+    press("publish");
+    await waitFor(() => expect(summary()?.textContent).toContain("only drafts may publish"));
+    expect(summary()?.textContent).toContain("unpublish it first"); // the server's own hint
+    expect(summary()?.textContent).not.toContain("Reload and try again.");
+    expect(summary()?.querySelector("[data-path='/tag']")).toBeTruthy(); // the field the server located
+    expect(tagOf(1)).toBe("draft"); // the record was untouched
+  });
+
+  test("a plain Error from a direct press keeps the generic hint", async () => {
+    const db = await seeded({ actions: { "doc.publish": () => { throw new Error("The server fell over."); } } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
+    press("publish");
+    await waitFor(() => expect(summary()?.textContent).toContain("The server fell over."));
+    expect(summary()?.textContent).toContain("Reload and try again.");
+  });
+
   test("a 403 shows the ErrorSummary and reloads", async () => {
     const db = await seeded({ actions: { "doc.publish": () => { throw new ForbiddenError("Only editors may publish."); } } });
     show(db);

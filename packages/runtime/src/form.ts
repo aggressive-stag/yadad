@@ -66,12 +66,39 @@ export async function submitForm(entity: EntityDocument, values: RecordValues, a
 }
 
 /**
+ * Locates a server-side issue where the form can show it. The protocol puts a
+ * record-value error at `/values/<field>` (a pointer into the request body);
+ * the form marks fields at `jsonPointer([field.id])`, so a located error is
+ * rewritten to that path and the field gets its message and `aria-invalid`.
+ * `""` (form level), `/input/…` and anything else are left as the server sent
+ * them.
+ */
+function locateIssue(issue: DocumentError): DocumentError {
+  const located = /^\/values\/([^/]+)$/.exec(issue.path);
+  if (located === null || located[1] === undefined) return issue;
+  const field = located[1].replaceAll("~1", "/").replaceAll("~0", "~");
+  return { ...issue, path: jsonPointer([field]) };
+}
+
+/**
+ * The protocol's `errors[]` a refused save carries, located for display, when
+ * the thrown error has any. `undefined` when it does not (network failure,
+ * 5xx, an error with an empty body) — those get a summary line instead.
+ */
+export function serverValidationIssues(error: unknown): readonly DocumentError[] | undefined {
+  if (!(error instanceof RecordValidationError) || error.issues.length === 0) return undefined;
+  return error.issues.map(locateIssue);
+}
+
+/**
  * Turns a failed save (a thrown adapter error) into the form's error list, so
- * the existing error display can show it. Validation errors pass their issues
- * through; a conflict and the other failures become a single summary line.
+ * the existing error display can show it. The protocol's `errors[]` pass
+ * through with their own message, hint and located field; a conflict and the
+ * other failures become a single summary line.
  */
 function adapterFailure(error: unknown): readonly DocumentError[] {
-  if (error instanceof RecordValidationError) return error.issues;
+  const located = serverValidationIssues(error);
+  if (located !== undefined) return located;
   if (error instanceof RecordConflictError) {
     return [
       {

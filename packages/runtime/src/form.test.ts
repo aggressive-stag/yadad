@@ -1,4 +1,5 @@
 import type { EntityDocument } from "@yadad/core";
+import { ForbiddenError, RecordConflictError, RecordNotFoundError, RecordValidationError, UnauthorizedError } from "@yadad/core";
 import { describe, expect, test } from "vitest";
 import { emptyFormState, setFieldValue, submitEdit, submitForm } from "./form.js";
 import { createMemoryAdapter } from "./memory-adapter.js";
@@ -146,5 +147,91 @@ describe("form state", () => {
     const result = await submitForm(entity, {}, db);
     expect(result.ok).toBe(false);
     expect((await db.find("hello", {})).total).toBe(0);
+  });
+});
+
+describe("a refused save keeps the server's own hint and field", () => {
+  const throwing = (error: unknown): ReturnType<typeof createMemoryAdapter> => {
+    const db = createMemoryAdapter();
+    return { ...db, create: () => Promise.reject(error), update: () => Promise.reject(error) };
+  };
+
+  test("a 400 at /values/<field> marks that field with the server's message and hint", async () => {
+    // The protocol locates a bad record value in the request body; the form
+    // must find it under the field, and must not append its own reload advice.
+    const server400 = new RecordValidationError("The server rejected the request.", [
+      { path: "/values/name", code: "invalid-value", message: "name must not be taken", hint: "pick another name" },
+    ]);
+    const result = await submitForm(entity, { name: "Ada" }, throwing(server400));
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.errors).toEqual([{ path: "/name", code: "invalid-value", message: "name must not be taken", hint: "pick another name" }]);
+  });
+
+  test("every entry of a multi-error 400 keeps its own message, hint and path", async () => {
+    const server400 = new RecordValidationError("The server rejected the request.", [
+      { path: "/values/name", code: "invalid-value", message: "name is taken", hint: "pick another" },
+      { path: "", code: "invalid-value", message: "the form is incomplete", hint: "fill both fields" },
+    ]);
+    const result = await submitForm(entity, { name: "Ada" }, throwing(server400));
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.errors).toEqual([
+      { path: "/name", code: "invalid-value", message: "name is taken", hint: "pick another" },
+      { path: "", code: "invalid-value", message: "the form is incomplete", hint: "fill both fields" },
+    ]);
+  });
+
+  test("a 400 at path \"\" keeps the server's hint at form level, with no reload advice", async () => {
+    const server400 = new RecordValidationError("The server rejected the request.", [
+      { path: "", code: "invalid-value", message: "due_time must be a 'HH:MM' time (got '25:99')", hint: "fix the value and retry" },
+    ]);
+    const result = await submitForm(entity, { name: "Ada" }, throwing(server400));
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.errors).toEqual([{ path: "", code: "invalid-value", message: "due_time must be a 'HH:MM' time (got '25:99')", hint: "fix the value and retry" }]);
+    expect(JSON.stringify(result.errors)).not.toContain("Reload");
+  });
+
+  test("an edit refused by the server marks its field too", async () => {
+    const db = createMemoryAdapter();
+    const created = await submitForm(entity, { name: "Ada", note: "x" }, db);
+    if (!created.ok) throw new Error("setup");
+    const server400 = new RecordValidationError("The server rejected the request.", [
+      { path: "/values/note", code: "invalid-value", message: "note is too long", hint: "shorten it" },
+    ]);
+    const result = await submitEdit(entity, created.record, { note: "y" }, throwing(server400));
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.errors).toEqual([{ path: "/note", code: "invalid-value", message: "note is too long", hint: "shorten it" }]);
+  });
+
+  test("a failure with no protocol body keeps the generic hint", async () => {
+    for (const [label, error] of [
+      ["a network failure", new TypeError("Failed to fetch")],
+      ["a 5xx", new Error("The server responded with status 500.")],
+      ["a 400 with an empty body", new RecordValidationError("The server rejected the request.", [])],
+    ] as const) {
+      const result = await submitForm(entity, { name: "Ada" }, throwing(error));
+      expect(result.ok, label).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      expect(result.errors.length, label).toBe(1);
+      expect(result.errors[0], label).toMatchObject({ path: "", code: "invalid-value", hint: "Reload and try again." });
+    }
+  });
+
+  test("conflict, not-found, unauthorized and forbidden keep their own mappings", async () => {
+    const cases: readonly (readonly [unknown, string, string])[] = [
+      [new RecordConflictError("changed", null), "conflict", "Reload to load the latest version, then re-apply your change."],
+      [new RecordNotFoundError("gone"), "not-found", "Reload to refresh the list."],
+      [new UnauthorizedError("sign in"), "unauthorized", "Sign in and try again."],
+      [new ForbiddenError("nope"), "forbidden", "You are not allowed to save this."],
+    ];
+    for (const [error, code, hint] of cases) {
+      const result = await submitForm(entity, { name: "Ada" }, throwing(error));
+      expect(result.ok, code).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      expect(result.errors.map((e) => [e.path, e.code, e.hint]), code).toEqual([["", code, hint]]);
+    }
   });
 });

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { BoardView, CalendarView, DataRecord, Document, EntityDocument, FormView, TableView } from "@yadad/core";
-import { viewStates } from "@yadad/runtime";
+import { RecordValidationError } from "@yadad/core";
+import type { BoardView, CalendarView, DataAdapter, DataRecord, Document, EntityDocument, FormView, TableView } from "@yadad/core";
+import { createMemoryAdapter, viewStates } from "@yadad/runtime";
 import { createStateAdapter, mockRegistry, sourceStates } from "@yadad/testing";
 import type { StateAdapter, StateAdapterOptions } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
@@ -205,6 +206,47 @@ describe("form in each source state", () => {
     const shown = await alert();
     expect(shown.querySelector("[data-code='conflict']")).toBeTruthy();
     expect(shown.textContent).toContain("changed elsewhere");
+  });
+
+  // A records host refuses with the protocol's errors[]; each entry carries
+  // its own message, hint and pointer into the request body. The form must
+  // show those, not the generic reload advice (a consumer's report: the
+  // server's precise message came with "Reload and try again.", which fixes
+  // nothing, and a located field was never marked).
+  const refusing = (issues: readonly { path: string; message: string; hint: string }[]): DataAdapter => {
+    const db = createMemoryAdapter();
+    const failure = new RecordValidationError("The server rejected the request.", issues.map((i) => ({ ...i, code: "invalid-value" as const })));
+    return { ...db, create: () => Promise.reject(failure) };
+  };
+  const openPlain = (adapter: DataAdapter) => render(<FormRenderer entity={entity} view={form} registry={mockRegistry} dataSources={new Map([["default", adapter]])} />);
+
+  test("a 400 located at /values/<field> marks that field with the server's message, with no reload advice", async () => {
+    openPlain(refusing([{ path: "/values/title", message: "Title is taken.", hint: "pick another title" }]));
+    submit();
+    const titleInput = screen.getByRole("textbox", { name: /Title/ });
+    await waitFor(() => expect(titleInput.getAttribute("aria-invalid")).toBe("true"));
+    const fieldAlert = [...document.querySelectorAll("[data-testid='field-error']")].find((el) => el.textContent?.includes("Title is taken."));
+    expect(fieldAlert).toBeTruthy(); // the server's message is under the field (the mock Frame shows messages; the hint rides on the error object, pinned in runtime tests)
+    expect(document.body.textContent).not.toContain("Reload and try again.");
+  });
+
+  test("a 400 at path \"\" shows the server's hint at form level, with no reload advice", async () => {
+    openPlain(refusing([{ path: "", message: "due_time must be a 'HH:MM' time (got '25:99')", hint: "fix the value and retry" }]));
+    submit();
+    const shown = await alert();
+    expect(shown.textContent).toContain("due_time must be a 'HH:MM' time");
+    expect(shown.textContent).toContain("fix the value and retry");
+    expect(shown.textContent).not.toContain("Reload and try again.");
+    expect(screen.getByRole("textbox", { name: /Title/ }).getAttribute("aria-invalid")).not.toBe("true");
+  });
+
+  test("a failure with no protocol body keeps the generic hint", async () => {
+    const dead: DataAdapter = { ...createMemoryAdapter(), create: () => Promise.reject(new TypeError("Failed to fetch")) };
+    openPlain(dead);
+    submit();
+    const shown = await alert();
+    expect(shown.textContent).toContain("Failed to fetch");
+    expect(shown.textContent).toContain("Reload and try again.");
   });
 });
 

@@ -1,6 +1,6 @@
 import { ForbiddenError, RecordConflictError, RecordNotFoundError, RecordValidationError, UnauthorizedError, jsonPointer } from "@yadad/core";
 import type { DataAdapter, DataRecord, DocumentError, EntityDocument, Field, RecordAction, RecordActionItem, RecordValues, Registry, ResolvedViewer } from "@yadad/core";
-import { actionNeedsDialog, availableActions, validateActionInput } from "@yadad/runtime";
+import { actionNeedsDialog, availableActions, serverValidationIssues, validateActionInput } from "@yadad/runtime";
 import type { ActionsView } from "@yadad/runtime";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -212,6 +212,11 @@ export function recordActionSetupErrors(
 
 /** A failed action becomes summary lines: the refusal the server stated, per its category (the protocol's 403/409/404). */
 function actionFailure(error: unknown): readonly DocumentError[] {
+  // A refused save that names its errors keeps each one's own message, hint
+  // and field; "Reload and try again." would be a lie when reloading fixes
+  // nothing (a 400 with the server's own hint).
+  const located = serverValidationIssues(error);
+  if (located !== undefined) return located;
   if (error instanceof ForbiddenError) return [{ path: "", code: "forbidden", message: error.message, hint: "Reload to refresh this record." }];
   if (error instanceof RecordConflictError) return [{ path: "", code: "conflict", message: error.message, hint: "Reload to see the latest version, then try again." }];
   if (error instanceof RecordNotFoundError) return [{ path: "", code: "not-found", message: error.message, hint: "Reload to refresh the list." }];
