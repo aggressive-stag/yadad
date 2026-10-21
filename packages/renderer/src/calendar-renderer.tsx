@@ -11,6 +11,7 @@ import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
 import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
+import { replaceSavedRecord } from "./saved-record.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -372,7 +373,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     };
     adapter.update(plan.entity, plan.id, plan.patch, plan.meta).then(
       (saved) => {
-        setState((s) => (s?.status === "loaded" ? { ...s, records: s.records.map((r) => (r.id === saved.id ? saved : r)) } : s));
+        setState((s) => (s?.status === "loaded" ? { ...s, records: replaceSavedRecord(s.records, recordId, saved) } : s));
         settle();
         announce(`Moved ${title} to ${dayLabel(day)}`);
       },

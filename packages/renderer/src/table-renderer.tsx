@@ -12,6 +12,7 @@ import type { FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import { useViewerSetup } from "./viewer.js";
 import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
+import { replaceSavedRecord } from "./saved-record.js";
 
 export interface TableRendererProps {
   readonly entity: EntityDocument;
@@ -332,7 +333,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     if (result.ok) {
       // Show the saved record right away, then refresh (the sort order may change).
       const saved = result.record;
-      setRows((r) => (r.status === "loaded" ? { ...r, items: r.items.map((x) => (x.id === saved.id ? saved : x)) } : r));
+      const movedId = editing.record.id;
+      setRows((r) => (r.status === "loaded" ? { ...r, items: replaceSavedRecord(r.items, movedId, saved) } : r));
       setEditing(undefined);
       setReloads((n) => n + 1);
     } else {

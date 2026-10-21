@@ -245,6 +245,45 @@ describe("moving an entry", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  test("a move whose saved record has a new id shows exactly one copy on the new day", async () => {
+    // A records host whose ids encode the moved value (occurrence ids like
+    // `3:2026-10-19` -> `3:2026-10-24`) answers an update under a NEW id.
+    const { db } = await seed();
+    const renaming: DataAdapter = {
+      ...db,
+      async update(entity, id, patch, meta) {
+        const saved = await db.update(entity, id, patch, meta);
+        return { ...saved, id: `${id}:${patch["due"] ?? "?"}` };
+      },
+    };
+    await open({ adapter: renaming });
+    moveTo("Pay rent", "2026-10-16");
+    await waitFor(() => expect(status()).toBe("Moved Pay rent to Friday 16 October 2026"));
+    // Exactly one copy, on the new day, without a reload (the adapter above
+    // never persists the new id, so a reload would put it back).
+    expect(within(cell("2026-10-16")).getAllByText("Pay rent")).toHaveLength(1);
+    expect(within(cell("2026-10-15")).queryByText("Pay rent")).toBeNull();
+  });
+
+  test("a saved new id that collides with a loaded record keeps one copy", async () => {
+    // Beyond the rename: when another loaded record already carries the id the
+    // server returned, the duplicate is dropped rather than double-rendered.
+    const { db } = await seed();
+    const other = await db.create("task", { title: "Other", due: "2026-10-16", list: "Home" }, { entityRevision: 1 });
+    const colliding: DataAdapter = {
+      ...db,
+      async update(entity, id, patch, meta) {
+        const saved = await db.update(entity, id, patch, meta);
+        return { ...saved, id: other.id }; // server says "this is that one now"
+      },
+    };
+    await open({ adapter: colliding });
+    moveTo("Pay rent", "2026-10-16");
+    await waitFor(() => expect(status()).toBe("Moved Pay rent to Friday 16 October 2026"));
+    expect(within(cell("2026-10-16")).getAllByText("Pay rent")).toHaveLength(1);
+    expect(within(cell("2026-10-15")).queryByText("Pay rent")).toBeNull();
+  });
+
   test("moving to the same day sends nothing", async () => {
     const { db } = await seed();
     const update = vi.fn(db.update);

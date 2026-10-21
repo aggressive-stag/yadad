@@ -234,6 +234,24 @@ describe("moving a card", () => {
     expect((await db.findOne("task", ids["Pay rent"]!))?.values["assignee"]).toBe(ids["Bo"]);
   });
 
+  test("a move whose saved record has a new id shows exactly one card in the new column", async () => {
+    // A records host whose ids encode the moved value answers the update with
+    // a NEW id: the old copy must go and the new one must appear, no reload.
+    const { db } = await seed();
+    const renaming: DataAdapter = {
+      ...db,
+      async update(entity, id, patch, meta) {
+        const saved = await db.update(entity, id, patch, meta);
+        return { ...saved, id: `${id}:${patch["list"] ?? "?"}` };
+      },
+    };
+    await open({ adapter: renaming });
+    moveTo("Pay rent", "v:Work");
+    await waitFor(() => expect(status()).toBe("Moved Pay rent to Work"));
+    expect(titles("v:Work").filter((t) => t === "Pay rent")).toHaveLength(1);
+    expect(titles("v:Home")).not.toContain("Pay rent");
+  });
+
   test("a refused move (403) puts the card back, shows the message and announces it", async () => {
     const { db } = await seed();
     await open({ adapter: { ...db, update: () => Promise.reject(new ForbiddenError("You may not change this task.")) } });

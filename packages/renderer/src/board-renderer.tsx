@@ -11,6 +11,7 @@ import { useReferences } from "./references.js";
 import type { ReferenceSupport } from "./references.js";
 import { checkViewSetup } from "./setup.js";
 import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
+import { replaceSavedRecord } from "./saved-record.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -424,7 +425,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     };
     adapter.update(plan.entity, plan.id, plan.patch, plan.meta).then(
       (saved) => {
-        setCards((s) => (s?.status === "loaded" ? { ...s, records: s.records.map((r) => (r.id === saved.id ? saved : r)) } : s));
+        setCards((s) => (s?.status === "loaded" ? { ...s, records: replaceSavedRecord(s.records, recordId, saved) } : s));
         settle();
         announce(`Moved ${title} to ${def.label}`);
       },
