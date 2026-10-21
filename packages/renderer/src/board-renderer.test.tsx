@@ -82,6 +82,7 @@ interface Options {
   readonly groupBy?: string;
   readonly onGroupByChange?: (field: string) => void;
   readonly docs?: DocumentSet;
+  readonly reloadKey?: unknown;
 }
 
 async function open(options: Options = {}) {
@@ -96,6 +97,7 @@ async function open(options: Options = {}) {
     documents: options.docs ?? documents,
     ...(options.groupBy !== undefined ? { groupBy: options.groupBy } : {}),
     ...(options.onGroupByChange ? { onGroupByChange: options.onGroupByChange } : {}),
+    ...(options.reloadKey !== undefined ? { reloadKey: options.reloadKey } : {}),
   };
   const ui = render(<BoardRenderer {...props} />);
   await screen.findByText("Pay rent");
@@ -250,6 +252,96 @@ describe("moving a card", () => {
     await waitFor(() => expect(status()).toBe("Moved Pay rent to Work"));
     expect(titles("v:Work").filter((t) => t === "Pay rent")).toHaveLength(1);
     expect(titles("v:Home")).not.toContain("Pay rent");
+  });
+
+  // A consumer saw a card in both its old and new column after a move out of
+  // the empty column (reference group-by) until reload. These pin the engine
+  // side: whatever the adapter returned (same id, or a new one), the card the
+  // renderer moved must live in exactly one column, and stay there across a
+  // reloadKey change. `moveTo` is the Move to… path; the drop path needs a
+  // Board with drop handlers (the mock set has none and the real component
+  // set lives in another repo), so the drop test wires the same call the
+  // component set's drop makes: onMove(cardId, columnId) on drop.
+  const DRAG_TYPE = "application/x-yadad-board-card";
+
+  function fakeDataTransfer(pairs: readonly (readonly [string, string])[]): DataTransfer {
+    const store = new Map<string, string>(pairs);
+    return {
+      types: [...store.keys()],
+      getData: (t: string) => store.get(t) ?? "",
+      setData: (t: string, v: string) => void store.set(t, v),
+    } as unknown as DataTransfer;
+  }
+
+  async function openWithDrop(options: Options = {}) {
+    const dropRegistry: Registry<ReactNode> = {
+      ...mockRegistry,
+      layout: {
+        ...mockRegistry.layout,
+        Board: (props) => (
+          <section data-testid="board">
+            <div role="status" aria-live="polite" data-testid="board-status">
+              {props.announcement?.text}
+            </div>
+            {props.columns.map((col) => (
+              <div
+                key={col.id}
+                data-testid={`column-${col.id}`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+                  const id = e.dataTransfer.getData(DRAG_TYPE);
+                  if (col.droppable && id) props.onMove?.(id, col.id);
+                }}
+              >
+                {col.cards.map((card) => (
+                  <div key={card.id} data-testid={`card-${card.id}`} data-pending={card.pending} draggable onDragStart={(e) => e.dataTransfer.setData(DRAG_TYPE, card.id)} aria-label={card.label}>
+                    {card.content}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </section>
+        ),
+      },
+    };
+    return open({ ...options, registry: dropRegistry });
+  }
+
+  const cardNodes = (cardId: string): HTMLElement[] => Array.from(document.querySelectorAll(`[data-testid="card-${cardId}"]`));
+
+  test("a card moved out of the empty column by the Move to… control ends up in exactly one column and stays after a reload", async () => {
+    const { db, ids, rerender } = await open({ groupBy: "assignee" });
+    await screen.findByTestId(`column-v:${ids["Ada"]}`);
+    expect(titles("empty")).toContain("Unsorted");
+    moveTo("Unsorted", `v:${ids["Ada"]}`);
+    await waitFor(() => expect(status()).toBe("Moved Unsorted to Ada"));
+    expect(cardNodes(ids["Unsorted"]!)).toHaveLength(1);
+    expect(titles(`v:${ids["Ada"]}`)).toContain("Unsorted");
+    expect(titles("empty")).not.toContain("Unsorted");
+    expect((await db.findOne("task", ids["Unsorted"]!))?.values["assignee"]).toBe(ids["Ada"]);
+    // A host reload (changed reloadKey) must not resurrect the old copy.
+    rerender({ reloadKey: "after-move" });
+    await waitFor(() => expect(cardNodes(ids["Unsorted"]!)).toHaveLength(1));
+    expect(titles(`v:${ids["Ada"]}`)).toContain("Unsorted");
+    expect(titles("empty")).not.toContain("Unsorted");
+  });
+
+  test("a card dropped from the empty column onto a person column ends up in exactly one column and stays after a reload", async () => {
+    const { db, ids, rerender } = await openWithDrop({ groupBy: "assignee" });
+    await screen.findByTestId(`column-v:${ids["Ada"]}`);
+    fireEvent.drop(screen.getByTestId(`column-v:${ids["Ada"]}`), {
+      dataTransfer: fakeDataTransfer([
+        [DRAG_TYPE, ids["Unsorted"]!],
+        ["text/plain", ids["Unsorted"]!],
+      ]),
+    });
+    await waitFor(() => expect(status()).toBe("Moved Unsorted to Ada"));
+    expect(cardNodes(ids["Unsorted"]!)).toHaveLength(1);
+    expect((await db.findOne("task", ids["Unsorted"]!))?.values["assignee"]).toBe(ids["Ada"]);
+    rerender({ reloadKey: "after-move" });
+    await waitFor(() => expect(cardNodes(ids["Unsorted"]!)).toHaveLength(1));
   });
 
   test("a refused move (403) puts the card back, shows the message and announces it", async () => {
