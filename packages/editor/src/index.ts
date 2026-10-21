@@ -1,6 +1,7 @@
 export * from "./dashboard-layout-editor.js";
 export * from "./entity-fields-editor.js";
 export * from "./field-options.js";
+export * from "./actions.js";
 export * from "./fields.js";
 export * from "./layout.js";
 export * from "./session.js";

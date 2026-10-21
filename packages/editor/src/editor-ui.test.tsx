@@ -123,6 +123,105 @@ describe("EntityFieldsEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
     expect(saved[0]?.fields.map((f) => f.id)).toEqual(["day"]);
   });
+
+  const actionPanel = () => screen.getByRole("group", { name: /Add an action|Edit action "/ });
+
+  test("adds an action with a confirm; the row appears and saving keeps it", () => {
+    const { saved } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/Confirm message/), { target: { value: "This marks the task shipped." } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/Confirm tone/), { target: { value: "Danger" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    const table = screen.getByRole("table", { name: "Actions of set" });
+    expect(table.textContent).toContain("Ship");
+    expect(table.textContent).toContain("Danger: This marks the task shipped.");
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(saved[0]?.actions).toEqual([{ id: "ship", label: "Ship", confirm: { message: "This marks the task shipped.", tone: "danger" } }]);
+  });
+
+  test("an action without a confirm message runs on press", () => {
+    const { saved } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "retry" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Retry" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    expect(screen.getByRole("table", { name: "Actions of set" }).textContent).toContain("Runs on press");
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(saved[0]?.actions).toEqual([{ id: "retry", label: "Retry" }]);
+  });
+
+  test("a duplicate action id is refused with the reason and the panel stays open", () => {
+    const { saved } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Ship" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Ship again" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    expect(screen.getByTestId("error-summary").textContent).toContain('An action "ship" already exists on "set".');
+    expect(actionPanel()).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(saved[0]?.actions?.map((a) => a.id)).toEqual(["ship"]);
+  });
+
+  test("an action id is fixed after creation; the label and confirm stay editable", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Ship" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Ship" }));
+    expect(within(actionPanel()).queryByLabelText(/^Id/)).toBeNull();
+    expect(actionPanel().textContent).toContain("Id: ship");
+    fireEvent.change(screen.getByLabelText(/^Label/), { target: { value: "Publish" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply changes" }));
+    expect(screen.getByRole("table", { name: "Actions of set" }).textContent).toContain("Publish");
+  });
+
+  test("reordering an action keeps its id and disables the move at each end", () => {
+    setup();
+    for (const [id, label] of [["ship", "Ship"], ["drop", "Drop"]] as const) {
+      fireEvent.click(screen.getByRole("button", { name: "New action" }));
+      fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: id } });
+      fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: label } });
+      fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    }
+    const table = () => screen.getByRole("table", { name: "Actions of set" });
+    expect(table().textContent?.indexOf("Ship")).toBeLessThan(table().textContent!.indexOf("Drop"));
+    expect(screen.getByRole("button", { name: "Move Ship up" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Move Drop up" }));
+    expect(table().textContent?.indexOf("Drop")).toBeLessThan(table().textContent!.indexOf("Ship"));
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+  });
+
+  test("removal is refused while a view offers the action", () => {
+    cleanup();
+    const savedWithOffer: EntityDocument[] = [];
+    const offering: TableView = { ...table, recordActions: ["ship"] };
+    render(<EntityFieldsEditor entity={{ ...entity, actions: [{ id: "ship", label: "Ship" }] }} views={[offering]} registry={mockRegistry} onSave={(e) => savedWithOffer.push(e)} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Ship" }));
+    expect(screen.getByTestId("error-summary").textContent).toContain('"ship" is still offered by: sets/recordActions/0');
+    fireEvent.click(screen.getByRole("button", { name: "Remove Ship" }));
+    expect(screen.getByTestId("error-summary").textContent).toContain("still offered");
+    expect(screen.getByRole("table", { name: "Actions of set" }).textContent).toContain("Ship");
+    expect(savedWithOffer).toEqual([]);
+  });
+
+  test("undo reverts an action add and redo re-applies it", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "New action" }));
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(within(actionPanel()).getByLabelText(/^Label/), { target: { value: "Ship" } });
+    fireEvent.click(within(actionPanel()).getByRole("button", { name: "Add action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByRole("table", { name: "Actions of set" }).textContent).toContain("No actions yet");
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    expect(screen.getByRole("table", { name: "Actions of set" }).textContent).toContain("Ship");
+  });
 });
 
 describe("EntityFieldsEditor reference fields", () => {
