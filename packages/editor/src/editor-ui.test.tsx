@@ -64,6 +64,32 @@ describe("DashboardLayoutEditor", () => {
     expect(saved[0]?.revision).toBe(3);
     expect(saved[0]?.tabs[0]?.items[1]).toMatchObject({ x: 8, y: 1 });
   });
+
+  test("a card focused with the keyboard moves with arrows and resizes with Shift+arrows", () => {
+    // The consumer's path: Tab lands on the card, then keys — a real focus plus a native bubbling keydown, the way the browser delivers it.
+    const room: DashboardView = {
+      kind: "dashboard",
+      specVersion: 0,
+      id: "room",
+      title: "Room",
+      revision: 1,
+      tabs: [{ id: "main", title: "Main", items: [{ id: "count", x: 2, y: 0, w: 3, h: 2, widget: "count", label: "Sets", view: "sets" }] }],
+    };
+    const saved: DashboardView[] = [];
+    render(<DashboardLayoutEditor dashboard={room} registry={mockRegistry} onSave={(d) => saved.push(d)} onCancel={() => {}} describeView={(id) => `View: ${id}`} />);
+    const card = screen.getByRole("group", { name: /^Count: Sets/ });
+    const save = () => screen.getByRole("button", { name: "Save layout" }) as HTMLButtonElement;
+    card.focus();
+    expect(document.activeElement).toBe(card);
+    expect(save().disabled).toBe(true);
+    fireEvent.keyDown(card, { key: "ArrowRight" });
+    expect(card.getAttribute("aria-label")).toBe("Count: Sets, column 4, row 1, 3 wide, 2 tall");
+    expect(save().disabled).toBe(false);
+    fireEvent.keyDown(card, { key: "ArrowRight", shiftKey: true });
+    expect(card.getAttribute("aria-label")).toBe("Count: Sets, column 4, row 1, 4 wide, 2 tall");
+    fireEvent.click(save());
+    expect(saved[0]?.tabs[0]?.items[0]).toMatchObject({ x: 3, y: 0, w: 4, h: 2 });
+  });
 });
 
 describe("EntityFieldsEditor", () => {

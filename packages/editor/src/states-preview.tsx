@@ -312,7 +312,7 @@ function StateTile({ state, change, problems, checked, open, onToggle, content, 
       )}
       {problems.length > 0 && <span data-yadad-state-marker=""> ⚠ {problems.length === 1 ? "1 problem" : `${problems.length} problems`}</span>}
       {problems.length === 0 && checked && <span data-yadad-state-ok=""> ✓</span>}
-      <div ref={frame} aria-hidden="true" data-yadad-state-preview="" style={{ overflow: "hidden", height: "9rem", position: "relative" }}>
+      <div ref={frame} aria-hidden="true" data-yadad-state-preview="" style={{ overflow: "hidden", height: "9rem", position: "relative", pointerEvents: "none" }}>
         <div inert style={{ width: TILE_WIDTH, transform: `scale(${scale})`, transformOrigin: "top left" }}>
           {content()}
         </div>

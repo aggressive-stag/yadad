@@ -57,6 +57,13 @@ describe("StatesPreview", () => {
     expect(screen.getByRole("status").textContent).toContain("None differ from the saved revision.");
   });
 
+  test("the preview frame is a picture: it never takes pointer events", () => {
+    // A dashboard editor whose preview overlapped the grid could not be dragged at all — clicks hit the frame.
+    render(<StatesPreview view={form} saved={form} documents={[entity]} now={now} renderState={renderState} />);
+    const frame = document.querySelector("[data-yadad-state-preview]") as HTMLElement;
+    expect(frame.style.pointerEvents).toBe("none");
+  });
+
   test("adding a visibleWhen in the editor adds states and marks them new or changed", () => {
     render(<Host />);
     const before = ids();
