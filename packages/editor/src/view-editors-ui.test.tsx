@@ -63,6 +63,34 @@ describe("FormViewEditor", () => {
     expect(rows()).toHaveLength(2);
   });
 
+  test("renames a section by typing: the button commits, and Enter commits the same", () => {
+    const saved = setup();
+    const input = () => screen.getByLabelText("Section title") as HTMLInputElement;
+    const rename = () => screen.getByRole("button", { name: "Rename section" }) as HTMLButtonElement;
+    const save = () => screen.getByRole("button", { name: "Save form" }) as HTMLButtonElement;
+    // The typed title drives the button and the session, not just the pixels.
+    expect(rename().disabled).toBe(true);
+    fireEvent.change(input(), { target: { value: "Details" } });
+    expect(input().value).toBe("Details");
+    expect(rename().disabled).toBe(false);
+    press("Rename section");
+    expect(save().disabled).toBe(false);
+    expect(within(screen.getByRole("table", { name: "Fields in Details" })).getByText("Title")).toBeTruthy();
+    press("Save form");
+    expect(saved[0]?.sections[0]?.title).toBe("Details");
+  });
+
+  test("Enter in a section's title input commits the rename like the button", () => {
+    const saved = setup();
+    const save = () => screen.getByRole("button", { name: "Save form" }) as HTMLButtonElement;
+    fireEvent.change(screen.getByLabelText("Section title"), { target: { value: "Basics" } });
+    fireEvent.keyDown(screen.getByLabelText("Section title"), { key: "Enter" });
+    fireEvent.keyPress(screen.getByLabelText("Section title"), { key: "Enter" });
+    expect(save().disabled).toBe(false);
+    press("Save form");
+    expect(saved[0]?.sections[0]?.title).toBe("Basics");
+  });
+
   test("adds a section and moves a field into it", () => {
     setup();
     fireEvent.change(screen.getByLabelText("New section title"), { target: { value: "Scheduling" } });

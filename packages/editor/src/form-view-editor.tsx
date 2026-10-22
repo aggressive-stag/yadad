@@ -363,7 +363,16 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
               keyMoveSection(section.id, step);
             }}
           />
-          {propertyInput(registry, titleId, { id: "title", type: "text", label: "Section title" }, title, (v) => setTitles((t) => ({ ...t, [section.id]: asText(v) })))}
+          {/* Enter in the title input commits the rename like the button; the input itself is the registry's, so the commit rides the bubbling keydown. */}
+          <span
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              if (title !== (section.title ?? "")) run(setSectionTitle(current, section.id, title));
+            }}
+          >
+            {propertyInput(registry, titleId, { id: "title", type: "text", label: "Section title" }, title, (v) => setTitles((t) => ({ ...t, [section.id]: asText(v) })))}
+          </span>
           <Button label="Rename section" type="button" variant="secondary" disabled={title === (section.title ?? "")} onPress={() => run(setSectionTitle(current, section.id, title))} />
           <Button label="Move section up" type="button" variant="secondary" disabled={index === 0} onPress={() => run(moveSection(current, section.id, -1))} />
           <Button label="Move section down" type="button" variant="secondary" disabled={index === current.sections.length - 1} onPress={() => run(moveSection(current, section.id, 1))} />
