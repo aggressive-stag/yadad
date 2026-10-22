@@ -85,4 +85,23 @@ for (const file of readdirSync(setDir).filter((f) => f.endsWith(".json"))) {
       expect(problems(results)).toEqual([]);
     }, 60_000);
   });
+
+  // Card 40c, the real trigger: the review set's decision_records table has a
+  // reference column at "record_version". Wired like the set above it checks
+  // green; with the target entity missing from the renderer's `entities` — the
+  // mistake a host makes — the renderer's yadad: warning is now a problem.
+  if (file === "review.json") {
+    test("a reference column whose target entity is not passed is a yadad-warning", async () => {
+      const view = setSet.views.get("decision_records")!;
+      const wired = await checkViewStates({ view, documents: parsed, registry: mockRegistry, now: NOW, manyRecords: 40, render: setRender });
+      expect(problems(wired).filter((p) => p.includes("yadad-warning"))).toEqual([]);
+
+      const missingTarget = new Map([...setEntities].filter(([id]) => id !== "record_version"));
+      const unwiredRender = renderFor(missingTarget, setSet);
+      const unwired = await checkViewStates({ view, documents: parsed, registry: mockRegistry, now: NOW, manyRecords: 40, render: unwiredRender });
+      const flagged = unwired.filter((r) => r.problems.some((p) => p.check === "yadad-warning"));
+      expect(flagged.length).toBeGreaterThan(0);
+      expect(flagged[0]!.problems[0]!.message).toContain('points at entity "record_version"');
+    }, 60_000);
+  }
 }

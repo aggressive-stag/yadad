@@ -3,7 +3,7 @@ import type { BoardProps, BoardView, CalendarProps, CalendarView, DataAdapter, D
 import { evaluateFormRules, viewEditable } from "@yadad/runtime";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { mockRegistry } from "./mock-registry.js";
 import { checkViewStates, checkViewStatesReport, problems } from "./state-checks.js";
 import type { StateCheck } from "./state-checks.js";
@@ -162,6 +162,22 @@ describe("checkViewStates", () => {
       return <p>rows</p>;
     }, ["error-message"]);
     expect(checks(results)).toEqual(["console-error"]);
+  });
+
+  test("a yadad: console warning is a yadad-warning problem; other warnings pass through", async () => {
+    const heard: unknown[][] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => void heard.push(args));
+    const results = await run(table, () => {
+      console.warn('yadad: reference field "owner" points at entity "person", which was not passed in the renderer\'s "entities" prop, so its cells show raw ids.');
+      console.warn("Some library deprecation notice");
+      return <p>rows</p>;
+    }, ["error-message"]);
+    spy.mockRestore();
+    expect(checks(results)).toEqual(["yadad-warning"]);
+    expect(problems(results)[0]).toContain('yadad: reference field "owner"');
+    // The non-yadad warning reached the host's console untouched (once per
+    // state); the yadad: one did not.
+    expect([...new Set(heard.map((a) => a[0]))]).toEqual(["Some library deprecation notice"]);
   });
 
   test("a field shown although its visibleWhen is false", async () => {

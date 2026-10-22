@@ -19,6 +19,7 @@ import type { StateAdapter } from "./state-adapter.js";
 export type StateCheck =
   | "render-threw"
   | "console-error"
+  | "yadad-warning"
   | "field-shown-but-hidden"
   | "field-missing"
   | "required-marker"
@@ -215,9 +216,20 @@ async function checkState(
   const dataSources = new Map<string, DataAdapter>([...keys].map((k) => [k, adapter]));
   const drafts = draftsFor(state, entity);
   const logged: string[] = [];
+  const warned: string[] = [];
   const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
     logged.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 300));
   });
+  // Manual swap for warn, not vi.spyOn: a host that spies console.warn itself
+  // leaves the same mock function on the object, and re-spying replaces its
+  // implementation — a captured "real" warn would then be this very function.
+  const previousWarn = console.warn;
+  console.warn = (...args: unknown[]): void => {
+    const line = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 300);
+    // Only `yadad:` warnings are findings; everything else passes through untouched.
+    if (line.startsWith("yadad:")) warned.push(line);
+    else previousWarn(...args);
+  };
   let unmount: (() => void) | undefined;
   try {
     let container: HTMLElement;
@@ -239,6 +251,7 @@ async function checkState(
       return found;
     }
     for (const line of logged) found.push({ check: "console-error", message: line });
+    for (const line of warned) found.push({ check: "yadad-warning", message: line });
     if (view.kind === "form" && entity) found.push(...formChecks(container, view, entity, state));
     found.push(...viewerChecks(container, view, state, seen));
     found.push(...groupChecks(state, seen));
@@ -252,6 +265,7 @@ async function checkState(
   } finally {
     unmount?.();
     spy.mockRestore();
+    console.warn = previousWarn;
   }
   return found;
 }

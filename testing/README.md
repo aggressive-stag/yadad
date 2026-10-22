@@ -93,6 +93,7 @@ Checks per state, each a named problem:
 | --- | --- |
 | `render-threw` | `render`, or the first reads settling, throws |
 | `console-error` | React or the renderer calls `console.error` |
+| `yadad-warning` | the renderer warns with a `yadad:` message (only the renderer's own warnings; others pass through) — pass the render function the **same** `entities` the real page passes, or a reference column warns for its missing target |
 | `field-shown-but-hidden` / `field-missing` | a form shows a field whose `visibleWhen` is false, or lacks one whose is true (fields are found by the control `id` ending in `-<fieldId>`, which every `inputId` does) |
 | `required-marker` | a field's required marker (`required`, `aria-required` or a `*` in its label) disagrees with `required` and `requiredWhen` |
 | `accessible-name` | a button, link, input or other interactive element has no accessible name (axe) |
