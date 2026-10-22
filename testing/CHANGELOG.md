@@ -1,5 +1,19 @@
 # @yadad/testing
 
+## 0.8.2
+
+### Patch Changes
+
+- dca431a: `checkViewStates` no longer hunts for a tab button that cannot exist:
+  when the viewer sees exactly one tab the dashboard renders no strip, so
+  the state opener returns instead of failing with `no tab named … to
+  open`. The case it guards is a viewer whose only visible tab is not the
+  document's first — no current fixture has that shape; the guard is
+  defensive. Sweeps of one-tab dashboards stay green either way.
+- Updated dependencies [0c1d5ad]
+- Updated dependencies [4a1c1bc]
+  - @yadad/runtime@0.9.3
+
 ## 0.8.1
 
 ### Patch Changes

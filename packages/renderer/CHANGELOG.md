@@ -1,5 +1,89 @@
 # @yadad/renderer
 
+## 0.11.0
+
+### Minor Changes
+
+- dbe7ac0: `DocumentSet` — the type of `DashboardRenderer`'s `documents` prop and the
+  row-action sets — is exported from the package root, and `documentSet(...)`
+  builds one from a flat pile of core `Document`s: entities and views sorted
+  into their maps, the last viewer document picked up. A consumer that loads
+  documents as a list no longer redeclares the shape by hand to pass a prop
+  it cannot import.
+- 274c5ff: Open a board or a dashboard on a chosen view without taking control of
+  it. `BoardRenderer` takes `initialGroupBy`: the grouping the board opens
+  on, read only on the first render, so a state grid can open a board in
+  another grouping and the viewer can still use the switcher — the
+  controlled `groupBy` prop froze it. `DashboardRenderer` takes
+  `initialTab` for the same reason (a states preview opens a dashboard on
+  a second tab). An unknown id is never an empty render: an unknown
+  grouping falls back to the board's default, and a tab that names no tab
+  — or a tab this viewer may not see — falls back to the first visible
+  one. After the first render the viewer's own choice always wins.
+- dca431a: A dashboard with one visible tab renders no tab strip. A strip holding
+  a single tab repeats the page title (a consumer's "Home" appeared
+  twice) and pushes the content down on a phone. When the viewer sees
+  exactly one tab, the grid renders directly inside a region named by the
+  dashboard's title — its id when untitled — so the page keeps a named
+  landmark; two or more visible tabs render `layout.Tabs` as before. The
+  rule follows the tabs the **viewer** may see, not the document's: a
+  two-tab dashboard whose second tab is viewer-hidden now drops the strip
+  for that viewer too.
+- e9ebdb1: Table in-place edits draft. Pass `drafts={{ store }}` to `TableRenderer` —
+  opt-in, same `DraftStore`, same debounced write-back, same notice and
+  Discard as the form — and unsaved input in an open row edit is kept under
+  `yadad:draft:<viewId>:<recordId>` and comes back when that row's edit is
+  reopened: after a refresh, after the row scrolls out of the page and
+  back, after navigating away. Saving or Cancel clears the draft; a refused
+  save (validation, conflict) keeps it; Discard starts from the saved
+  record again. A row's draft belongs to that record, so two rows being
+  edited never share text. `DashboardRenderer` hands `drafts` to embedded
+  tables as it already does to embedded forms.
+- 11909b4: Widgets refresh their neighbours after a write. `TableRenderer`,
+  `BoardRenderer` and `CalendarRenderer` take an optional `onChanged`,
+  called once after each successful user-initiated write made inside them:
+  an in-place edit, a move, a record action. A dashboard passes it to every
+  view widget, so a write in one cell reloads the others — the count and
+  stat widgets beside a table, board or calendar now update immediately
+  instead of holding the old number until the page reloads. (A form widget
+  already did this through `onSaved`; the other writers were left behind.)
+  A load or a reload never calls `onChanged`, so wiring the dashboards
+  reload bump through it cannot loop.
+
+### Patch Changes
+
+- 552a446: A move or update whose saved record comes back under a **new** id now
+  shows exactly one copy. The renderers matched the response on
+  `saved.id`, so a records host whose ids encode the moved value
+  (occurrence ids like `3:2026-10-19` -> `3:2026-10-24`) matched nothing:
+  the old copy stayed under its old day or column, the new one was never
+  added, and the cleared pending flag left nothing on screen saying the
+  move happened. The record the renderer sent is replaced by the saved
+  one, and a saved id that collides with another loaded record drops the
+  duplicate.
+- f8df983: `useReferences` logs a one-time `yadad:` console warning when a reference
+  field's target entity was not passed in the renderer's `entities` prop. A
+  page that forgot the target showed a column of raw ids with no console
+  signal, no network call and nothing for a test to catch; the raw-id label
+  is unchanged, so there is no contract change.
+- 4a1c1bc: A refused save keeps the server's own words. When the records host
+  answers 400 with the protocol's `errors[]`, every entry now becomes an
+  error with its own `message`, `hint` and `path`: an entry at
+  `/values/<field>` marks that field (it shows the message and gets
+  `aria-invalid`), and an entry at `""` shows the server's hint at form
+  level. Previously the form appended its generic "Reload and try again."
+  after the server's precise message — advice that fixes nothing when the
+  value itself is wrong — and a located field was never marked, because
+  the protocol's pointer into the request body was not the path the form
+  matches fields on. The generic line stays for failures with no protocol
+  body (a network drop, a 5xx, an empty 400); conflict, not-found,
+  unauthorized and forbidden keep their own mappings. `serverValidationIssues`
+  is the shared mapping, used by both the form and the record-action
+  failures.
+- Updated dependencies [0c1d5ad]
+- Updated dependencies [4a1c1bc]
+  - @yadad/runtime@0.9.3
+
 ## 0.10.1
 
 ### Patch Changes
