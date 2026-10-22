@@ -52,6 +52,12 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     description: "Version 6 adds the `datetime` field type, entity `actions`, view `recordActions`, the table column `compare` setting and optional page totals (RFC 0007). Every version 5 document stays valid, so this step only stamps the new version.",
     run: (doc) => ({ ...doc, specVersion: 6 }),
   },
+  {
+    from: 6,
+    to: 7,
+    description: "Version 7 adds the dashboard `series` widget (RFC 0001 slice 2). Every version 6 document stays valid, so this step only stamps the new version.",
+    run: (doc) => ({ ...doc, specVersion: 7 }),
+  },
 ];
 
 function isObject(value: unknown): value is JsonObject {

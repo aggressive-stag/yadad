@@ -1,0 +1,58 @@
+{
+  "kind": "dashboard",
+  "specVersion": 7,
+  "id": "training_series_board",
+  "title": "Training series",
+  "revision": 1,
+  "tabs": [
+    {
+      "id": "charts",
+      "title": "Charts",
+      "items": [
+        {
+          "id": "volume_by_exercise",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 5,
+          "widget": "series",
+          "label": "Volume by exercise",
+          "view": "sets",
+          "groupBy": { "field": "exercise" },
+          "measure": { "op": "sum", "product": ["weight", "reps"] },
+          "display": "table",
+          "sort": { "by": "value", "dir": "desc" }
+        },
+        {
+          "id": "volume_per_week",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 5,
+          "widget": "series",
+          "label": "Weight per week",
+          "view": "sets",
+          "groupBy": { "field": "day", "bucket": "week" },
+          "measure": { "op": "sum", "field": "weight" },
+          "display": "bar",
+          "sort": { "by": "group", "dir": "asc" },
+          "limit": 26,
+          "filter": { "op": "eq", "field": "warmup", "value": false }
+        },
+        {
+          "id": "entries_per_exercise",
+          "x": 0,
+          "y": 5,
+          "w": 12,
+          "h": 5,
+          "widget": "series",
+          "label": "Set entries per exercise",
+          "view": "set_entries",
+          "groupBy": { "field": "exercise" },
+          "measure": { "op": "count" },
+          "display": "line"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "kind": "dashboard",
+  "specVersion": 7,
+  "id": "series_board_v6",
+  "title": "Series board, written before version 7",
+  "revision": 2,
+  "tabs": [
+    {
+      "id": "stats",
+      "title": "Stats",
+      "items": [
+        { "id": "total_sets", "x": 0, "y": 0, "w": 4, "h": 2, "widget": "stat", "label": "Total sets", "view": "sets", "measure": { "op": "count" } }
+      ]
+    }
+  ]
+}

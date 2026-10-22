@@ -55,6 +55,34 @@ const expected: Record<string, Picked[]> = {
     { path: "/tabs/0/items/4/measure/field", code: "required", document: "board" },
     { path: "/tabs/0/items/5/measure/product", code: "unknown-property", document: "board", allowed: ["op", "field"] },
   ],
+  // RFC 0001 slice 2: one entry per series rule from 43b (shape) and 43c (cross-document).
+  "dashboard-series-display.json": [
+    { path: "/tabs/0/items/0/display", code: "invalid-value", document: "board", allowed: ["table", "bar", "line"] },
+  ],
+  "dashboard-series-bucket-shape.json": [
+    { path: "/tabs/0/items/0/groupBy/bucket", code: "invalid-value", document: "board", allowed: ["day", "week", "month"] },
+  ],
+  "dashboard-series-sort.json": [{ path: "/tabs/0/items/0/sort/by", code: "invalid-value", document: "board", allowed: ["group", "value"] }],
+  "dashboard-series-sort-dir.json": [{ path: "/tabs/0/items/0/sort/dir", code: "invalid-value", document: "board", allowed: ["asc", "desc"] }],
+  "dashboard-series-limit.json": [{ path: "/tabs/0/items/0/limit", code: "invalid-value", document: "board" }],
+  "dashboard-series-groupby-shape.json": [{ path: "/tabs/0/items/0/groupBy/field", code: "required", document: "board" }],
+  "dashboard-series-unknown-view.json": [
+    { path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["the_table"] },
+  ],
+  "dashboard-series-calendar-view.json": [
+    { path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["the_table"] },
+  ],
+  "dashboard-series-unknown-field.json": [
+    { path: "/tabs/0/items/0/groupBy/field", code: "unknown-reference", document: "board", allowed: ["name", "qty", "day", "mood"] },
+  ],
+  "dashboard-series-ungroupable-field.json": [
+    { path: "/tabs/0/items/0/groupBy/field", code: "invalid-value", document: "board", allowed: ["name", "day", "mood"] },
+  ],
+  "dashboard-series-bucket-non-date.json": [{ path: "/tabs/0/items/0/groupBy/bucket", code: "invalid-value", document: "board" }],
+  "dashboard-series-measure-field.json": [
+    { path: "/tabs/0/items/0/measure/field", code: "invalid-value", document: "board", allowed: ["qty"] },
+    { path: "/tabs/0/items/1/measure/field", code: "unknown-reference", document: "board", allowed: ["name", "qty", "day", "mood"] },
+  ],
   "relative-date-on-number-field.json": [{ path: "/filter/value", code: "invalid-value", document: "thing_table" }],
   "relative-date-not-integer.json": [{ path: "/filter/value/daysFromToday", code: "type", document: "thing_table" }],
   "reference-unknown-entity.json": [{ path: "/fields/0/entity", code: "unknown-reference", document: "entry", allowed: ["exercise", "entry"] }],

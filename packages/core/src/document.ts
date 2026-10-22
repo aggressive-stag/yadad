@@ -14,11 +14,15 @@ import type { Condition, ViewerCondition } from "./condition.js";
  * older documents stay valid and `migrate()` stamps them. Version 5 adds the
  * `viewer` document kind, the `viewerIn` condition op and the viewer-only
  * `visibleWhen`/`editableWhen` keys (RFC 0006); older documents stay valid and
- * `migrate()` stamps them.
+ * `migrate()` stamps them. Version 6 adds the RFC 0007 round (the `datetime`
+ * field type, entity `actions`, view `recordActions`, the table column
+ * `compare` setting); older documents stay valid and `migrate()` stamps them.
+ * Version 7 adds the dashboard `series` widget (RFC 0001 slice 2); older
+ * documents stay valid and `migrate()` stamps them.
  */
-export const SPEC_VERSION = 6;
+export const SPEC_VERSION = 7;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */

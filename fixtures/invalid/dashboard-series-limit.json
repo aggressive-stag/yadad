@@ -1,0 +1,82 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 7,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            "Good",
+            "Bad"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 7,
+    "id": "the_table",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ]
+  },
+  {
+    "kind": "dashboard",
+    "specVersion": 7,
+    "id": "board",
+    "revision": 1,
+    "tabs": [
+      {
+        "id": "t",
+        "title": "T",
+        "items": [
+          {
+            "id": "s0",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 4,
+            "widget": "series",
+            "label": "S",
+            "view": "the_table",
+            "groupBy": {
+              "field": "mood"
+            },
+            "measure": {
+              "op": "count"
+            },
+            "display": "bar",
+            "limit": 201
+          }
+        ]
+      }
+    ]
+  }
+]
