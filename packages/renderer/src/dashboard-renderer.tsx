@@ -26,8 +26,6 @@ import type { FormRendererProps } from "./form-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
 
-export type { DocumentSet } from "./document-set.js";
-
 export interface DashboardRendererProps {
   readonly dashboard: DashboardView;
   readonly documents: DocumentSet;

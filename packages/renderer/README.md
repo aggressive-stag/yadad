@@ -9,9 +9,8 @@ npm install @yadad/renderer @yadad/runtime @yadad/core react
 Peer dependency: React 19.
 
 ```tsx
-import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
+import { BoardRenderer, CalendarRenderer, DashboardRenderer, documentSet, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
-import type { ViewDocument } from "@yadad/core";
 
 const dataSources = new Map([["default", adapter]]); // keyed by each view's `dataSource`
 
@@ -20,7 +19,8 @@ const dataSources = new Map([["default", adapter]]); // keyed by each view's `da
 <CalendarRenderer entity={entity} view={calendar} registry={registry} dataSources={dataSources} reloadKey={saves} />
 <BoardRenderer entity={entity} view={board} registry={registry} dataSources={dataSources} reloadKey={saves} />
 
-const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map<string, ViewDocument>([[form.id, form], [table.id, table]]) };
+// documentSet sorts a flat pile of core Documents — entities, views, at most one viewer — into the maps.
+const documents: DocumentSet = documentSet([entity, form, table]);
 <DashboardRenderer dashboard={dashboard} documents={documents} registry={registry} dataSources={dataSources} />
 ```
 
