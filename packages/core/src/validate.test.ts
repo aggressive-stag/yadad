@@ -241,6 +241,68 @@ describe("dashboards", () => {
     expect(problems({ ...dashboard, tabs: [] })).toEqual([["/tabs", "invalid-value"]]);
     expect(problems({ ...dashboard, tabs: [dashboard.tabs[1], dashboard.tabs[1]] })).toEqual([["/tabs/1/id", "duplicate-id"]]);
   });
+
+  // RFC 0001 slice 2: series shape (cross-document field checks live in the set checks).
+  const series = (over: Record<string, unknown> = {}, drop: string[] = []) => {
+    const base = {
+      id: "per_day", x: 0, y: 0, w: 8, h: 5,
+      widget: "series", label: "Volume per day", view: "sets",
+      groupBy: { field: "date" },
+      measure: { op: "sum", product: ["weight", "reps"] },
+      display: "bar",
+    } as Record<string, unknown>;
+    for (const key of drop) delete base[key];
+    return withItems([{ ...base, ...over }]);
+  };
+
+  test("a valid series widget", () => {
+    expect(problems(series())).toEqual([]);
+    expect(problems(series({ display: "line", sort: { by: "value", dir: "desc" }, limit: 200, filter: { op: "eq", field: "warmup", value: false } }))).toEqual([]);
+    expect(problems(series({ groupBy: { field: "exercise", bucket: "day" } }))).toEqual([]); // bucket-on-select is a cross-document check (43c), shape is fine
+  });
+
+  test("series requires its keys and refuses unknown ones", () => {
+    expect(problems(series({}, ["label", "view", "groupBy", "measure", "display"]))).toEqual([
+      ["/tabs/0/items/0/label", "required"],
+      ["/tabs/0/items/0/view", "required"],
+      ["/tabs/0/items/0/groupBy", "required"],
+      ["/tabs/0/items/0/measure", "required"],
+      ["/tabs/0/items/0/display", "required"],
+    ]);
+    expect(problems(series({ extra: 1 }))).toEqual([["/tabs/0/items/0/extra", "unknown-property"]]);
+  });
+
+  test("series display enum", () => {
+    expect(problems(series({ display: "pie" }))).toEqual([["/tabs/0/items/0/display", "invalid-value"]]);
+  });
+
+  test("series groupBy shape", () => {
+    expect(problems(series({ groupBy: "date" }))).toEqual([["/tabs/0/items/0/groupBy", "type"]]);
+    expect(problems(series({ groupBy: {} }))).toEqual([["/tabs/0/items/0/groupBy/field", "required"]]);
+    expect(problems(series({ groupBy: { field: "date", bucket: "quarter" } }))).toEqual([["/tabs/0/items/0/groupBy/bucket", "invalid-value"]]);
+    expect(problems(series({ groupBy: { field: "not an id" } }))).toEqual([["/tabs/0/items/0/groupBy/field", "invalid-value"]]);
+    expect(problems(series({ groupBy: { field: "date", extra: 1 } }))).toEqual([["/tabs/0/items/0/groupBy/extra", "unknown-property"]]);
+  });
+
+  test("series sort enums", () => {
+    expect(problems(series({ sort: { by: "date", dir: "asc" } }))).toEqual([["/tabs/0/items/0/sort/by", "invalid-value"]]);
+    expect(problems(series({ sort: { by: "group", dir: "sideways" } }))).toEqual([["/tabs/0/items/0/sort/dir", "invalid-value"]]);
+    expect(problems(series({ sort: { by: "group" } }))).toEqual([["/tabs/0/items/0/sort/dir", "required"]]);
+    expect(problems(series({ sort: "group" }))).toEqual([["/tabs/0/items/0/sort", "type"]]);
+  });
+
+  test("series limit bound", () => {
+    expect(problems(series({ limit: 0 }))).toEqual([["/tabs/0/items/0/limit", "invalid-value"]]);
+    expect(problems(series({ limit: 201 }))).toEqual([["/tabs/0/items/0/limit", "invalid-value"]]);
+    expect(problems(series({ limit: 1.5 }))).toEqual([["/tabs/0/items/0/limit", "invalid-value"]]);
+    expect(problems(series({ limit: 1 }))).toEqual([]);
+    expect(problems(series({ limit: 200 }))).toEqual([]);
+  });
+
+  test("series reuses the measure shape check", () => {
+    expect(problems(series({ measure: { op: "median", field: "weight" } }))).toEqual([["/tabs/0/items/0/measure/op", "invalid-value"]]);
+    expect(problems(series({ measure: { op: "sum", field: "weight", product: ["a", "b"] } }))).toEqual([["/tabs/0/items/0/measure/product", "invalid-value"]]);
+  });
 });
 
 describe("form sections and items", () => {

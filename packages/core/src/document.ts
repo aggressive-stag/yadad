@@ -348,7 +348,7 @@ export interface QuickFilter {
 }
 
 /** Widget types a dashboard grid item can hold, discriminated on `widget`. */
-export const WIDGET_TYPES = ["view", "count", "stat"] as const;
+export const WIDGET_TYPES = ["view", "count", "stat", "series"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 /** Embeds a form, table, calendar or board view, by id. */
@@ -392,7 +392,50 @@ export interface StatWidget {
   readonly filter?: Condition;
 }
 
-export type Widget = ViewWidget | CountWidget | StatWidget;
+/** How a series renders its groups (RFC 0001 slice 2). `bar` and `line` are drawn by the components repo. */
+export const SERIES_DISPLAYS = ["table", "bar", "line"] as const;
+export type SeriesDisplay = (typeof SERIES_DISPLAYS)[number];
+
+/** Date groupings a date groupBy may collapse records into. Absent means `day`. */
+export const SERIES_BUCKETS = ["day", "week", "month"] as const;
+export type SeriesBucket = (typeof SERIES_BUCKETS)[number];
+
+/** What a series sorts its groups by, and which way. Default group ascending. */
+export const SERIES_SORT_BYS = ["group", "value"] as const;
+export type SeriesSortBy = (typeof SERIES_SORT_BYS)[number];
+export const SERIES_SORT_DIRS = ["asc", "desc"] as const;
+export type SeriesSortDir = (typeof SERIES_SORT_DIRS)[number];
+
+/** Groups shown: default and ceiling (RFC 0001 slice 2, decision 1). */
+export const SERIES_LIMIT_DEFAULT = 50;
+export const SERIES_LIMIT_MAX = 200;
+
+/**
+ * Groups the records of a table view by one field and shows one measure per
+ * group as a table, bar chart or line chart (RFC 0001 slice 2). `groupBy.field`
+ * is a select, boolean, reference, text or date field; only a date takes a
+ * `bucket`. Records without a group value are skipped and counted. A date
+ * series sorted by group fills missing buckets (0 for count/sum/countDistinct,
+ * no value for min/max/avg) so a line shows the gap; past the cap the newest
+ * N buckets are kept. Rendered through the optional `widgets.series` registry
+ * key; without it the widget names the missing key.
+ */
+export interface SeriesWidget {
+  readonly widget: "series";
+  /** Required; doubles as the chart's accessible name. */
+  readonly label: string;
+  /** Id of a table view: its entity, data source and fixed filter are used. */
+  readonly view: string;
+  readonly groupBy: { readonly field: string; readonly bucket?: SeriesBucket };
+  readonly measure: Measure;
+  readonly display: SeriesDisplay;
+  readonly sort?: { readonly by: SeriesSortBy; readonly dir: SeriesSortDir };
+  /** Whole number 1 to SERIES_LIMIT_MAX; defaults to SERIES_LIMIT_DEFAULT. */
+  readonly limit?: number;
+  readonly filter?: Condition;
+}
+
+export type Widget = ViewWidget | CountWidget | StatWidget | SeriesWidget;
 
 /** A widget placed on the tab's grid: column x, row y (from 0), w columns wide, h rows tall. */
 export type GridItem = {

@@ -8,7 +8,7 @@
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
@@ -578,7 +578,9 @@ function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns:
       ? { required: ["label", "view"], optional: ["filter"] }
       : widget === "stat"
         ? { required: ["label", "view", "measure"], optional: ["filter"] }
-        : { required: ["view"], optional: [] };
+        : widget === "series"
+          ? { required: ["label", "view", "groupBy", "measure", "display"], optional: ["sort", "limit", "filter"] }
+          : { required: ["view"], optional: [] };
   checkKeys(errors, item, path, ["id", "x", "y", "w", "h", "widget", ...keys.required], [...keys.optional, "visibleWhen"]);
   checkCondition(errors, item["visibleWhen"], [...path, "visibleWhen"], "viewer");
   checkId(errors, item, path, "id");
@@ -592,19 +594,69 @@ function validateGridItem(errors: Errors, item: JsonObject, path: Path, columns:
   if (usable && (item["x"] as number) + (item["w"] as number) > columns) {
     errors.add([...path, "w"], "invalid-value", `The item runs past the tab's ${columns} columns.`, "Reduce x or w.");
   }
-  if (widget !== undefined && widget !== "view" && widget !== "count" && widget !== "stat") {
+  if (widget !== undefined && !WIDGET_TYPES.includes(widget as (typeof WIDGET_TYPES)[number])) {
     errors.add([...path, "widget"], "invalid-value", `Unknown widget ${JSON.stringify(widget)}.`, `Use one of: ${WIDGET_TYPES.join(", ")}.`);
   }
   checkId(errors, item, path, "view");
-  if (widget === "count" || widget === "stat") {
+  if (widget === "count" || widget === "stat" || widget === "series") {
     checkNonEmptyString(errors, item, path, "label");
     checkCondition(errors, item["filter"], [...path, "filter"], "filter");
   }
   if (widget === "stat") checkMeasure(errors, item["measure"], [...path, "measure"]);
+  if (widget === "series") checkSeries(errors, item, path);
   return usable;
 }
 
 const MEASURE_HINT = 'Use { "op": "count" }, { "op": "sum", "field": "<number field>" } or { "op": "sum", "product": ["<number field>", "<number field>"] }.';
+
+const GROUP_BY_HINT = 'Use { "field": "<select, boolean, reference, text or date field>" }, optionally with "bucket": "day" | "week" | "month" (dates only).';
+const SERIES_SORT_HINT = 'Use { "by": "group" | "value", "dir": "asc" | "desc" }, or leave "sort" out for group ascending.';
+
+/**
+ * Shape of a series widget's own properties (RFC 0001 slice 2): enums, the
+ * closed `groupBy`/`sort` objects, and the `limit` bound. The measure reuses
+ * stat's shape check. Which fields may group, bucket-on-date and the
+ * date-sort rules are cross-document checks (card 43c).
+ */
+function checkSeries(errors: Errors, item: JsonObject, path: Path): void {
+  const display = item["display"];
+  if (display !== undefined && (typeof display !== "string" || !(SERIES_DISPLAYS as readonly string[]).includes(display))) {
+    errors.add([...path, "display"], "invalid-value", `Unknown series display ${JSON.stringify(display)}.`, `Use one of: ${SERIES_DISPLAYS.join(", ")}.`, SERIES_DISPLAYS);
+  }
+  const groupBy = item["groupBy"];
+  if (groupBy !== undefined) {
+    if (!isObject(groupBy)) {
+      errors.add([...path, "groupBy"], "type", "A groupBy must be a JSON object.", GROUP_BY_HINT);
+    } else {
+      checkKeys(errors, groupBy, [...path, "groupBy"], ["field"], ["bucket"]);
+      checkId(errors, groupBy, [...path, "groupBy"], "field");
+      const bucket = groupBy["bucket"];
+      if (bucket !== undefined && (typeof bucket !== "string" || !(SERIES_BUCKETS as readonly string[]).includes(bucket))) {
+        errors.add([...path, "groupBy", "bucket"], "invalid-value", `Unknown bucket ${JSON.stringify(bucket)}.`, `Use one of: ${SERIES_BUCKETS.join(", ")}.`, SERIES_BUCKETS);
+      }
+    }
+  }
+  const sort = item["sort"];
+  if (sort !== undefined) {
+    if (!isObject(sort)) {
+      errors.add([...path, "sort"], "type", "A sort must be a JSON object.", SERIES_SORT_HINT);
+    } else {
+      checkKeys(errors, sort, [...path, "sort"], ["by", "dir"], []);
+      const by = sort["by"];
+      if (by !== undefined && (typeof by !== "string" || !(SERIES_SORT_BYS as readonly string[]).includes(by))) {
+        errors.add([...path, "sort", "by"], "invalid-value", `Unknown sort "by" ${JSON.stringify(by)}.`, `Use one of: ${SERIES_SORT_BYS.join(", ")}.`, SERIES_SORT_BYS);
+      }
+      const dir = sort["dir"];
+      if (dir !== undefined && (typeof dir !== "string" || !(SERIES_SORT_DIRS as readonly string[]).includes(dir))) {
+        errors.add([...path, "sort", "dir"], "invalid-value", `Unknown sort "dir" ${JSON.stringify(dir)}.`, `Use one of: ${SERIES_SORT_DIRS.join(", ")}.`, SERIES_SORT_DIRS);
+      }
+    }
+  }
+  if (item["limit"] !== undefined && !isWhole(item["limit"], 1, SERIES_LIMIT_MAX)) {
+    errors.add([...path, "limit"], "invalid-value", `"limit" must be a whole number from 1 to ${SERIES_LIMIT_MAX}.`, `Groups beyond the cap are dropped (the newest buckets are kept for a date series); the default is ${SERIES_LIMIT_DEFAULT}.`);
+  }
+  checkMeasure(errors, item["measure"], [...path, "measure"]);
+}
 
 /** Shape of a stat's measure: a closed union on `op`. Field ids and types are checked across the set. */
 function checkMeasure(errors: Errors, value: unknown, path: Path): void {

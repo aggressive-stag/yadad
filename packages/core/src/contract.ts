@@ -440,6 +440,21 @@ const WIDGET_SPECS: Record<WidgetType, WidgetSpec> = {
       { key: "filter", required: false, description: "A condition that narrows the records further." },
     ],
   },
+  series: {
+    widget: "series",
+    description:
+      "Groups the records of a table view by one field and shows one measure per group as a table, bar chart or line chart. groupBy.field is a select, boolean, reference, text or date field (a number or datetime is refused); only a date takes bucket \"day\" | \"week\" | \"month\" (default day; week keys are the ISO week's Monday as YYYY-MM-DD, month keys YYYY-MM). Records without a group value are skipped and counted. A date series sorted by group fills missing buckets with 0 (count, sum, countDistinct) or no value (min, max, avg) so a line shows the gap, and past the limit keeps the newest buckets. At most 5000 records are read; past that the widget says the numbers are partial. Drawn by the optional widgets.series registry component; without it the widget names the missing key.",
+    properties: [
+      { key: "label", required: true, description: "Shown with the chart; doubles as its accessible name." },
+      { key: "view", required: true, description: "The id of the table view to group." },
+      { key: "groupBy", required: true, description: "The field to group by: { \"field\": \"<id>\" }, optionally with \"bucket\": \"day\" | \"week\" | \"month\" (dates only)." },
+      { key: "measure", required: true, description: "What to compute per group: same shape as a stat's measure." },
+      { key: "display", required: true, description: "\"table\", \"bar\" or \"line\"." },
+      { key: "sort", required: false, description: "{ \"by\": \"group\" | \"value\", \"dir\": \"asc\" | \"desc\" }. Default group ascending." },
+      { key: "limit", required: false, description: "Whole number 1 to 200 groups shown; default 50." },
+      { key: "filter", required: false, description: "A condition that narrows the records further." },
+    ],
+  },
 };
 
 const CONDITION_PLACE_SPECS: readonly ConditionPlaceSpec[] = [
