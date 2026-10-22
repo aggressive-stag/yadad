@@ -52,6 +52,8 @@ export function useRecordActions(options: {
   readonly adapter: DataAdapter | undefined;
   /** Refresh the view's records after an action ran or was refused. */
   readonly reload: () => void;
+  /** Called once after each **successful** action, never after a refused one or a reload (same contract as the renderers' `onChanged`). */
+  readonly onChanged?: () => void;
   /** Where announcements go: a view with its own announcement state (board, calendar) injects it, so one live region carries everything. Without it the hook keeps its own. */
   readonly announce?: (text: string) => void;
 }): RecordActions {
@@ -91,6 +93,7 @@ export function useRecordActions(options: {
         setDialog(undefined);
         announce(`${action.label} done`);
         reload();
+        options.onChanged?.(); // neighbours (a dashboard's counts and stats) refresh too
       } catch (error) {
         if (!mounted.current) return;
         if (fromDialog !== undefined && !(error instanceof ForbiddenError) && !(error instanceof RecordConflictError) && !(error instanceof RecordNotFoundError)) {

@@ -46,6 +46,13 @@ export interface CalendarRendererProps {
   readonly initialAnchor?: string;
   /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
   readonly formatting?: FieldFormatting;
+  /**
+   * Called once after each **successful user-initiated write** made inside this
+   * renderer: a move, a record action. Never on load or reload. A dashboard
+   * passes it to every widget in a cell so the others (counts, stats) can
+   * refresh — a reload does not call it, so passing a bump down cannot loop.
+   */
+  readonly onChanged?: () => void;
 }
 
 const DEFAULT_MODES: readonly CalendarMode[] = ["month", "week"];
@@ -75,7 +82,7 @@ interface Opened {
  * container, with the target table filtered by that record and a Back button.
  * The calendar stays mounted (hidden), so Back returns to the same period.
  */
-export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp, initialMode, initialAnchor, formatting }: CalendarRendererProps): ReactNode {
+export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp, initialMode, initialAnchor, formatting, onChanged }: CalendarRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,6 +150,7 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
           {...(initialAnchor !== undefined ? { initialAnchor } : {})}
           {...(formatting ? { formatting } : {})}
           {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
+          {...(onChanged ? { onChanged } : {})}
         />
       </div>
       {opened && targetEntity && documents && (
@@ -153,7 +161,7 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
               {opened.heading}
             </h2>
           </div>
-          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />
+          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} {...(onChanged ? { onChanged } : {})} />
         </div>
       )}
     </div>
@@ -174,6 +182,7 @@ interface CalendarBodyProps {
   readonly initialMode?: CalendarMode;
   readonly initialAnchor?: string;
   readonly formatting?: FieldFormatting;
+  readonly onChanged?: () => void;
 }
 
 const rangeKey = (range: DateRange): string => `${range.first}/${range.last}`;
@@ -189,7 +198,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The entry is back on its day. Reload if the problem stays." }];
 }
 
-function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen, initialMode, initialAnchor, formatting }: CalendarBodyProps): ReactNode {
+function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen, initialMode, initialAnchor, formatting, onChanged }: CalendarBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
   const modes = view.modes ?? DEFAULT_MODES;
   const weekStartsOn = view.weekStartsOn ?? 1;
@@ -278,7 +287,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     });
   }
   const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
-  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), announce });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), announce, ...(onChanged ? { onChanged } : {}) });
   if (setupErrors.length > 0 || !Calendar) return <ErrorSummary errors={setupErrors} />;
 
   const navigate = (next: () => void): void => {
@@ -376,6 +385,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
         setState((s) => (s?.status === "loaded" ? { ...s, records: replaceSavedRecord(s.records, recordId, saved) } : s));
         settle();
         announce(`Moved ${title} to ${dayLabel(day)}`);
+        onChanged?.(); // neighbours (a dashboard's counts and stats) refresh too
       },
       (error: unknown) => {
         settle();

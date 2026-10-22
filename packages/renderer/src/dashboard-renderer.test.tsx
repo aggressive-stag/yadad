@@ -20,6 +20,7 @@ const entity: EntityDocument = {
 };
 const form: FormView = { kind: "form", specVersion: 0, id: "log", entity: "set", revision: 1, dataSource: "default", sections: [{ id: "s", title: "Log a set", items: [{ field: "exercise" }] }] };
 const table: TableView = { kind: "table", specVersion: 0, id: "sets", title: "Sets", entity: "set", revision: 1, dataSource: "default", columns: [{ field: "exercise" }] };
+const editableTable: TableView = { ...table, id: "sets_edit", columns: [{ field: "exercise" }, { field: "warmup", editable: true }] };
 const dashboard: DashboardView = {
   kind: "dashboard",
   specVersion: 0,
@@ -96,6 +97,86 @@ describe("DashboardRenderer", () => {
     const sets = await screen.findByRole("table", { name: "Sets" });
     await waitFor(() => expect(within(sets).getAllByRole("row")).toHaveLength(3));
     expect(document.querySelector<HTMLElement>('[data-yadad-grid="history"]')!.style.gridTemplateColumns).toBe("repeat(4, minmax(0, 1fr))");
+  });
+
+  test("an in-place table edit refreshes the count widget beside it", async () => {
+    // The form path already bumped the dashboard's reloadKey; a write made
+    // inside a widget (here: an in-place edit) must bump it the same way,
+    // or the count stays stale until the page reloads.
+    const db = createMemoryAdapter();
+    await db.create("set", { exercise: "Squat", warmup: true }, { entityRevision: 1 });
+    const find = vi.fn(db.find.bind(db));
+    const countCalls = (): number => find.mock.calls.filter(([, opts]) => (opts as { page?: { limit?: number } }).page?.limit === 0).length;
+    const dash: DashboardView = {
+      kind: "dashboard",
+      specVersion: 0,
+      id: "training",
+      title: "Training",
+      revision: 1,
+      tabs: [
+        {
+          id: "edit",
+          title: "Edit",
+          items: [
+            { id: "t", x: 0, y: 0, w: 8, h: 4, widget: "view", view: "sets_edit" },
+            { id: "total", x: 8, y: 0, w: 4, h: 1, widget: "count", label: "Warmed up", view: "sets_edit", filter: { op: "eq", field: "warmup", value: true } },
+          ],
+        },
+      ],
+    };
+    render(
+      <DashboardRenderer
+        dashboard={dash}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([[editableTable.id, editableTable]]) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", { ...db, find } satisfies DataAdapter]])}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("1"));
+    expect(countCalls()).toBe(1); // loading the count is not itself a change to report
+
+    const row = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(row()).getByRole("button", { name: "Edit" }));
+    fireEvent.click(within(row()).getByRole("checkbox", { name: "Warm-up" }));
+    fireEvent.click(within(row()).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("0"));
+    expect(countCalls()).toBe(2); // the widget re-asked; it did not just re-render the old number
+  });
+
+  test("a record action run inside a table refreshes the count widget beside it", async () => {
+    const db = createMemoryAdapter({ actions: { "set.stamp": () => ({ values: { warmup: true } }) } });
+    await db.create("set", { exercise: "Squat", warmup: false }, { entityRevision: 1 });
+    const stamped: EntityDocument = { ...entity, actions: [{ id: "stamp", label: "Stamp" }] };
+    const actionTable: TableView = { ...table, id: "sets_actions", columns: [{ field: "exercise" }, { field: "warmup" }], recordActions: ["stamp"] };
+    const dash: DashboardView = {
+      kind: "dashboard",
+      specVersion: 0,
+      id: "training",
+      title: "Training",
+      revision: 1,
+      tabs: [
+        {
+          id: "edit",
+          title: "Edit",
+          items: [
+            { id: "t", x: 0, y: 0, w: 8, h: 4, widget: "view", view: "sets_actions" },
+            { id: "total", x: 8, y: 0, w: 4, h: 1, widget: "count", label: "Warmed up", view: "sets_actions", filter: { op: "eq", field: "warmup", value: true } },
+          ],
+        },
+      ],
+    };
+    render(
+      <DashboardRenderer
+        dashboard={dash}
+        documents={{ entities: new Map([["set", stamped]]), views: new Map([[actionTable.id, actionTable]]) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", db]])}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("0"));
+    fireEvent.click(document.querySelector("[data-testid='action-stamp']") as HTMLElement);
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("1"));
+    expect((await db.find("set", {})).items[0]!.values["warmup"]).toBe(true); // the action really wrote
   });
 
   test("narrow screens stack the widgets full width, in reading order", () => {

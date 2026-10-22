@@ -50,6 +50,13 @@ export interface BoardRendererProps {
   readonly viewer?: ResolvedViewer;
   /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
   readonly formatting?: FieldFormatting;
+  /**
+   * Called once after each **successful user-initiated write** made inside this
+   * renderer: a move, a record action. Never on load or reload. A dashboard
+   * passes it to every widget in a cell so the others (counts, stats) can
+   * refresh — a reload does not call it, so passing a bump down cannot loop.
+   */
+  readonly onChanged?: () => void;
 }
 
 type CardState =
@@ -82,7 +89,7 @@ interface Opened {
  * container, with the target table filtered by that card and a Back button.
  * The board stays mounted (hidden), so Back returns to the same grouping.
  */
-export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, onGroupByChange, viewer: viewerProp, formatting }: BoardRendererProps): ReactNode {
+export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, onGroupByChange, viewer: viewerProp, formatting, onChanged }: BoardRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -149,6 +156,7 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
           {...(onGroupByChange ? { onGroupByChange } : {})}
           {...(formatting ? { formatting } : {})}
           {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
+          {...(onChanged ? { onChanged } : {})}
         />
       </div>
       {opened && targetEntity && documents && (
@@ -159,7 +167,7 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
               {opened.heading}
             </h2>
           </div>
-          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />
+          <TableRenderer entity={targetEntity} view={opened.view} registry={registry} dataSources={dataSources} entities={refEntities ?? documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} {...(onChanged ? { onChanged } : {})} />
         </div>
       )}
     </div>
@@ -180,6 +188,7 @@ interface BoardBodyProps {
   readonly onGroupByChange?: (field: string) => void;
   readonly onOpen?: (record: DataRecord) => void;
   readonly formatting?: FieldFormatting;
+  readonly onChanged?: () => void;
 }
 
 function failureMessage(error: unknown): string {
@@ -193,7 +202,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The card is back in its column. Reload if the problem stays." }];
 }
 
-function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, onGroupByChange, onOpen, formatting }: BoardBodyProps): ReactNode {
+function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, onGroupByChange, onOpen, formatting, onChanged }: BoardBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
 
   // The grouping choice: uncontrolled state by default, host-controlled when `groupBy` is set.
@@ -331,7 +340,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     });
   }
   const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
-  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), announce });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), announce, ...(onChanged ? { onChanged } : {}) });
   if (setupErrors.length > 0 || !Board) return <ErrorSummary errors={setupErrors} />;
 
   const cardsLoading = cards === undefined;
@@ -428,6 +437,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         setCards((s) => (s?.status === "loaded" ? { ...s, records: replaceSavedRecord(s.records, recordId, saved) } : s));
         settle();
         announce(`Moved ${title} to ${def.label}`);
+        onChanged?.(); // neighbours (a dashboard's counts and stats) refresh too
       },
       (error: unknown) => {
         settle();

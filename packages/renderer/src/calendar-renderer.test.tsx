@@ -433,6 +433,34 @@ describe("in a dashboard", () => {
     expect(screen.getAllByRole("gridcell")).toHaveLength(42);
   });
 
+  test("moving an entry refreshes the count widget beside it", async () => {
+    // A move is a write: without the bump, the count next to the calendar
+    // keeps the old total until the page reloads.
+    const { db } = await seed();
+    const count: DashboardView = {
+      kind: "dashboard",
+      specVersion: 3,
+      id: "overview",
+      title: "Overview",
+      revision: 1,
+      tabs: [
+        {
+          id: "plan",
+          title: "Plan",
+          items: [
+            { id: "cal", x: 0, y: 0, w: 8, h: 8, widget: "view", view: "tasks_calendar" },
+            { id: "n", x: 8, y: 0, w: 4, h: 1, widget: "count", label: "Due today", view: "task_history", filter: { op: "eq", field: "due", value: "2026-10-15" } },
+          ],
+        },
+      ],
+    };
+    render(<DashboardRenderer dashboard={count} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await screen.findByText("Pay rent");
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("2"));
+    moveTo("Book flights", "2026-10-15");
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("3"));
+  });
+
   test("a count widget pointing at a calendar is reported", async () => {
     const { db } = await seed();
     const bad: DashboardView = { ...dashboard, tabs: [{ id: "plan", title: "Plan", items: [{ id: "n", x: 0, y: 0, w: 4, h: 1, widget: "count", label: "Tasks", view: "tasks_calendar" }] }] };

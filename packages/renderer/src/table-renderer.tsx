@@ -41,6 +41,13 @@ export interface TableRendererProps {
   readonly viewer?: ResolvedViewer;
   /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
   readonly formatting?: FieldFormatting;
+  /**
+   * Called once after each **successful user-initiated write** made inside this
+   * renderer: an in-place edit, a record action. Never on load or reload. A
+   * dashboard passes it to every widget in a cell so the others (counts, stats)
+   * can refresh — a reload does not call it, so passing a bump down cannot loop.
+   */
+  readonly onChanged?: () => void;
 }
 
 /** What the table shows for a row's action: its accessible name and what happens on activation. */
@@ -94,7 +101,7 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * and a Back button. Earlier tables stay mounted (hidden), so Back restores
  * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged }: TableRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [stack, setStack] = useState<readonly Level[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -194,6 +201,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
             baseFilter={level.baseFilter}
             lockedFields={level.lockedFields}
             {...(formatting ? { formatting } : {})}
+            {...(onChanged ? { onChanged } : {})}
             {...resolveAction(i)}
           />
         </div>
@@ -202,7 +210,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   );
 }
 
-function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting }: TableBodyProps): ReactNode {
+function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -224,7 +232,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
   // Record actions (RFC 0007): buttons the component draws from TableRow.actions.
-  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1) });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(onChanged ? { onChanged } : {}) });
   const zone = viewerZone(formatting);
   const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter, zone), [view, entity, quick, baseFilter, zone]);
   // The query signature: sort, filter and page size. A change is a new question — the cursor stack is cleared (RFC 0007).
@@ -337,6 +345,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       setRows((r) => (r.status === "loaded" ? { ...r, items: replaceSavedRecord(r.items, movedId, saved) } : r));
       setEditing(undefined);
       setReloads((n) => n + 1);
+      onChanged?.(); // neighbours (a dashboard's counts and stats) refresh too
     } else {
       setEditing({ ...editing, state: { ...editing.state, errors: result.errors } });
       // A refusal may mean the record's permissions changed: reload to refresh `can` (RFC 0006).

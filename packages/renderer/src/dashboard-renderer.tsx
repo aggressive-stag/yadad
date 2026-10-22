@@ -85,6 +85,10 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
   const [rootRef, width] = useWidth();
   const [selected, setSelected] = useState(tabs[0]?.id ?? "");
   const [reloadKey, setReloadKey] = useState(0);
+  // One bump for every successful write in any widget: a form save (onSaved)
+  // and a write inside a table/board/calendar (onChanged) both go through it.
+  // A reload never calls onChanged back, so this cannot loop.
+  const bump = (): void => setReloadKey((k) => k + 1);
   const { Tabs, Panel, ErrorSummary } = registry.layout;
 
   const setupErrors = [...checkDashboard(dashboard, documents, dataSources), ...(viewerError ? [viewerError] : [])];
@@ -106,14 +110,14 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} {...(formatting ? { formatting } : {})} />;
     }
     if (view.kind === "table") {
-      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />;
+      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;
     }
     if (view.kind === "calendar") {
-      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />;
+      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;
     }
     if (view.kind === "board") {
       // The group-by choice is uncontrolled inside a cell (RFC 0005).
-      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} />;
+      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;
     }
     return null;
   };

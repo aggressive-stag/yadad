@@ -612,6 +612,34 @@ describe("in a dashboard", () => {
     expect(await screen.findByText("Pay rent")).toBeTruthy();
   });
 
+  test("moving a card refreshes the count widget beside it", async () => {
+    // A move is a write: without the bump, the count next to the board keeps
+    // the old total until the page reloads.
+    const { db } = await seed();
+    const count: DashboardView = {
+      kind: "dashboard",
+      specVersion: 4,
+      id: "overview",
+      title: "Overview",
+      revision: 1,
+      tabs: [
+        {
+          id: "plan",
+          title: "Plan",
+          items: [
+            { id: "b", x: 0, y: 0, w: 8, h: 8, widget: "view", view: "tasks_board" },
+            { id: "n", x: 8, y: 0, w: 4, h: 1, widget: "count", label: "Work", view: "task_history", filter: { op: "eq", field: "list", value: "Work" } },
+          ],
+        },
+      ],
+    };
+    render(<DashboardRenderer dashboard={count} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await screen.findByText("Pay rent");
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("1"));
+    moveTo("Pay rent", "v:Work");
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("2"));
+  });
+
   test("a count widget pointing at a board is reported", async () => {
     const { db } = await seed();
     const bad: DashboardView = { ...dashboard, tabs: [{ id: "plan", title: "Plan", items: [{ id: "n", x: 0, y: 0, w: 4, h: 1, widget: "count", label: "Tasks", view: "tasks_board" }] }] };
