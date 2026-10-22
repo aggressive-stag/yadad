@@ -10,6 +10,7 @@ import { addField, removeField, updateField } from "./fields.js";
 import { renderInput } from "./inputs.js";
 import { choiceField, describeCondition, propertyInput, warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
+import { useReportChange } from "./report-change.js";
 import type { EditSession } from "./session.js";
 
 export interface EntityFieldsEditorProps {
@@ -29,6 +30,8 @@ export interface EntityFieldsEditorProps {
   readonly viewer?: ViewerDocument | undefined;
   /** Receives the edited entity with its revision bumped. */
   readonly onSave: (entity: EntityDocument) => void;
+  /** Receives the in-progress entity on each edit, undo or redo — the live preview and unsaved-JSON panel feed on this. */
+  readonly onChange?: (entity: EntityDocument) => void;
   readonly onCancel: () => void;
 }
 
@@ -116,9 +119,10 @@ const typeChooser: SelectField = {
  * options or required flag, or remove one no view uses. Ids and types of
  * existing fields are fixed, since saved records depend on them.
  */
-export function EntityFieldsEditor({ entity, views, registry, entities, viewer, onSave, onCancel }: EntityFieldsEditorProps): ReactNode {
+export function EntityFieldsEditor({ entity, views, registry, entities, viewer, onSave, onChange, onCancel }: EntityFieldsEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<EntityDocument>>(() => startSession(entity));
+  useReportChange(session.current, onChange);
   const [panel, setPanel] = useState<PanelState | undefined>(undefined);
   const [actionPanel, setActionPanel] = useState<ActionPanelState | undefined>(undefined);
   const [inputPanel, setInputPanel] = useState<InputPanelState | undefined>(undefined);

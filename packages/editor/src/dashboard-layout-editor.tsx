@@ -10,6 +10,7 @@ import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
+import { useReportChange } from "./report-change.js";
 import { measureFor, setCountWidgetFilter, setItemVisibleWhen, setStatMeasure, setTabVisibleWhen } from "./views.js";
 import { ViewerRule } from "./viewer-rule.js";
 
@@ -18,6 +19,8 @@ export interface DashboardLayoutEditorProps {
   readonly registry: Registry<ReactNode>;
   /** Receives the edited dashboard with its revision bumped. */
   readonly onSave: (dashboard: DashboardView) => void;
+  /** Receives the in-progress dashboard on each edit, undo or redo — the live preview and unsaved-JSON panel feed on this. */
+  readonly onChange?: (dashboard: DashboardView) => void;
   readonly onCancel: () => void;
   /** A readable name for a view widget's view, e.g. its title. Defaults to the view id. */
   readonly describeView?: (viewId: string) => string;
@@ -88,9 +91,10 @@ function describeMeasure(m: Measure, label: (fieldId: string) => string): string
  * with arrow keys resizes it. Overlapping or out-of-bounds layouts are
  * rejected by document validation, with the reason announced.
  */
-export function DashboardLayoutEditor({ dashboard, registry, onSave, onCancel, describeView = (id) => id, views = [], entities, viewer }: DashboardLayoutEditorProps): ReactNode {
+export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, onCancel, describeView = (id) => id, views = [], entities, viewer }: DashboardLayoutEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<DashboardView>>(() => startSession(dashboard));
+  useReportChange(session.current, onChange);
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
   const [drag, setDrag] = useState<Drag | undefined>(undefined);
   const [status, setStatus] = useState("");

@@ -10,7 +10,7 @@ Peer dependency: React 19.
 
 ## Components
 
-Each takes the document, an injected `Registry<ReactNode>`, and `onSave` / `onCancel`:
+Each takes the document, an injected `Registry<ReactNode>`, and `onSave` / `onCancel`. Every editor also takes `onChange`, which reports the in-progress document after every edit, undo or redo — that is what feeds a live preview or an unsaved-JSON panel; `onSave` alone only fires on the Save press.
 
 - `EntityFieldsEditor`: add a field, change its label, options or required flag, or remove one no view uses. Ids and types of existing fields are fixed because saved records depend on them. Takes `views` so it can refuse removing a field still in use. Its **Actions** section declares what a record can do (RFC 0007): add, rename, reorder and remove record actions, set each one's confirm (title, message, confirm label, tone), author its input fields (up to 5, of the types with a plain input — no `reference`) and its `visibleWhen`. Removal is refused while a view still offers the action, naming the views. Ids of existing actions are fixed, because views offer them by id.
 - `FormViewEditor`: place entity fields in sections, reorder, and add, rename or remove sections. Conditions on fields are kept and shown.

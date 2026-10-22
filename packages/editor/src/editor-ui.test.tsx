@@ -65,6 +65,19 @@ describe("DashboardLayoutEditor", () => {
     expect(saved[0]?.tabs[0]?.items[1]).toMatchObject({ x: 8, y: 1 });
   });
 
+  test("an edit reports the in-progress dashboard; undo reports the previous document", () => {
+    // The consumer's JSON panel stayed stale until Save: the dashboard editor had no onChange.
+    const reported: DashboardView[] = [];
+    render(<DashboardLayoutEditor dashboard={dashboard} registry={mockRegistry} onSave={() => {}} onChange={(d) => reported.push(d)} onCancel={() => {}} describeView={(id) => `View: ${id}`} />);
+    const card = () => screen.getByRole("group", { name: /^Count: Sets/ });
+    fireEvent.keyDown(card(), { key: "ArrowDown" });
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.tabs[0]?.items[1]).toMatchObject({ x: 8, y: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(reported).toHaveLength(2);
+    expect(reported[1]?.tabs[0]?.items[1]).toMatchObject({ x: 8, y: 0 }); // back to where it started
+  });
+
   test("a card focused with the keyboard moves with arrows and resizes with Shift+arrows", () => {
     // The consumer's path: Tab lands on the card, then keys — a real focus plus a native bubbling keydown, the way the browser delivers it.
     const room: DashboardView = {
@@ -151,6 +164,20 @@ describe("EntityFieldsEditor", () => {
   });
 
   const actionPanel = () => screen.getByRole("group", { name: /Add an action|Edit action "/ });
+
+  test("an edit reports the in-progress entity; undo reports the previous document", () => {
+    // Same root as the dashboard's: the host's live preview could not see an uncommitted label change.
+    const reported: EntityDocument[] = [];
+    render(<EntityFieldsEditor entity={entity} views={[table]} registry={mockRegistry} onSave={() => {}} onChange={(e) => reported.push(e)} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Day" }));
+    fireEvent.change(screen.getByLabelText(/^Label/), { target: { value: "Training day" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply changes" }));
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.fields[0]?.label).toBe("Training day");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(reported).toHaveLength(2);
+    expect(reported[1]?.fields[0]?.label).toBe("Day"); // back to where it started
+  });
 
   test("adds an action with a confirm; the row appears and saving keeps it", () => {
     const { saved } = setup();
