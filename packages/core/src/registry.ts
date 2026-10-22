@@ -2,7 +2,7 @@
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
 // CellEditor and optionsSchema come later.
 
-import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, NumberField, ReferenceField, SelectField, TextField } from "./document.js";
+import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, NumberField, ReferenceField, SelectField, SeriesDisplay, TextField } from "./document.js";
 import type { DocumentError } from "./errors.js";
 
 /**
@@ -272,9 +272,55 @@ export interface CountWidgetProps {
   readonly text?: string;
 }
 
+/**
+ * One group of a series widget (RFC 0001 slice 2). `key` is the group's
+ * identity: the bucket for a date groupBy (`YYYY-MM-DD`, or `YYYY-MM` for
+ * month), otherwise the field's value. `label` is what the axis or row shows
+ * (a reference group is already labelled with the target's display).
+ */
+export interface SeriesGroupProps {
+  readonly key: string;
+  readonly label: string;
+  /** undefined stands for no value: a gap bucket of min/max/avg (shown as a dash, and a break in a line). */
+  readonly value: number | undefined;
+  /** The value already formatted for display (locale grouping, at most two decimals), or "\u2014" when there is nothing to show. Same contract as CountWidgetProps.text. */
+  readonly text: string;
+}
+
+/**
+ * A grouped measure: one number per group, drawn as a table, bar chart or
+ * line chart (RFC 0001 slice 2). The renderer owns fetching, grouping, gap
+ * filling and formatting; the component owns drawing and never fetches.
+ * `widgets.series` is optional in this version: a registry without it cannot
+ * show a series widget, and the renderer says so with an error summary
+ * naming the key.
+ */
+export interface SeriesWidgetProps {
+  /** The widget's label; doubles as the chart's accessible name. */
+  readonly label: string;
+  readonly display: SeriesDisplay;
+  /** In sort order, gaps filled for a date series sorted by group. May be empty (see `skipped`). */
+  readonly groups: readonly SeriesGroupProps[];
+  /** Records with no group value: in no group, and in none of the measures. The component may say "N records without a <field>". */
+  readonly skipped: number;
+  /** Set when the table holds more records than were read: the groups cover only `read` of `total`. */
+  readonly partial?: { readonly read: number; readonly total: number };
+  /** The groups are being computed. */
+  readonly loading: boolean;
+  /** A read failed outright; the component shows the message instead of empty axes. */
+  readonly error?: string;
+  /** What each group's number is, e.g. "Sum of weight × reps" — the value-axis label. */
+  readonly measureLabel: string;
+}
+
 /** Widget components by widget type; "view" widgets render through the renderer itself. */
 export interface WidgetComponents<N> {
   readonly count: Component<CountWidgetProps, N>;
+  /**
+   * Draws a series widget (RFC 0001 slice 2). Optional like `layout.Calendar`:
+   * a registry without it renders an error summary naming the key.
+   */
+  readonly series?: Component<SeriesWidgetProps, N>;
 }
 
 /** One entry (a record) on a calendar day (RFC 0004). */

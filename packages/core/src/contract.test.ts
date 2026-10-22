@@ -39,7 +39,23 @@ describe("contract lists", () => {
     expect(kind?.properties.filter((p) => p.required).map((p) => p.key)).toEqual(["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"]);
     expect(kind?.properties.map((p) => p.key)).toEqual(expect.arrayContaining(["titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "rowAction"]));
     expect(contract.calendar).toMatchObject({ modes: ["month", "week"], defaultModes: ["month", "week"], weekStartsOn: { default: 1, min: 0, max: 6 }, detailFieldsMax: 3 });
-    expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(["layout.Calendar", "layout.Board", "fields.datetime", "layout.Dialog"]);
+    expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(["layout.Calendar", "layout.Board", "fields.datetime", "layout.Dialog", "widgets.series"]);
+  });
+  test("the series widget, its limits and its optional registry key are described (RFC 0001 slice 2)", () => {
+    const widget = contract.widgets.find((w) => w.widget === "series");
+    expect(widget).toBeDefined();
+    expect(widget?.properties.filter((p) => p.required).map((p) => p.key)).toEqual(expect.arrayContaining(["label", "view", "groupBy", "measure"]));
+    expect(widget?.properties.map((p) => p.key)).toEqual(expect.arrayContaining(["groupBy", "measure", "display", "sort", "limit", "filter"]));
+    expect(contract.series).toEqual({
+      displays: ["table", "bar", "line"],
+      buckets: ["day", "week", "month"],
+      sortBys: ["group", "value"],
+      sortDirs: ["asc", "desc"],
+      groupFieldTypes: ["select", "boolean", "reference", "text", "date"],
+      limit: { default: 50, min: 1, max: 200 },
+    });
+    const key = contract.optionalRegistryKeys.find((k) => k.key === "widgets.series");
+    expect(key?.description).toContain("Optional");
   });
   test("RFC 0007: the datetime type, entity actions, recordActions, compare and the new registry keys are described", () => {
     expect(contract.fieldTypes.map((f) => f.type)).toContain("datetime");

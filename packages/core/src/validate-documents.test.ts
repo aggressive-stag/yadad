@@ -3,13 +3,13 @@ import { validateDocument, validateDocuments } from "./validate.js";
 
 type ExpectedError = { path: string; code: string; document?: string | undefined; allowed?: readonly string[] | undefined };
 
-function entity(id: string, fields: { id: string; type: string }[]): unknown {
+function entity(id: string, fields: { id: string; type: string; options?: unknown }[]): unknown {
   return {
     kind: "entity",
     specVersion: 0,
     id,
     revision: 1,
-    fields: fields.map((f) => ({ id: f.id, type: f.type, label: f.id })),
+    fields: fields.map((f) => ({ id: f.id, type: f.type, label: f.id, ...(f.options !== undefined ? { options: f.options } : {}) })),
   };
 }
 
@@ -132,6 +132,81 @@ describe("validateDocuments", () => {
       dashboard("board", [{ id: "c", x: 0, y: 0, w: 6, h: 2, widget: "count", label: "C", view: "the_table", filter: { op: "eq", field: "ghost", value: 1 } }]),
     ];
     expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/filter/field", code: "unknown-reference", document: "board", allowed: ["name"] }]);
+  });
+
+  // ---- series widgets (RFC 0001 slice 2) -------------------------------------
+
+  const richEntity = (): unknown =>
+    entity("e", [
+      { id: "name", type: "text" },
+      { id: "status", type: "select", options: { source: "static", values: ["open", "done"] } },
+      { id: "done", type: "boolean" },
+      { id: "day", type: "date" },
+      { id: "weight", type: "number" },
+    ]);
+
+  const seriesItem = (over: Record<string, unknown> = {}): unknown => ({
+    id: "s",
+    x: 0,
+    y: 0,
+    w: 6,
+    h: 4,
+    widget: "series",
+    label: "S",
+    view: "the_table",
+    display: "table",
+    groupBy: { field: "status" },
+    measure: { op: "count" },
+    ...over,
+  });
+
+  test("a valid series widget over a select group with a sum measure is ok", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ measure: { op: "sum", field: "weight" } })])];
+    expect(validateDocuments(set).ok).toBe(true);
+  });
+
+  test("a series widget that points at a calendar view instead of a table", () => {
+    const set = [
+      entity("e", [{ id: "day", type: "date" }, { id: "name", type: "text" }]),
+      { kind: "calendar", specVersion: 0, id: "cal", entity: "e", revision: 1, dataSource: "default", dateField: "day", titleField: "name" },
+      dashboard("board", [seriesItem({ view: "cal" })]),
+    ];
+    expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: [] }]);
+  });
+
+  test("a series groupBy whose field is not on the entity", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ groupBy: { field: "ghost" } })])];
+    expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/groupBy/field", code: "unknown-reference", document: "board", allowed: ["name", "status", "done", "day", "weight"] }]);
+  });
+
+  test("a series cannot group by a number field, and the error lists the groupable ones", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ groupBy: { field: "weight" } })])];
+    expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/groupBy/field", code: "invalid-value", document: "board", allowed: ["name", "status", "done", "day"] }]);
+  });
+
+  test("bucket is refused on a non-date group field", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ groupBy: { field: "status", bucket: "week" } })])];
+    expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/groupBy/bucket", code: "invalid-value", document: "board", allowed: undefined }]);
+  });
+
+  test("bucket is accepted on a date group field", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ groupBy: { field: "day", bucket: "month" } })])];
+    expect(validateDocuments(set).ok).toBe(true);
+  });
+
+  test("a series measure whose field is not on the entity reuses stat's error", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ measure: { op: "sum", field: "ghost" } })])];
+    expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/measure/field", code: "unknown-reference", document: "board", allowed: ["name", "status", "done", "day", "weight"] }]);
+  });
+
+  test("a series measure whose field is the wrong type reuses stat's error", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ measure: { op: "sum", field: "name" } })])];
+    expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/measure/field", code: "invalid-value", document: "board", allowed: ["weight"] }]);
+  });
+
+  test("a series filter whose field is not on the entity", () => {
+    const set = [richEntity(), table("the_table", "e"), dashboard("board", [seriesItem({ filter: { op: "eq", field: "ghost", value: 1 } })])];
+    expect(problems(set)).toEqual([{ path: "/tabs/0/items/0/filter/field", code: "unknown-reference", document: "board", allowed: ["name", "status", "done", "day", "weight"] }]);
   });
 
   test("two documents of the same kind with the same id", () => {

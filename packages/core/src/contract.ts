@@ -4,8 +4,8 @@
 
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
-import type { CalendarMode, Document, FieldType, MeasureOp, ViewerFactType, WidgetType } from "./document.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import type { CalendarMode, Document, FieldType, MeasureOp, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, ViewerFactType, WidgetType } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
 export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] as const;
@@ -50,6 +50,8 @@ export const BOARD_GROUP_BY_MAX = 5;
 export const BOARD_CARD_FIELDS_MAX = 3;
 /** Field types a board's groupBy entries may have. */
 export const BOARD_GROUP_FIELD_TYPES: readonly FieldType[] = ["select", "boolean", "reference"];
+/** Field types a series `groupBy.field` may have (RFC 0001 slice 2, decision 2). */
+export const SERIES_GROUP_FIELD_TYPES: readonly FieldType[] = ["select", "boolean", "reference", "text", "date"];
 /** Field types a board's titleField may have. */
 export const BOARD_TITLE_FIELD_TYPES: readonly FieldType[] = ["text", "select"];
 
@@ -150,6 +152,15 @@ export interface ContractDescription {
     readonly cardFieldsMax: number;
     readonly groupFieldTypes: readonly FieldType[];
     readonly titleFieldTypes: readonly FieldType[];
+  };
+  /** Limits and defaults of the `series` widget (RFC 0001 slice 2). */
+  readonly series: {
+    readonly displays: readonly SeriesDisplay[];
+    readonly buckets: readonly SeriesBucket[];
+    readonly sortBys: readonly SeriesSortBy[];
+    readonly sortDirs: readonly SeriesSortDir[];
+    readonly groupFieldTypes: readonly FieldType[];
+    readonly limit: { readonly default: number; readonly min: number; readonly max: number };
   };
   /** The `viewer` document kind (RFC 0006): the facts a host can tell the renderers about the viewer. */
   readonly viewer: {
@@ -535,6 +546,14 @@ export function describeContract(): ContractDescription {
       groupFieldTypes: [...BOARD_GROUP_FIELD_TYPES],
       titleFieldTypes: [...BOARD_TITLE_FIELD_TYPES],
     },
+    series: {
+      displays: [...SERIES_DISPLAYS],
+      buckets: [...SERIES_BUCKETS],
+      sortBys: [...SERIES_SORT_BYS],
+      sortDirs: [...SERIES_SORT_DIRS],
+      groupFieldTypes: [...SERIES_GROUP_FIELD_TYPES],
+      limit: { default: SERIES_LIMIT_DEFAULT, min: 1, max: SERIES_LIMIT_MAX },
+    },
     viewer: { factTypes: [...VIEWER_FACT_TYPES], factsMax: VIEWER_FACTS_MAX, factValuesMax: VIEWER_FACT_VALUES_MAX, factValuesMin: VIEWER_FACT_VALUES_MIN, documentsMax: 1 },
     actions: { recordActionsMax: RECORD_ACTIONS_MAX, max: ACTIONS_MAX, inputMax: ACTION_INPUT_MAX, inputFieldTypes: [...ACTION_INPUT_FIELD_TYPES], confirmTones: [...ACTION_CONFIRM_TONES] },
     conditionPlaces: CONDITION_PLACE_SPECS,
@@ -543,6 +562,7 @@ export function describeContract(): ContractDescription {
       { key: "layout.Board", description: "Draws a board view (BoardProps). Optional for now: without it a board view renders an error summary instead. It becomes required once the reference component set ships a board." },
       { key: "fields.datetime", description: "The Input and Display of a datetime field (RFC 0007). Optional: a document that uses a datetime field with a registry that lacks it renders an error summary naming the key instead." },
       { key: "layout.Dialog", description: "Draws a modal dialog around content the renderer builds (DialogProps; RFC 0007). Optional: an action that needs a confirmation or input, rendered with a registry that lacks it, shows an error summary instead. Actions with neither need no dialog." },
+      { key: "widgets.series", description: "Draws a series widget (SeriesWidgetProps; RFC 0001 slice 2). Optional for now: without it a series widget renders an error summary naming the key instead. It becomes required once the reference component set ships charts." },
     ],
     measures: MEASURE_OPS.map((op) => MEASURE_SPECS[op]),
     grid: {

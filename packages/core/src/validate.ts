@@ -7,9 +7,9 @@
 
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
 import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
-import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, TableView, ViewerDocument, ViewerFact } from "./document.js";
+import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, SeriesWidget, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -1884,6 +1884,42 @@ function checkConditionFields(condition: Condition | undefined, base: Path, chec
   }
 }
 
+/**
+ * Checks a series `groupBy` against the entity (RFC 0001 slice 2, decisions 2
+ * and 3): the field exists, its type may be grouped, and `bucket` only rides
+ * a date field. Errors list the qualifying fields the way stat's do.
+ */
+function checkSeriesFields(errors: DocumentError[], document: string, entity: EntityDocument, groupBy: SeriesWidget["groupBy"], base: Path): void {
+  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const field = entity.fields.find((f) => f.id === groupBy.field);
+  if (!field) {
+    errors.push(refError(document, [...base, "field"], `Field "${groupBy.field}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+    return;
+  }
+  if (!SERIES_GROUP_FIELD_TYPES.includes(field.type)) {
+    const allowed = [...new Set(entity.fields.filter((f) => SERIES_GROUP_FIELD_TYPES.includes(f.type)).map((f) => f.id))];
+    errors.push({
+      path: jsonPointer([...base, "field"]),
+      code: "invalid-value",
+      message: `A series cannot group by "${field.id}"; a ${field.type} field is not a select, boolean, reference, text or date field.`,
+      hint: allowed.length > 0 ? `Use one of: ${allowed.join(", ")}.` : `Entity "${entity.id}" has no groupable field; add a select, boolean, reference, text or date field.`,
+      document,
+      allowed,
+    });
+    return;
+  }
+  if (groupBy.bucket !== undefined && field.type !== "date") {
+    const dated = [...new Set(entity.fields.filter((f) => f.type === "date").map((f) => f.id))];
+    errors.push({
+      path: jsonPointer([...base, "bucket"]),
+      code: "invalid-value",
+      message: `"bucket" groups dates; "${field.id}" is a ${field.type} field, which has no days, weeks or months to bucket.`,
+      hint: dated.length > 0 ? `Remove "bucket", or group by a date field: ${dated.join(", ")}.` : 'Remove "bucket", or group by a date field; this entity has none.',
+      document,
+    });
+  }
+}
+
 /** Checks that a measure's fields exist on the entity and have a type its op accepts. */
 function checkMeasureFields(errors: DocumentError[], document: string, entity: EntityDocument, measure: Measure, base: Path): void {
   if (measure.op === "count") return;
@@ -1924,7 +1960,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       }
       const table = idx.tables.get(item.view);
       if (!table) {
-        const what = item.widget === "stat" ? "Stat" : "Count";
+        const what = item.widget === "stat" ? "Stat" : item.widget === "series" ? "Series" : "Count";
         const message = idx.calendars.has(item.view)
           ? `${what} widgets work from a table view, but "${item.view}" is a calendar view.`
           : idx.boards.has(item.view)
@@ -1945,6 +1981,8 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
         }
       });
       if (item.widget === "stat") checkMeasureFields(errors, doc.id, entity, item.measure, [...itemPath, "measure"]);
+      if (item.widget === "series") checkSeriesFields(errors, doc.id, entity, item.groupBy, [...itemPath, "groupBy"]);
+      if (item.widget === "series") checkMeasureFields(errors, doc.id, entity, item.measure, [...itemPath, "measure"]);
     });
   });
 }
