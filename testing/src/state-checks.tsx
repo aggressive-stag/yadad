@@ -115,13 +115,26 @@ const AXE_NAME_RULES = [
   "nested-interactive",
 ];
 
+export interface StateCheckReport {
+  readonly results: StateCheckResult[];
+  /** How many states were rendered — size test timeouts by this, not by guesswork. */
+  readonly states: number;
+  /** `"full"`: every combination of the axes. `"pairwise"`: every pair of values from two axes appears in some state. */
+  readonly strategy: "full" | "pairwise";
+  /** False when `limit` cut the grid short: a green run then covers a sample, not every combination. */
+  readonly complete: boolean;
+  /** The ids of the axes the grid varied along (the data axes, then `source`). */
+  readonly axes: readonly string[];
+  /** States the grid left out on purpose (e.g. a state a condition makes unreachable). */
+  readonly skipped: number;
+}
+
 /**
- * Renders every state of a view (its data states from `viewStates` crossed with
- * the source states from `sourceStates`) with the host's `render` function and
- * checks each one. Needs a DOM: call it from a test file with
- * `// @vitest-environment jsdom`.
+ * Like `checkViewStates`, but reports what the grid actually covered: a green
+ * run over a view with 9,000 combinations may prove only a pairwise cover, and
+ * a consumer sizing test timeouts needs the state count, not a guess.
  */
-export async function checkViewStates(options: CheckViewStatesOptions): Promise<StateCheckResult[]> {
+export async function checkViewStatesReport(options: CheckViewStatesOptions): Promise<StateCheckReport> {
   const { documents, now } = options;
   const view = typeof options.view === "string" ? documents.find((d): d is ViewDocument => isView(d) && d.id === options.view) : options.view;
   if (!view) throw new RangeError(`view "${String(options.view)}" is not among the documents`);
@@ -138,14 +151,25 @@ export async function checkViewStates(options: CheckViewStatesOptions): Promise<
     ...(options.manyRecords !== undefined ? { manyRecords: options.manyRecords } : {}),
     ...(options.timeZone !== undefined ? { timeZone: options.timeZone } : {}),
   };
-  const states = sourceStates(viewStates(view, documents, stateOptions), documents).states;
+  const grid = sourceStates(viewStates(view, documents, stateOptions), documents);
 
   const results: StateCheckResult[] = [];
-  for (const state of states) {
+  for (const state of grid.states) {
     const problems = await checkState(state, view, entity, documents, registry, keys, options, skip);
     results.push({ id: state.id, label: state.label, problems: problems.filter((p) => !skip.has(p.check)) });
   }
-  return results;
+  return { results, states: results.length, strategy: grid.strategy, complete: grid.complete, axes: grid.axes.map((a) => a.id), skipped: grid.skipped.length };
+}
+
+/**
+ * Renders every state of a view (its data states from `viewStates` crossed with
+ * the source states from `sourceStates`) with the host's `render` function and
+ * checks each one. Needs a DOM: call it from a test file with
+ * `// @vitest-environment jsdom`. For what the grid covered, call
+ * `checkViewStatesReport` — this is its `results`.
+ */
+export async function checkViewStates(options: CheckViewStatesOptions): Promise<StateCheckResult[]> {
+  return (await checkViewStatesReport(options)).results;
 }
 
 /**

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { describe, expect, test } from "vitest";
 import { mockRegistry } from "./mock-registry.js";
-import { checkViewStates, problems } from "./state-checks.js";
+import { checkViewStates, checkViewStatesReport, problems } from "./state-checks.js";
 import type { StateCheck } from "./state-checks.js";
 
 const NOW = new Date(2026, 9, 17, 12, 0, 0);
@@ -87,6 +87,30 @@ describe("checkViewStates", () => {
     const results = await run(form, formRender());
     expect(results.length).toBeGreaterThan(3);
     expect(problems(results)).toEqual([]);
+  });
+
+  test("the report of a small view is a full, complete grid", async () => {
+    const report = await checkViewStatesReport({ view: form, documents, now: NOW, render: formRender() });
+    expect(report.strategy).toBe("full");
+    expect(report.complete).toBe(true);
+    expect(report.states).toBe(report.results.length);
+    expect(report.states).toBeGreaterThan(3);
+    // The data axes the grid varied along, then the source axis.
+    expect(report.axes).toContain("field:kind");
+    expect(report.axes[report.axes.length - 1]).toBe("source");
+    expect(report.skipped).toBe(0);
+    // checkViewStates is the report's results, unchanged.
+    expect(await checkViewStates({ view: form, documents, now: NOW, render: formRender() })).toEqual(report.results);
+  });
+
+  test("a limit cuts the grid to an incomplete pairwise cover, and the report says so", async () => {
+    const report = await checkViewStatesReport({ view: form, documents, now: NOW, limit: 3, render: formRender() });
+    expect(report.strategy).toBe("pairwise");
+    expect(report.complete).toBe(false);
+    expect(report.states).toBe(report.results.length);
+    // Fewer states than the full grid, so the green run really is a sample.
+    const full = await checkViewStatesReport({ view: form, documents, now: NOW, render: formRender() });
+    expect(report.states).toBeLessThan(full.states);
   });
 
   test("results carry the state id and label", async () => {

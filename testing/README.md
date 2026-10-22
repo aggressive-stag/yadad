@@ -73,6 +73,18 @@ test.each(["task_form", "task_table", "task_board"])("%s, in every state", async
 
 `checkViewStates({ view, documents, render, now, registry?, limit?, embeddedLimit?, manyRecords?, skip?, settleMs?, timeoutMs? })` takes the view (or its id) and every document it needs, and returns one `{ id, label, problems }` per state. `render(state, context)` gets the `SourceViewState` and a context with `view`, `entity`, `documents`, `registry` (defaults to the mock registry), `adapter` and `dataSources` (the state's seeded adapter, under every data source key), `drafts` (for a form state: a draft store holding the state's values; pass it to the form), `now`, `viewer` (the state's resolved viewer) and `omitViewer` (true on the "viewer not provided" state: leave the renderer's `viewer` prop out entirely). A dashboard state on a later tab is opened for you by clicking its tab.
 
+Above `limit` the grid is a pairwise cover, not every combination: a green run then proves every *pair* of values appears somewhere, not every state. Ask what it covered with `checkViewStatesReport` — same options, and `checkViewStates` is exactly its `results`:
+
+```tsx
+import { checkViewStatesReport, problems } from "@yadad/testing/state-checks";
+
+const report = await checkViewStatesReport({ view: id, documents, registry: myRegistry, now: new Date(2026, 9, 15), render });
+expect(problems(report.results)).toEqual([]);
+expect(report.complete).toBe(true); // false: limit cut the grid short — this run covered a sample
+// report.strategy: "full" | "pairwise" · report.states: how many states rendered (size test timeouts by it)
+// report.axes: the ids the grid varied along (data axes, then "source") · report.skipped: states left out on purpose
+```
+
 Checks per state, each a named problem:
 
 | Check | Fails when |
