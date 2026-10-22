@@ -113,6 +113,35 @@ describe("checkViewStates", () => {
     expect(report.states).toBeLessThan(full.states);
   });
 
+  test("expectAxes catches a read-only table that has no permission axis", async () => {
+    const report = await checkViewStatesReport({
+      view: table,
+      documents,
+      now: NOW,
+      render: () => <p>rows</p>,
+      expectAxes: ["permission"],
+    });
+    expect(report.axes).not.toContain("permission");
+    expect(report.results[0]!.problems.map((p) => p.check)).toContain("axis-missing");
+    expect(report.results[0]!.problems[0]!.message).toContain('view "task_table"');
+    expect(report.results[0]!.problems[0]!.message).toContain('"permission"');
+    // Exactly one problem, on the first result.
+    expect(report.results.filter((r) => r.problems.some((p) => p.check === "axis-missing"))).toHaveLength(1);
+  });
+
+  test("expectAxes stays quiet when the axis is there", async () => {
+    const editable: TableView = { ...table, columns: [{ field: "title" }, { field: "note", editable: true }] };
+    const report = await checkViewStatesReport({
+      view: editable,
+      documents,
+      now: NOW,
+      render: () => <p>rows</p>,
+      expectAxes: ["permission", "records"],
+    });
+    expect(report.axes).toContain("permission");
+    expect(report.results.flatMap((r) => r.problems.map((p) => p.check))).not.toContain("axis-missing");
+  });
+
   test("results carry the state id and label", async () => {
     const [first] = await run(form, formRender());
     expect(first?.id).toBeTruthy();

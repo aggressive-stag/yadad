@@ -85,6 +85,8 @@ expect(report.complete).toBe(true); // false: limit cut the grid short — this 
 // report.axes: the ids the grid varied along (data axes, then "source") · report.skipped: states left out on purpose
 ```
 
+`expectAxes: ["permission", "records", ...]` fails the run when a listed axis is absent from the grid: a view that quietly loses its last editable column loses its `permission` axis — and every locked-record state with it — while staying green, so name the axes the view must cover and let the check catch the refactor. Each missing id adds one `axis-missing` problem (naming the axis and the view) to the first result; `skip: ["axis-missing"]` leaves it out.
+
 Checks per state, each a named problem:
 
 | Check | Fails when |
@@ -104,6 +106,7 @@ Checks per state, each a named problem:
 | `action-missing` | the reverse: an action `availableActions` allows is not offered |
 | `diff-offered` | a text column's Display was given a `diff` although the column does not compare |
 | `diff-missing` | a comparing column's Display got no `diff` while its comparator is present |
+| `axis-missing` | an id in `expectAxes` is absent from the grid (added to the first result, not per state) |
 
 `problems(results)` flattens the results into one line per problem, `"<state label> [<state id>]: <check>: <message>"`, so a failing `expect(problems(...)).toEqual([])` lists every failing state. Pass `timeZone` to have generated `datetime` values rendered in a zone other than UTC (it goes to `viewStates`; a datetime quick-filter state then compares against 09:30 in that zone). `skip: ["accessible-name"]` leaves a check out. `limit` caps the data states (24 by default); lower `manyRecords` to keep the "many records" states fast.
 

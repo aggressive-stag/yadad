@@ -33,7 +33,8 @@ export type StateCheck =
   | "action-offered"
   | "action-missing"
   | "diff-missing"
-  | "diff-offered";
+  | "diff-offered"
+  | "axis-missing";
 
 export interface StateProblem {
   readonly check: StateCheck;
@@ -92,6 +93,15 @@ export interface CheckViewStatesOptions {
   readonly settleMs?: number;
   /** The longest to wait for a ready state to stop showing a loading indicator, in milliseconds. Defaults to 2000. */
   readonly timeoutMs?: number;
+  /**
+   * Axis ids the grid must contain (`field:<id>`, `records`, `mode`, `group`,
+   * `tab`, `widget`, a viewer fact's id, `permission`, `action:<id>`,
+   * `paging`). Each listed id missing from the view's grid adds one
+   * `axis-missing` problem to the first result — a view that silently lost
+   * its permission axis (say, its last editable column in a refactor) would
+   * otherwise stay green with fewer states and nothing to say so.
+   */
+  readonly expectAxes?: readonly string[];
 }
 
 const AXE_NAME_RULES = [
@@ -153,12 +163,20 @@ export async function checkViewStatesReport(options: CheckViewStatesOptions): Pr
   };
   const grid = sourceStates(viewStates(view, documents, stateOptions), documents);
 
+  const missingAxes: StateProblem[] = (options.expectAxes ?? [])
+    .filter((axis) => !grid.axes.some((a) => a.id === axis))
+    .map((axis) => ({ check: "axis-missing" as const, message: `state grid for view "${view.id}" has no "${axis}" axis — its states are silently absent` }));
+
   const results: StateCheckResult[] = [];
   for (const state of grid.states) {
     const problems = await checkState(state, view, entity, documents, registry, keys, options, skip);
     results.push({ id: state.id, label: state.label, problems: problems.filter((p) => !skip.has(p.check)) });
   }
-  return { results, states: results.length, strategy: grid.strategy, complete: grid.complete, axes: grid.axes.map((a) => a.id), skipped: grid.skipped.length };
+  if (missingAxes.length > 0 && !skip.has("axis-missing")) {
+    if (results.length === 0) results.push({ id: "no-states", label: "no states rendered", problems: [] });
+    results[0] = { ...results[0]!, problems: [...missingAxes, ...results[0]!.problems] };
+  }
+  return { results, states: grid.states.length, strategy: grid.strategy, complete: grid.complete, axes: grid.axes.map((a) => a.id), skipped: grid.skipped.length };
 }
 
 /**
