@@ -48,6 +48,14 @@ export interface DashboardRendererProps {
   readonly viewer?: ResolvedViewer;
   /** The viewer's locale and zone for datetime fields (RFC 0007), passed to every embedded view; absent, the environment's. */
   readonly formatting?: FieldFormatting;
+  /**
+   * The tab selected on the first render. Only the first render reads it:
+   * after that the viewer's choice wins. An id that names no tab, or a tab
+   * this viewer may not see, falls back to the first visible tab. This is
+   * what a states preview passes to open a dashboard on another tab without
+   * taking control of the selection.
+   */
+  readonly initialTab?: string;
 }
 
 const DEFAULT_COLUMNS = 12;
@@ -79,11 +87,12 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables, counts and stats.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab }: DashboardRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, dashboard, documents);
   const tabs = useMemo(() => visibleTabs(dashboard, viewer), [dashboard, viewer]);
   const [rootRef, width] = useWidth();
-  const [selected, setSelected] = useState(tabs[0]?.id ?? "");
+  // `initialTab` seeds the selection; a name that matches no visible tab falls back to the first one below.
+  const [selected, setSelected] = useState(initialTab ?? tabs[0]?.id ?? "");
   const [reloadKey, setReloadKey] = useState(0);
   // One bump for every successful write in any widget: a form save (onSaved)
   // and a write inside a table/board/calendar (onChanged) both go through it.

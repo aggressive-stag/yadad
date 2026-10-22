@@ -80,6 +80,7 @@ interface Options {
   readonly adapter?: DataAdapter;
   readonly registry?: Registry<ReactNode>;
   readonly groupBy?: string;
+  readonly initialGroupBy?: string;
   readonly onGroupByChange?: (field: string) => void;
   readonly docs?: DocumentSet;
   readonly reloadKey?: unknown;
@@ -96,6 +97,7 @@ async function open(options: Options = {}) {
     entities: documents.entities,
     documents: options.docs ?? documents,
     ...(options.groupBy !== undefined ? { groupBy: options.groupBy } : {}),
+    ...(options.initialGroupBy !== undefined ? { initialGroupBy: options.initialGroupBy } : {}),
     ...(options.onGroupByChange ? { onGroupByChange: options.onGroupByChange } : {}),
     ...(options.reloadKey !== undefined ? { reloadKey: options.reloadKey } : {}),
   };
@@ -192,6 +194,29 @@ describe("switching the grouping", () => {
   test("an unknown controlled id falls back to the first grouping", async () => {
     await open({ groupBy: "nope" });
     expect(screen.getByTestId("column-v:Home")).toBeTruthy();
+  });
+
+  test("initialGroupBy opens the board on another grouping, and the viewer can still switch", async () => {
+    // A state grid opens a board in a grouping without taking control of it
+    // (the controlled `groupBy` was the only way, and it froze the switcher).
+    const changes: string[] = [];
+    await open({ initialGroupBy: "done", onGroupByChange: (f) => changes.push(f) });
+    expect(screen.getByTestId("column-v:true")).toBeTruthy();
+    expect(screen.queryByTestId("column-v:Home")).toBeNull();
+    groupBy("list"); // uncontrolled: the switcher still works
+    expect(changes).toEqual(["list"]); // the seed is not a viewer choice
+    expect(await screen.findByTestId("column-v:Home")).toBeTruthy();
+  });
+
+  test("an unknown initialGroupBy falls back to the default grouping", async () => {
+    await open({ initialGroupBy: "nope" });
+    expect(screen.getByTestId("column-v:Home")).toBeTruthy();
+  });
+
+  test("groupBy wins over initialGroupBy", async () => {
+    await open({ groupBy: "list", initialGroupBy: "done" });
+    expect(screen.getByTestId("column-v:Home")).toBeTruthy();
+    expect(screen.queryByTestId("column-v:true")).toBeNull();
   });
 
   test("a single grouping has no switcher", async () => {

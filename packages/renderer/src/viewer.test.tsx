@@ -226,10 +226,21 @@ describe("board", () => {
 });
 
 describe("dashboard", () => {
-  const open = async (viewer: ResolvedViewer | undefined, documents: DocumentSet = set) => {
-    render(<DashboardRenderer dashboard={dashboard} documents={documents} registry={mockRegistry} dataSources={await seed()} {...(viewer ? { viewer } : {})} />);
+  const open = async (viewer: ResolvedViewer | undefined, documents: DocumentSet = set, initialTab?: string) => {
+    render(<DashboardRenderer dashboard={dashboard} documents={documents} registry={mockRegistry} dataSources={await seed()} {...(viewer ? { viewer } : {})} {...(initialTab !== undefined ? { initialTab } : {})} />);
     await screen.findByText("Open task");
   };
+
+  test("initialTab opens on the named tab; an unknown or hidden tab falls back to the first visible one", async () => {
+    await open(as("owner", true), set, "owners");
+    expect(screen.getByRole("tab", { name: "Owners" }).getAttribute("aria-selected")).toBe("true");
+    cleanup();
+    await open(as("viewer"), set, "ghost"); // no tab names "ghost"
+    expect(screen.getByRole("tab", { name: "Everyone" }).getAttribute("aria-selected")).toBe("true");
+    cleanup();
+    await open(as("viewer"), set, "owners"); // the tab exists, but this viewer may not see it
+    expect(screen.getByRole("tab", { name: "Everyone" }).getAttribute("aria-selected")).toBe("true");
+  });
 
   test("tabs and widgets are listed for the viewer who may see them", async () => {
     await open(as("viewer"));

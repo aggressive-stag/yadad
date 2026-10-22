@@ -39,6 +39,14 @@ export interface BoardRendererProps {
    * that is not one of the view's `groupBy` fields falls back to the default.
    */
   readonly groupBy?: string;
+  /**
+   * The grouping the board opens on. Only the first render reads it: after
+   * that the viewer's choice wins. Ignored when `groupBy` is passed. An id
+   * that is not one of the view's `groupBy` fields falls back to the default,
+   * as `groupBy` does. This is what a state grid passes to open a board in
+   * another grouping without taking control of it.
+   */
+  readonly initialGroupBy?: string;
   /** Called on every viewer choice, controlled or not. */
   readonly onGroupByChange?: (field: string) => void;
   /**
@@ -89,7 +97,7 @@ interface Opened {
  * container, with the target table filtered by that card and a Back button.
  * The board stays mounted (hidden), so Back returns to the same grouping.
  */
-export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, onGroupByChange, viewer: viewerProp, formatting, onChanged }: BoardRendererProps): ReactNode {
+export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, initialGroupBy, onGroupByChange, viewer: viewerProp, formatting, onChanged }: BoardRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -153,6 +161,7 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
           extraErrors={actionErrors}
           viewer={viewer}
           {...(groupBy !== undefined ? { groupBy } : {})}
+          {...(initialGroupBy !== undefined ? { initialGroupBy } : {})}
           {...(onGroupByChange ? { onGroupByChange } : {})}
           {...(formatting ? { formatting } : {})}
           {...(action && actionErrors.length === 0 && rowActionVisible(action, viewer) ? { onOpen: open } : {})}
@@ -185,6 +194,7 @@ interface BoardBodyProps {
   readonly extraErrors: readonly DocumentError[];
   readonly viewer: ResolvedViewer;
   readonly groupBy?: string;
+  readonly initialGroupBy?: string;
   readonly onGroupByChange?: (field: string) => void;
   readonly onOpen?: (record: DataRecord) => void;
   readonly formatting?: FieldFormatting;
@@ -202,13 +212,14 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The card is back in its column. Reload if the problem stays." }];
 }
 
-function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, onGroupByChange, onOpen, formatting, onChanged }: BoardBodyProps): ReactNode {
+function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, initialGroupBy, onGroupByChange, onOpen, formatting, onChanged }: BoardBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
 
   // The grouping choice: uncontrolled state by default, host-controlled when `groupBy` is set.
+  // `initialGroupBy` only seeds the uncontrolled state; an unknown id falls back below.
   const ids = view.groupBy.map((g) => g.field);
   const defaultId = ids[0] ?? "";
-  const [choice, setChoice] = useState(() => groupBy ?? defaultId);
+  const [choice, setChoice] = useState(() => groupBy ?? initialGroupBy ?? defaultId);
   const controlled = groupBy !== undefined;
   const activeId = controlled ? (groupBy !== undefined && ids.includes(groupBy) ? groupBy : defaultId) : ids.includes(choice) ? choice : defaultId;
   const groupField = boardGroupField(view, entity, activeId);

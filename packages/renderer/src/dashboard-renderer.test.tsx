@@ -67,6 +67,36 @@ describe("DashboardRenderer", () => {
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("0"));
   });
 
+  test("initialTab seeds the selection, and the viewer's own click wins from then on", async () => {
+    // Only the first render reads `initialTab` — the states preview opens a
+    // dashboard on a second tab without taking the tab bar away.
+    const db = createMemoryAdapter();
+    const { rerender } = render(
+      <DashboardRenderer
+        dashboard={dashboard}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", db]])}
+        initialTab="history"
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "History" }).getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByRole("table", { name: "Sets" })).toBeTruthy();
+    // A re-render with the same initialTab must not yank the viewer back.
+    fireEvent.click(screen.getByRole("tab", { name: "Log" }));
+    rerender(
+      <DashboardRenderer
+        dashboard={dashboard}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", db]])}
+        initialTab="history"
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "Log" }).getAttribute("aria-selected")).toBe("true");
+    expect(await screen.findByLabelText(/^Exercise/)).toBeTruthy();
+  });
+
   test("a failed count request shows an error instead of loading forever", async () => {
     const db = createMemoryAdapter();
     const failing: DataAdapter = { ...db, find: () => Promise.reject(new Error("The server responded with status 401.")) };
