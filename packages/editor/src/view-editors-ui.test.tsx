@@ -91,6 +91,27 @@ describe("FormViewEditor", () => {
     expect(saved[0]?.sections[0]?.title).toBe("Basics");
   });
 
+  test("the add-field picker offers the entity's fields that are not on the form, after a remount too", () => {
+    // A consumer added a field via the entity editor and saved; the form editor's picker kept offering only what the form already had.
+    const three: EntityDocument = {
+      kind: "entity", specVersion: 0, id: "task", revision: 1,
+      fields: [
+        { id: "a", type: "text", label: "A" },
+        { id: "b", type: "text", label: "B" },
+        { id: "c", type: "boolean", label: "C" },
+      ],
+    };
+    const one: FormView = { kind: "form", specVersion: 0, id: "task_form", entity: "task", revision: 3, dataSource: "default", sections: [{ id: "main", title: "Task", items: [{ field: "a" }] }] };
+    const options = () => [...(screen.getByLabelText("Field to add") as HTMLSelectElement).options].map((o) => o.textContent?.trim());
+    render(<FormViewEditor view={one} entity={three} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+    expect(options()).toEqual(["Choose…", "B", "C"]);
+    cleanup();
+    // The entity editor saved a new revision with field d; a fresh editor over the saved entity must see it.
+    const four: EntityDocument = { ...three, revision: 2, fields: [...three.fields, { id: "d", type: "number", label: "D" }] };
+    render(<FormViewEditor view={one} entity={four} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+    expect(options()).toEqual(["Choose…", "B", "C", "D"]);
+  });
+
   test("adds a section and moves a field into it", () => {
     setup();
     fireEvent.change(screen.getByLabelText("New section title"), { target: { value: "Scheduling" } });
