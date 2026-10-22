@@ -1,4 +1,4 @@
-import type { BoardView, DataAdapter, Document, EntityDocument, Registry, ResolvedViewer, ViewDocument } from "@yadad/core";
+import type { DataAdapter, Document, EntityDocument, Registry, ViewDocument } from "@yadad/core";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
 import type { DocumentSet } from "@yadad/renderer";
 import { createDraftStore, viewStates } from "@yadad/runtime";
@@ -36,28 +36,12 @@ export function renderState(state: SourceViewState, context: StateRenderContext,
       // The state names the mode and the day the calendar opens on; the viewer may still navigate from there.
       return entity && state.render.kind === "calendar" ? <CalendarRenderer key={state.id} initialMode={state.render.mode} initialAnchor={state.render.anchor} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...viewer} /> : null;
     case "board":
-      // The state names the field the board is grouped by; the renderer's `groupBy` prop takes it, and the viewer may still switch.
-      return entity && state.render.kind === "board" ? <StateBoard key={state.id} initial={state.render.groupBy} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} set={set} viewer={viewer} /> : null;
+      // The state names the field the board is grouped by; `initialGroupBy` seeds it and the viewer may still switch.
+      return entity && state.render.kind === "board" ? <BoardRenderer key={state.id} initialGroupBy={state.render.groupBy} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...viewer} /> : null;
     case "dashboard":
-      return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...viewer} />;
+      // The state names the tab it sits on; `initialTab` opens it on mount, so no tab click is needed.
+      return <DashboardRenderer key={state.id} dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...(state.render.kind === "dashboard" ? { initialTab: state.render.tab } : {})} {...viewer} />;
   }
-}
-
-interface StateBoardProps {
-  readonly initial: string;
-  readonly entity: EntityDocument;
-  readonly view: BoardView;
-  readonly registry: Registry<ReactNode>;
-  readonly dataSources: ReadonlyMap<string, DataAdapter>;
-  readonly entities: DocumentSet["entities"];
-  readonly set: DocumentSet;
-  readonly viewer: { readonly viewer?: ResolvedViewer };
-}
-
-/** A board that starts on the state's grouping and follows the viewer's choice after that. */
-function StateBoard({ initial, entity, view, registry, dataSources, entities, set, viewer }: StateBoardProps): ReactNode {
-  const [groupBy, setGroupBy] = useState(initial);
-  return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} groupBy={groupBy} onGroupByChange={setGroupBy} {...viewer} />;
 }
 
 /** Everything a renderer needs for one state: a fresh adapter under every data source key, and a draft store for a form's values. */
@@ -86,21 +70,10 @@ class Boundary extends Component<{ readonly children: ReactNode }, { readonly er
   }
 }
 
-/** One state, live. A dashboard opens the tab its state is on. */
+/** One state, live. A dashboard opens the tab its state is on (`initialTab`). */
 function Live({ state, view, docs, set, registry, now }: { readonly state: SourceViewState; readonly view: ViewDocument; readonly docs: readonly Document[]; readonly set: DocumentSet; readonly registry: Registry<ReactNode>; readonly now: Date }): ReactNode {
-  const ref = useRef<HTMLDivElement>(null);
   const context = useMemo(() => contextFor(state, view, docs, registry, now), [state, view, docs, registry, now]);
-  useEffect(() => {
-    if (view.kind !== "dashboard" || state.render.kind !== "dashboard" || view.tabs[0]?.id === state.render.tab) return;
-    const title = view.tabs.find((t) => t.id === (state.render.kind === "dashboard" ? state.render.tab : ""))?.title;
-    const open = () => [...(ref.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])].find((b) => b.textContent?.trim() === title)?.click();
-    open();
-  }, [state, view]);
-  return (
-    <div ref={ref}>
-      <Boundary>{renderState(state, context, set)}</Boundary>
-    </div>
-  );
+  return <Boundary>{renderState(state, context, set)}</Boundary>;
 }
 
 /** True once the element has come within a screenful of the viewport; stays true after. */

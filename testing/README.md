@@ -49,27 +49,43 @@ You pass a `render` function that returns your renderer for the state, so the wi
 
 ```tsx
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { validateDocuments } from "@yadad/core";
+import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer, documentSet } from "@yadad/renderer";
+import { mockRegistry } from "@yadad/testing";
 import { checkViewStates, problems } from "@yadad/testing/state-checks";
 import type { CheckViewStatesOptions } from "@yadad/testing/state-checks";
-import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
-import { documents, entities, set } from "./my-documents"; // validated documents; a DocumentSet for tables, calendars, boards, dashboards
+import { expect, test } from "vitest";
 
-const render: CheckViewStatesOptions["render"] = (_state, { view, entity, registry, dataSources, drafts, now, viewer, omitViewer }) => {
+// This page's slice: its entity, its views, at most one viewer — the same documents the real page loads.
+const raw: unknown[] = ["task.json", "task_form.json", "task_table.json", "task_board.json", "task_dashboard.json"].map((f) => JSON.parse(readFileSync(`./docs/${f}`, "utf8")));
+const checked = validateDocuments(raw); // validate each page's slice, not just the whole pile at boot
+if (!checked.ok) throw new Error(checked.errors.map((e) => `${e.document ?? "?"}: ${e.message}`).join("\n"));
+const documents = checked.value;
+const set = documentSet(documents); // entities + views + viewer by id — what tables, boards, dashboards and row actions need
+
+const render: CheckViewStatesOptions["render"] = (state, { view, entity, registry, dataSources, drafts, now, viewer, omitViewer }) => {
   const who = omitViewer ? {} : { viewer }; // a view that reads viewer facts: pass the state's viewer, or none on the "viewer not provided" state
   switch (view.kind) {
-    case "form": return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...(drafts ? { drafts } : {})} {...who} />;
-    case "table": return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...who} />;
-    case "calendar": return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} now={now} {...who} />;
-    case "board": return <BoardRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...who} />;
-    case "dashboard": return <DashboardRenderer dashboard={view} documents={set} registry={registry} dataSources={dataSources} {...who} />;
+    // A form state's values arrive through the draft store — pass `drafts` or the form renders empty.
+    case "form": return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} {...(drafts ? { drafts } : {})} {...who} />;
+    case "table": return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} {...who} />;
+    // The state names the mode and the day the calendar opens on; key remounts it per state so the seed applies.
+    case "calendar": return state.render.kind === "calendar" ? <CalendarRenderer key={state.id} entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} now={now} initialMode={state.render.mode} initialAnchor={state.render.anchor} {...who} /> : null;
+    // The state names the grouping; the viewer can still switch after the state seeds it.
+    case "board": return state.render.kind === "board" ? <BoardRenderer key={state.id} entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} initialGroupBy={state.render.groupBy} {...who} /> : null;
+    case "dashboard": return state.render.kind === "dashboard" ? <DashboardRenderer key={state.id} dashboard={view} documents={set} registry={registry} dataSources={dataSources} initialTab={state.render.tab} {...who} /> : null;
   }
 };
 
-test.each(["task_form", "task_table", "task_board"])("%s, in every state", async (id) => {
-  const results = await checkViewStates({ view: id, documents, registry: myRegistry, now: new Date(2026, 9, 15), render });
+test.each(["task_form", "task_table", "task_board", "task_dashboard"])("%s, in every state", async (id) => {
+  const results = await checkViewStates({ view: id, documents, registry: mockRegistry, now: new Date(2026, 9, 15), render });
+  expect(results.length).toBeGreaterThan(0);
   expect(problems(results)).toEqual([]);
 });
 ```
+
+**What state checks don't check.** The checks render your component tree against the mock adapter, so they can't see: which `dataSource` key a view names (every key serves the same seeded adapter — a wrong key renders green here and empty in the app); what a real server serves or refuses (the adapter is seeded, not queried); and anything after a write (saving, actions, optimistic refresh). Cover those with adapter tests against your real data source and end-to-end tests.
 
 `checkViewStates({ view, documents, render, now, registry?, limit?, embeddedLimit?, manyRecords?, skip?, settleMs?, timeoutMs? })` takes the view (or its id) and every document it needs, and returns one `{ id, label, problems }` per state. `render(state, context)` gets the `SourceViewState` and a context with `view`, `entity`, `documents`, `registry` (defaults to the mock registry), `adapter` and `dataSources` (the state's seeded adapter, under every data source key), `drafts` (for a form state: a draft store holding the state's values; pass it to the form), `now`, `viewer` (the state's resolved viewer) and `omitViewer` (true on the "viewer not provided" state: leave the renderer's `viewer` prop out entirely). A dashboard state on a later tab is opened for you by clicking its tab.
 
