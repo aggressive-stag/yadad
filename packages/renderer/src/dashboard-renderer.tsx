@@ -119,7 +119,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} {...(formatting ? { formatting } : {})} />;
     }
     if (view.kind === "table") {
-      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;
+      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} {...(drafts !== undefined ? { drafts } : {})} />;
     }
     if (view.kind === "calendar") {
       return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;

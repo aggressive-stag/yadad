@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { DataAdapter, EntityDocument, TableView } from "@yadad/core";
-import { createMemoryAdapter } from "@yadad/runtime";
+import { createDraftStore, createMemoryAdapter } from "@yadad/runtime";
+import type { DraftStorage, DraftStore } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
 import { TableRenderer } from "./table-renderer.js";
@@ -34,7 +35,7 @@ const view: TableView = {
   pageSize: 2,
 };
 
-async function setup(props: { view?: TableView } = {}): Promise<{ db: DataAdapter; rerender: (key: number) => void }> {
+async function setup(props: { view?: TableView; drafts?: { readonly store: DraftStore; readonly debounceMs?: number } } = {}): Promise<{ db: DataAdapter; rerender: (key: number) => void; remount: () => Promise<void> }> {
   const db = createMemoryAdapter();
   for (const values of [
     { day: "2026-10-01", exercise: "Squat", weight: 100, done: true },
@@ -44,11 +45,27 @@ async function setup(props: { view?: TableView } = {}): Promise<{ db: DataAdapte
     await db.create("workout_set", values, { entityRevision: 1 });
   }
   const dataSources = new Map([["default", db]]);
-  const ui = (key: number) => <TableRenderer entity={entity} view={props.view ?? view} registry={mockRegistry} dataSources={dataSources} reloadKey={key} />;
-  const { rerender } = render(ui(0));
+  const ui = (key: number) => (
+    <TableRenderer entity={entity} view={props.view ?? view} registry={mockRegistry} dataSources={dataSources} reloadKey={key} {...(props.drafts !== undefined ? { drafts: props.drafts } : {})} />
+  );
+  const { rerender, unmount } = render(ui(0));
   await screen.findAllByRole("row");
   await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
-  return { db, rerender: (key) => rerender(ui(key)) };
+  return {
+    db,
+    rerender: (key) => rerender(ui(key)),
+    remount: async () => {
+      unmount();
+      render(ui(0));
+      await screen.findAllByRole("row");
+      await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
+    },
+  };
+}
+
+function memoryStorage(): DraftStorage & { readonly data: Map<string, string> } {
+  const data = new Map<string, string>();
+  return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v), removeItem: (k) => void data.delete(k) };
 }
 
 /** Day of each body row, top to bottom. */
@@ -154,5 +171,114 @@ describe("TableRenderer", () => {
     await setup({ view: { ...view, columns: [{ field: "day" }, { field: "weight" }] } });
     expect(screen.queryByRole("columnheader", { name: "Actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+});
+
+describe("table drafts", () => {
+  /** The stored draft of the Bench row (2026-10-03) — its id comes from the seeded adapter. */
+  async function benchId(db: DataAdapter): Promise<string> {
+    const page = await db.find("workout_set", { filter: { op: "eq", field: "day", value: "2026-10-03" } });
+    return page.items[0]!.id;
+  }
+
+  test("typed input in an open edit survives a reload and comes back with a notice", async () => {
+    const storage = memoryStorage();
+    const { db, remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });
+    const firstRow = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(firstRow()).getByRole("spinbutton", { name: "Weight" }), { target: { value: "95" } });
+    const id = await benchId(db);
+    await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeTruthy());
+
+    await remount();
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    const weight = within(firstRow()).getByRole("spinbutton", { name: "Weight" });
+    expect((weight as HTMLInputElement).value).toBe("95");
+    expect(screen.getByRole("status").textContent).toContain("Restored unsaved changes");
+  });
+
+  test("saving clears the draft; reopening starts from the saved value", async () => {
+    const storage = memoryStorage();
+    const { db, remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });
+    const firstRow = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(firstRow()).getByRole("spinbutton", { name: "Weight" }), { target: { value: "85" } });
+    const id = await benchId(db);
+    await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeTruthy());
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeUndefined());
+
+    await remount();
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    expect((within(firstRow()).getByRole("spinbutton", { name: "Weight" }) as HTMLInputElement).value).toBe("85");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  test("Cancel clears the draft", async () => {
+    const storage = memoryStorage();
+    const { db, remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });
+    const firstRow = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(firstRow()).getByRole("spinbutton", { name: "Weight" }), { target: { value: "95" } });
+    const id = await benchId(db);
+    await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeTruthy());
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Cancel" }));
+    expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeUndefined();
+
+    await remount();
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    expect((within(firstRow()).getByRole("spinbutton", { name: "Weight" }) as HTMLInputElement).value).toBe("80");
+  });
+
+  test("a refused save keeps the draft", async () => {
+    const storage = memoryStorage();
+    const { db, remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });
+    const firstRow = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    // 81 is not a multiple of the field's step (2.5): the save is refused.
+    fireEvent.change(within(firstRow()).getByRole("spinbutton", { name: "Weight" }), { target: { value: "81" } });
+    const id = await benchId(db);
+    await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeTruthy());
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Save" }));
+    await screen.findByRole("alert");
+    expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeTruthy();
+
+    await remount();
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    expect((within(firstRow()).getByRole("spinbutton", { name: "Weight" }) as HTMLInputElement).value).toBe("81");
+  });
+
+  test("Discard empties the restored values and clears the draft", async () => {
+    const storage = memoryStorage();
+    const { db, remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });
+    const firstRow = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(firstRow()).getByRole("spinbutton", { name: "Weight" }), { target: { value: "95" } });
+    const id = await benchId(db);
+    await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeTruthy());
+
+    await remount();
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(screen.queryByRole("status")).toBeNull();
+    // Empty state means "start from the record again": the cell shows the saved value, not the draft.
+    expect((within(firstRow()).getByRole("spinbutton", { name: "Weight" }) as HTMLInputElement).value).toBe("80");
+    expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeUndefined();
+  });
+
+  test("a draft belongs to its own row: editing another row does not restore it", async () => {
+    const storage = memoryStorage();
+    const { remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });
+    const firstRow = () => screen.getAllByRole("row")[1]!;
+    const secondRow = () => screen.getAllByRole("row")[2]!;
+    fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(firstRow()).getByRole("spinbutton", { name: "Weight" }), { target: { value: "95" } });
+    await waitFor(() => expect([...storage.data.keys()].length).toBe(1));
+
+    await remount();
+    fireEvent.click(within(secondRow()).getByRole("button", { name: "Edit" }));
+    // The second row's own weight, not the first row's typed draft, and no notice.
+    expect((within(secondRow()).getByRole("spinbutton", { name: "Weight" }) as HTMLInputElement).value).toBe("105");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
 import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { bindFilter, canUpdate, columnEditable, compareCells, emptyFormState, neighbourQuery, resolveRelativeDates, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
-import type { CompareCell, CompareEdge, FormState } from "@yadad/runtime";
+import { bindFilter, canUpdate, columnEditable, compareCells, emptyFormState, neighbourQuery, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
+import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DocumentSet } from "./document-set.js";
@@ -48,6 +48,14 @@ export interface TableRendererProps {
    * can refresh — a reload does not call it, so passing a bump down cannot loop.
    */
   readonly onChanged?: () => void;
+  /**
+   * Opt-in drafts for in-place edits, the same shape and meaning as the
+   * form's: unsaved input in an open row edit is kept in the store
+   * (debounced, default 400 ms) under the view id and the record id, and
+   * restored when that row's edit is opened again, until it is saved or
+   * cancelled. A refused save keeps the draft.
+   */
+  readonly drafts?: { readonly store: DraftStore; readonly debounceMs?: number };
 }
 
 /** What the table shows for a row's action: its accessible name and what happens on activation. */
@@ -101,7 +109,7 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * and a Back button. Earlier tables stay mounted (hidden), so Back restores
  * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged, drafts }: TableRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [stack, setStack] = useState<readonly Level[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -202,6 +210,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
             lockedFields={level.lockedFields}
             {...(formatting ? { formatting } : {})}
             {...(onChanged ? { onChanged } : {})}
+            {...(drafts !== undefined ? { drafts } : {})}
             {...resolveAction(i)}
           />
         </div>
@@ -210,7 +219,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   );
 }
 
-function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged }: TableBodyProps): ReactNode {
+function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged, drafts }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -224,6 +233,11 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   // One extra row beyond the page edge per `to` compare column (RFC 0007), loaded beside the page and never displayed.
   const [edges, setEdges] = useState<Readonly<Record<string, CompareEdge | undefined>>>({});
   const [editing, setEditing] = useState<Editing | undefined>(undefined);
+  const store = drafts?.store;
+  const debounceMs = drafts?.debounceMs ?? 400;
+  const [restored, setRestored] = useState<RestoredDraft | undefined>(undefined);
+  // Only input typed in this session is written back, so restoring alone never touches the stored draft (the form's rule).
+  const typed = useRef(false);
   const [saving, setSaving] = useState(false);
   const [reloads, setReloads] = useState(0);
   const [quick, setQuick] = useState<RecordValues>({});
@@ -298,6 +312,18 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     document.getElementById(`${tableId}-${editingId}-${first.field}`)?.focus();
   }, [editingId, tableId, shownColumns, viewer]);
 
+  // Drafts (the form's rule): typed input in the open row edit is stored after a pause; a
+  // restored draft alone never rewrites the store. An emptied edit clears the stored draft.
+  useEffect(() => {
+    if (!store || !editing || !typed.current) return;
+    const { record, state } = editing;
+    const timer = setTimeout(() => {
+      if (Object.keys(state.values).length === 0) store.clear(view.id, record.id);
+      else store.save(view.id, record.id, { values: state.values, entityRevision: entity.revision, savedAt: Date.now(), recordVersion: record.version });
+    }, debounceMs);
+    return () => clearTimeout(timer);
+  }, [store, debounceMs, view.id, entity.revision, editing]);
+
   const refs = [
     ...view.columns.map((c, i) => ({ field: c.field, path: ["columns", i, "field"] })),
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),
@@ -342,16 +368,43 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       // Show the saved record right away, then refresh (the sort order may change).
       const saved = result.record;
       const movedId = editing.record.id;
+      typed.current = false;
+      store?.clear(view.id, movedId);
+      setRestored(undefined);
       setRows((r) => (r.status === "loaded" ? { ...r, items: replaceSavedRecord(r.items, movedId, saved) } : r));
       setEditing(undefined);
       setReloads((n) => n + 1);
       onChanged?.(); // neighbours (a dashboard's counts and stats) refresh too
     } else {
+      // A refused save keeps the draft: the text is still there to fix and retry.
       setEditing({ ...editing, state: { ...editing.state, errors: result.errors } });
       // A refusal may mean the record's permissions changed: reload to refresh `can` (RFC 0006).
       if (result.errors.some((e) => e.code === "forbidden")) setReloads((n) => n + 1);
     }
   }
+
+  /** Open a row's in-place edit, restoring its unsaved draft when one is stored. */
+  const openEdit = (record: DataRecord): void => {
+    typed.current = false;
+    const draft = store?.load(view.id, record.id);
+    const restoredDraft = draft ? restoreDraft(entity, draft, record.version) : null;
+    setRestored(restoredDraft ?? undefined);
+    setEditing({ record, state: restoredDraft ? { values: restoredDraft.values, errors: [] } : emptyFormState });
+  };
+
+  const cancelEdit = (): void => {
+    typed.current = false;
+    store?.clear(view.id, editing?.record.id);
+    setRestored(undefined);
+    setEditing(undefined);
+  };
+
+  const discardDraft = (): void => {
+    typed.current = false;
+    store?.clear(view.id, editing?.record.id);
+    setRestored(undefined);
+    setEditing((e) => (e ? { ...e, state: emptyFormState } : e));
+  };
 
   const isEditing = (record: DataRecord): boolean => editing?.record.id === record.id && canUpdate(record);
 
@@ -361,7 +414,10 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
     const value = field.id in state.values ? state.values[field.id] : record.values[field.id];
     const onChange = (v: FieldValue | undefined) =>
-      setEditing((e) => (e ? { ...e, state: setFieldValue(e.state, field.id, v === undefined ? null : v) } : e));
+      setEditing((e) => {
+        if (e) typed.current = true;
+        return e ? { ...e, state: setFieldValue(e.state, field.id, v === undefined ? null : v) } : e;
+      });
     return renderInput(
       registry,
       field,
@@ -382,11 +438,11 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     isEditing(record) ? (
       <>
         <Button label="Save" type="button" variant="primary" disabled={saving} onPress={() => void saveEdit()} />
-        <Button label="Cancel" type="button" variant="secondary" disabled={saving} onPress={() => setEditing(undefined)} />
+        <Button label="Cancel" type="button" variant="secondary" disabled={saving} onPress={cancelEdit} />
       </>
     ) : (
       <>
-        {columns.some((c) => c.editable) && canUpdate(record) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => setEditing({ record, state: emptyFormState })} />}
+        {columns.some((c) => c.editable) && canUpdate(record) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => openEdit(record)} />}
         {rowAction && (
           <span data-yadad-row-open={record.id}>
             <Button label={rowAction.label(record)} type="button" variant="secondary" disabled={saving} onPress={() => rowAction.open(record)} />
@@ -421,6 +477,18 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
 
   return (
     <div data-yadad-table-view={view.id}>
+      {editing && restored && (
+        <div role="status">
+          <Section id={`${view.id}-draft`} title={`Restored unsaved changes from ${new Date(restored.savedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`}>
+            <>
+              {restored.revisionChanged && <p>This table has changed since then. Check the restored values before saving.</p>}
+              {restored.droppedFields.length > 0 && <p>Some values belong to fields this table no longer has and were left out.</p>}
+              {restored.recordChanged && <p>The record changed elsewhere since then. Saving may report a conflict.</p>}
+              <Button label="Discard" type="button" variant="secondary" disabled={saving} onPress={discardDraft} />
+            </>
+          </Section>
+        </div>
+      )}
       {quickFields.length > 0 && (
         <Section id={`${view.id}-filters`} title="Filter">
           {quickFields.map((field) =>

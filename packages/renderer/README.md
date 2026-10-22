@@ -77,3 +77,13 @@ const store = createDraftStore(window.localStorage);
 - Drafts are kept per form view id, for create forms (stored under `yadad:draft:<viewId>:new`). Only input typed in the current session is written back, and what is stored is what the form would save (hidden `clearWhenHidden` values are left out).
 - A draft is cleared when the form is saved, when the user discards the restored values, or when every value has been emptied.
 - If the documents changed since the draft was taken, values for fields the entity no longer has are dropped, and the form shows a "Restored unsaved changes" notice saying the form changed (entity revision differs) and/or that some values were left out. The restored values are never saved automatically.
+
+The same rule covers a table's in-place edits. Pass `drafts` to `TableRenderer` (or to `DashboardRenderer`, which hands it to every embedded table) and unsaved input in an open row edit is kept under `yadad:draft:<viewId>:<recordId>` and restored when that row's edit is opened again:
+
+```tsx
+<TableRenderer entity={entity} view={table} registry={registry} dataSources={dataSources} drafts={{ store }} />;
+```
+
+- A row's draft belongs to that record, so two rows being edited never share text.
+- Saving or cancelling clears the draft; a refused save (validation, a conflict) keeps it — the text is there to fix and retry.
+- Discarding starts the edit from the saved record again and clears the stored draft.
