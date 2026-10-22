@@ -165,6 +165,32 @@ describe("EntityFieldsEditor", () => {
 
   const actionPanel = () => screen.getByRole("group", { name: /Add an action|Edit action "/ });
 
+  test("a filled Add-field panel enables Save fields, which adds the field before saving", () => {
+    // The consumer typed id and label, pressed Save fields — nothing. The two-step commit was invisible.
+    const { saved } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "New field" }));
+    const panel = () => screen.getByRole("group", { name: "Add a field" });
+    fireEvent.change(within(panel()).getByLabelText(/^Id/), { target: { value: "estimate" } });
+    fireEvent.change(within(panel()).getByLabelText(/^Label/), { target: { value: "Estimate" } });
+    const save = () => screen.getByRole("button", { name: "Save fields" }) as HTMLButtonElement;
+    expect(save().disabled).toBe(false); // a filled, valid draft is enough
+    fireEvent.click(save());
+    expect(saved[0]?.fields.at(-1)).toMatchObject({ id: "estimate", label: "Estimate", type: "text" });
+    expect(saved[0]?.revision).toBe(2);
+  });
+
+  test("an invalid draft keeps Save fields disabled and the panel shows why", () => {
+    const { saved } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "New field" }));
+    const panel = () => screen.getByRole("group", { name: "Add a field" });
+    fireEvent.change(within(panel()).getByLabelText(/^Id/), { target: { value: "Bad Id" } });
+    fireEvent.change(within(panel()).getByLabelText(/^Label/), { target: { value: "Bad" } });
+    expect((screen.getByRole("button", { name: "Save fields" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(panel()).getByRole("alert").textContent).toContain('"Bad Id" is not a valid id.');
+    fireEvent.click(screen.getByRole("button", { name: "Save fields" }));
+    expect(saved).toHaveLength(0);
+  });
+
   test("an edit reports the in-progress entity; undo reports the previous document", () => {
     // Same root as the dashboard's: the host's live preview could not see an uncommitted label change.
     const reported: EntityDocument[] = [];

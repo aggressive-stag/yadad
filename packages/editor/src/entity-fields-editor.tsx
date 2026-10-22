@@ -209,11 +209,32 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
   const applyPanel = () => {
     if (!panel) return;
     const field = fieldFromProperties(panel.type, panel.editing ? { ...panel.values, id: panel.editing } : panel.values);
-    if (!panel.editing) return applyPatch(edit(session, addField(current, field)), () => setPanel(undefined));
+    if (!panel.editing) {
+      // Same patch the dry-run above already computed; a rejection is shown
+      // in-panel by the draft's ErrorSummary, so no editor-level copy.
+      const next = edit(session, addField(current, field));
+      setSession(next);
+      if (next.rejected.length === 0) setPanel(undefined);
+      return;
+    }
     const result = updateField(current, field);
     if (!result.ok) setProblems([result.error]);
     else applyPatch(edit(session, result.patch), () => setPanel(undefined));
   };
+
+  /**
+   * An open Add-field panel dry-runs against the same patch the "Add field"
+   * button applies, so "Save fields" sees a filled panel: it enables on a
+   * valid draft (and adds the field before saving), and an invalid draft
+   * holds Save disabled while the panel shows the validator's error. Typing
+   * never touches the session — the two-step commit stays, it just stops
+   * being silent.
+   */
+  const draft = panel && panel.editing === undefined && Object.values(panel.values).some((v) => v !== undefined && v !== null && v !== "") ? fieldFromProperties(panel.type, panel.values) : undefined;
+  const draftSession = draft !== undefined ? edit(session, addField(current, draft)) : undefined;
+  const draftOk = draftSession !== undefined && draftSession.rejected.length === 0;
+  const draftBad = draftSession !== undefined && draftSession.rejected.length > 0;
+  const saveFields = () => onSave(finish(draftOk && draft !== undefined ? edit(session, addField(current, draft)) : session));
 
   const setValue = (key: string, value: FieldValue | undefined) => setPanel((p) => (p ? { ...p, values: { ...p.values, [key]: value ?? null } } : p));
 
@@ -258,6 +279,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
       )}
       {COMMON_PROPERTIES.filter((p) => !(panel.editing && p.id === "id")).map(property)}
       {propertiesFor(panel.type).map(property)}
+      {draftBad && draftSession !== undefined && <ErrorSummary errors={draftSession.rejected} />}
       <Button label={panel.editing ? "Apply changes" : "Add field"} type="button" variant="primary" disabled={false} onPress={applyPanel} />
       <Button label="Close" type="button" variant="secondary" disabled={false} onPress={() => setPanel(undefined)} />
     </Section>
@@ -389,7 +411,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
         <Button label="New action" type="button" variant="secondary" disabled={false} onPress={() => setActionPanel({ values: {} })} />
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
-        <Button label="Save fields" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />
+        <Button label="Save fields" type="button" variant="primary" disabled={!isDirty(session) && !draftOk} onPress={saveFields} />
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}
