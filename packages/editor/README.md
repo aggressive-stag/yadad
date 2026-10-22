@@ -47,8 +47,65 @@ const [edited, setEdited] = useState(board);
 
 <BoardViewEditor view={board} entity={task} registry={registry} onChange={setEdited} onSave={save} onCancel={close} />
 <StatesPreview view={edited} saved={board} documents={documents} now={new Date()}
-  renderState={(state, docs) => <MyBoard state={state} documents={docs} />} />
+  renderState={(state, docs) => renderPreviewState(state, docs, registry, new Date())} />
 ```
+
+`renderState` is the ~40 lines every host writes — the same switch the showcase's states page runs, reproduced here so you do not have to read that app to find it. One fresh `createStateAdapter(state)` (`@yadad/testing`) per state, mapped under **every** `dataSource` key the set names: tables, boards and calendars name one each, and dashboard widgets name keys too, so collect them from all documents, dashboards included. The state seeds the renderer — `initialMode`/`initialAnchor` for a calendar, `initialGroupBy` for a board, `initialTab` for a dashboard — and `key={state.id}` remounts the renderer per state so the seed applies. A form state's values arrive through the draft store; pass `drafts` or the form renders blank. `documentSet(documents)` gives the entities/views/viewer lookup the renderers want, and the "viewer not provided" state (`state.omitViewer`) renders with the `viewer` prop left out.
+
+```tsx
+import { createStateAdapter } from "@yadad/testing"; // a host may keep its own seeded adapter; the test kit's is what previews use
+import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer, documentSet } from "@yadad/renderer";
+import { createDraftStore } from "@yadad/runtime";
+import type { DraftStore, ViewState } from "@yadad/runtime";
+import type { DataAdapter, Document, Registry } from "@yadad/core";
+import type { ReactNode } from "react";
+
+function renderPreviewState(state: ViewState, documents: readonly Document[], registry: Registry<ReactNode>, now: Date): ReactNode {
+  const set = documentSet(documents); // entities + views + viewer by id
+  const view = set.views.get(state.render.view);
+  if (!view) return null;
+  const entity = "entity" in view ? set.entities.get(view.entity) : undefined;
+  // One fresh adapter per state, mapped under every data-source key the set
+  // names — dashboard widgets name keys too, so dashboards are included.
+  const adapter = createStateAdapter(state);
+  const keys = new Set(documents.flatMap((d) => (d.kind !== "entity" && d.kind !== "viewer" && "dataSource" in d ? [d.dataSource] : [])));
+  const dataSources = new Map<string, DataAdapter>([...keys].map((k) => [k, adapter]));
+  // The state's viewer goes to the renderer; the "viewer not provided" state omits the prop.
+  const viewer = state.omitViewer ? {} : { viewer: state.viewer };
+  switch (view.kind) {
+    case "form": {
+      // A form state's values arrive through the draft store, or the form renders blank.
+      let drafts: { readonly store: DraftStore } | undefined;
+      if (state.render.kind === "form" && entity && Object.keys(state.render.values).length > 0) {
+        const data = new Map<string, string>();
+        const store = createDraftStore({ getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v), removeItem: (k) => void data.delete(k) });
+        store.save(state.render.view, undefined, { values: state.render.values, entityRevision: entity.revision, savedAt: now.getTime() });
+        drafts = { store };
+      }
+      return entity ? <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={set.entities} {...(drafts ? { drafts } : {})} {...viewer} /> : null;
+    }
+    case "table":
+      return entity ? <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} {...viewer} /> : null;
+    case "calendar":
+      // The state names the mode and the day it opens on; key remounts it per state so the seed applies.
+      return entity && state.render.kind === "calendar" ? <CalendarRenderer key={state.id} initialMode={state.render.mode} initialAnchor={state.render.anchor} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} now={now} {...viewer} /> : null;
+    case "board":
+      // The state names the field the board is grouped by; the viewer may still switch after.
+      return entity && state.render.kind === "board" ? <BoardRenderer key={state.id} initialGroupBy={state.render.groupBy} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} {...viewer} /> : null;
+    case "dashboard":
+      // The state names the tab it sits on; initialTab opens it on mount.
+      return state.render.kind === "dashboard" ? <DashboardRenderer key={state.id} dashboard={view} documents={set} registry={registry} dataSources={dataSources} initialTab={state.render.tab} {...viewer} /> : null;
+  }
+}
+```
+
+This exact function is compiled and run by `apps/showcase/src/readme-preview-sample.test.tsx` — if the renderers' props change, that test fails and this sample is fixed with it.
+
+Two facts about the host side, learned the hard way by more than one consumer:
+
+- **Save bumps `revision`, so do not key the editor on the document.** `<BoardViewEditor key={view.id + view.revision} …>` remounts the editor after every save and the undo stack resets — Undo stops working right after the first Save. Key it on the id only, or not at all; the editors follow `view` by prop, not by remount.
+- **`STATES_PREVIEW_DEFAULT_LIMIT` (12) caps the preview.** A wide view — a dashboard with several tabs, a board with several groupings — has more states than that, and the grid quietly shows the first twelve. Pass `limit` to raise it (exported from `@yadad/editor`).
+
 
 Property panels are built from an exhaustive per-field-type map, so a new field type cannot ship without an editor.
 
