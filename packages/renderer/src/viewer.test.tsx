@@ -232,14 +232,15 @@ describe("dashboard", () => {
   };
 
   test("initialTab opens on the named tab; an unknown or hidden tab falls back to the first visible one", async () => {
-    await open(as("owner", true), set, "owners");
+    await open(as("owner", true), set, "owners"); // both tabs visible: the strip is there
     expect(screen.getByRole("tab", { name: "Owners" }).getAttribute("aria-selected")).toBe("true");
     cleanup();
-    await open(as("viewer"), set, "ghost"); // no tab names "ghost"
-    expect(screen.getByRole("tab", { name: "Everyone" }).getAttribute("aria-selected")).toBe("true");
+    await open(as("viewer"), set, "ghost"); // no tab names "ghost"; one visible tab, so no strip — the grid proves the fallback
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByTestId("board")).toBeTruthy(); // the board is the only widget of the one visible tab
     cleanup();
-    await open(as("viewer"), set, "owners"); // the tab exists, but this viewer may not see it
-    expect(screen.getByRole("tab", { name: "Everyone" }).getAttribute("aria-selected")).toBe("true");
+    await open(as("viewer"), set, "owners"); // the tab exists, but this viewer may not see it: same fallback
+    expect(screen.getByTestId("board")).toBeTruthy();
   });
 
   test("tabs and widgets are listed for the viewer who may see them", async () => {

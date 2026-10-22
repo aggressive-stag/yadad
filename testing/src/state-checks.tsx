@@ -249,7 +249,10 @@ async function openTab(container: HTMLElement, view: ViewDocument, state: Source
   const tabId = state.render.tab;
   if (view.tabs[0]?.id === tabId) return;
   // A tab this viewer may not see is not listed, so there is nothing to open: the check below sees that it is absent.
-  if (!visibleTabs(view, state.viewer).some((t) => t.id === tabId)) return;
+  const visible = visibleTabs(view, state.viewer);
+  if (!visible.some((t) => t.id === tabId)) return;
+  // One visible tab means no strip at all: the renderer shows that tab's grid directly.
+  if (visible.length === 1) return;
   const title = view.tabs.find((t) => t.id === tabId)?.title;
   const button = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((b) => b.textContent?.trim() === title);
   if (!button) throw new Error(`no tab named "${title ?? tabId}" to open`);

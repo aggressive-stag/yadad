@@ -161,7 +161,13 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
 
   return (
     <div ref={rootRef} data-yadad-dashboard={dashboard.id}>
-      <Tabs label={dashboard.title ?? dashboard.id} tabs={tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={setSelected} panel={grid} />
+      {tabs.length === 1 ? (
+        // One tab: the strip would repeat the page title and push content down on a phone. The
+        // grid keeps a named landmark instead, so the page does not lose the region.
+        <section aria-label={dashboard.title ?? dashboard.id}>{grid}</section>
+      ) : (
+        <Tabs label={dashboard.title ?? dashboard.id} tabs={tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={setSelected} panel={grid} />
+      )}
     </div>
   );
 }

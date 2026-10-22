@@ -97,6 +97,36 @@ describe("DashboardRenderer", () => {
     expect(await screen.findByLabelText(/^Exercise/)).toBeTruthy();
   });
 
+  test("one visible tab means no tab strip; a named region keeps the landmark; two tabs keep the strip", () => {
+    // A strip with one tab repeats the page title and pushes content down on a phone.
+    const single: DashboardView = { ...dashboard, tabs: [dashboard.tabs[1]!] };
+    const one = render(
+      <DashboardRenderer
+        dashboard={single}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", createMemoryAdapter()]])}
+      />,
+    );
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByRole("region", { name: "Training" })).toBeTruthy();
+    one.unmount();
+    // Untitled, the id names the region — the landmark never goes anonymous.
+    const { title: _untitled, ...noTitle } = single;
+    const idNamed = render(
+      <DashboardRenderer
+        dashboard={noTitle}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", createMemoryAdapter()]])}
+      />,
+    );
+    expect(screen.getByRole("region", { name: "training" })).toBeTruthy();
+    idNamed.unmount();
+    renderDashboard();
+    expect(screen.getByRole("tablist", { name: "Training" })).toBeTruthy();
+  });
+
   test("a failed count request shows an error instead of loading forever", async () => {
     const db = createMemoryAdapter();
     const failing: DataAdapter = { ...db, find: () => Promise.reject(new Error("The server responded with status 401.")) };
