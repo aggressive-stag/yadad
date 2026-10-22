@@ -1,5 +1,48 @@
 # @yadad/editor
 
+## 0.13.0
+
+### Minor Changes
+
+- 66b8cc9: EntityFieldsEditor's "Save fields" now sees a filled Add-field panel.
+  Typing an id and label enabled nothing and pressing Save silently
+  dropped the draft — the two-step commit (Add field, then Save fields)
+  was invisible. A filled, valid draft enables Save fields and adds the
+  field before saving; an invalid one keeps Save disabled and shows the
+  validator's reason in the panel. Typing still never touches the edit
+  session until a press.
+- 4dcda96: EntityFieldsEditor and DashboardLayoutEditor take `onChange`, reporting
+  the in-progress document after every edit, undo or redo — the same hook
+  the view editors already had. A host's live preview and unsaved-JSON
+  panel showed only the last saved revision for these two: Remove and
+  Undo were invisible until Save. The README now says all editors take
+  `onChange`, because all of them do.
+
+### Patch Changes
+
+- 428acbc: StatesPreview: the state-preview frame is now `pointer-events: none`. It
+  is a scaled picture of the view, `aria-hidden` and `inert`, but it still
+  caught pointer events — a dashboard editor whose preview overlapped the
+  grid could not be dragged at all: clicks hit the frame, not the cards.
+  Keyboard card move/resize stays pinned by a test the way a consumer's
+  Tab-and-arrows session hits it.
+- 61069f6: The README now carries the complete `renderState` a host writes for
+  `StatesPreview`: the five-kinds switch, entity lookup, one fresh
+  `createStateAdapter(state)` under every data-source key the set names
+  (dashboards included), and the state seeds — `initialMode`,
+  `initialGroupBy`, `initialTab` — with `key={state.id}` so they apply.
+  It was discoverable only in the showcase's own states page, and the
+  editor may not import the renderer to ship it. Two host facts join it:
+  Save bumps `revision`, so keying the editor on the document remounts
+  it and resets the undo stack, and `STATES_PREVIEW_DEFAULT_LIMIT` caps
+  the preview at twelve states. The sample is compiled and run by a
+  showcase test so it cannot drift from the renderers' props.
+- 2887aca: FormViewEditor: Enter in a section's title input commits the rename, the
+  same as the "Rename section" button. Typing a new title already enabled
+  the button and dirtying the session, but Enter did nothing at all — a
+  keyboard user pressing it to finish the edit left Save disabled and the
+  section unchanged.
+
 ## 0.12.2
 
 ### Patch Changes
