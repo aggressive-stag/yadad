@@ -1,5 +1,40 @@
 # @yadad/testing
 
+## 0.9.0
+
+### Minor Changes
+
+- 7cb8c4a: `checkViewStatesReport(options)` reports what the state grid actually
+  covered: `{ results, states, strategy, complete, axes, skipped }`. A green
+  `checkViewStates` on a view with thousands of combinations may prove only
+  a pairwise cover — above `limit` the grid is not every combination, and
+  the results used to read like it was. `checkViewStates` keeps its
+  signature and returns the report's `results`; `states` sizes test
+  timeouts honestly.
+- 7778f4b: `checkViewStates` / `checkViewStatesReport` gain `expectAxes`. A table
+  whose last editable column disappears in a refactor loses its
+  `permission` axis — and every locked-record state with it — and stays
+  green with fewer states. Name the axes a view must cover and each
+  missing id now fails as an `axis-missing` problem on the first result.
+  A consumer pins its critical axes and the grid can no longer shrink
+  silently.
+- c0b470a: `console.warn` is now collected beside `console.error`: a warning whose
+  message starts with `yadad:` — the renderer's own signal for wiring
+  mistakes, like a reference column whose target entity was never passed —
+  becomes a `yadad-warning` problem instead of scrolling past a green run.
+  Other code's warnings reach the console untouched. A consumer's state
+  checks now catch a page wired that way.
+
+### Patch Changes
+
+- 8c3051d: Testing README: the `checkViewStates` example now carries a complete
+  `render` case for every view kind — form drafts, the calendar's
+  `initialMode`/`initialAnchor` with `key`, the board's `initialGroupBy`,
+  the dashboard's `initialTab` — builds its set with `documentSet`, and
+  validates the page's slice with `validateDocuments`. Plus a "what state
+  checks don't check" list. A consumer used to find these recipes by
+  failing; the sample is a test in the renderer package, so it cannot rot.
+
 ## 0.8.2
 
 ### Patch Changes
