@@ -34,7 +34,7 @@ import "@yadad/components/styles.css";
 import { useState } from "react";
 
 const entity: EntityDocument = {
-  kind: "entity", specVersion: 6, id: "workout_set", revision: 1,
+  kind: "entity", specVersion: 7, id: "workout_set", revision: 1,
   fields: [
     { id: "day", type: "date", label: "Day", required: true },
     { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat", "Bench press"] } },
@@ -43,12 +43,12 @@ const entity: EntityDocument = {
 };
 
 const form: FormView = {
-  kind: "form", specVersion: 6, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "form", specVersion: 7, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
   sections: [{ id: "set", title: "Log a set", items: [{ field: "day" }, { field: "exercise" }, { field: "reps" }] }],
 };
 
 const table: TableView = {
-  kind: "table", specVersion: 6, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "table", specVersion: 7, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
   columns: [{ field: "day" }, { field: "exercise" }, { field: "reps" }],
   filter: { op: "gte", field: "day", value: { daysFromToday: -7 } },
   quickFilters: [{ field: "exercise" }],
@@ -99,13 +99,14 @@ The showcase's review page is a worked example: changes, version history with co
 
 ## Key concepts
 
-- **Entity and view documents.** An entity owns fields, types and validation. Views show an entity: a `form` (sections of fields), a `table` (columns, sorting, paging, filters), a `calendar` (records on the days of a month or week by a date field), a `board` (records as cards in columns, one per value of a select, boolean or reference field) or a `dashboard` (tabs of form, table, calendar, board, count and stat widgets on a 12-column grid). A `viewer` document is not a view; it declares facts about who is looking. `pnpm describe-registry` prints everything a document may contain.
+- **Entity and view documents.** An entity owns fields, types and validation. Views show an entity: a `form` (sections of fields), a `table` (columns, sorting, paging, filters), a `calendar` (records on the days of a month or week by a date field), a `board` (records as cards in columns, one per value of a select, boolean or reference field) or a `dashboard` (tabs of form, table, calendar, board, count, stat and series widgets on a 12-column grid). A `viewer` document is not a view; it declares facts about who is looking. `pnpm describe-registry` prints everything a document may contain.
 - **Registry.** The engine never imports a component. You inject a `Registry`, which maps each field type, layout piece and widget to a React component by exact key. [`yadad-components`](https://github.com/aggressive-stag/yadad-components) is the reference set (`@yadad/components`): every field type, the layout pieces including the optional `layout.Calendar` and `layout.Board`, and the `count` widget. Bring your own if you prefer.
+- **Series.** A dashboard `series` widget groups the records of a table view by one field and shows one measure per group as a `table`, `bar` chart or `line` chart — "volume per week", "tasks done per day". `groupBy.field` is a select, boolean, reference, text or date field (a number is refused — histograms are a different widget); only a date takes `bucket: "day" | "week" | "month"` (week keys are the ISO week's Monday). `measure` is the `stat` widget's typed union (`count`, `sum`, `countDistinct`, `min`, `max`, `avg`, over one field or the product of two), `filter` is the same condition AST, and `sort` and `limit` (default 50, max 200) shape what is shown. Records with no group value join no group and are reported as `skipped`; a date series sorted by group fills missing buckets so a line shows the valley, and past the limit keeps the newest; past 5,000 records read the widget says its numbers are `partial`. The engine computes groups and stays chart-free — the chart is drawn by the optional `widgets.series` registry key, and a document that asks for a chart the installed component set does not ship gets an error naming the key, the way `layout.Calendar` works. See [RFC 0001](rfcs/0001-computed-widgets.md) slice 2; `pnpm describe-registry` prints every rule.
 - **Data adapters.** A view names a `dataSource` key, never a URL; the host maps the key to a `DataAdapter`. Records carry a `version`, and a stale write is a conflict.
 - **Conditions.** A JSON AST (`eq`, `gt`, `in`, `and`, `not`, ...) drives `visibleWhen`, `requiredWhen` and filters; there are no string expressions. Date comparisons accept a relative date, `{ "daysFromToday": n }` (0 is today, -7 a week ago), resolved from the viewer's local date.
 - **Viewer facts.** A `viewer` document lists facts (`select` or `boolean`, each with a default). The host resolves them for the current user with `resolveViewer` and passes the result to a renderer's `viewer` prop. A `viewerIn` condition on a column, form field, tab, widget, row action or `editableWhen` shows or allows it only for matching viewers; hidden things are not rendered, not greyed out. A record may also carry `can: { update?, delete? }`, which can only take rights away. The server still decides: a refused write is a 403. See [ARCHITECTURE.md](ARCHITECTURE.md) and [RFC 0006](rfcs/0006-viewer.md).
 - **Quick filters.** A table's `quickFilters` lets the viewer filter by a field: exact for select and boolean, substring for text, a from/to range for number and date.
-- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 6) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
+- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 7) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
 - **Document ids.** Document, field, section, tab and grid-item ids all match `[a-z][a-z0-9_]*`: lowercase letters, digits and underscores, starting with a letter. Use `workout_set`, not `workout-set`, `WorkoutSet` or `1st_set`. Grid-item ids only need to be unique within their tab.
 
 ## Documentation

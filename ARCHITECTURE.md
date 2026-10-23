@@ -148,7 +148,7 @@ Document kinds (`pnpm describe-registry` prints the exact shapes):
 | `table` | Columns, initial sort, `pageSize`, a fixed `filter`, `quickFilters`, inline-edit flags, an optional `rowAction`, and the `recordActions` this view offers on each row |
 | `calendar` | Records placed on the days of a month or week by one date field; optional editing moves an entry to another day (RFC 0004) |
 | `board` | Records as cards in columns, one column per value of a select, boolean or reference field; the viewer picks among the `groupBy` fields; optional editing moves a card to another column (RFC 0005) |
-| `dashboard` | Tabs of grid items `{x, y, w, h, widget}`; widgets: `view` (embeds a form, table, calendar or board), `count`, `stat` |
+| `dashboard` | Tabs of grid items `{x, y, w, h, widget}`; widgets: `view` (embeds a form, table, calendar or board), `count`, `stat`, `series` (a measure grouped by one field, shown as a table, bar chart or line chart through the optional `widgets.series` registry key — RFC 0001 slice 2, D48) |
 | `viewer` | Not a view and draws nothing: the facts a host can tell the renderers about the viewer (RFC 0006). At most one per set |
 
 The contract is still in flux (§11).
@@ -242,7 +242,7 @@ The contract itself is also machine-readable: `describeContract()` in `core` is 
 | Migration | Pure `migrate(doc, from, to)` in `core`, plus a before/after fixture pair | None for additive edits. Destructive edits (delete a field, change its type) go through an explicit editor transform. |
 | Records | n/a | Store `{ entityId, entityRevision }`. Old records are upcast lazily on read. If one fails validation, show "saved under revision N" instead of crashing. |
 
-Documents use `specVersion: 6`; the validator also accepts the older versions 0 to 5, which `migrate()` stamps step by step. Each step so far was additive, so every older document stays valid: 1 added relative dates in conditions (D22), 2 the `stat` widget, `reference` field and `rowAction`, 3 the `calendar` view, 4 the `board` view, 5 the `viewer` document, the `viewerIn` op and the viewer-only keys, and 6 the `datetime` field type, entity `actions`, view `recordActions`, the column `compare` setting and optional page totals (RFC 0007, D45). Any other value is rejected (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
+Documents use `specVersion: 7`; the validator also accepts the older versions 0 to 6, which `migrate()` stamps step by step. Each step so far was additive, so every older document stays valid: 1 added relative dates in conditions (D22), 2 the `stat` widget, `reference` field and `rowAction`, 3 the `calendar` view, 4 the `board` view, 5 the `viewer` document, the `viewerIn` op and the viewer-only keys, 6 the `datetime` field type, entity `actions`, view `recordActions`, the column `compare` setting and optional page totals (RFC 0007, D45), and 7 the `series` widget (RFC 0001 slice 2, D48). Any other value is rejected (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
 
 ## 9. Registry contract and ownership
 
@@ -300,7 +300,7 @@ Interface, `Query` and the typed adapter errors in `core`. The memory, key-value
 ## 11. Stability policy
 
 - Fixed package list; new packages and new dependencies need an RFC.
-- The contract is in flux: `specVersion` is `6`, and no `contract-vN` freeze or tag is planned (D13). When the format does change, it ships with a `specVersion` bump, a `migrate()` step and a before/after fixture pair (AGENTS.md rule 8) — a future freeze is a separate decision, not a deadline.
+- The contract is in flux: `specVersion` is `7`, and no `contract-vN` freeze or tag is planned (D13). When the format does change, it ships with a `specVersion` bump, a `migrate()` step and a before/after fixture pair (AGENTS.md rule 8) — a future freeze is a separate decision, not a deadline.
 - Agents land and release their own work (D14): changes to a published package carry a changeset; breaking changes carry a `BREAKING CHANGE:` note that says exactly what consumers must change. Consumers adopt the new version, and the components repo widens its peer range when a release falls outside it.
 - Deprecations last at least one minor with a runtime warning.
 - Public API reports and size budgets (size-limit) are the next CI gates (see `.github/workflows/ci.yml`).

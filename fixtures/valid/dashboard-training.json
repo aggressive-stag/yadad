@@ -1,6 +1,6 @@
 {
   "kind": "dashboard",
-  "specVersion": 2,
+  "specVersion": 7,
   "id": "training",
   "title": "Training log",
   "revision": 1,
@@ -179,6 +179,36 @@
             "op": "max",
             "field": "weight"
           }
+        },
+        {
+          "id": "volume_per_week",
+          "x": 0,
+          "y": 4,
+          "w": 4,
+          "h": 4,
+          "widget": "series",
+          "label": "Weight per week (kg)",
+          "view": "sets",
+          "groupBy": { "field": "day", "bucket": "week" },
+          "measure": { "op": "sum", "field": "weight" },
+          "display": "line",
+          "sort": { "by": "group", "dir": "asc" },
+          "filter": { "op": "neq", "field": "warmup", "value": true }
+        },
+        {
+          "id": "sets_per_exercise",
+          "x": 0,
+          "y": 8,
+          "w": 4,
+          "h": 4,
+          "widget": "series",
+          "label": "Working sets per exercise",
+          "view": "sets",
+          "groupBy": { "field": "exercise" },
+          "measure": { "op": "count" },
+          "display": "bar",
+          "sort": { "by": "value", "dir": "desc" },
+          "filter": { "op": "neq", "field": "warmup", "value": true }
         }
       ]
     }

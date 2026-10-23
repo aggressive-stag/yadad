@@ -1,6 +1,6 @@
 # RFC 0001: Computed dashboard widgets
 
-- Status: Accepted (slice 1 implemented)
+- Status: Accepted (slices 1 and 2 implemented)
 - Touches: `core` (document types, validator, `describeContract`), `runtime` (aggregation, adapters), `renderer` (dashboard), `editor` (widget panel), `docs/records-protocol.md` (optional endpoint), registry contract (`widgets`)
 - Bumps `specVersion` (to the next version; it is 1 at the time of writing) with a `migrate()` step and a before/after fixture pair.
 
