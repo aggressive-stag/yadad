@@ -1,4 +1,4 @@
-import type { Condition, DashboardView, GridItem, Measure } from "@yadad/core";
+import type { Condition, DashboardView, GridItem, Measure, SeriesBucket, SeriesDisplay } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 /** Where an item lives in the dashboard document, as JSON Pointer segments. */
@@ -31,7 +31,8 @@ export function resizeItem(dashboard: DashboardView, tabId: string, itemId: stri
 
 /** A widget to place, without its position: the editor finds a free spot. */
 export type NewWidget = { readonly widget: "view"; readonly view: string } | { readonly widget: "count"; readonly label: string; readonly view: string; readonly filter?: Condition }
-  | { readonly widget: "stat"; readonly label: string; readonly view: string; readonly measure: Measure; readonly filter?: Condition };
+  | { readonly widget: "stat"; readonly label: string; readonly view: string; readonly measure: Measure; readonly filter?: Condition }
+  | { readonly widget: "series"; readonly label: string; readonly view: string; readonly groupBy: { readonly field: string; readonly bucket?: SeriesBucket }; readonly measure: Measure; readonly display: SeriesDisplay; readonly filter?: Condition };
 
 const DEFAULT_GRID_COLUMNS = 12;
 

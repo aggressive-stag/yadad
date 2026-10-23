@@ -1,5 +1,5 @@
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, jsonPointer, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SortSpec, TableView, ViewerCondition } from "@yadad/core";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, validateDocuments } from "@yadad/core";
+import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -424,7 +424,7 @@ export function setCountWidgetFilter(view: DashboardView, tabId: string, itemId:
   const found = findWidget(view, tabId, itemId);
   if (!found.ok) return found.result;
   const { t, i, item } = found;
-  if (item.widget !== "count" && item.widget !== "stat") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a count or a stat.`, "Counts and stats have filters; views are embedded as-is.");
+  if (item.widget === "view") return fail(["tabs", t, "items", i], `Widget "${itemId}" is an embedded view.`, "Counts, stats and series have filters; views are embedded as-is.");
   const path = `/tabs/${t}/items/${i}/filter`;
   return ok([{ op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId }, ...setOptional(item.filter !== undefined, path, condition as unknown as Json | undefined)]);
 }
@@ -441,6 +441,134 @@ export function setStatMeasure(view: DashboardView, tabId: string, itemId: strin
   ]);
 }
 
+// ---- series (RFC 0001 slice 2) ----------------------------------------------
+// A series' controls are choices, and every choice is checked against the
+// entity the same way the validator checks the finished document: the editor
+// can only ever offer what 43c's rules accept, so a pick never leaves an
+// invalid widget behind. Changing the groupBy field drops the bucket, which
+// only rides a date field.
+
+/** The field types a series may group by (the validator's rule, one source). */
+export const seriesGroupTypes = SERIES_GROUP_FIELD_TYPES;
+
+/** The entity fields a series may group by, in entity order. */
+export function groupableFieldIds(entity: EntityDocument): string[] {
+  return [...new Set(entity.fields.filter((f) => SERIES_GROUP_FIELD_TYPES.includes(f.type)).map((f) => f.id))];
+}
+
+/** The series' groupBy, as a patch piece: the field, plus a bucket only on a date field. */
+function groupByValue(entity: EntityDocument, field: string, bucket: SeriesBucket | undefined): SeriesWidget["groupBy"] {
+  return entity.fields.find((f) => f.id === field && f.type === "date") ? { field, ...(bucket ? { bucket } : {}) } : { field };
+}
+
+/** Points a series at a different table view. groupBy and measure come in ready for the new table's entity: they are required keys, so a patch may never drop them. */
+export function setSeriesView(view: DashboardView, tabId: string, itemId: string, viewId: string, groupBy: SeriesWidget["groupBy"], measure: Measure): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "series") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a series.`, "Only series widgets pick their own table view.");
+  if (item.view === viewId && JSON.stringify(item.groupBy) === JSON.stringify(groupBy) && JSON.stringify(item.measure) === JSON.stringify(measure)) return ok([]);
+  const path = `/tabs/${t}/items/${i}`;
+  return ok([
+    { op: "test", path: `${path}/id`, value: itemId },
+    { op: "replace", path: `${path}/view`, value: viewId },
+    { op: "replace", path: `${path}/groupBy`, value: groupBy as unknown as Json },
+    { op: "replace", path: `${path}/measure`, value: measure as unknown as Json },
+  ]);
+}
+
+/** Sets the series' groupBy field, keeping a bucket only when the field is a date. */
+export function setSeriesGroupBy(view: DashboardView, tabId: string, itemId: string, entity: EntityDocument, field: string, bucket?: SeriesBucket): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "series") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a series.`, "Only series widgets group their records.");
+  if (!groupableFieldIds(entity).includes(field)) {
+    const allowed = groupableFieldIds(entity);
+    return fail(["tabs", t, "items", i, "groupBy", "field"], `A series cannot group by "${field}" on "${entity.id}".`, allowed.length > 0 ? `Use one of: ${allowed.join(", ")}.` : `Entity "${entity.id}" has no groupable field; add a select, boolean, reference, text or date field.`);
+  }
+  const next = groupByValue(entity, field, bucket);
+  if (JSON.stringify(item.groupBy) === JSON.stringify(next)) return ok([]);
+  return ok([
+    { op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId },
+    { op: "replace", path: `/tabs/${t}/items/${i}/groupBy`, value: next as unknown as Json },
+  ]);
+}
+
+/** Sets the series' bucket; only a date groupBy has buckets to set. */
+export function setSeriesBucket(view: DashboardView, tabId: string, itemId: string, entity: EntityDocument, bucket: SeriesBucket | undefined): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "series") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a series.`, "Only series widgets bucket their groups.");
+  const field = entity.fields.find((f) => f.id === item.groupBy.field);
+  if (!field || field.type !== "date") return fail(["tabs", t, "items", i, "groupBy", "bucket"], `"bucket" groups dates; "${item.groupBy.field}" is ${field ? `a ${field.type}` : "a missing"} field.`, "Group by a date field first; only dates have days, weeks and months.");
+  if (item.groupBy.bucket === bucket) return ok([]);
+  return ok([
+    { op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId },
+    { op: "replace", path: `/tabs/${t}/items/${i}/groupBy`, value: (bucket === undefined ? { field: item.groupBy.field } : { field: item.groupBy.field, bucket }) as unknown as Json },
+  ]);
+}
+
+/** Replaces a series widget's measure (the stat's measure picker, reused). */
+export function setSeriesMeasure(view: DashboardView, tabId: string, itemId: string, measure: Measure): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "series") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a series.`, "Only series widgets have a grouped measure.");
+  return ok([
+    { op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId },
+    { op: "replace", path: `/tabs/${t}/items/${i}/measure`, value: measure as unknown as Json },
+  ]);
+}
+
+/** Sets the series' display: table, bar or line. */
+export function setSeriesDisplay(view: DashboardView, tabId: string, itemId: string, display: SeriesDisplay): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "series") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a series.`, "Only series widgets have a display.");
+  if (item.display === display) return ok([]);
+  return ok([
+    { op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId },
+    { op: "replace", path: `/tabs/${t}/items/${i}/display`, value: display },
+  ]);
+}
+
+/** Sets the series' sort. undefined returns it to group ascending (the key is removed). */
+export function setSeriesSort(view: DashboardView, tabId: string, itemId: string, sort: { by: SeriesSortBy; dir: SeriesSortDir } | undefined): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "series") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a series.`, "Only series widgets sort their groups.");
+  if (sort === undefined && item.sort === undefined) return ok([]);
+  if (JSON.stringify(item.sort) === JSON.stringify(sort)) return ok([]);
+  return ok([
+    { op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId },
+    ...setOptional(item.sort !== undefined, `/tabs/${t}/items/${i}/sort`, sort as unknown as Json | undefined),
+  ]);
+}
+
+/** Sets the series' group cap. undefined returns it to the default (the key is removed). */
+export function setSeriesLimit(view: DashboardView, tabId: string, itemId: string, limit: number | undefined): Result {
+  const found = findWidget(view, tabId, itemId);
+  if (!found.ok) return found.result;
+  const { t, i, item } = found;
+  if (item.widget !== "series") return fail(["tabs", t, "items", i], `Widget "${itemId}" is not a series.`, "Only series widgets cap their groups.");
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
+    return fail(["tabs", t, "items", i, "limit"], `"limit" must be a whole number of at least 1 (at most ${SERIES_LIMIT_MAX}).`, "Groups beyond the cap are dropped; the default is left in place.");
+  }
+  if (item.limit === limit) return ok([]);
+  return ok([
+    { op: "test", path: `/tabs/${t}/items/${i}/id`, value: itemId },
+    ...setOptional(item.limit !== undefined, `/tabs/${t}/items/${i}/limit`, limit),
+  ]);
+}
+
+/** The series enums, exported so the editor's pickers show exactly the validator's choices. */
+export const SERIES_DISPLAY_CHOICES: readonly SeriesDisplay[] = SERIES_DISPLAYS;
+export const SERIES_SORT_BY_CHOICES: readonly SeriesSortBy[] = SERIES_SORT_BYS;
+export const SERIES_SORT_DIR_CHOICES: readonly SeriesSortDir[] = SERIES_SORT_DIRS;
 /**
  * A measure for `op` over the entity's fields: `field` if it fits the op, else
  * the first field that does; for sum and avg, `times` (a number field) makes

@@ -32,8 +32,9 @@ export function fieldReferences(views: Iterable<ViewDocument>, entityId: string,
     if (view.kind === "dashboard") {
       view.tabs.forEach((tab, t) =>
         tab.items.forEach((item, i) => {
-          if ((item.widget === "count" || item.widget === "stat") && item.filter && conditionFields(item.filter).includes(fieldId)) found.push(`${view.id}${jsonPointer(["tabs", t, "items", i, "filter"])}`);
-          if (item.widget === "stat" && (item.measure.op === "count" ? [] : "product" in item.measure ? item.measure.product : [item.measure.field]).includes(fieldId)) {
+          if ((item.widget === "count" || item.widget === "stat" || item.widget === "series") && item.filter && conditionFields(item.filter).includes(fieldId)) found.push(`${view.id}${jsonPointer(["tabs", t, "items", i, "filter"])}`);
+          if (item.widget === "series" && item.groupBy.field === fieldId) found.push(`${view.id}${jsonPointer(["tabs", t, "items", i, "groupBy", "field"])}`);
+          if ((item.widget === "stat" || item.widget === "series") && (item.measure.op === "count" ? [] : "product" in item.measure ? item.measure.product : [item.measure.field]).includes(fieldId)) {
             found.push(`${view.id}${jsonPointer(["tabs", t, "items", i, "measure"])}`);
           }
         }),

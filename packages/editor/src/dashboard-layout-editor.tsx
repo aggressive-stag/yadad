@@ -1,5 +1,5 @@
-import { MEASURE_FIELD_TYPES, MEASURE_OPS } from "@yadad/core";
-import type { DashboardView, EntityDocument, GridItem, Measure, MeasureOp, Registry, ViewDocument, ViewerCondition, ViewerDocument } from "@yadad/core";
+import { MEASURE_FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX } from "@yadad/core";
+import type { DashboardView, EntityDocument, GridItem, Measure, MeasureOp, Registry, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, ViewDocument, ViewerCondition, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
@@ -11,7 +11,7 @@ import { asText, choiceField, describeCondition, idFromTitle, propertyInput, too
 import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { useReportChange } from "./report-change.js";
-import { measureFor, setCountWidgetFilter, setItemVisibleWhen, setStatMeasure, setTabVisibleWhen } from "./views.js";
+import { groupableFieldIds, measureFor, setCountWidgetFilter, setItemVisibleWhen, setSeriesBucket, setSeriesDisplay, setSeriesGroupBy, setSeriesLimit, setSeriesMeasure, setSeriesSort, setSeriesView, setStatMeasure, setTabVisibleWhen, SERIES_DISPLAY_CHOICES, SERIES_SORT_BY_CHOICES, SERIES_SORT_DIR_CHOICES } from "./views.js";
 import { ViewerRule } from "./viewer-rule.js";
 
 export interface DashboardLayoutEditorProps {
@@ -45,6 +45,7 @@ function palette(views: readonly ViewDocument[], describeView: (viewId: string) 
   return views.flatMap((v): PaletteEntry[] => {
     if (v.kind === "form" || v.kind === "calendar" || v.kind === "board") return [{ label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 }];
     if (v.kind === "table") {
+      const entity = entities?.get(v.entity);
       return [
         { label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 },
         { label: `Count of ${describeView(v.id)}`, base: `${v.id}_count`, widget: { widget: "count", label: v.title ?? v.id, view: v.id }, w: 3, h: 2 },
@@ -52,9 +53,26 @@ function palette(views: readonly ViewDocument[], describeView: (viewId: string) 
         {
           label: `Stat of ${describeView(v.id)}`,
           base: `${v.id}_stat`,
-          widget: { widget: "stat", label: v.title ?? v.id, view: v.id, measure: (entities?.get(v.entity) && measureFor(entities.get(v.entity)!, "sum")) || { op: "count" } },
+          widget: { widget: "stat", label: v.title ?? v.id, view: v.id, measure: (entity && measureFor(entity, "sum")) || { op: "count" } },
           w: 3,
           h: 2,
+        },
+        // A series starts as bars of the first number field (or a count) over the first groupable
+        // field; the panel's pickers change both. With no groupable field the seed stays invalid —
+        // validation says so, and its hint names what to add to the entity.
+        {
+          label: `Series of ${describeView(v.id)}`,
+          base: `${v.id}_series`,
+          widget: {
+            widget: "series",
+            label: v.title ?? v.id,
+            view: v.id,
+            groupBy: { field: (entity && groupableFieldIds(entity)[0]) || "group" },
+            measure: (entity && measureFor(entity, "sum")) || { op: "count" },
+            display: "bar",
+          },
+          w: 6,
+          h: 4,
         },
       ];
     }
@@ -78,6 +96,8 @@ interface Drag {
 
 const DEFAULT_COLUMNS = 12;
 const NO_SECOND_FIELD = "(none)";
+const NO_BUCKET = "(exact date)";
+const NO_SORT = "(group, ascending)";
 const KEY_STEPS: Readonly<Record<string, readonly [number, number]>> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 function describeMeasure(m: Measure, label: (fieldId: string) => string): string {
@@ -111,9 +131,9 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
   const entries = palette(views, describeView, entities);
   const entry = entries.find((e) => e.label === choice) ?? entries[0];
 
-  const name = (item: GridItem) => (item.widget === "count" ? `Count: ${item.label}` : item.widget === "stat" ? `Stat: ${item.label}` : describeView(item.view));
-  const noun = (item: GridItem) => (item.widget === "stat" ? "stat" : "count");
-  const Noun = (item: GridItem) => (item.widget === "stat" ? "Stat" : "Count");
+  const name = (item: GridItem) => (item.widget === "count" ? `Count: ${item.label}` : item.widget === "stat" ? `Stat: ${item.label}` : item.widget === "series" ? `Series: ${item.label}` : describeView(item.view));
+  const noun = (item: GridItem) => (item.widget === "stat" ? "stat" : item.widget === "series" ? "series" : "count");
+  const Noun = (item: GridItem) => (item.widget === "stat" ? "Stat" : item.widget === "series" ? "Series" : "Count");
   const where = (b: Box) => `column ${b.x + 1}, row ${b.y + 1}, ${b.w} wide, ${b.h} tall`;
 
   /** Applies a move or resize; says what happened or why it was refused. */
@@ -148,18 +168,18 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
   const [rawCountFilter, setCountFilter] = useState<{ readonly tabId: string; readonly id: string; readonly draft: ConditionDraft | undefined } | undefined>(undefined);
   const countFilter = rawCountFilter?.tabId === tab.id ? rawCountFilter : undefined;
   const countEntityOf = (item: GridItem): EntityDocument | undefined => {
-    if (item.widget !== "count" && item.widget !== "stat") return undefined;
+    if (item.widget === "view") return undefined;
     const view = views.find((v) => v.id === item.view);
     return view && view.kind === "table" ? entities?.get(view.entity) : undefined;
   };
   const openCountFilter = (item: GridItem) => {
-    if (item.widget !== "count" && item.widget !== "stat") return;
+    if (item.widget === "view") return;
     const entity = countEntityOf(item);
     if (!entity) return;
     setCountFilter((open) => (open && open.tabId === tab.id && open.id === item.id ? undefined : { tabId: tab.id, id: item.id, draft: draftFor(entity, item.filter) }));
   };
   const applyCountFilter = (item: GridItem) => {
-    if ((item.widget !== "count" && item.widget !== "stat") || !countFilter || countFilter.id !== item.id) return;
+    if (item.widget === "view" || !countFilter || countFilter.id !== item.id) return;
     const entity = countEntityOf(item);
     if (!entity) return;
     const built = builtOf(countFilter.draft);
@@ -170,7 +190,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
     change(patch, built === undefined ? `${Noun(item)} filter cleared.` : `${Noun(item)} now matches: ${describeCondition(built, labelOf(entity))}.`, () => setCountFilter(undefined));
   };
   const removeCountFilter = (item: GridItem) => {
-    if (item.widget !== "count" && item.widget !== "stat") return;
+    if (item.widget === "view") return;
     const result = setCountWidgetFilter(current, tab.id, item.id, undefined);
     if (!Array.isArray(result) && !result.ok) return;
     const patch = Array.isArray(result) ? result : result.patch;
@@ -178,29 +198,99 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
   };
   const labelOf = (entity: EntityDocument) => (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
 
-  /** Op, field and (for sum and avg) a second field to multiply by. Each change patches the stat's measure. */
+  /** One labelled picker over fixed choices, wired to the registry's inputs. */
+  const pick = (key: string, label: string, choices: readonly string[], value: string | undefined, onChange: (v: string | undefined) => void) => (
+    <span style={{ display: "block" }}>{propertyInput(registry, `${base}-${key}`, choiceField(key, label, choices), value, (v) => onChange(asText(v)))}</span>
+  );
+
+  /** Op, field and (for sum and avg) a second field to multiply by. Each change patches the widget's measure — the stat's and the series' share this picker. */
   const measureControls = (item: GridItem, entity: EntityDocument): ReactNode => {
-    if (item.widget !== "stat") return null;
+    if (item.widget !== "stat" && item.widget !== "series") return null;
     const m = item.measure;
     const field = m.op === "count" ? undefined : "product" in m ? m.product[0] : m.field;
     const times = m.op !== "count" && "product" in m ? m.product[1] : undefined;
     const set = (op: MeasureOp, f: string | undefined, t: string | undefined) => {
       const next: Measure | undefined = measureFor(entity, op, f, t);
       if (!next) return setStatus(`Not changed: ${entity.id} has no ${MEASURE_FIELD_TYPES[op].join(" or ")} field for "${op}".`);
-      const result = setStatMeasure(current, tab.id, item.id, next);
+      const result = item.widget === "series" ? setSeriesMeasure(current, tab.id, item.id, next) : setStatMeasure(current, tab.id, item.id, next);
       if (!result.ok) return setStatus(`Not changed: ${result.error.message}`);
       change(result.patch, `${name(item)} now shows ${describeMeasure(next, labelOf(entity))}.`);
     };
-    const pick = (id: string, label: string, choices: readonly string[], value: string | undefined, onChange: (v: string | undefined) => void) => (
-      <span style={{ display: "block" }}>{propertyInput(registry, `${base}-${item.id}-${id}`, choiceField(`${base}-${item.id}-${id}`, label, choices), value, (v) => onChange(asText(v)))}</span>
-    );
     const accepted = m.op === "count" ? [] : entity.fields.filter((f) => MEASURE_FIELD_TYPES[m.op].includes(f.type)).map((f) => f.id);
     const numbers = entity.fields.filter((f) => f.type === "number").map((f) => f.id);
     return (
       <>
-        {pick("op", `Measure of ${item.label}`, MEASURE_OPS, m.op, (v) => v !== undefined && set(v as MeasureOp, field, times))}
-        {m.op !== "count" && pick("field", `Field of ${item.label}`, accepted, field, (v) => set(m.op, v, times))}
-        {(m.op === "sum" || m.op === "avg") && pick("times", `Times (optional) of ${item.label}`, [NO_SECOND_FIELD, ...numbers.filter((id) => id !== field)], times ?? NO_SECOND_FIELD, (v) => set(m.op, field, v === NO_SECOND_FIELD ? undefined : v))}
+        {pick(`${item.id}-op`, `Measure of ${item.label}`, MEASURE_OPS, m.op, (v) => v !== undefined && set(v as MeasureOp, field, times))}
+        {m.op !== "count" && pick(`${item.id}-field`, `Field of ${item.label}`, accepted, field, (v) => set(m.op, v, times))}
+        {(m.op === "sum" || m.op === "avg") && pick(`${item.id}-times`, `Times (optional) of ${item.label}`, [NO_SECOND_FIELD, ...numbers.filter((id) => id !== field)], times ?? NO_SECOND_FIELD, (v) => set(m.op, field, v === NO_SECOND_FIELD ? undefined : v))}
+      </>
+    );
+  };
+
+  // A series widget's panel (RFC 0001 slice 2, card 43i): table view, groupBy
+  // field, bucket (dates only), the shared measure picker, display, sort,
+  // limit. Every choice list is the validator's own enum or a field-type
+  // filter, so a pick can never leave an invalid widget behind — except that
+  // a stale document may hold a value the entity no longer offers; the pickers
+  // show it as-is and the next pick replaces it.
+  const seriesControls = (item: GridItem, entity: EntityDocument): ReactNode => {
+    if (item.widget !== "series") return null;
+    const tables = views.filter((v) => v.kind === "table");
+    const groupables = groupableFieldIds(entity);
+    const groupField = entity.fields.find((f) => f.id === item.groupBy.field);
+    const say = (result: { ok: true; patch: PatchOperation[] } | { ok: false; error: { message: string } }, done: string) => {
+      if (!result.ok) return setStatus(`Not changed: ${result.error.message}`);
+      change(result.patch, done);
+    };
+    return (
+      <>
+        {pick(`${item.id}-view`, `Table view of ${item.label}`, tables.map((v) => v.id), item.view, (v) => {
+          if (v === undefined || v === item.view) return;
+          const target = tables.find((t) => t.id === v);
+          const targetEntity = target && entities?.get(target.entity);
+          if (!target || !targetEntity) return setStatus(`Not changed: the table view "${v}" or its entity could not be found.`);
+          const groups = groupableFieldIds(targetEntity);
+          if (groups.length === 0) return setStatus(`Not changed: "${targetEntity.id}" has no groupable field; add a select, boolean, reference, text or date field.`);
+          const sameEntity = target.entity === entity.id;
+          const groupBy = sameEntity ? item.groupBy : { field: groups[0]! };
+          const measure = sameEntity ? item.measure : measureFor(targetEntity, "sum") ?? { op: "count" as const };
+          say(setSeriesView(current, tab.id, item.id, v, groupBy, measure), `${name(item)} now reads the ${v} table.`);
+        })}
+        {pick(`${item.id}-group`, `Group by of ${item.label}`, groupables.length > 0 ? groupables : [item.groupBy.field], item.groupBy.field, (v) => {
+          if (v === undefined || v === item.groupBy.field) return;
+          say(setSeriesGroupBy(current, tab.id, item.id, entity, v), `${name(item)} now groups by ${labelOf(entity)(v)}.`);
+        })}
+        {groupField?.type === "date" && pick(`${item.id}-bucket`, `Bucket of ${item.label}`, [NO_BUCKET, ...SERIES_BUCKETS], item.groupBy.bucket ?? NO_BUCKET, (v) => {
+          const bucket = v === NO_BUCKET ? undefined : (v as SeriesBucket);
+          say(setSeriesBucket(current, tab.id, item.id, entity, bucket), bucket === undefined ? `${name(item)} groups by each date again.` : `${name(item)} now buckets by ${bucket}.`);
+        })}
+        {pick(`${item.id}-display`, `Display of ${item.label}`, SERIES_DISPLAY_CHOICES, item.display, (v) => {
+          if (v === undefined || v === item.display) return;
+          say(setSeriesDisplay(current, tab.id, item.id, v as SeriesDisplay), `${name(item)} displays as ${v}.`);
+        })}
+        {pick(`${item.id}-sortby`, `Sort by of ${item.label}`, [NO_SORT, ...SERIES_SORT_BY_CHOICES], item.sort?.by ?? NO_SORT, (v) => {
+          if (v === undefined) return;
+          const by = v === NO_SORT ? undefined : (v as SeriesSortBy);
+          const next = by === undefined ? undefined : { by, dir: item.sort?.dir ?? "asc" };
+          if (JSON.stringify(next) === JSON.stringify(item.sort)) return;
+          say(setSeriesSort(current, tab.id, item.id, next), by === undefined ? `${name(item)} sorts by group ascending again.` : `${name(item)} sorts by ${by} ${next!.dir}.`);
+        })}
+        {item.sort !== undefined && pick(`${item.id}-sortdir`, `Sort direction of ${item.label}`, SERIES_SORT_DIR_CHOICES, item.sort.dir, (v) => {
+          if (v === undefined) return;
+          const next = { by: item.sort!.by, dir: v as SeriesSortDir };
+          if (JSON.stringify(next) === JSON.stringify(item.sort)) return;
+          say(setSeriesSort(current, tab.id, item.id, next), `${name(item)} sorts by ${next.by} ${next.dir}.`);
+        })}
+        <span style={{ display: "block" }}>
+          {propertyInput(registry, `${base}-${item.id}-limit`, { id: `${item.id}-limit`, type: "number", label: `Limit of ${item.label} (default ${SERIES_LIMIT_DEFAULT})`, min: 1, max: SERIES_LIMIT_MAX, step: 1 }, item.limit, (v) => {
+            const limit = typeof v === "number" ? v : undefined;
+            if (limit === item.limit) return;
+            say(setSeriesLimit(current, tab.id, item.id, limit), limit === undefined ? `${name(item)} keeps the default ${SERIES_LIMIT_DEFAULT} groups again.` : `${name(item)} keeps ${limit} groups.`);
+          })}
+        </span>
+        {item.limit !== undefined && (
+          <Button label={`Clear the limit of ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => say(setSeriesLimit(current, tab.id, item.id, undefined), `${name(item)} keeps the default ${SERIES_LIMIT_DEFAULT} groups again.`)} />
+        )}
       </>
     );
   };
@@ -309,7 +399,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
               <span onPointerDown={(e) => e.stopPropagation()} style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                 <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                   <Button label={`Remove ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => remove(item)} />
-                  {(item.widget === "count" || item.widget === "stat") && countEntityOf(item) !== undefined && (
+                  {item.widget !== "view" && countEntityOf(item) !== undefined && (
                     <Button
                       label={item.filter !== undefined ? `Edit the ${noun(item)} filter of ${name(item)}` : `Filter the ${noun(item)} of ${name(item)}`}
                       type="button"
@@ -318,7 +408,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
                       onPress={() => openCountFilter(item)}
                     />
                   )}
-                  {(item.widget === "count" || item.widget === "stat") && item.filter !== undefined && (
+                  {item.widget !== "view" && item.filter !== undefined && (
                     <Button label={`Remove the ${noun(item)} filter of ${name(item)}`} type="button" variant="secondary" disabled={false} onPress={() => removeCountFilter(item)} />
                   )}
                 </span>
@@ -341,12 +431,18 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
                   {measureControls(item, countEntityOf(item)!)}
                 </span>
               )}
-              {(item.widget === "count" || item.widget === "stat") && item.filter !== undefined && countEntityOf(item) !== undefined && (
+              {item.widget === "series" && countEntityOf(item) !== undefined && (
+                <span onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} data-yadad-series-controls="" style={{ display: "block", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                  {seriesControls(item, countEntityOf(item)!)}
+                  {measureControls(item, countEntityOf(item)!)}
+                </span>
+              )}
+              {item.widget !== "view" && item.filter !== undefined && countEntityOf(item) !== undefined && (
                 <p style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                   {Noun(item)} now matches: {describeCondition(item.filter, labelOf(countEntityOf(item)!))}.
                 </p>
               )}
-              {(item.widget === "count" || item.widget === "stat") && countFilter?.id === item.id && (
+              {item.widget !== "view" && countFilter?.id === item.id && (
                 <div data-yadad-count-filter-builder="" style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
                   {(() => {
                     const entity = countEntityOf(item);
