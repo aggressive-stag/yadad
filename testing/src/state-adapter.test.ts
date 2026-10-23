@@ -1,6 +1,6 @@
-import type { BoardView, DataRecord, Document, EntityDocument, FormView, TableView , AdapterError} from "@yadad/core";
+import type { BoardView, DashboardView, DataRecord, Document, EntityDocument, FormView, TableView , AdapterError} from "@yadad/core";
 import { ForbiddenError, RecordConflictError, RecordValidationError } from "@yadad/core";
-import { viewStates } from "@yadad/runtime";
+import { aggregateSeries, viewStates } from "@yadad/runtime";
 import { describe, expect, test } from "vitest";
 import { applicableSources, sourceStates } from "./source-states.js";
 import { createStateAdapter } from "./state-adapter.js";
@@ -88,6 +88,47 @@ describe("createStateAdapter", () => {
     expect(many).toBeDefined();
     const adapter = createStateAdapter(many!);
     expect((await adapter.find("task", {})).total).toBe(many!.render.kind === "table" ? many!.render.records.length : -1);
+  });
+
+  test("a series widget's state seeds the groups its axis picked, and aggregateSeries reads them back", async () => {
+    const goal: EntityDocument = {
+      kind: "entity",
+      specVersion: 4,
+      id: "goal",
+      revision: 1,
+      fields: [
+        { id: "name", label: "Name", type: "text", required: true },
+        { id: "state", label: "State", type: "select", options: { source: "static", values: ["idea", "doing", "done"] } },
+      ],
+    };
+    const goalTable: TableView = { ...base, kind: "table", id: "tg", entity: "goal", columns: [{ field: "name" }, { field: "state" }] };
+    const dash: DashboardView = {
+      ...base,
+      kind: "dashboard",
+      id: "d",
+      tabs: [{ id: "t", title: "T", items: [{ id: "s", x: 0, y: 0, w: 6, h: 4, widget: "series", label: "By state", view: "tg", groupBy: { field: "state" }, measure: { op: "count" }, display: "bar" }] }],
+    };
+    const result = viewStates(dash, [goal, goalTable, dash], { now: NOW, limit: 50 });
+    const byGroup = new Map(result.states.map((s) => [s.values["widget:s"], s]));
+    for (const pick of ["none", "one", "many", "partial"]) {
+      const state = byGroup.get(pick);
+      expect(state, `state ${pick}`).toBeDefined();
+      const widget = state!.render.kind === "dashboard" ? state!.render.series?.[0] : undefined;
+      expect(widget).toBeDefined();
+      const adapter = createStateAdapter(state!);
+      const rows = (await adapter.find("goal", {})).items;
+      // The seeded table carries exactly the group values the state picked.
+      const distinct = new Set(rows.map((r) => r.values["state"]).filter((v) => v !== null && v !== undefined && v !== "")).size;
+      expect(distinct).toBe(pick === "none" ? 0 : pick === "one" ? 1 : 3);
+      // And what the chart computes from the adapter matches: the same groups; partial only when the table outgrew the cap.
+      const series = await aggregateSeries(adapter, "goal", { groupBy: { field: "state", type: "select" }, measure: { op: "count" } });
+      expect(series.groups.length).toBe(distinct);
+      if (pick === "partial") {
+        expect(series.partial).toEqual({ read: 5000, total: rows.length });
+      } else {
+        expect(series.partial).toBeUndefined();
+      }
+    }
   });
 });
 

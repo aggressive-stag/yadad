@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { BoardView, CalendarView, Condition, DashboardView, Document, EntityDocument, FormView, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
+import type { BoardView, CalendarView, Condition, DashboardView, DataRecord, Document, EntityDocument, FormView, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
 import { combineAxes } from "./combine-axes.js";
 import type { CombinableAxis } from "./combine-axes.js";
+import { AGGREGATE_MAX_RECORDS } from "./aggregate.js";
 import { validateRecord } from "./record.js";
 import { viewStates } from "./view-states.js";
-import type { StateAxis, ViewStateRender, ViewStatesResult } from "./view-states.js";
+import type { SeriesStateWidget, StateAxis, ViewState, ViewStateRender, ViewStatesResult } from "./view-states.js";
 
 const NOW = new Date(2026, 9, 17, 12, 0, 0); // 2026-10-17, local
 
@@ -711,5 +712,87 @@ describe("viewer axes on a dashboard", () => {
   it("embedded views contribute no viewer axes of their own", () => {
     const r = viewStates(dash, all, { now: NOW });
     expect(r.axes.filter((a) => a.kind === "viewer")).toHaveLength(2);
+  });
+});
+
+describe("series widgets (RFC 0001 slice 2, card 43g)", () => {
+  const seriesItem = { id: "s1", x: 0, y: 0, w: 6, h: 4, widget: "series" as const, label: "By status", view: "task-table", groupBy: { field: "status" }, measure: { op: "count" as const }, display: "bar" as const };
+  const seriesDash = (items: DashboardView["tabs"][number]["items"]): DashboardView => ({ ...base, kind: "dashboard", id: "dash-series", tabs: [{ id: "t", title: "T", items }] });
+  const seriesDocs = (d: DashboardView): Document[] => [entity, form(), table(), d];
+  const seriesOf = (s: ViewState): readonly SeriesStateWidget[] => (s.render.kind === "dashboard" ? s.render.series ?? [] : []);
+
+  it("a series widget adds a groups axis with none, one, many and partial", () => {
+    const d = seriesDash([seriesItem]);
+    const r = viewStates(d, seriesDocs(d), { now: NOW, limit: 200 });
+    expect(ids(axis(r, "widget:s1"))).toEqual(["none", "one", "many", "partial"]);
+    expect(labels(axis(r, "widget:s1"))).toEqual(["no groups", "1 group", "3 groups", "3 groups, partial read"]);
+    const values = new Set(r.states.map((s) => s.values["widget:s1"]));
+    expect(values).toEqual(new Set(["none", "one", "many", "partial"]));
+  });
+
+  it("state ids stay readable: the axis id is short, the value carries the group count", () => {
+    const d = seriesDash([seriesItem]);
+    const r = viewStates(d, seriesDocs(d), { now: NOW, limit: 200 });
+    const many = r.states.find((s) => s.values["widget:s1"] === "many");
+    expect(many?.id).toContain("widget:s1=many");
+    expect(many?.label).toContain("3 groups");
+  });
+
+  it("the seeded records make exactly the picked number of groups", () => {
+    const d = seriesDash([seriesItem]);
+    const r = viewStates(d, seriesDocs(d), { now: NOW, limit: 200 });
+    const distinct = (records: readonly DataRecord[]): number => new Set(records.map((rec) => rec.values["status"]).filter((v) => v !== null && v !== undefined && v !== "")).size;
+    for (const pick of ["none", "one", "many"] as const) {
+      const state = r.states.find((s) => s.values["widget:s1"] === pick);
+      expect(state).toBeDefined();
+      const widget = seriesOf(state!)[0];
+      expect(widget?.item).toBe("s1");
+      expect(widget?.view).toBe("task-table");
+      expect(widget?.groupBy).toBe("status");
+      expect(widget?.partial).toBe(false);
+      expect(distinct(widget?.records ?? [])).toBe(pick === "none" ? 0 : pick === "one" ? 1 : 3);
+    }
+  });
+
+  it("partial seeds a table over the aggregate cap and says so", () => {
+    const d = seriesDash([seriesItem]);
+    const r = viewStates(d, seriesDocs(d), { now: NOW, limit: 200 });
+    const state = r.states.find((s) => s.values["widget:s1"] === "partial");
+    const widget = seriesOf(state!)[0];
+    expect(widget?.partial).toBe(true);
+    expect(widget?.groups).toBe("many");
+    expect(widget?.records.length).toBeGreaterThan(AGGREGATE_MAX_RECORDS);
+  });
+
+  it("a date series buckets by month when the widget asks for months", () => {
+    const monthItem = { ...seriesItem, groupBy: { field: "due", bucket: "month" as const } };
+    const d = seriesDash([monthItem]);
+    const r = viewStates(d, seriesDocs(d), { now: NOW, limit: 200 });
+    const state = r.states.find((s) => s.values["widget:s1"] === "many");
+    const widget = seriesOf(state!)[0];
+    const months = new Set((widget?.records ?? []).map((rec) => String(rec.values["due"]).slice(0, 7)));
+    expect(months.size).toBe(3);
+  });
+
+  it("a select with fewer options than many gets only the achievable states", () => {
+    const narrow: EntityDocument = { ...entity, fields: entity.fields.map((f) => (f.id === "status" ? { ...f, options: { source: "static", values: ["a", "b"] } } : f)) };
+    const d = seriesDash([seriesItem]);
+    const r = viewStates(d, [narrow, form(), table(), d], { now: NOW, limit: 200 });
+    expect(ids(axis(r, "widget:s1"))).toEqual(["none", "one"]);
+  });
+
+  it("a series over a missing field or a non-table view is skipped, not blank", () => {
+    const bad = seriesDash([{ ...seriesItem, id: "b1", groupBy: { field: "nope" } }, { ...seriesItem, id: "b2", view: "task-form" }]);
+    const r = viewStates(bad, [entity, form(), table(), bad], { now: NOW, limit: 200 });
+    expect(r.skipped.map((s) => s.id).sort()).toEqual(["series:b1", "series:b2"]);
+    expect(r.axes.some((a) => a.id === "widget:b1" || a.id === "widget:b2")).toBe(false);
+    expect(r.states.every((s) => seriesOf(s).length === 0)).toBe(true);
+  });
+
+  it("a series widget alone still produces a state per group value", () => {
+    const d = seriesDash([{ id: "c1", x: 0, y: 0, w: 4, h: 2, widget: "count", label: "All", view: "task-table" }, seriesItem]);
+    const r = viewStates(d, seriesDocs(d), { now: NOW, limit: 200 });
+    const byGroup = new Set(r.states.map((s) => s.values["widget:s1"]));
+    expect(byGroup).toEqual(new Set(["none", "one", "many", "partial"]));
   });
 });

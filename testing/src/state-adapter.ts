@@ -49,11 +49,21 @@ const DEFAULT_MESSAGES: Record<SourceState, string> = {
 /** The records a state puts in the data source: its own, or those of the views it embeds. */
 export function stateRecords(state: ViewState): readonly DataRecord[] {
   const out = new Map<string, DataRecord>();
+  const put = (records: readonly DataRecord[]): void => {
+    for (const record of records) if (!out.has(`${record.entityId}/${record.id}`)) out.set(`${record.entityId}/${record.id}`, record);
+  };
+  // Written over the collection widgets' records: the groups axis owns the entity's record values for the state,
+  // the way the records axis owns them — so `aggregateSeries`, reading through the adapter, sees exactly `groups` groups.
+  const overwrite = (records: readonly DataRecord[]): void => {
+    for (const record of records) out.set(`${record.entityId}/${record.id}`, record);
+  };
   const visit = (render: ViewState["render"]): void => {
     if (render.kind === "dashboard") {
       for (const widget of render.widgets) visit(widget.state.render);
+      // RFC 0001 slice 2 (card 43g): a series widget's groups need their own seeded records.
+      for (const series of render.series ?? []) overwrite(series.records);
     } else if (render.kind !== "form") {
-      for (const record of render.records) if (!out.has(`${record.entityId}/${record.id}`)) out.set(`${record.entityId}/${record.id}`, record);
+      put(render.records);
     }
   };
   visit(state.render);

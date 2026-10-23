@@ -15,9 +15,11 @@ import type {
   RecordValues,
   ResolvedViewer,
   Scalar,
+  SeriesBucket,
   TableView,
   ViewDocument,
 } from "@yadad/core";
+import { AGGREGATE_MAX_RECORDS } from "./aggregate.js";
 import { BOARD_MAX_CARDS, boardGroupChoices } from "./board.js";
 import { encodeCursor } from "./memory-adapter.js";
 import { CALENDAR_MAX_RECORDS, calendarToday, visibleDays, visibleRange } from "./calendar.js";
@@ -104,6 +106,20 @@ export interface BoardStateRender extends CollectionRenderBase {
   readonly groupBy: string;
 }
 
+/** One series widget of a dashboard state, with the records its groups were seeded from (RFC 0001 slice 2, card 43g). */
+export interface SeriesStateWidget {
+  readonly item: string;
+  readonly view: string;
+  /** The widget's `groupBy` field. */
+  readonly groupBy: string;
+  /** `"none"`, `"one"` or `"many"` — the value the `groups` axis picked. */
+  readonly groups: string;
+  /** True when the table holds more records than `records.length`: the groups cover a partial read. */
+  readonly partial: boolean;
+  /** The seeded records for this widget's entity (also reachable from the table widget's own state). */
+  readonly records: readonly DataRecord[];
+}
+
 export interface DashboardStateRender {
   readonly kind: "dashboard";
   readonly view: string;
@@ -111,6 +127,8 @@ export interface DashboardStateRender {
   readonly tab: string;
   /** One entry per embedded view widget on that tab, each in one of that view's states. */
   readonly widgets: readonly { readonly item: string; readonly view: string; readonly state: ViewState }[];
+  /** One entry per series widget on the tab, in grid order (card 43g). */
+  readonly series?: readonly SeriesStateWidget[];
   readonly now: Date;
 }
 
@@ -794,6 +812,83 @@ function lockRecords(render: ViewStateRender, selection: AxisSelection): ViewSta
 
 // --- assembling states ---
 
+/** RFC 0001 slice 2 (card 43g): how many groups the `many` state draws, when the field can show them. */
+const SERIES_MANY_GROUPS = 3;
+type SeriesChoice = "none" | "one" | "many" | "partial";
+const SERIES_CHOICES: readonly SeriesChoice[] = ["none", "one", "many", "partial"];
+const SERIES_CHOICE_LABEL: Record<SeriesChoice, string> = { none: "no groups", one: "1 group", many: `${SERIES_MANY_GROUPS} groups`, partial: `${SERIES_MANY_GROUPS} groups, partial read` };
+
+/** The distinct values a field could group by: option lists verbatim, everything else generated. Dates spread over months when the widget buckets by month. */
+function candidateGroupValues(field: Field, bucket: SeriesBucket | undefined, ctx: Context): FieldValue[] {
+  switch (field.type) {
+    case "select":
+      return [...field.options.values];
+    case "boolean":
+      return [true, false];
+    case "reference":
+      return [1, 2, 3].map((i) => `ref-${i}`);
+    case "date":
+      return bucket === "month" ? [0, 31, 62].map((d) => dateFromToday(d - 1, ctx.now)) : [0, 1, 2].map((d) => dateFromToday(d - 1, ctx.now));
+    default:
+      return [1, 2, 3].map((i) => `${SAMPLE_TEXT} ${i}`);
+  }
+}
+
+/** A series widget's state plan: which group states are possible, and the records each one seeds. */
+interface SeriesPlan {
+  readonly axisValues: readonly StateAxisValue[];
+  /** The records this choice puts in the data source, under the collection generator's own ids. */
+  readonly seed: (choice: SeriesChoice) => readonly DataRecord[];
+}
+
+/**
+ * Plans one series widget's states (43a decision 7: no groups, one group, many
+ * groups, a partial read). The seeded records carry distinct values of the
+ * `groupBy` field that still satisfy the view's filter and the entity's
+ * validation, so the chart really shows that many groups; `partial` puts more
+ * records in the table than `aggregateSeries` reads, so it reports a partial
+ * read. Records keep the generator's `rec-N` ids — the widget owns the entity's
+ * record set for the state, the way the `records` axis does. A field that can
+ * show no group under the view's filter is a skipped widget, not an empty chart.
+ */
+function planSeries(widgetId: string, view: TableView, entity: EntityDocument, groupBy: { readonly field: string; readonly bucket?: SeriesBucket }, ctx: Context): SeriesPlan | { reason: string } {
+  const fieldId = groupBy.field;
+  const field = entity.fields.find((f) => f.id === fieldId);
+  if (!field) return { reason: `series widget "${widgetId}" groups by field "${fieldId}", which entity "${entity.id}" does not have` };
+  const base = planCollection(view, ctx);
+  const picks: Record<string, string> = {};
+  for (const axis of base.axes) if (axis.kind === "field" || axis.id === "records" || axis.id === PAGING_AXIS) picks[axis.id] = axis.values[0]?.id ?? "";
+  const built = base.build({ ...picks, records: "many" });
+  if (!built.ok || built.render.kind !== "table") return { reason: `series widget "${widgetId}": ${(built.ok ? "unexpected render" : built.reason)}` };
+  const baseRecords = built.render.records;
+  if (baseRecords.length === 0) return { reason: `series widget "${widgetId}": no records could be generated for entity "${entity.id}"` };
+  // A group value is usable when every seeded record keeps passing the view's filter (the loader re-filters) and stays valid.
+  const usable = (value: FieldValue | null): boolean =>
+    (value !== null || !field.required) &&
+    baseRecords.every((r) => {
+      const values: RecordValues = { ...r.values, [fieldId]: value };
+      return (view.filter === undefined || evaluateCondition(view.filter, values, ctx.now)) && validateRecord(entity, values).length === 0;
+    });
+  const good = candidateGroupValues(field, groupBy.bucket, ctx).filter((v) => usable(v));
+  const empty = field.required ? false : usable(null);
+  if (good.length === 0 && !empty) return { reason: `series widget "${widgetId}": field "${fieldId}" can show no group that the view's filter and validation allow` };
+  const achievable: Record<SeriesChoice, boolean> = { none: empty, one: good.length >= 1, many: good.length >= SERIES_MANY_GROUPS, partial: good.length >= SERIES_MANY_GROUPS };
+  const axisValues = SERIES_CHOICES.filter((c) => achievable[c]).map((c) => ({ id: c, label: SERIES_CHOICE_LABEL[c] }));
+  const seed = (choice: SeriesChoice): readonly DataRecord[] => {
+    const allowed = achievable[choice] ? choice : achievable.many ? "many" : achievable.one ? "one" : "none";
+    const groups = allowed === "none" ? 0 : allowed === "one" ? 1 : SERIES_MANY_GROUPS;
+    const per = Math.min(groups, good.length);
+    const total = allowed === "partial" ? AGGREGATE_MAX_RECORDS + 1 : baseRecords.length;
+    const records: DataRecord[] = [];
+    for (let i = 0; i < total; i++) {
+      const src = baseRecords[i % baseRecords.length]!;
+      records.push({ ...src, id: `rec-${i + 1}`, values: { ...src.values, [fieldId]: per === 0 ? null : good[i % per]! } });
+    }
+    return records;
+  };
+  return { axisValues, seed };
+}
+
 const stateId = (axes: readonly StateAxis[], selection: AxisSelection): string => {
   const parts = axes.filter((a) => selection[a.id] !== undefined).map((a) => `${a.id}=${selection[a.id]}`);
   return parts.length === 0 ? "default" : parts.join(";");
@@ -845,23 +940,48 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
   };
 
   const axes: StateAxis[] = [{ id: "tab", label: "Tab", kind: "tab", values: view.tabs.map((t) => ({ id: t.id, label: `tab ${t.title}` })) }];
-  const widgetAxes = new Map<string, StateAxis>();
-  const tabWidgets = view.tabs.map((tab) =>
-    tab.items.flatMap((item) => {
-      if (item.widget !== "view") return [];
-      const result = embedded(item.view);
-      if (!result || result.states.length === 0) return [];
-      const axis: StateAxis = {
-        id: `widget:${item.id}`,
-        label: `${item.id} (${item.view})`,
-        kind: "widget",
-        values: result.states.map((s) => ({ id: s.id, label: `${item.view}: ${s.label}` })),
-      };
-      widgetAxes.set(axis.id, axis);
-      axes.push(axis);
-      return [{ item: item.id, view: item.view, axis, result }];
-    }),
-  );
+  // RFC 0001 slice 2 (card 43g): one unit per widget item that varies — an embedded view (its own states) or a series (its groups axis).
+  type TabWidget = { item: string; view: string; axis: StateAxis; result: ViewStatesResult };
+  type TabSeries = { item: string; view: TableView; entity: EntityDocument; groupBy: string; plan: SeriesPlan; axis: StateAxis };
+  type TabUnits = { widgets: TabWidget[]; series: TabSeries[] };
+  const tabUnits: TabUnits[] = view.tabs.map((tab) => {
+    const widgets: TabWidget[] = [];
+    const series: TabSeries[] = [];
+    for (const item of tab.items) {
+      if (item.widget === "view") {
+        const result = embedded(item.view);
+        if (!result || result.states.length === 0) continue;
+        const axis: StateAxis = {
+          id: `widget:${item.id}`,
+          label: `${item.id} (${item.view})`,
+          kind: "widget",
+          values: result.states.map((s) => ({ id: s.id, label: `${item.view}: ${s.label}` })),
+        };
+        axes.push(axis);
+        widgets.push({ item: item.id, view: item.view, axis, result });
+      } else if (item.widget === "series") {
+        const target = findView(ctx, item.view);
+        if (!target || target.kind !== "table") {
+          skipped.push({ id: `series:${item.id}`, reason: target ? `series widget "${item.id}" needs a table view; "${item.view}" is a ${target.kind}` : `series widget "${item.id}" points at view "${item.view}", which is not among the documents` });
+          continue;
+        }
+        const entity = findEntity(ctx, target.entity);
+        if (!entity) {
+          skipped.push({ id: `series:${item.id}`, reason: `series widget "${item.id}" groups over entity "${target.entity}", which is not among the documents` });
+          continue;
+        }
+        const plan = planSeries(item.id, target, entity, item.groupBy, ctx);
+        if ("reason" in plan) {
+          skipped.push({ id: `series:${item.id}`, reason: plan.reason });
+          continue;
+        }
+        const axis: StateAxis = { id: `widget:${item.id}`, label: `${item.id} (${item.view})`, kind: "widget", values: plan.axisValues };
+        axes.push(axis);
+        series.push({ item: item.id, view: target, entity, groupBy: item.groupBy.field, plan, axis });
+      }
+    }
+    return { widgets, series };
+  });
   for (const result of cache.values()) skipped.push(...(result?.skipped.map((s) => ({ id: `${result.view}/${s.id}`, reason: s.reason })) ?? []));
 
   const states: ViewState[] = [];
@@ -872,42 +992,46 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
   let remaining = limit - reserve;
   const tabs = view.tabs.slice(0, limit);
   const allAxes = [...axes, ...viewer.axes];
-  type TabWidgets = (typeof tabWidgets)[number];
-  const stateOf = (tab: DashboardView["tabs"][number], widgets: TabWidgets, picked: AxisSelection, override?: { id: string; label: string; omitViewer: true }): ViewState => {
+  const stateOf = (tab: DashboardView["tabs"][number], units: TabUnits, picked: AxisSelection, override?: { id: string; label: string; omitViewer: true }): ViewState => {
     const selection: Record<string, string> = { tab: tab.id, ...picked };
     // Embedded states are built without viewer axes; the dashboard's viewer and locked record apply to each.
-    const widgetStates = widgets.flatMap((w) => {
+    const widgetStates = units.widgets.flatMap((w) => {
       const state = w.result.states.find((s) => s.id === picked[w.axis.id]);
       return state ? [{ item: w.item, view: w.view, state: { ...state, render: lockRecords(state.render, picked), viewer: viewer.viewerFor(picked) } }] : [];
+    });
+    const seriesWidgets = units.series.flatMap((w) => {
+      const raw = picked[w.axis.id] ?? "one";
+      const choice: SeriesChoice = (SERIES_CHOICES as readonly string[]).includes(raw) ? (raw as SeriesChoice) : "one";
+      return [{ item: w.item, view: w.view.id, groupBy: w.groupBy, groups: choice === "partial" ? "many" : choice, partial: choice === "partial", records: w.plan.seed(choice) }];
     });
     return {
       id: override?.id ?? stateId(allAxes, selection),
       label: override?.label ?? stateLabel(allAxes, selection),
       values: selection,
-      render: { kind: "dashboard", view: view.id, tab: tab.id, widgets: widgetStates, now: ctx.now },
+      render: { kind: "dashboard", view: view.id, tab: tab.id, widgets: widgetStates, ...(seriesWidgets.length > 0 ? { series: seriesWidgets } : {}), now: ctx.now },
       viewer: viewer.viewerFor(picked),
       ...(override ? { omitViewer: override.omitViewer } : {}),
     };
   };
-  let firstPick: { tab: DashboardView["tabs"][number]; widgets: TabWidgets; picked: AxisSelection } | undefined;
+  let firstPick: { tab: DashboardView["tabs"][number]; units: TabUnits; picked: AxisSelection } | undefined;
   /** A state for a tab only exists when that viewer can see the tab; a viewer who sees no tab gets one state, on the first tab. */
   const tabShownFor = (tab: DashboardView["tabs"][number], picked: AxisSelection): boolean => {
     const seen = visibleTabs(view, viewer.viewerFor(picked));
     return seen.length === 0 ? tab === view.tabs[0] : seen.some((t) => t.id === tab.id);
   };
   tabs.forEach((tab, index) => {
-    const widgets = tabWidgets[index] ?? [];
+    const units = tabUnits[index] ?? { widgets: [], series: [] };
     const allot = Math.max(1, Math.floor(remaining / (tabs.length - index)));
-    const combined = combineAxes([...widgets.map((w) => w.axis), ...viewer.axes], allot);
+    const combined = combineAxes([...units.widgets.map((w) => w.axis), ...units.series.map((w) => w.axis), ...viewer.axes], allot);
     if (!combined.complete) complete = false;
     if (combined.strategy === "pairwise") strategy = "pairwise";
     for (const picked of combined.selections) {
       // Left out: a tab this viewer cannot see (the dashboard shows the first visible tab, so the state would repeat it), and a
       // locked record when no widget shows a record.
       if (!tabShownFor(tab, picked)) continue;
-      const state = stateOf(tab, widgets, picked);
+      const state = stateOf(tab, units, picked);
       if (picked[PERMISSION_AXIS] === RECORD_LOCKED && !(state.render.kind === "dashboard" && state.render.widgets.some((w) => hasRecordToLock(w.state.render)))) continue;
-      firstPick ??= { tab, widgets, picked };
+      firstPick ??= { tab, units, picked };
       states.push(state);
     }
     remaining -= combined.selections.length;
@@ -918,8 +1042,8 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
     const shown = visibleTabs(view, viewer.viewerFor(picked))[0];
     const index = shown ? view.tabs.findIndex((t) => t.id === shown.id) : -1;
     const tab = index >= 0 ? (view.tabs[index] ?? firstPick.tab) : firstPick.tab;
-    const widgets = index >= 0 ? (tabWidgets[index] ?? firstPick.widgets) : firstPick.widgets;
-    states.push(stateOf(tab, widgets, picked, { id: VIEWER_NOT_PROVIDED_STATE, label: "viewer not provided", omitViewer: true }));
+    const units = index >= 0 ? (tabUnits[index] ?? firstPick.units) : firstPick.units;
+    states.push(stateOf(tab, units, picked, { id: VIEWER_NOT_PROVIDED_STATE, label: "viewer not provided", omitViewer: true }));
   }
   for (const result of cache.values()) if (result && !result.complete) complete = false;
   return { view: view.id, axes: allAxes, states, skipped, strategy, complete };
