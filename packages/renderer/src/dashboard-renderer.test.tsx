@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Condition, DashboardView, DataAdapter, EntityDocument, FormView, TableView, ViewDocument } from "@yadad/core";
+import type { Condition, DashboardView, DataAdapter, EntityDocument, FormView, Registry, SeriesWidgetProps, TableView, ViewDocument } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { ReactNode } from "react";
 import { DashboardRenderer } from "./dashboard-renderer.js";
 
 afterEach(cleanup);
@@ -384,3 +385,237 @@ describe("stat widgets", () => {
 });
 
 const NF = (n: number): string => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
+
+// RFC 0001 slice 2 (card 43f): the series widget reaches widgets.series with computed groups and drawn labels.
+describe("series widgets", () => {
+  const exercise: EntityDocument = {
+    kind: "entity",
+    specVersion: 7,
+    id: "exercise",
+    revision: 1,
+    fields: [{ id: "name", type: "text", label: "Name" }],
+  };
+  const sets: EntityDocument = {
+    kind: "entity",
+    specVersion: 7,
+    id: "set",
+    revision: 1,
+    fields: [
+      { id: "exercise", type: "reference", label: "Exercise", entity: "exercise" },
+      { id: "modality", type: "select", label: "Modality", options: { source: "static", values: ["strength", "cardio"] } },
+      { id: "warmup", type: "boolean", label: "Warm-up" },
+      { id: "note", type: "text", label: "Note" },
+      { id: "day", type: "date", label: "Day" },
+      { id: "weight", type: "number", label: "Weight" },
+    ],
+  };
+  const tbl: TableView = { kind: "table", specVersion: 7, id: "sets", entity: "set", revision: 1, dataSource: "default", columns: [{ field: "note" }] };
+  const board = (items: DashboardView["tabs"][number]["items"]): DashboardView => ({ kind: "dashboard", specVersion: 7, id: "b", revision: 1, tabs: [{ id: "t", title: "T", items }] });
+
+  type SeriesSpy = (props: SeriesWidgetProps) => ReactNode;
+  function seriesRegistry(): { registry: Registry<ReactNode>; calls: () => SeriesWidgetProps[] } {
+    const calls: SeriesWidgetProps[] = [];
+    const Series: SeriesSpy = (props) => {
+      calls.push(props);
+      return (
+        <div data-testid="series">
+          <span>{props.label}</span>
+          <span data-testid="series-measure">{props.measureLabel}</span>
+          <span data-testid="series-skipped">{props.skipped}</span>
+          {props.partial ? <small data-testid="series-partial">{`${props.partial.read}/${props.partial.total}`}</small> : null}
+          {props.groups.map((g) => (
+            <span key={g.key} data-testid="series-group">
+              {g.key}|{g.label}|{g.text}
+            </span>
+          ))}
+        </div>
+      );
+    };
+    return { registry: { ...mockRegistry, widgets: { ...mockRegistry.widgets, series: Series } }, calls: () => calls };
+  }
+
+  async function seedSets(): Promise<ReturnType<typeof createMemoryAdapter>> {
+    const db = createMemoryAdapter();
+    await db.create("exercise", { name: "Squat" }, { entityRevision: 1 });
+    await db.create("exercise", { name: "Bench" }, { entityRevision: 1 });
+    await db.create("set", { exercise: "1", modality: "strength", warmup: false, note: "fast", day: "2026-10-05", weight: 100 }, { entityRevision: 1 });
+    await db.create("set", { exercise: "2", modality: "strength", warmup: true, note: "fast", day: "2026-10-05", weight: 60 }, { entityRevision: 1 });
+    await db.create("set", { exercise: "1", modality: "cardio", note: "slow", day: "2026-10-07", weight: 0 }, { entityRevision: 1 });
+    return db;
+  }
+
+  function show(d: DashboardView, db: DataAdapter, registry: Registry<ReactNode>, entities?: ReadonlyMap<string, EntityDocument>) {
+    render(
+      <DashboardRenderer
+        dashboard={d}
+        documents={{ entities: entities ?? new Map([["set", sets], ["exercise", exercise]]), views: new Map([[tbl.id, tbl]]) }}
+        registry={registry}
+        dataSources={new Map([["default", db]])}
+      />,
+    );
+  }
+  const groupTexts = (): string[] => [...document.querySelectorAll("[data-testid='series-group']")].map((el) => el.textContent ?? "");
+
+  const series = (id: string, groupBy: { field: string; bucket?: "day" | "week" | "month" }, extra: Partial<Extract<DashboardView["tabs"][number]["items"][number], { widget: "series" }>> = {}): DashboardView["tabs"][number]["items"][number] => ({
+    id,
+    x: 0,
+    y: 0,
+    w: 6,
+    h: 3,
+    widget: "series" as const,
+    label: `Series ${id}`,
+    view: "sets",
+    groupBy,
+    measure: { op: "count" as const },
+    display: "bar" as const,
+    ...extra,
+  });
+
+  test("a registry with no widgets.series gets an error summary naming the key", async () => {
+    const db = await seedSets();
+    show(board([series("s", { field: "modality" })]), db, mockRegistry);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("This registry has no widgets.series component, so the series widget s cannot be drawn.");
+    expect(alert.querySelector("[data-path='/widgets/series'][data-code='required']")).toBeTruthy();
+  });
+
+  test("select and text groups keep the raw value as the label; measureLabel names the measure", async () => {
+    const db = await seedSets();
+    const { registry, calls } = seriesRegistry();
+    show(board([series("by_modality", { field: "modality" }, { measure: { op: "sum", field: "weight" } })]), db, registry);
+    await waitFor(() => expect(groupTexts()).toHaveLength(2));
+    expect(groupTexts()).toEqual(["cardio|cardio|0", "strength|strength|160"]);
+    expect(document.querySelector("[data-testid='series-measure']")!.textContent).toBe("Sum of weight");
+    expect(calls().at(-1)!.display).toBe("bar");
+    expect(calls().at(-1)!.loading).toBe(false);
+  });
+
+  test("boolean groups label Yes/No", async () => {
+    const db = await seedSets();
+    const { registry } = seriesRegistry();
+    show(board([series("by_warmup", { field: "warmup" })]), db, registry);
+    await waitFor(() => expect(groupTexts()).toHaveLength(2));
+    expect(groupTexts()).toEqual(["false|No|1", "true|Yes|1"]); // the third row has no warmup at all: skipped, not a group
+  });
+
+  test("reference groups label through the references hook; an unwired target warns (39b)", async () => {
+    const db = await seedSets();
+    const { registry } = seriesRegistry();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    show(board([series("by_exercise", { field: "exercise" })]), db, registry, new Map([["set", sets]]));
+    await waitFor(() => expect(groupTexts()).toHaveLength(2));
+    expect(groupTexts()).toEqual(["1|1|2", "2|2|1"]); // target entity never wired: the hook says the raw id and warns
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('points at entity "exercise"'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  test("reference groups show the target's display value when wired", async () => {
+    const db = await seedSets();
+    const { registry } = seriesRegistry();
+    show(board([series("by_exercise", { field: "exercise" })]), db, registry);
+    await waitFor(() => expect(groupTexts().some((t) => t.includes("Squat|"))).toBe(true));
+  });
+
+  test("date groups format with the viewer's locale: day, week, month", async () => {
+    const db = await seedSets();
+    const { registry } = seriesRegistry();
+    const dayDash = new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeZone: "UTC" }).format(new Date("2026-10-05T00:00:00Z"));
+    show(board([series("by_day", { field: "day" }, { sort: { by: "group", dir: "asc" } })]), db, registry);
+    await waitFor(() => expect(groupTexts().length).toBeGreaterThanOrEqual(2));
+    expect(groupTexts()[0]).toBe(`2026-10-05|${dayDash}|2`);
+  });
+
+  test("week buckets label 'Week of <date>' and month buckets '<Month YYYY>'", async () => {
+    const db = await seedSets();
+    const { registry } = seriesRegistry();
+    const weekLabel = `Week of ${new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeZone: "UTC" }).format(new Date("2026-10-05T00:00:00Z"))}`;
+    show(board([series("by_week", { field: "day", bucket: "week" })]), db, registry);
+    await waitFor(() => expect(groupTexts()).toHaveLength(1));
+    expect(groupTexts()[0]).toBe("2026-10-05|" + weekLabel + "|3");
+
+    const { registry: monthReg } = seriesRegistry();
+    cleanup();
+    show(board([series("by_month", { field: "day", bucket: "month" })]), db, monthReg);
+    await waitFor(() => expect(groupTexts()).toHaveLength(1));
+    expect(groupTexts()[0]).toBe("2026-10|October 2026|3");
+  });
+
+  test("a gap bucket draws a dash for avg and 0 for count", async () => {
+    const db = createMemoryAdapter();
+    await db.create("set", { day: "2026-10-01", weight: 10 }, { entityRevision: 1 });
+    await db.create("set", { day: "2026-10-03", weight: 30 }, { entityRevision: 1 });
+    const { registry } = seriesRegistry();
+    show(board([series("gap_avg", { field: "day" }, { measure: { op: "avg", field: "weight" } })]), db, registry);
+    await waitFor(() => expect(groupTexts()).toHaveLength(3));
+    expect(groupTexts()).toEqual(["2026-10-01|" + new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeZone: "UTC" }).format(new Date("2026-10-01T00:00:00Z")) + "|10", "2026-10-02|" + new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeZone: "UTC" }).format(new Date("2026-10-02T00:00:00Z")) + "|—", "2026-10-03|" + new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeZone: "UTC" }).format(new Date("2026-10-03T00:00:00Z")) + "|30"]);
+  });
+
+  test("skipped records are counted and passed through", async () => {
+    const db = await seedSets();
+    await db.create("set", { note: "groupless" }, { entityRevision: 1 });
+    const { registry } = seriesRegistry();
+    show(board([series("by_modality", { field: "modality" })]), db, registry);
+    await waitFor(() => expect(document.querySelector("[data-testid='series-skipped']")!.textContent).toBe("1"));
+  });
+
+  test("past the ceiling the partial note reaches the component", async () => {
+    const db = createMemoryAdapter();
+    await db.batch("set", { create: Array.from({ length: 5001 }, (_, i) => ({ modality: i % 2 === 0 ? "strength" : "cardio" })) }, { entityRevision: 1 });
+    const { registry } = seriesRegistry();
+    show(board([series("by_modality", { field: "modality" })]), db, registry);
+    const note = await screen.findByTestId("series-partial");
+    expect(note.textContent).toBe("5000/5001"); // the contract hands raw numbers; the component formats
+  });
+
+  test("a reload refetches the series", async () => {
+    const db = await seedSets();
+    const { registry } = seriesRegistry();
+    const find = vi.fn(db.find.bind(db));
+    const dash: DashboardView = {
+      kind: "dashboard",
+      specVersion: 7,
+      id: "b",
+      revision: 1,
+      tabs: [
+        {
+          id: "t",
+          title: "T",
+          items: [
+            { id: "tbl", x: 0, y: 0, w: 6, h: 4, widget: "view", view: "sets" },
+            series("by_note", { field: "note" }),
+          ],
+        },
+      ],
+    };
+    const editable: TableView = { ...tbl, columns: [{ field: "note", editable: true }] };
+    render(
+      <DashboardRenderer
+        dashboard={dash}
+        documents={{ entities: new Map([["set", sets], ["exercise", exercise]]), views: new Map([[tbl.id, editable]]) }}
+        registry={registry}
+        dataSources={new Map([["default", { ...db, find } satisfies DataAdapter]])}
+      />,
+    );
+    await waitFor(() => expect(groupTexts()).toEqual(["fast|fast|2", "slow|slow|1"]));
+    const callsBefore = find.mock.calls.length;
+
+    const row = () => screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(row()).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(row()).getByRole("textbox", { name: "Note" }), { target: { value: "slow" } });
+    fireEvent.click(within(row()).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(groupTexts()).toEqual(["fast|fast|1", "slow|slow|2"]));
+    expect(find.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  test("a series whose view, measure or groupBy field is broken is reported, not rendered", async () => {
+    const db = await seedSets();
+    const { registry } = seriesRegistry();
+    show(board([series("bad_measure", { field: "modality" }, { measure: { op: "sum", field: "ghost" } as never })]), db, registry);
+    const alert1 = await screen.findByRole("alert");
+    expect(alert1.textContent).toContain('Field "ghost" does not exist');
+    cleanup();
+    show(board([series("bad_group", { field: "ghost" })]), db, registry);
+    const alert2 = await screen.findByRole("alert");
+    expect(alert2.textContent).toContain('Field "ghost" does not exist');
+  });
+});

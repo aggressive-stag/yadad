@@ -9,12 +9,13 @@ import type {
   Measure,
   Registry,
   ResolvedViewer,
+  SeriesWidget,
   StatWidget,
   TableView,
 } from "@yadad/core";
 import { conditionFields, jsonPointer } from "@yadad/core";
-import { AGGREGATE_MAX_RECORDS, aggregate, visibleItems, visibleTabs } from "@yadad/runtime";
-import type { AggregateResult } from "@yadad/runtime";
+import { AGGREGATE_MAX_RECORDS, aggregate, aggregateSeries, visibleItems, visibleTabs } from "@yadad/runtime";
+import type { AggregateResult, SeriesResult, SeriesSpec } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import type { DocumentSet } from "./document-set.js";
@@ -23,6 +24,7 @@ import { BoardRenderer } from "./board-renderer.js";
 import { CalendarRenderer } from "./calendar-renderer.js";
 import { FormRenderer } from "./form-renderer.js";
 import type { FormRendererProps } from "./form-renderer.js";
+import { useReferences } from "./references.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -112,6 +114,11 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
     if (!view || !entity) return null; // reported by checkDashboard
     if (item.widget === "count" || item.widget === "stat") {
       return view.kind === "table" ? <CountLoader widget={item} view={view} entity={entity} registry={registry} dataSources={dataSources} reloadKey={reloadKey} /> : null;
+    }
+    if (item.widget === "series") {
+      return view.kind === "table" ? (
+        <SeriesLoader widget={item} itemId={item.id} view={view} entity={entity} registry={registry} dataSources={dataSources} entities={documents.entities} reloadKey={reloadKey} {...(formatting ? { formatting } : {})} />
+      ) : null;
     }
     if (view.kind === "form") {
       return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} {...(formatting ? { formatting } : {})} />;
@@ -251,6 +258,145 @@ function CountLoader({
 
 const COUNT: Measure = { op: "count" };
 
+/** A date series' group label, formatted for the viewer (card 43f): short day, "Week of <date>", "<Month YYYY>". */
+function seriesDateLabel(key: string, bucket: "day" | "week" | "month", formatting: FieldFormatting | undefined): string {
+  // A date is a calendar date: format it in UTC so the host's zone cannot shift it a day.
+  const locale = formatting?.locale;
+  if (bucket === "month") return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${key}-01T00:00:00Z`));
+  const short = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeZone: "UTC" }).format(new Date(`${key}T00:00:00Z`));
+  return bucket === "week" ? `Week of ${short}` : short;
+}
+
+/** What each group's number is, in words — the value-axis label the chart shows (RFC 0001 slice 2, decision 6). */
+export function measureLabel(measure: Measure): string {
+  switch (measure.op) {
+    case "count":
+      return "Count";
+    case "countDistinct":
+      return `Distinct ${measure.field}`;
+    case "min":
+      return `Minimum ${measure.field}`;
+    case "max":
+      return `Maximum ${measure.field}`;
+    case "sum":
+    case "avg": {
+      const what = measure.op === "sum" ? "Sum" : "Average";
+      return "product" in measure ? `${what} of ${measure.product[0]} \u00d7 ${measure.product[1]}` : `${what} of ${measure.field}`;
+    }
+  }
+}
+
+/**
+ * Loads a series and hands the registry's `widgets.series` its ready-to-draw
+ * props (RFC 0001 slice 2): the engine computes groups, buckets, gaps and the
+ * cap through `aggregateSeries`, and this loader adds only what needs a document
+ * or a locale — group labels (select/text raw, boolean Yes/No, dates formatted,
+ * reference ids resolved through the references hook) and the measure's words.
+ * The component draws; nothing here does. With no `widgets.series` in the
+ * registry the widget names the missing key, as a missing `layout.Calendar` does.
+ */
+function SeriesLoader({
+  widget,
+  itemId,
+  view,
+  entity,
+  registry,
+  dataSources,
+  entities,
+  formatting,
+  reloadKey,
+}: {
+  widget: SeriesWidget;
+  /** The grid item's id, for error paths. */
+  itemId: string;
+  view: TableView;
+  entity: EntityDocument;
+  registry: Registry<ReactNode>;
+  dataSources: ReadonlyMap<string, DataAdapter>;
+  entities: ReadonlyMap<string, EntityDocument>;
+  formatting?: FieldFormatting;
+  reloadKey: number;
+}): ReactNode {
+  const [result, setResult] = useState<SeriesResult | undefined>(undefined);
+  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const adapter = dataSources.get(view.dataSource);
+  const filter = useMemo((): Condition | undefined => {
+    const parts = [view.filter, widget.filter].filter((c): c is Condition => c !== undefined);
+    return parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { op: "and", conditions: parts };
+  }, [view.filter, widget.filter]);
+  const groupField = entity.fields.find((f) => f.id === widget.groupBy.field);
+  const spec: SeriesSpec = useMemo(
+    () => ({
+      groupBy: { ...widget.groupBy, type: groupField?.type === "date" ? "date" : groupField?.type === "boolean" ? "boolean" : groupField?.type === "reference" ? "reference" : "text" },
+      measure: widget.measure,
+      ...(widget.sort ? { sort: widget.sort } : {}),
+      ...(widget.limit !== undefined ? { limit: widget.limit } : {}),
+    }),
+    // The document is stable; stringify keeps the effect's identity honest.
+    [JSON.stringify(widget.groupBy), JSON.stringify(widget.measure), JSON.stringify(widget.sort ?? null), widget.limit ?? null, groupField?.type],
+  );
+
+  useEffect(() => {
+    if (!adapter) return;
+    let current = true;
+    aggregateSeries(adapter, entity.id, spec, filter ? { filter } : {})
+      .then((next) => {
+        if (!current) return;
+        setFailure(undefined);
+        setResult(next);
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setResult(undefined);
+        setFailure(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      current = false;
+    };
+  }, [adapter, entity.id, spec, filter, reloadKey]);
+
+  // Reference groups label through the same hook the tables use, so the 39b
+  // unwired-target warning fires the same way when the host forgot an entity.
+  const referenceField = groupField?.type === "reference" ? groupField : undefined;
+  const wants = useMemo(
+    () => (referenceField && result ? result.groups.map((g) => ({ field: referenceField, id: g.key })) : []),
+    [referenceField, result],
+  );
+  const references = useReferences(adapter, entities, [], wants, reloadKey);
+
+  const { ErrorSummary } = registry.layout;
+  if (failure !== undefined) {
+    return <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${failure}`, hint: "Reload the page or try again later." }]} />;
+  }
+  const Series = registry.widgets.series;
+  if (!Series) {
+    return (
+      <ErrorSummary
+        errors={[{ path: "/widgets/series", code: "required", message: `This registry has no widgets.series component, so the series widget ${itemId} cannot be drawn.`, hint: "Add a widgets.series component to the registry." }]}
+      />
+    );
+  }
+
+  const bucket = widget.groupBy.bucket ?? "day";
+  const groups = (result?.groups ?? []).map((g) => ({
+    key: g.key,
+    label:
+      groupField?.type === "boolean"
+        ? g.key === "true"
+          ? "Yes"
+          : "No"
+        : groupField?.type === "date"
+          ? seriesDateLabel(g.key, bucket, formatting)
+          : referenceField
+            ? references.display(referenceField, g.key).label
+            : g.key,
+    value: g.value,
+    text: g.value === undefined ? NO_VALUE : NUMBER_FORMAT.format(g.value),
+  }));
+
+  return <Series label={widget.label} display={widget.display} groups={groups} skipped={result?.skipped ?? 0} {...(result?.partial ? { partial: result.partial } : {})} loading={result === undefined} measureLabel={measureLabel(widget.measure)} />;
+}
+
 /** Every widget must point at a view that exists and fits it, with its entity and data source. */
 function checkDashboard(dashboard: DashboardView, documents: DocumentSet, dataSources: ReadonlyMap<string, DataAdapter>): DocumentError[] {
   const errors: DocumentError[] = [];
@@ -261,19 +407,22 @@ function checkDashboard(dashboard: DashboardView, documents: DocumentSet, dataSo
       const view = documents.views.get(item.view);
       if (!view) return add([...path, "view"], `No view with id "${item.view}".`, `Use one of: ${[...documents.views.keys()].join(", ")}.`);
       if (view.kind === "dashboard") return add([...path, "view"], `"${item.view}" is a dashboard; dashboards cannot be nested.`, "Embed a form, table or calendar view.");
-      if ((item.widget === "count" || item.widget === "stat") && view.kind !== "table") return add([...path, "view"], `A ${item.widget} widget needs a table view; "${item.view}" is a ${view.kind}.`, "Point it at a table view.");
+      if ((item.widget === "count" || item.widget === "stat" || item.widget === "series") && view.kind !== "table") return add([...path, "view"], `A ${item.widget} widget needs a table view; "${item.view}" is a ${view.kind}.`, "Point it at a table view.");
       const entity = documents.entities.get(view.entity);
       if (!entity) return add([...path, "view"], `View "${view.id}" is for entity "${view.entity}", which is not loaded.`, "Load that entity document.");
       if (!dataSources.has(view.dataSource)) add([...path, "view"], `View "${view.id}" uses data source "${view.dataSource}", which was not provided.`, "Add it to the dataSources the host passes in.");
-      if ((item.widget === "count" || item.widget === "stat") && item.filter) {
+      if ((item.widget === "count" || item.widget === "stat" || item.widget === "series") && item.filter) {
         for (const field of conditionFields(item.filter)) {
           if (!entity.fields.some((f) => f.id === field)) add([...path, "filter"], `Field "${field}" does not exist on entity "${entity.id}".`, `Use one of: ${entity.fields.map((f) => f.id).join(", ")}.`);
         }
       }
-      if (item.widget === "stat") {
+      if (item.widget === "stat" || item.widget === "series") {
         for (const field of measureFields(item.measure)) {
           if (!entity.fields.some((f) => f.id === field)) add([...path, "measure"], `Field "${field}" does not exist on entity "${entity.id}".`, `Use one of: ${entity.fields.map((f) => f.id).join(", ")}.`);
         }
+      }
+      if (item.widget === "series" && !entity.fields.some((f) => f.id === item.groupBy.field)) {
+        add([...path, "groupBy"], `Field "${item.groupBy.field}" does not exist on entity "${entity.id}".`, `Use one of: ${entity.fields.map((f) => f.id).join(", ")}.`);
       }
       return undefined;
     }),
