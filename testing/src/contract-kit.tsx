@@ -7,7 +7,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { FIELD_TYPES, ForbiddenError, SPEC_VERSION } from "@yadad/core";
-import type { BoardProps, CalendarDayProps, CalendarProps, DataAdapter, DataRecord, DatetimeField, DiffSegment, DocumentError, EntityDocument, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, RecordValues, Registry, RequiredFieldEntries, TableView, TextField } from "@yadad/core";
+import type { BoardProps, CalendarDayProps, CalendarProps, DataAdapter, DataRecord, DatetimeField, DiffSegment, DocumentError, EntityDocument, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, RecordValues, Registry, RequiredFieldEntries, SeriesGroupProps, SeriesWidgetProps, TableView, TextField } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -169,6 +169,7 @@ export function registryContractChecks(registry: Registry<ReactNode>, samples: F
     ...layoutChecks(registry),
     ...calendarChecks(registry),
     ...boardChecks(registry),
+    ...seriesChecks(registry),
     ...dialogChecks(registry),
     ...datetimeChecks(registry),
     ...actionButtonChecks(registry),
@@ -1334,6 +1335,64 @@ function boardChecks(registry: Registry<ReactNode>): ContractCheck[] {
       if (container.querySelector('[aria-busy="true"]') === null) problems.push('While loading, the board must set aria-busy="true".');
       if (!screen.queryByText(/Showing the first 1,000 of 1,412 cards/)) problems.push("Board must show the notice above the columns.");
       problems.push(...(await axeProblems(container, "board loading")));
+    }),
+  ];
+}
+
+/**
+ * Checks for `widgets.series` (RFC 0001 slice 2). The key is optional, so a
+ * registry without a series has no series checks; one with a series must pass
+ * all. A chart is only real if its numbers are in the accessible tree: an SVG
+ * full of bars is decoration, and the groups are data only as text.
+ */
+function seriesChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const Series = registry.widgets.series;
+  if (!Series) return [];
+
+  const base: Pick<SeriesWidgetProps, "label" | "display" | "loading" | "measureLabel"> = {
+    label: "Sets per day",
+    display: "bar",
+    loading: false,
+    measureLabel: "Sum of sets",
+  };
+  const groups: SeriesGroupProps[] = [
+    { key: "2026-10-01", label: "Thursday 1 October", value: 12, text: "12" },
+    { key: "2026-10-02", label: "Friday 2 October", value: undefined, text: "—" },
+    { key: "2026-10-03", label: "Saturday 3 October", value: 3.5, text: "3.5" },
+  ];
+  const namedBy = (name: string): boolean =>
+    ["group", "region", "img", "figure", "table"].some((role) => screen.queryByRole(role as Parameters<typeof screen.queryByRole>[0], { name }) !== null);
+
+  return [
+    layoutCheck("series widget renders its label as its accessible name", async (problems) => {
+      const { container } = render(<Series {...base} groups={groups} skipped={0} />);
+      if (!namedBy(base.label)) problems.push('The series widget must be reachable by its label as an accessible name (role="group", "region", "img", "figure" or a named table).');
+      problems.push(...(await axeProblems(container, "series")));
+    }),
+
+    layoutCheck("series widget shows every group's label and text in the accessible tree", async (problems) => {
+      const { container } = render(<Series {...base} groups={groups} skipped={1} partial={{ read: 3, total: 9 }} />);
+      const text = container.textContent ?? "";
+      for (const g of groups) {
+        if (!text.includes(g.label)) problems.push(`Group "${g.key}" must show its label "${g.label}" as text — a chart of bars alone is decoration, not data.`);
+        if (!text.includes(g.text)) problems.push(`Group "${g.key}" must show its formatted text "${g.text}" as text (the dash for a gap bucket counts).`);
+      }
+      if (!text.includes(base.measureLabel)) problems.push(`The series widget must show its measureLabel ("${base.measureLabel}") so a number can be read.`);
+      problems.push(...(await axeProblems(container, "series with data")));
+    }),
+
+    layoutCheck("series widget survives empty groups and a value-less group", async (problems) => {
+      // Two separate documents: one body holding both would let the second
+      // render hide the first one's disappearance.
+      cleanup();
+      const { container } = render(<Series {...base} groups={[]} skipped={0} />);
+      if (container.childElementCount === 0) {
+        problems.push("With no groups the series widget must still render something (its label, or an empty-state), not unmount itself.");
+      }
+      cleanup();
+      render(<Series {...base} groups={[{ key: "k", label: "Empty", value: undefined, text: "—" }]} skipped={4} />);
+      const text = document.body.textContent ?? "";
+      if (!text.includes("Empty") || !text.includes("—")) problems.push("A group whose value is undefined must still render its label and its dash text.");
     }),
   ];
 }

@@ -20,6 +20,7 @@ import type {
   Registry,
   SectionProps,
   SelectField,
+  SeriesWidgetProps,
   TableProps,
   TabsProps,
   TextField,
@@ -43,7 +44,7 @@ export const mockRegistry: Registry<ReactNode> = {
     reference: { type: "reference", Input: MockReferenceInput, Display: MockReferenceDisplay },
   },
   layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard, Dialog: MockDialog },
-  widgets: { count: MockCount },
+  widgets: { count: MockCount, series: MockSeries },
 };
 
 /** Attributes every mock control shares. */
@@ -399,6 +400,48 @@ function MockCount({ label, value, text }: CountWidgetProps): ReactNode {
   return (
     <div data-testid="count">
       <span>{label}</span> <strong>{text ?? value ?? "…"}</strong>
+    </div>
+  );
+}
+
+/**
+ * A series widget as a plain table: one row per group with its label and its
+ * formatted value, plus notes for skipped records and a partial read. The
+ * contract wants every group in the accessible tree, so this puts them there
+ * as text; the drawing (bars, lines) is the components repo's job.
+ */
+function MockSeries({ label, display, groups, skipped, partial, loading, error, measureLabel }: SeriesWidgetProps): ReactNode {
+  return (
+    <div data-testid="series" data-display={display} role="group" aria-label={label}>
+      <span data-testid="series-label">{label}</span>
+      {loading ? (
+        <span data-testid="series-loading">loading…</span>
+      ) : error !== undefined ? (
+        <span data-testid="series-error">{error}</span>
+      ) : (
+        <table data-testid="series-table" aria-label={`${label}, ${measureLabel}`}>
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th>{measureLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((g) => (
+              <tr key={g.key} data-testid={`series-group-${g.key}`}>
+                <td>{g.label}</td>
+                <td>{g.text}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {skipped > 0 && <span data-testid="series-skipped">{skipped} records without a group</span>}
+      {partial !== undefined && (
+        <span data-testid="series-partial">
+          {partial.read} of {partial.total} records
+        </span>
+      )}
     </div>
   );
 }

@@ -294,3 +294,35 @@ describe("the kit's RFC 0007 checks (dialog, datetime, diff, row actions)", () =
     );
   });
 });
+
+describe("the kit's series checks", () => {
+  const run = async (registry: Registry<ReactNode>, name: string) => (await registryContractChecks(registry).find((c) => c.name.startsWith(name))!.run());
+  const withSeries = (Replacement: NonNullable<Registry<ReactNode>["widgets"]["series"]>): Registry<ReactNode> => ({ ...mockRegistry, widgets: { ...mockRegistry.widgets, series: Replacement } });
+
+  test("a registry without a series has no series checks", () => {
+    const { series: _series, ...widgets } = mockRegistry.widgets;
+    expect(registryContractChecks({ ...mockRegistry, widgets }).filter((c) => c.name.includes("series widget"))).toEqual([]);
+    expect(registryContractChecks(mockRegistry).filter((c) => c.name.includes("series widget")).length).toBeGreaterThan(0);
+  });
+
+  test("a chart of bars with no text fails every series check", async () => {
+    // An SVG-only chart: nothing in the accessible tree names it, no group label
+    // or value is text. This is the failure mode the checks exist to catch.
+    const registry = withSeries(({ groups }) => (
+      <svg data-testid="series" role="img">
+        {groups.map((g) => (
+          <rect key={g.key} width={g.value ?? 0} height={10} />
+        ))}
+      </svg>
+    ));
+    expect(await run(registry, "layout: series widget renders its label")).toEqual(expect.arrayContaining([expect.stringContaining("accessible name")]));
+    const missing = await run(registry, "layout: series widget shows every group");
+    expect(missing).toEqual(expect.arrayContaining([expect.stringContaining("Thursday 1 October"), expect.stringContaining("Sum of sets")]));
+    expect(missing).toEqual(expect.arrayContaining([expect.stringContaining("12"), expect.stringContaining("3.5")]));
+  });
+
+  test("a series that unmounts itself when there is nothing to draw fails", async () => {
+    const registry = withSeries(({ groups }) => (groups.length === 0 ? null : <div role="group" aria-label="x">{groups.map((g) => <span key={g.key}>{g.label} {g.text}</span>)}</div>));
+    expect(await run(registry, "layout: series widget survives empty groups")).toEqual([expect.stringContaining("not unmount itself")]);
+  });
+});

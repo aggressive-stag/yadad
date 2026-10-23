@@ -473,7 +473,8 @@ describe("series widgets", () => {
 
   test("a registry with no widgets.series gets an error summary naming the key", async () => {
     const db = await seedSets();
-    show(board([series("s", { field: "modality" })]), db, mockRegistry);
+    const { series: _series, ...widgets } = mockRegistry.widgets;
+    show(board([series("s", { field: "modality" })]), db, { ...mockRegistry, widgets });
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("This registry has no widgets.series component, so the series widget s cannot be drawn.");
     expect(alert.querySelector("[data-path='/widgets/series'][data-code='required']")).toBeTruthy();
