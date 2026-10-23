@@ -1,5 +1,20 @@
 # @yadad/testing
 
+## 0.10.0
+
+### Minor Changes
+
+- d902a53: Series widgets get their own states. A `series` grid item on a dashboard adds a `widget:<itemId>` axis with `none`, `one`, `many` and a `partial` read (43a decision 7), and the state's `render.series` entry carries the records that make exactly that many groups — distinct `groupBy` values that still pass the view's filter and the entity's validation, dates spread over months when the widget buckets by month, the table padded past the aggregate cap for `partial`. A field that can show no group under the filter skips the widget with a reason instead of shipping an empty chart. The state adapter seeds those records over the collection widgets', so a series state's chart, computed through the adapter by `aggregateSeries`, shows the groups its axis picked.
+- 9cad9a4: Series widgets get a mock and a contract. `mockRegistry.widgets.series` draws a group as a plain table — one row per group with its label and formatted text, notes for skipped records and a partial read — so engine tests and the state sweep can check `widgets.series` without the components repo. The contract kit gained `seriesChecks`: a registry that ships `widgets.series` must name it by its label, carry every group's label and text in the accessible tree (a chart of bars alone is decoration, not data), show its `measureLabel`, and survive `groups: []` and a gap bucket with no value without throwing or unmounting itself. A registry without the key is skipped, as every optional key is.
+
+### Patch Changes
+
+- Updated dependencies [6a45b28]
+- Updated dependencies [d902a53]
+- Updated dependencies [7a1e601]
+  - @yadad/runtime@0.10.0
+  - @yadad/core@0.13.0
+
 ## 0.9.0
 
 ### Minor Changes

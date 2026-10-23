@@ -1,5 +1,17 @@
 # @yadad/runtime
 
+## 0.10.0
+
+### Minor Changes
+
+- 6a45b28: aggregateSeries(): the series widget's computation (RFC 0001 slice 2). Pages the entity like aggregate() — same 500-per-request walk, same 5000-record ceiling, same partial — and folds one slice-1 measure per group. Group values are exact (select, boolean, reference id, text) or date buckets (day, ISO-Monday week, YYYY-MM month); records without a group value are skipped and counted; a date series sorted by group has its empty buckets filled with 0 or no-value per op. Labels, formatting and charts stay out of the engine.
+- d902a53: Series widgets get their own states. A `series` grid item on a dashboard adds a `widget:<itemId>` axis with `none`, `one`, `many` and a `partial` read (43a decision 7), and the state's `render.series` entry carries the records that make exactly that many groups — distinct `groupBy` values that still pass the view's filter and the entity's validation, dates spread over months when the widget buckets by month, the table padded past the aggregate cap for `partial`. A field that can show no group under the filter skips the widget with a reason instead of shipping an empty chart. The state adapter seeds those records over the collection widgets', so a series state's chart, computed through the adapter by `aggregateSeries`, shows the groups its axis picked.
+
+### Patch Changes
+
+- Updated dependencies [7a1e601]
+  - @yadad/core@0.13.0
+
 ## 0.9.3
 
 ### Patch Changes

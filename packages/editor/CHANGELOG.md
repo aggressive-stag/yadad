@@ -1,5 +1,19 @@
 # @yadad/editor
 
+## 0.14.0
+
+### Minor Changes
+
+- 247439a: The dashboard layout editor gained the series widget (RFC 0001 slice 2). The add-widget list offers "Series of <table>" beside the count and the stat, seeded with the first groupable field, the first number field's sum (or a count) and a bar display. The series panel picks the table view, the groupBy field, the bucket (shown only when the groupBy is a date), the display, the sort and the limit, and reuses the stat's measure picker untouched, so a series is edited exactly like a stat; its filter uses the same condition builder. Every choice list is the validator's own enum or its field-type rule, so no pick can leave an invalid widget behind. The patch functions (setSeriesView, setSeriesGroupBy, setSeriesBucket, setSeriesMeasure, setSeriesDisplay, setSeriesSort, setSeriesLimit) mirror the validator's checks one-for-one and refuse with its hints; pointing a series at another entity's table reseeds its groupBy and measure for that entity rather than dropping the required keys. Field-impact reports (the rename and delete refusals) now list a series' filter, groupBy field and measure fields.
+
+### Patch Changes
+
+- Updated dependencies [6a45b28]
+- Updated dependencies [d902a53]
+- Updated dependencies [7a1e601]
+  - @yadad/runtime@0.10.0
+  - @yadad/core@0.13.0
+
 ## 0.13.0
 
 ### Minor Changes
