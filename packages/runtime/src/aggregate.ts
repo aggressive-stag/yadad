@@ -1,4 +1,5 @@
-import type { Condition, DataAdapter, FieldValue, Measure, RecordValues } from "@yadad/core";
+import type { Condition, DataAdapter, FieldValue, Measure, RecordValues, SeriesBucket, SeriesSortBy, SeriesSortDir } from "@yadad/core";
+import { isIsoDate, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX } from "@yadad/core";
 import { resolveRelativeDates } from "./condition.js";
 import { walkWithNext } from "./memory-adapter.js";
 
@@ -139,4 +140,202 @@ export async function aggregate(adapter: DataAdapter, entityId: string, measure:
     if (page.items.length === 0 || read >= total) break;
   }
   return { value: acc.result(), partial: total > read, read, total };
+}
+
+/** How a series groups records: one field, its type read from the entity, dates optionally bucketed. */
+export interface SeriesSpec {
+  readonly groupBy: { readonly field: string; readonly type: "select" | "boolean" | "reference" | "text" | "date"; readonly bucket?: SeriesBucket };
+  readonly measure: Measure;
+  readonly sort?: { readonly by: SeriesSortBy; readonly dir: SeriesSortDir };
+  /** Groups kept; defaults to SERIES_LIMIT_DEFAULT (50). Values above SERIES_LIMIT_MAX (200) are clamped. */
+  readonly limit?: number;
+}
+
+/** One group of a series: its key and the measure's value over the records that carry it. */
+export interface SeriesGroup {
+  /** The group's exact field value, or the bucket's date/period (RFC 0001 slice 2, decision 3). */
+  readonly key: string;
+  /** undefined for a gap bucket of min, max or avg; a number otherwise (gap count/sum/countDistinct are 0). */
+  readonly value: number | undefined;
+}
+
+export interface SeriesResult {
+  readonly groups: readonly SeriesGroup[];
+  /** Records with no group value: in no group, and counted by no measure (decision 4). */
+  readonly skipped: number;
+  /** Set when the table holds more records than were read; the groups then cover only `read` of `total`. */
+  readonly partial?: { readonly read: number; readonly total: number };
+}
+
+export type AggregateSeriesOptions = AggregateOptions;
+
+/** A group value is empty when it is missing, null or blank — the same emptiness every measure uses. */
+const groupKey = (values: RecordValues, field: string): string | undefined => {
+  const v = values[field];
+  if (v === null || v === undefined) return undefined;
+  const s = typeof v === "string" ? v : v === true ? "true" : v === false ? "false" : String(v);
+  return s === "" ? undefined : s;
+};
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/** Monday of the ISO week containing `date` (calendar arithmetic; dates are calendar dates, so no time zones). */
+export function isoWeekMonday(date: Date): string {
+  const dow = (date.getUTCDay() + 6) % 7; // 0 = Monday
+  const monday = new Date(date);
+  monday.setUTCDate(monday.getUTCDate() - dow);
+  return `${monday.getUTCFullYear()}-${pad2(monday.getUTCMonth() + 1)}-${pad2(monday.getUTCDate())}`;
+}
+
+/** The bucket key a date value falls into: day = itself, week = its ISO Monday, month = `YYYY-MM`. A malformed date joins no group. */
+function bucketKey(value: string, bucket: SeriesBucket): string | undefined {
+  if (!isIsoDate(value)) return undefined;
+  if (bucket === "month") return value.slice(0, 7);
+  if (bucket === "week") return isoWeekMonday(new Date(`${value}T00:00:00Z`));
+  return value;
+}
+
+const monthAdd = (ym: string, n: number): string => {
+  const total = Number(ym.slice(0, 4)) * 12 + (Number(ym.slice(5, 7)) - 1) + n;
+  return `${String(Math.floor(total / 12)).padStart(4, "0")}-${pad2((total % 12) + 1)}`;
+};
+
+const dayAdd = (day: string, n: number): string => {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+};
+
+/** Every bucket key from the first to the last, stepping the calendar (RFC 0001 slice 2, decision 5). */
+function bucketRange(from: string, to: string, bucket: SeriesBucket): string[] {
+  if (bucket === "month") {
+    const keys: string[] = [];
+    for (let cur = from; cur <= to && keys.length < SERIES_LIMIT_MAX; cur = monthAdd(cur, 1)) keys.push(cur);
+    return keys;
+  }
+  const step = bucket === "week" ? 7 : 1;
+  const keys: string[] = [];
+  for (let cur = from; cur <= to && keys.length < SERIES_LIMIT_MAX; cur = dayAdd(cur, step)) keys.push(cur);
+  return keys;
+}
+
+const compareGroup = (dir: SeriesSortDir) => (a: SeriesGroup, b: SeriesGroup): number => {
+  const by = a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+  return dir === "asc" ? by : -by;
+};
+
+/**
+ * Groups an entity's records and folds `measure` per group. Paging, the 500/5000
+ * ceiling and `partial` are the same as `aggregate`'s; each record feeds exactly
+ * one group's accumulator, so memory stays groups-plus-ceiling no matter the data.
+ * Records with no group value join no group and increment `skipped` (decision 4).
+ * A date series sorted by group gets every bucket between the first and last
+ * filled in: 0 for count/sum/countDistinct, undefined for min/max/avg (decision 5);
+ * `limit` then keeps the newest N. The result holds no formatting, no labels and
+ * no chart — the renderer and `widgets.series` own those.
+ */
+export async function aggregateSeries(adapter: DataAdapter, entityId: string, spec: SeriesSpec, options: AggregateSeriesOptions = {}): Promise<SeriesResult> {
+  const filter = options.filter ? resolveRelativeDates(options.filter, options.now) : undefined;
+  const base = filter ? { filter } : {};
+  const maxRecords = options.maxRecords ?? AGGREGATE_MAX_RECORDS;
+  const pageSize = options.pageSize ?? AGGREGATE_PAGE_SIZE;
+  const accumulators = new Map<string, Accumulator>();
+  const accFor = (key: string): Accumulator => {
+    let acc = accumulators.get(key);
+    if (!acc) {
+      acc = accumulator(spec.measure);
+      accumulators.set(key, acc);
+    }
+    return acc;
+  };
+
+  let read = 0;
+  let total = 0;
+  let skipped = 0;
+  const addAll = (records: readonly RecordValues[]): void => {
+    for (const values of records) {
+      const raw = groupKey(values, spec.groupBy.field);
+      if (raw === undefined) {
+        skipped += 1;
+        continue;
+      }
+      const key = spec.groupBy.type === "date" ? bucketKey(raw, spec.groupBy.bucket ?? "day") : raw;
+      if (key === undefined) {
+        skipped += 1; // a malformed date buckets into nothing
+        continue;
+      }
+      accFor(key).add(values);
+    }
+  };
+
+  if (spec.measure.op === "count") {
+    // The count request first: a server that counts answers without sending rows.
+    const first = await adapter.find(entityId, { ...base, page: { offset: 0, limit: 0 } });
+    if (first.total !== undefined) {
+      total = first.total;
+      if (total > 0) {
+        // The total says how many records exist, but grouping needs every row.
+        while (read < maxRecords) {
+          const page = await adapter.find(entityId, { ...base, page: { offset: read, limit: Math.min(pageSize, maxRecords - read) } });
+          addAll(page.items.map((r) => r.values));
+          read += page.items.length;
+          if (page.items.length === 0 || read >= total) break;
+        }
+      }
+    } else {
+      const walked = await walkWithNext(adapter, entityId, base, { maxRecords, pageSize });
+      addAll(walked.items.map((r) => r.values));
+      read = walked.items.length;
+      total = read; // no total to know; same reporting as `aggregate`
+      if (walked.hasMore) total = read + 1; // partial: more rows exist past the ceiling
+    }
+  } else {
+    while (read < maxRecords) {
+      const page = await adapter.find(entityId, { ...base, page: { offset: read, limit: Math.min(pageSize, maxRecords - read) } });
+      addAll(page.items.map((r) => r.values));
+      read += page.items.length;
+      total = page.total ?? read;
+      if (page.items.length === 0 || read >= total) break;
+    }
+  }
+  const partial = total > read ? { read, total } : undefined;
+
+  const by = spec.sort?.by ?? "group";
+  const dir = spec.sort?.dir ?? "asc";
+  const groups: SeriesGroup[] = [...accumulators.entries()].map(([key, acc]) => ({ key, value: acc.result() as number | undefined }));
+
+  const bucket = spec.groupBy.bucket ?? "day";
+  const gapFill = spec.groupBy.type === "date" && by === "group"; // decision 5: a date series sorted by group; `day` counts as a bucket
+  if (gapFill) {
+    const sorted = [...groups].sort(compareGroup("asc"));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    if (first && last) {
+      // A gap carries 0 for count/sum/countDistinct and no value for min/max/avg (decision 5).
+      const gapValue: number | undefined = spec.measure.op === "min" || spec.measure.op === "max" || spec.measure.op === "avg" ? undefined : 0;
+      const filled: SeriesGroup[] = [];
+      for (const key of bucketRange(first.key, last.key, bucket)) {
+        const existing = accumulators.get(key);
+        filled.push(existing ? { key, value: existing.result() as number | undefined } : { key, value: gapValue });
+      }
+      groups.length = 0;
+      groups.push(...filled);
+    }
+  }
+
+  if (by === "value") {
+    groups.sort((a, b) => {
+      const av = a.value ?? -Infinity;
+      const bv = b.value ?? -Infinity;
+      return dir === "asc" ? av - bv || (a.key < b.key ? -1 : 1) : bv - av || (a.key < b.key ? -1 : 1);
+    });
+  } else {
+    groups.sort(compareGroup(dir));
+  }
+
+  const limit = Math.min(spec.limit ?? SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX);
+  // A date series is chronological, so a cap keeps the *newest* buckets (decision 5);
+  // every other cap keeps the first N of the sort the reader asked for.
+  const kept = spec.groupBy.type === "date" && by === "group" ? groups.slice(-limit) : groups.slice(0, limit);
+  return { groups: kept, skipped, ...(partial ? { partial } : {}) };
 }
