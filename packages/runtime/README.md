@@ -122,4 +122,4 @@ import { createDraftStore } from "@yadad/runtime";
 const drafts = createDraftStore(window.localStorage);
 ```
 
-When a draft is loaded, `restoreDraft(entity, draft)` fits it to the entity as it is now: values for fields the entity no longer has are dropped (and listed in `droppedFields`), `revisionChanged` says the entity revision moved since the draft was taken, and it returns `null` if nothing is left to restore. The renderer uses this for its `drafts` option.
+When a draft is loaded, `restoreDraft(entity, draft)` fits it to the entity as it is now: values for fields the entity no longer has are dropped (and listed in `droppedFields`), values the current schema rejects are kept but reported in `invalidFields` (the renderer seeds them into the form's errors, so the field frames invalid instead of the bad value restoring silently), `revisionChanged` says the entity revision moved since the draft was taken, and it returns `null` if nothing is left to restore. The renderer uses this for its `drafts` option.
