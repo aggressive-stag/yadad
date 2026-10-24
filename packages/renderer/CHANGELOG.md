@@ -1,5 +1,17 @@
 # @yadad/renderer
 
+## 0.12.1
+
+### Patch Changes
+
+- 7345e6c: `restoreDraft` validates restored values against the current schema. A stale draft whose typed value no longer fits (text in a number field, a choice removed from a select) is kept AND reported in the new `invalidFields` — the renderer seeds it into `FormState.errors`, so the field frames invalid and the ErrorSummary names it — instead of restoring silently. Absent `required` values are not flagged at restore; the submit path already reports those. Fixes the fitnotes F10-era draft case: an old draft used to return with its broken value looking untouched.
+- 2c5eda1: Drill-down row-action label joins with " — " instead of " for ". A target view titled "Sets for session" used to render "Open Sets for session for 3 (…)" — the connector stuttered against the title's own preposition. An em dash cannot collide with free-text titles.
+- e2ae6de: Ship CHANGELOG.md in every published tarball. The `files` arrays shipped `dist` and `src` only, so a consumer upgrading from the registry could not read the upgrade notes — only `@yadad/components` shipped its changelog.
+- Updated dependencies [7345e6c]
+- Updated dependencies [e2ae6de]
+  - @yadad/runtime@0.10.1
+  - @yadad/core@0.13.1
+
 ## 0.12.0
 
 ### Minor Changes

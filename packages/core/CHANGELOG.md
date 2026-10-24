@@ -1,5 +1,11 @@
 # @yadad/core
 
+## 0.13.1
+
+### Patch Changes
+
+- e2ae6de: Ship CHANGELOG.md in every published tarball. The `files` arrays shipped `dist` and `src` only, so a consumer upgrading from the registry could not read the upgrade notes — only `@yadad/components` shipped its changelog.
+
 ## 0.13.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @yadad/runtime
 
+## 0.10.1
+
+### Patch Changes
+
+- 7345e6c: `restoreDraft` validates restored values against the current schema. A stale draft whose typed value no longer fits (text in a number field, a choice removed from a select) is kept AND reported in the new `invalidFields` — the renderer seeds it into `FormState.errors`, so the field frames invalid and the ErrorSummary names it — instead of restoring silently. Absent `required` values are not flagged at restore; the submit path already reports those. Fixes the fitnotes F10-era draft case: an old draft used to return with its broken value looking untouched.
+- e2ae6de: Ship CHANGELOG.md in every published tarball. The `files` arrays shipped `dist` and `src` only, so a consumer upgrading from the registry could not read the upgrade notes — only `@yadad/components` shipped its changelog.
+- Updated dependencies [e2ae6de]
+  - @yadad/core@0.13.1
+
 ## 0.10.0
 
 ### Minor Changes
