@@ -4,6 +4,7 @@ import { bindFilter, calendarToday, canUpdate, colorSlot, dayLabel, groupByDay, 
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { loadFailure } from "./load-state.js";
 import type { DocumentSet } from "./document-set.js";
 import { renderDisplay } from "./fields.js";
 import type { FieldFormatting } from "./fields.js";
@@ -408,7 +409,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     <div data-yadad-calendar-view={view.id} tabIndex={-1}>
       {here?.status === "failed" && (
         <div data-yadad-calendar-load-error="">
-          <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${here.message}`, hint: "Retry, or reload the page." }]} />
+          <ErrorSummary errors={[loadFailure(here.message)]} />
           <Button label="Retry" type="button" variant="secondary" disabled={false} onPress={() => setReloads((n) => n + 1)} />
         </div>
       )}

@@ -141,6 +141,7 @@ describe("DashboardRenderer", () => {
     );
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Could not load records: The server responded with status 401.");
+    expect(alert.textContent).toContain("Retry, or reload the page."); // card 45d: one hint for every view
     expect(screen.queryByTestId("count")).toBeNull();
   });
 

@@ -63,6 +63,7 @@ describe("board in each source state", () => {
   test("a failed read shows ErrorSummary with the message", async () => {
     open(adapterWith({ source: "error", message: "Server is down" }));
     expect((await alert()).textContent).toContain("Could not load records: Server is down");
+    expect((await alert()).textContent).toContain("Retry, or reload the page."); // card 45d: one hint for every view
     expect(screen.getByTestId("error-summary")).toBeTruthy();
   });
 
@@ -118,6 +119,7 @@ describe("calendar in each source state", () => {
   test("a failed read shows ErrorSummary with the message", async () => {
     open(adapterWith({ source: "error", message: "Server is down" }));
     expect((await alert()).textContent).toContain("Could not load records: Server is down");
+    expect((await alert()).textContent).toContain("Retry, or reload the page."); // card 45d: one hint for every view
   });
 
   test.each([
@@ -156,6 +158,7 @@ describe("table in each source state", () => {
   test("a failed read shows ErrorSummary with the message", async () => {
     open(adapterWith({ source: "error", message: "Server is down" }));
     expect((await alert()).textContent).toContain("Could not load records: Server is down");
+    expect((await alert()).textContent).toContain("Retry, or reload the page."); // card 45d: one hint for every view
     expect(screen.getByTestId("error-summary")).toBeTruthy();
   });
 

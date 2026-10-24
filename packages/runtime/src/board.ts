@@ -1,7 +1,8 @@
 import { defaultTitleField } from "@yadad/core";
-import type { BoardView, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, Query, RecordValues, ReferenceField, ReferenceOption } from "@yadad/core";
+import type { BoardView, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, Query, ReferenceField, ReferenceOption } from "@yadad/core";
 import { resolveRelativeDates } from "./condition.js";
 import { walkWithNext } from "./memory-adapter.js";
+import type { MovePlan } from "./move-plan.js";
 import { loadReferenceOptions } from "./reference.js";
 import type { ReferenceOptionsResult } from "./reference.js";
 
@@ -229,20 +230,8 @@ export async function loadBoardTargets(adapter: DataAdapter, target: EntityDocum
 
 // --- moving a card ---
 
-/** What moving a card to a column should do. Pure data: the renderer performs the update. */
-export type BoardMovePlan =
-  /** Nothing to send: the card is already in that column, or the view is not editable. */
-  | { readonly kind: "none"; readonly reason: "same-column" | "not-editable" }
-  /** "other" is not a drop target; nothing is sent. */
-  | { readonly kind: "rejected"; readonly reason: "other"; readonly message: string }
-  /** `adapter.update(entity, id, patch, meta)`. Only the grouping field is sent; `null` clears it (the "empty" column). */
-  | {
-      readonly kind: "update";
-      readonly entity: string;
-      readonly id: string;
-      readonly patch: RecordValues;
-      readonly meta: { readonly entityRevision: number; readonly baseVersion: string };
-    };
+/** What moving a card to a column should do. One `MovePlan` for every move (card 45d); the name is this module's dialect. */
+export type BoardMovePlan = MovePlan;
 
 /**
  * Plans moving `record` to `column` of the grouping `field`. A no-op when
@@ -252,7 +241,7 @@ export type BoardMovePlan =
  */
 export function moveCard(view: BoardView, entity: EntityDocument, field: Field, record: DataRecord, column: BoardColumnDef): BoardMovePlan {
   if (view.editable !== true) return { kind: "none", reason: "not-editable" };
-  if (column.kind === "other") return { kind: "rejected", reason: "other", message: `Cards cannot be moved to "${column.label}".` };
+  if (column.kind === "other") return { kind: "blocked", reason: "other", message: `Cards cannot be moved to "${column.label}".` };
   const current = normalizedValue(field, record.values[field.id]);
   if (current === column.value) return { kind: "none", reason: "same-column" };
   return {

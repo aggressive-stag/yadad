@@ -15,6 +15,7 @@ export * from "./aggregate.js";
 export * from "./row-action.js";
 export * from "./calendar.js";
 export * from "./board.js";
+export * from "./move-plan.js";
 export * from "./combine-axes.js";
 export * from "./view-states.js";
 export * from "./viewer.js";

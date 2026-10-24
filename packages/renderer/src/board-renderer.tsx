@@ -4,6 +4,7 @@ import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, canUpdate
 import type { BoardColumnDef, BoardLoad } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { loadFailure } from "./load-state.js";
 import type { DocumentSet } from "./document-set.js";
 import { renderDisplay } from "./fields.js";
 import type { FieldFormatting } from "./fields.js";
@@ -428,7 +429,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
       return;
     }
     if (plan.kind === "none") return;
-    if (plan.kind === "rejected") {
+    if (plan.kind === "blocked") {
       announce(`Could not move ${title}: ${plan.message}`);
       return;
     }
@@ -472,7 +473,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     return (
       <div data-yadad-board-view={view.id} tabIndex={-1}>
         <div data-yadad-board-load-error="">
-          <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${cards.message}`, hint: "Retry, or reload the page." }]} />
+          <ErrorSummary errors={[loadFailure(cards.message)]} />
           <Button label="Retry" type="button" variant="secondary" disabled={false} onPress={() => setReloads((n) => n + 1)} />
         </div>
       </div>

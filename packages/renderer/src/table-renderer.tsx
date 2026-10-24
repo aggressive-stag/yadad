@@ -4,6 +4,7 @@ import { bindFilter, canUpdate, columnEditable, compareCells, emptyFormState, ne
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { loadFailure } from "./load-state.js";
 import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
 import { instantRangeBounds, localToInstant, LOCAL_DATETIME_PATTERN } from "@yadad/runtime";
@@ -520,7 +521,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
         </Section>
       )}
       {rows.status === "failed" && (
-        <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load records: ${rows.message}`, hint: "Reload the page to try again." }]} />
+        <ErrorSummary errors={[loadFailure(rows.message)]} />
       )}
       <Table
         caption={view.title ?? entity.id}

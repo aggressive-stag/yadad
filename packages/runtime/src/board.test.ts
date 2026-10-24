@@ -330,6 +330,6 @@ describe("moveCard", () => {
 
   test("moving to other is refused, whatever the card's current value", () => {
     const other = { id: "other", kind: "other" as const, label: "Other", value: null };
-    expect(moveCard(editableView, entity, statusField, task("Todo"), other)).toMatchObject({ kind: "rejected", reason: "other" });
+    expect(moveCard(editableView, entity, statusField, task("Todo"), other)).toMatchObject({ kind: "blocked", reason: "other" });
   });
 });

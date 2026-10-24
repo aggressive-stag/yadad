@@ -1,7 +1,8 @@
 import { defaultTitleField } from "@yadad/core";
-import type { CalendarMode, CalendarView, Condition, DataAdapter, DataRecord, EntityDocument, FieldValue, Query, RecordValues, SortSpec } from "@yadad/core";
+import type { CalendarMode, CalendarView, Condition, DataAdapter, DataRecord, EntityDocument, FieldValue, Query, SortSpec } from "@yadad/core";
 import { localIsoDate, resolveRelativeDates } from "./condition.js";
 import { walkWithNext } from "./memory-adapter.js";
+import type { MovePlan } from "./move-plan.js";
 
 /** Records fetched per `find` call; the protocol's per-request cap. */
 export const CALENDAR_PAGE_SIZE = 500;
@@ -282,20 +283,8 @@ export function groupByDay(records: readonly DataRecord[], dateField: string): M
 
 // --- moving an entry ---
 
-/** What moving an entry to a day should do. Pure data: the renderer performs the update. */
-export type MovePlan =
-  /** Nothing to send: the entry is already on that day, or the view is not editable. */
-  | { readonly kind: "none"; readonly reason: "same-day" | "not-editable" }
-  /** The day is outside the date field's own min or max; nothing is sent. */
-  | { readonly kind: "blocked"; readonly reason: "before-min" | "after-max"; readonly message: string }
-  /** `adapter.update(entity, id, patch, meta)`. Only the date field is sent. */
-  | {
-      readonly kind: "update";
-      readonly entity: string;
-      readonly id: string;
-      readonly patch: RecordValues;
-      readonly meta: { readonly entityRevision: number; readonly baseVersion: string };
-    };
+/** What moving an entry to a day should do. One `MovePlan` for every move (card 45d). */
+export type { MovePlan } from "./move-plan.js";
 
 /** Plans moving `record` to `day` ("YYYY-MM-DD", any real date, visible or not). Throws RangeError for a day that is not a real date. */
 export function moveDay(view: CalendarView, entity: EntityDocument, record: DataRecord, day: string): MovePlan {
