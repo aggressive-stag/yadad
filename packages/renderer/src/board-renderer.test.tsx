@@ -618,6 +618,32 @@ describe("record actions on cards (RFC 0007)", () => {
     fireEvent.click(confirmButton());
     await waitFor(() => expect(screen.getByText("archived:done")).toBeTruthy());
   });
+
+  test("a card press returns focus to the card's button after the reload (todo-app F9)", async () => {
+    const base = await seeded({ actions: { "task.publish": () => ({ values: { notes: "published" } }) } });
+    const inner = base.db.act!.bind(base.db);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const db = { ...base.db, act: async (e: string, id: string, a: string, request: Parameters<NonNullable<typeof inner>>[3]) => { await gate; return inner(e, id, a, request); } };
+    render(
+      <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
+    );
+    await screen.findByText("Pay rent");
+    const btn = cardButton(base.ids["Pay rent"]!, "publish");
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    btn.disabled = false; // jsdom keeps focus on a disabled button; the browser drops it to BODY
+    btn.blur();
+    btn.disabled = true;
+    expect(document.activeElement).toBe(document.body);
+    release();
+    await waitFor(() => expect(status()).toBe("Publish done"));
+    await waitFor(() => expect(screen.getByText("published")).toBeTruthy()); // reloaded with the new notes
+    await waitFor(() => expect(document.activeElement).toBe(btn)); // back on the card's button
+  });
 });
 
 describe("in a dashboard", () => {

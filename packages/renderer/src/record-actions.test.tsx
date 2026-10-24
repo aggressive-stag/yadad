@@ -321,4 +321,75 @@ describe("the action dialog (RFC 0007)", () => {
     press("archive");
     expect(reasonInput().value).toBe("");
   });
+
+  // Focus return after a direct press (todo-app F9:227, F11 row 7): a real browser takes
+  // focus away the moment `pending` disables the pressed button and the reload never gives
+  // it back, so Tab restarts from the nav. jsdom keeps focus on a disabled button (measured:
+  // it drops on neither `disabled` nor `blur()` while disabled), so the helper drives it to
+  // the state the browser reaches — focus on BODY while the button stays disabled.
+  async function gated(options: Parameters<typeof createMemoryAdapter>[0]): Promise<{ db: ReturnType<typeof createMemoryAdapter>; release: () => void }> {
+    const base = await seeded(options);
+    const inner = base.act!.bind(base);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const db = { ...base, act: async (entity: string, id: string, action: string, request: Parameters<NonNullable<typeof inner>>[3]) => { await gate; return inner(entity, id, action, request); } };
+    return { db, release };
+  }
+
+  function dropFocusLikeABrowser(btn: HTMLButtonElement): void {
+    expect(document.activeElement).toBe(btn);
+    btn.disabled = false; // jsdom refuses to blur a disabled element; the browser already dropped it
+    btn.blur();
+    btn.disabled = true;
+    expect(document.activeElement).toBe(document.body);
+  }
+
+  test("a direct press returns focus to the pressed button after the reload", async () => {
+    const { db, release } = await gated({ actions: { "doc.publish": () => ({ values: { tag: "live" } }) } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
+    const btn = document.querySelector("[data-testid='action-publish']") as HTMLButtonElement;
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    dropFocusLikeABrowser(btn);
+    release();
+    await waitFor(() => expect(statusText()).toBe("Publish done"));
+    await waitFor(() => expect(tagOf(1)).toBe("live")); // the reload landed first
+    await waitFor(() => expect(document.activeElement).toBe(btn)); // and focus came back to the row
+  });
+
+  test("the focus return never steals focus from a viewer who moved on", async () => {
+    const { db, release } = await gated({ actions: { "doc.publish": () => ({ values: { tag: "live" } }) } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
+    const [first, second] = document.querySelectorAll("[data-testid='action-publish']") as NodeListOf<HTMLButtonElement>;
+    first!.focus();
+    fireEvent.click(first!);
+    await waitFor(() => expect(first!.disabled).toBe(true));
+    dropFocusLikeABrowser(first!);
+    second!.focus(); // the viewer tabbed away while the action was in flight
+    release();
+    await waitFor(() => expect(statusText()).toBe("Publish done"));
+    await waitFor(() => expect(tagOf(1)).toBe("live"));
+    expect(document.activeElement).toBe(second); // the flight ended; the viewer's focus stays put
+  });
+
+  test("a removed record has nothing to return to, and focus is left alone", async () => {
+    const { db, release } = await gated({ actions: { "doc.publish": () => ({ remove: true }) } });
+    show(db);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
+    const btn = document.querySelector("[data-testid='action-publish']") as HTMLButtonElement;
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    dropFocusLikeABrowser(btn);
+    release();
+    await waitFor(() => expect(statusText()).toBe("Publish done"));
+    await waitFor(() => expect(tagOf(1)).toBeUndefined()); // the row is gone
+    expect(btn.isConnected).toBe(false);
+    expect(document.activeElement).toBe(document.body); // no phantom focus target
+  });
 });

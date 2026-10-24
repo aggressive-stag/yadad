@@ -63,12 +63,29 @@ export function useRecordActions(options: {
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
   const [dialog, setDialog] = useState<OpenDialog | undefined>(undefined);
   const mounted = useRef(true);
+  // Focus return after a press (todo-app F9:227, F11 row 7): a browser takes focus away the
+  // moment `pending` disables the pressed button, and nothing gives it back when the flight
+  // ends — Tab then restarts from the nav. The press records the focused control and `act`
+  // records the flight; the effect below returns focus once the flight is over for that
+  // record, unless the viewer has moved on in the meantime or a dialog owns focus.
+  const pressed = useRef<{ readonly recordId: string; readonly element: HTMLElement } | undefined>(undefined);
+  const flights = useRef(new Set<string>());
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
+  useEffect(() => {
+    const held = pressed.current;
+    if (held === undefined || !flights.current.has(held.recordId) || pending.has(held.recordId)) return;
+    if (dialog !== undefined) return; // the dialog path owns focus until it closes (its own close-return applies)
+    flights.current.delete(held.recordId);
+    pressed.current = undefined; // one attempt per flight, whether or not it restored
+    const active = document.activeElement;
+    if (active !== null && active !== document.body) return; // focus is spoken for: leave it alone
+    if (held.element.isConnected) held.element.focus(); // a removed record has nothing to go back to
+  });
 
   const announce = (text: string): void => {
     if (options.announce !== undefined) options.announce(text);
@@ -79,6 +96,7 @@ export function useRecordActions(options: {
   const run = (record: DataRecord, action: RecordAction, input: RecordValues | undefined, fromDialog: OpenDialog | undefined): void => {
     if (adapter === undefined || adapter.act === undefined || pending.has(record.id)) return;
     const act = adapter.act.bind(adapter);
+    flights.current.add(record.id); // a press started this flight; the focus-return effect waits for it to end
     setFailures(undefined);
     setPending((s) => new Set(s).add(record.id));
     if (fromDialog !== undefined) {
@@ -139,7 +157,16 @@ export function useRecordActions(options: {
       label: action.label,
       tone: action.confirm?.tone ?? "neutral",
       pending: pending.has(record.id),
-      onPress: () => (actionNeedsDialog(action) ? openDialog(record, action) : run(record, action, undefined, undefined)),
+      onPress: () => {
+        // Only a direct press is remembered for the focus return: the dialog path has its
+        // own close-return contract (the modal gives focus back to who opened it).
+        pressed.current =
+          actionNeedsDialog(action) || !(document.activeElement instanceof HTMLElement)
+            ? undefined
+            : { recordId: record.id, element: document.activeElement };
+        if (actionNeedsDialog(action)) openDialog(record, action);
+        else run(record, action, undefined, undefined);
+      },
     }));
 
   const { Dialog, FieldFrame, Button, ErrorSummary } = registry.layout;
