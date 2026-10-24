@@ -526,3 +526,12 @@ export interface ResolvedViewer {
 export type ViewDocument = FormView | TableView | CalendarView | BoardView | DashboardView;
 export type Document = EntityDocument | ViewDocument | ViewerDocument;
 export type DocumentKind = Document["kind"];
+
+/**
+ * The view title field an omitted `titleField` falls back to: the entity's
+ * first text field. One owner (card 45a) — the validator's calendar/board
+ * title checks and the runtime's titleFieldOf helpers must never drift apart.
+ */
+export function defaultTitleField(entity: EntityDocument): string | undefined {
+  return entity.fields.find((f) => f.type === "text")?.id;
+}

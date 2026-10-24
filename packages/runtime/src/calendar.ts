@@ -1,3 +1,4 @@
+import { defaultTitleField } from "@yadad/core";
 import type { CalendarMode, CalendarView, Condition, DataAdapter, DataRecord, EntityDocument, FieldValue, Query, RecordValues, SortSpec } from "@yadad/core";
 import { localIsoDate, resolveRelativeDates } from "./condition.js";
 import { walkWithNext } from "./memory-adapter.js";
@@ -191,7 +192,7 @@ export interface CalendarQueryOptions {
 }
 
 function titleFieldOf(view: CalendarView, entity: EntityDocument | undefined): string | undefined {
-  return view.titleField ?? entity?.fields.find((f) => f.type === "text")?.id;
+  return view.titleField ?? (entity !== undefined ? defaultTitleField(entity) : undefined);
 }
 
 /** One page of the range: filter from `rangeCondition`, sorted by date then the view's sort (default: the title field), 500 per page. */

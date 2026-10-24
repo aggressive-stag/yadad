@@ -1,3 +1,4 @@
+import { defaultTitleField } from "@yadad/core";
 import type { BoardView, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, Query, RecordValues, ReferenceField, ReferenceOption } from "@yadad/core";
 import { resolveRelativeDates } from "./condition.js";
 import { walkWithNext } from "./memory-adapter.js";
@@ -137,7 +138,7 @@ export interface BoardQueryOptions {
 }
 
 function titleFieldOf(view: BoardView, entity: EntityDocument | undefined): string | undefined {
-  return view.titleField ?? entity?.fields.find((f) => f.type === "text")?.id;
+  return view.titleField ?? (entity !== undefined ? defaultTitleField(entity) : undefined);
 }
 
 /**
