@@ -197,3 +197,52 @@ describe("StatesPreview product axes (RFC 0007)", () => {
     expect(lines[lines.length - 1]?.textContent).toContain("action Archive (available, withheld)");
   });
 });
+
+// Card 46b (todo-app F12 loop 4): the preview runs the same validators `npm test` runs, on
+// the draft. Premise correction on the card: F12's literal repro (a column removed while
+// quickFilters still names the field) is LEGAL — quickFilters are checked against the
+// entity's fields, never the view's columns, and the renderer keeps the filter working
+// (table-renderer.tsx:471-476). What `npm test` catches and the preview hid is a
+// cross-document break, so that is the case pinned below.
+describe("StatesPreview draft validation (F12)", () => {
+  const filterTable = {
+    kind: "table",
+    specVersion: 4,
+    id: "task_table",
+    entity: "task",
+    revision: 1,
+    dataSource: "default",
+    columns: [{ field: "title" }, { field: "status" }],
+    quickFilters: [{ field: "status" }],
+  } as const;
+  const draftStatus: Document[] = [
+    { ...entity, fields: entity.fields.filter((f) => f.id !== "status") },
+    filterTable,
+  ];
+
+  test("a draft that breaks a reference the saved revision did not flags the problem in the status region", () => {
+    render(<StatesPreview view={filterTable} saved={filterTable} documents={draftStatus} now={now} renderState={renderState} />);
+    expect(ids().length).toBeGreaterThan(0); // the tiles still build — a filter on a missing field builds states
+    const status = screen.getByRole("status").textContent ?? "";
+    expect(status).toContain("The draft does not validate: 2 problems"); // the column and the quick filter both name the field
+    expect(status).toContain('Field "status" is not on entity "task".');
+  });
+
+  test("a valid draft carries no validator clause, and F12's dangling-column draft is valid", () => {
+    render(<StatesPreview view={filterTable} saved={filterTable} documents={[entity, filterTable]} now={now} renderState={renderState} />);
+    expect(screen.getByRole("status").textContent ?? "").not.toContain("does not validate");
+    cleanup(); // the F12 repro verbatim: the column is gone but the quick filter keeps the field — legal, so no clause.
+    const dangling = { ...filterTable, columns: [{ field: "title" }] };
+    render(<StatesPreview view={dangling} saved={filterTable} documents={[entity]} now={now} renderState={renderState} />);
+    expect(screen.getByRole("status").textContent ?? "").not.toContain("does not validate");
+  });
+
+  test("a rename alone grows no validator clause", () => {
+    const renamed: Document[] = [
+      { ...entity, fields: entity.fields.map((f) => (f.id === "status" ? { ...f, label: "State" } : f)) },
+      filterTable,
+    ];
+    render(<StatesPreview view={filterTable} saved={filterTable} documents={renamed} now={now} renderState={renderState} />);
+    expect(screen.getByRole("status").textContent ?? "").not.toContain("does not validate");
+  });
+});

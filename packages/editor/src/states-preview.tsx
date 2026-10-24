@@ -1,4 +1,5 @@
 import type { Document, FormView, ViewDocument } from "@yadad/core";
+import { validateDocuments } from "@yadad/core";
 import { evaluateCondition, viewStates } from "@yadad/runtime";
 import type { ViewState, ViewStatesResult } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -175,6 +176,15 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
     [built, before],
   );
 
+  // The same validators a host's `npm test` runs (todo-app F12 loop 4): the draft and the
+  // documents around it, cross-document references included. A clause in the status line,
+  // not a second status region; the host's `checkStates` still adds per-state checks on top.
+  const draftProblems = useMemo(() => {
+    if (!built.ok) return [];
+    const result = validateDocuments(edited);
+    return result.ok ? [] : [...result.errors];
+  }, [edited, built.ok]);
+
   // The host's checks, once the document stops changing; an older answer is dropped.
   const [checks, setChecks] = useState<Checks | undefined>(undefined);
   const checkKey = `${viewKey}|${docsKey}|${nowTime}`;
@@ -225,6 +235,11 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
         {states.length} {states.length === 1 ? "state" : "states"}
         {complete ? "" : " (the view has more combinations than the limit)"}. {changedCount === 0 ? "None differ from the saved revision." : `${changedCount} new or changed since the saved revision.`}
         {comparison && comparison.removed.length > 0 && ` ${comparison.removed.length} no longer ${comparison.removed.length === 1 ? "applies" : "apply"}.`}
+        {draftProblems.length > 0 &&
+          ` The draft does not validate: ${draftProblems.length} ${draftProblems.length === 1 ? "problem" : "problems"} — ${draftProblems
+            .slice(0, 3)
+            .map((e) => `${e.document !== undefined ? `${e.document} ` : ""}${e.path}${e.path === "" ? "" : ": "}${e.message}`)
+            .join("; ")}${draftProblems.length > 3 ? `; ${draftProblems.length - 3} more` : ""}.`}
         {current?.status === "running" && " Checking…"}
         {current?.status === "done" && (failing === 0 ? " Checks found no problems." : ` Checks found problems in ${failing} ${failing === 1 ? "state" : "states"}.`)}
         {current?.status === "failed" && ` The checks could not run: ${current.message ?? ""}.`}
