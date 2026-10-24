@@ -1,13 +1,13 @@
 import type { BoardView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX } from "@yadad/core";
-import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { flatIndex } from "./drag.js";
 import type { DropTarget, ReorderableRow } from "./drag.js";
 import { useReportChange } from "./report-change.js";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
+import { finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
+import { applyEdit, editRunner } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import { ViewerRule } from "./viewer-rule.js";
@@ -58,7 +58,6 @@ export interface BoardViewEditorProps {
   readonly onCancel: () => void;
 }
 
-type Result = PatchOperation[] | { ok: true; patch: PatchOperation[] } | { ok: false; error: DocumentError };
 
 const NO_SORT = "(none)";
 const NO_FIELD = "(default)";
@@ -192,24 +191,13 @@ export function BoardViewEditor({ view, entity, registry, context, viewer, onSav
     setStatus(message);
   };
 
-  const run = (result: Result, onOk?: () => void): boolean => {
-    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]), false;
-    const patch = Array.isArray(result) ? result : result.patch;
-    if (patch.length === 0) return onOk?.(), true;
-    const next = edit(session, patch);
-    setSession(next);
-    setProblems(next.rejected);
-    if (next.rejected.length === 0) onOk?.();
-    return next.rejected.length === 0;
-  };
+  const run = editRunner(session, setSession, setProblems);
 
   /** A move of a field in one of the two lists, applied and announced with its new position. */
   const moveIn = (kind: "groupBy" | "cardFields", fieldId: string, by: number) => {
     const result = kind === "groupBy" ? moveBoardGroupBy(current, fieldId, by) : moveBoardCardField(current, fieldId, by);
     if (!result.ok) return announce(`Not moved: ${result.error.message}`);
-    const next = edit(session, result.patch);
-    setSession(next);
-    setProblems(next.rejected);
+    const next = applyEdit(session, result.patch, setSession, setProblems);
     if (next.rejected.length > 0) return announce(`Not moved: ${next.rejected[0]?.message ?? "invalid board"}.`);
     const ids = kind === "groupBy" ? next.current.groupBy.map((g) => g.field) : (next.current.cardFields ?? []);
     const position = ids.findIndex((id) => id === fieldId) + 1;

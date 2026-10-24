@@ -5,8 +5,9 @@ import type { ReactNode } from "react";
 import type { DropTarget, ReorderableRow } from "./drag.js";
 import { flatIndex } from "./drag.js";
 import { useReportChange } from "./report-change.js";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
+import { finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
+import { applyEdit, editRunner } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
@@ -36,7 +37,6 @@ export interface TableViewEditorProps {
   readonly onCancel: () => void;
 }
 
-type Result = PatchOperation[] | { ok: true; patch: PatchOperation[] } | { ok: false; error: DocumentError };
 
 const NO_SORT = "(none)";
 const DIRECTIONS = { Ascending: "asc", Descending: "desc" } as const;
@@ -82,22 +82,11 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
     setStatus(message);
   };
 
-  const run = (result: Result, onOk?: () => void): boolean => {
-    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]), false;
-    const patch = Array.isArray(result) ? result : result.patch;
-    if (patch.length === 0) return onOk?.(), true;
-    const next = edit(session, patch);
-    setSession(next);
-    setProblems(next.rejected);
-    if (next.rejected.length === 0) onOk?.();
-    return next.rejected.length === 0;
-  };
+  const run = editRunner(session, setSession, setProblems);
 
   /** Applies a patch through the session and reports it in the status line. */
   const applyAndAnnounce = (patch: PatchOperation[], message: (doc: TableView) => string): void => {
-    const next = edit(session, patch);
-    setSession(next);
-    setProblems(next.rejected);
+    const next = applyEdit(session, patch, setSession, setProblems);
     if (next.rejected.length > 0) return announce(`Not moved: ${next.rejected[0]?.message ?? "invalid table"}.`);
     announce(message(next.current));
   };

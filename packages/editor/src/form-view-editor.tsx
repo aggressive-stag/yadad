@@ -6,8 +6,9 @@ import type { ReactNode } from "react";
 import type { DropTarget, RangeSpan, ReorderableRow } from "./drag.js";
 import { flatIndex, insertIndex } from "./drag.js";
 import { useReportChange } from "./report-change.js";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
+import { finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
+import { applyEdit, editRunner } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
@@ -41,7 +42,6 @@ export interface FormViewEditorProps {
   readonly onCancel: () => void;
 }
 
-type Result = PatchOperation[] | { ok: true; patch: PatchOperation[] } | { ok: false; error: DocumentError };
 
 /**
  * Lays out a form: place entity fields in sections, reorder them, take them
@@ -70,15 +70,7 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
     setStatus(message);
   };
 
-  const run = (result: Result, onOk?: () => void) => {
-    if (!Array.isArray(result) && !result.ok) return setProblems([result.error]);
-    const patch = Array.isArray(result) ? result : result.patch;
-    if (patch.length === 0) return onOk?.();
-    const next = edit(session, patch);
-    setSession(next);
-    setProblems(next.rejected);
-    if (next.rejected.length === 0) onOk?.();
-  };
+  const run = editRunner(session, setSession, setProblems);
 
   /** The 1-based position of a field within the section it is in. */
   const positionOf = (doc: FormView, fieldId: string): { readonly section: string; readonly at: number } => {
@@ -91,9 +83,7 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
 
   /** Applies a patch through the session and reports it in the status line. */
   const applyAndAnnounce = (patch: PatchOperation[], message: (doc: FormView) => string): void => {
-    const next = edit(session, patch);
-    setSession(next);
-    setProblems(next.rejected);
+    const next = applyEdit(session, patch, setSession, setProblems);
     if (next.rejected.length > 0) return announce(`Not moved: ${next.rejected[0]?.message ?? "invalid form"}.`);
     announce(message(next.current));
   };

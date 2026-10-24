@@ -59,7 +59,7 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
   const { Button, Section, ErrorSummary } = registry.layout;
   const current = session.current;
 
-  const run = (result: Result, done?: string, onOk?: () => void) => {
+  const runViewerEdit = (result: Result, done?: string, onOk?: () => void) => {
     if (!result.ok) return setProblems([result.error]);
     if (result.patch.length === 0) return onOk?.();
     const next = edit(session, result.patch);
@@ -82,10 +82,10 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
         </p>
         <div data-yadad-editor-toolbar="" style={toolbarStyle}>
           {propertyInput(registry, `${base}-label-${fact.id}`, { id: "label", type: "text", label: `Label of ${fact.id}` }, label, (v) => setLabels((l) => ({ ...l, [fact.id]: asText(v) })))}
-          <Button label={`Rename ${fact.id}`} type="button" variant="secondary" disabled={label.trim() === fact.label} onPress={() => run(setViewerFactLabel(current, fact.id, label), `${fact.id} is now called ${label.trim()}.`)} />
-          <Button label={`Move ${fact.id} up`} type="button" variant="secondary" disabled={index === 0} onPress={() => run(moveViewerFact(current, fact.id, -1), `${fact.label} moved up.`)} />
-          <Button label={`Move ${fact.id} down`} type="button" variant="secondary" disabled={index === current.facts.length - 1} onPress={() => run(moveViewerFact(current, fact.id, 1), `${fact.label} moved down.`)} />
-          <Button label={`Remove fact ${fact.id}`} type="button" variant="secondary" disabled={current.facts.length === 1} onPress={() => run(removeViewerFact(current, fact.id), `${fact.label} removed.`)} />
+          <Button label={`Rename ${fact.id}`} type="button" variant="secondary" disabled={label.trim() === fact.label} onPress={() => runViewerEdit(setViewerFactLabel(current, fact.id, label), `${fact.id} is now called ${label.trim()}.`)} />
+          <Button label={`Move ${fact.id} up`} type="button" variant="secondary" disabled={index === 0} onPress={() => runViewerEdit(moveViewerFact(current, fact.id, -1), `${fact.label} moved up.`)} />
+          <Button label={`Move ${fact.id} down`} type="button" variant="secondary" disabled={index === current.facts.length - 1} onPress={() => runViewerEdit(moveViewerFact(current, fact.id, 1), `${fact.label} moved down.`)} />
+          <Button label={`Remove fact ${fact.id}`} type="button" variant="secondary" disabled={current.facts.length === 1} onPress={() => runViewerEdit(removeViewerFact(current, fact.id), `${fact.label} removed.`)} />
         </div>
         {fact.type === "select" ? (
           <>
@@ -94,7 +94,7 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
                 <li key={value}>
                   {value}
                   {value === fact.default ? " (default)" : ""}{" "}
-                  <Button label={`Remove ${value} from ${fact.id}`} type="button" variant="secondary" disabled={false} onPress={() => run(removeViewerFactValue(current, fact.id, value), `${value} removed from ${fact.label}.`)} />
+                  <Button label={`Remove ${value} from ${fact.id}`} type="button" variant="secondary" disabled={false} onPress={() => runViewerEdit(removeViewerFactValue(current, fact.id, value), `${value} removed from ${fact.label}.`)} />
                 </li>
               ))}
             </ul>
@@ -105,16 +105,16 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
                 type="button"
                 variant="secondary"
                 disabled={newValue.trim() === ""}
-                onPress={() => run(addViewerFactValue(current, fact.id, newValue), `${newValue.trim()} added to ${fact.label}.`, () => setNewValues((n) => ({ ...n, [fact.id]: "" })))}
+                onPress={() => runViewerEdit(addViewerFactValue(current, fact.id, newValue), `${newValue.trim()} added to ${fact.label}.`, () => setNewValues((n) => ({ ...n, [fact.id]: "" })))}
               />
               {propertyInput(registry, `${base}-default-${fact.id}`, choiceField("default", `Default of ${fact.id} (for a viewer nobody described)`, fact.options.values), fact.default, (v) =>
-                run(setViewerFactDefault(current, fact.id, asText(v)), `${fact.label} defaults to ${asText(v)}.`),
+                runViewerEdit(setViewerFactDefault(current, fact.id, asText(v)), `${fact.label} defaults to ${asText(v)}.`),
               )}
             </div>
           </>
         ) : (
           <div data-yadad-editor-toolbar="" style={toolbarStyle}>
-            {propertyInput(registry, `${base}-default-${fact.id}`, { id: "default", type: "boolean", label: `Default of ${fact.id} is on` }, fact.default, (v) => run(setViewerFactDefault(current, fact.id, v === true), `${fact.label} defaults to ${v === true ? "on" : "off"}.`))}
+            {propertyInput(registry, `${base}-default-${fact.id}`, { id: "default", type: "boolean", label: `Default of ${fact.id} is on` }, fact.default, (v) => runViewerEdit(setViewerFactDefault(current, fact.id, v === true), `${fact.label} defaults to ${v === true ? "on" : "off"}.`))}
           </div>
         )}
       </Section>
@@ -147,7 +147,7 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
             disabled={newFact.label.trim() === ""}
             onPress={() => {
               const id = idFromTitle(newFact.label, current.facts.map((f) => f.id), "fact");
-              run(addViewerFact(current, newViewerFact(id, newFact.label.trim(), newFact.type)), `Added ${newFact.label.trim()}.`, () => setNewFact((n) => ({ ...n, label: "" })));
+              runViewerEdit(addViewerFact(current, newViewerFact(id, newFact.label.trim(), newFact.type)), `Added ${newFact.label.trim()}.`, () => setNewFact((n) => ({ ...n, label: "" })));
             }}
           />
         </div>
