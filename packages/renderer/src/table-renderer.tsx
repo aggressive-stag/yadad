@@ -150,7 +150,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
           const bound = first ? text(record, first.field) : "";
           const here = text(record, level.view.columns[0]?.field ?? "");
           const name = target.title ?? target.id;
-          return `Open ${name}${bound ? ` for ${bound}` : ""}${here && here !== bound ? ` (${here})` : ""}`;
+          return `Open ${name}${bound ? ` — ${bound}` : ""}${here && here !== bound ? ` (${here})` : ""}`;
         },
         open: (record) => {
           const chips = action.bind.map((b) => `${targetEntity.fields.find((f) => f.id === b.to)?.label ?? b.to} = ${text(record, b.field) || "(empty)"}`);

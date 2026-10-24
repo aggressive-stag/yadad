@@ -69,12 +69,25 @@ describe("row action", () => {
   test("every row has an Open button with a name that says what opens", async () => {
     await open();
     const names = screen.getAllByRole("button", { name: /^Open / }).map((b) => b.textContent);
-    expect(names).toEqual(["Open Exercise history for Squat (2026-10-01)", "Open Exercise history for Bench (2026-10-02)"]);
+    expect(names).toEqual(["Open Exercise history — Squat (2026-10-01)", "Open Exercise history — Bench (2026-10-02)"]);
+  });
+
+  test("a target title ending in \"for …\" cannot stutter the connector", async () => {
+    // The consumer report this card fixes: a target view titled "Sets for
+    // session" used to render "Open Sets for session for 3 (…)" — the ` for `
+    // connector collided with the title's own preposition. An em dash cannot.
+    const target: TableView = { ...base, id: "per-session", title: "Sets for session", columns: [{ field: "day" }, { field: "exercise" }] };
+    const source: TableView = { ...sets, id: "sessions", rowAction: { open: "per-session", bind: [{ field: "exercise", to: "exercise" }] } };
+    const docs: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map<string, TableView>([[source.id, source], [target.id, target]]) };
+    render(<TableRenderer entity={entity} view={source} registry={mockRegistry} dataSources={await seed()} documents={docs} />);
+    await screen.findByText("2026-10-01");
+    const names = screen.getAllByRole("button", { name: /^Open / }).map((b) => b.textContent);
+    expect(names).toEqual(["Open Sets for session — Squat (2026-10-01)", "Open Sets for session — Bench (2026-10-02)"]);
   });
 
   test("opening shows the target filtered by the row, with a heading, chips and Back", async () => {
     await open();
-    fireEvent.click(screen.getByRole("button", { name: /for Bench/ }));
+    fireEvent.click(screen.getByRole("button", { name: /— Bench/ }));
     const heading = await screen.findByRole("heading", { name: "Exercise history: Exercise = Bench" });
     await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
     expect(bodyRows().map((r) => cellText(r)[0])).toEqual(["2026-10-02"]);
@@ -87,7 +100,7 @@ describe("row action", () => {
 
   test("the target is filtered by all matching rows, ignoring the source's paging", async () => {
     await open();
-    fireEvent.click(screen.getByRole("button", { name: /for Squat/ }));
+    fireEvent.click(screen.getByRole("button", { name: /— Squat/ }));
     await screen.findByRole("heading", { name: /Squat/ });
     await waitFor(() => expect(bodyRows().map((r) => cellText(r)[0])).toEqual(["2026-10-01", "2026-10-03", "2026-10-04"]));
   });
@@ -152,10 +165,10 @@ describe("row action in a dashboard widget", () => {
     };
     render(<DashboardRenderer dashboard={dashboard} documents={documents} registry={mockRegistry} dataSources={dataSources} />);
     await screen.findByText("2026-10-01");
-    fireEvent.click(screen.getByRole("button", { name: /for Bench/ }));
+    fireEvent.click(screen.getByRole("button", { name: /— Bench/ }));
     await screen.findByRole("heading", { name: "Exercise history: Exercise = Bench" });
     expect(document.querySelectorAll("[data-yadad-grid-item]").length).toBe(1);
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    await screen.findByRole("button", { name: /for Bench/ });
+    await screen.findByRole("button", { name: /— Bench/ });
   });
 });
