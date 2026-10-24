@@ -59,7 +59,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
     return draft ? restoreDraft(entity, draft) : null;
   });
   const [restored, setRestored] = useState<RestoredDraft | null>(initial);
-  const [state, setState] = useState<FormState>(initial ? { values: initial.values, errors: [] } : emptyFormState);
+  const [state, setState] = useState<FormState>(initial ? { values: initial.values, errors: initial.invalidFields } : emptyFormState);
   const [saving, setSaving] = useState(false);
   // Only input typed in this session is written back, so restoring alone never touches the stored draft.
   const typed = useRef(false);

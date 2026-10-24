@@ -389,7 +389,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     const draft = store?.load(view.id, record.id);
     const restoredDraft = draft ? restoreDraft(entity, draft, record.version) : null;
     setRestored(restoredDraft ?? undefined);
-    setEditing({ record, state: restoredDraft ? { values: restoredDraft.values, errors: [] } : emptyFormState });
+    setEditing({ record, state: restoredDraft ? { values: restoredDraft.values, errors: restoredDraft.invalidFields } : emptyFormState });
   };
 
   const cancelEdit = (): void => {

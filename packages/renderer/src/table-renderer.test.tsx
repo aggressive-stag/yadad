@@ -197,6 +197,33 @@ describe("table drafts", () => {
     expect(screen.getByRole("status").textContent).toContain("Restored unsaved changes");
   });
 
+  test("a draft whose typed value no longer fits the schema is restored AND flagged, never dropped", async () => {
+    // Card 44c: a stale draft must not be dropped or restored silently. The
+    // value (the user's work) comes back, the field is marked invalid, the
+    // ErrorSummary names it, and Save is refused until it is fixed.
+    const storage = memoryStorage();
+    const { db, remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });
+    const id = await benchId(db);
+    // A string in a number field: what a storage/schema drift produces, and
+    // exactly what restoreDraft now flags instead of dropping.
+    storage.data.set(`yadad:draft:sets:${id}`, JSON.stringify({ values: { weight: "eighty-ish" }, entityRevision: 1, savedAt: Date.now(), recordVersion: "1" }));
+
+    await remount();
+    fireEvent.click(within(screen.getAllByRole("row")[1]!).getByRole("button", { name: "Edit" }));
+    const weight = within(screen.getAllByRole("row")[1]!).getByRole("spinbutton", { name: "Weight" });
+    // The mock number Input is <input type=number>, which cannot render the
+    // malformed string — the browser filters it. What the engine guarantees:
+    // the field is marked invalid (the value itself stays in form state).
+    expect(weight.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("status").textContent).toContain("Restored unsaved changes");
+    expect(document.getElementById(`${screen.getByRole("table").id}-edit-errors`)?.textContent ?? document.body.textContent).toContain("must be");
+
+    fireEvent.click(within(screen.getAllByRole("row")[1]!).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Save" }).length).toBe(1)); // still editing — refused
+    const page = await db.find("workout_set", { filter: { op: "eq", field: "day", value: "2026-10-03" } });
+    expect(page.items[0]!.values.weight).toBe(80); // the stored record untouched
+  });
+
   test("saving clears the draft; reopening starts from the saved value", async () => {
     const storage = memoryStorage();
     const { db, remount } = await setup({ drafts: { store: createDraftStore(storage), debounceMs: 0 } });

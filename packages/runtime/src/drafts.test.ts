@@ -61,12 +61,38 @@ describe("draft store", () => {
 
 describe("restoreDraft", () => {
   test("drops values of fields the entity no longer has and flags a new revision", () => {
+    // invalidFields joined the shape (card 44c): values the schema now rejects
+    // come back flagged; a clean draft restores with none.
     const restored = restoreDraft(entity, { values: { name: "Ada", nickname: "A" }, entityRevision: 1, savedAt: 5 });
-    expect(restored).toEqual({ values: { name: "Ada" }, savedAt: 5, revisionChanged: true, droppedFields: ["nickname"], recordChanged: false });
+    expect(restored).toEqual({ values: { name: "Ada" }, invalidFields: [], savedAt: 5, revisionChanged: true, droppedFields: ["nickname"], recordChanged: false });
   });
 
   test("returns null when nothing fits any more", () => {
     expect(restoreDraft(entity, { values: { gone: 1 }, entityRevision: 2, savedAt: 5 })).toBeNull();
+  });
+
+  test("keeps values the schema now rejects and flags them instead of dropping them", () => {
+    // The fitnotes case: storage went stale, a draft's typed text no longer fits.
+    // The text is the user's work — restore it AND flag it, never silently drop.
+    const restored = restoreDraft(entity, { values: { name: "Ada", age: "thirty" }, entityRevision: 2, savedAt: 5 });
+    expect(restored?.values).toEqual({ name: "Ada", age: "thirty" });
+    expect(restored?.invalidFields).toEqual([
+      { path: "/age", code: "type", message: '"Age" must be a number.', hint: "Enter a number." },
+    ]);
+  });
+
+  test("an absent required value is NOT flagged at restore (the submit path reports it)", () => {
+    const strict: EntityDocument = { ...entity, fields: [{ id: "name", type: "text", label: "Name", required: true }] };
+    const restored = restoreDraft(strict, { values: { name: "Ada" }, entityRevision: 2, savedAt: 5 });
+    expect(restored?.invalidFields).toEqual([]);
+  });
+
+  test("a draft where only a rejected value remains still restores (flagged, not lost)", () => {
+    // The drop-everything path must NOT trigger for an invalid-but-typed value:
+    // "nothing left to restore" means no keys, not no valid keys.
+    const restored = restoreDraft(entity, { values: { age: "thirty" }, entityRevision: 2, savedAt: 5 });
+    expect(restored?.values).toEqual({ age: "thirty" });
+    expect(restored?.invalidFields.length).toBe(1);
   });
 
   test("flags a record saved elsewhere since the draft was taken", () => {

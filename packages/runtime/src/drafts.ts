@@ -1,5 +1,6 @@
-import type { EntityDocument, FieldValue, RecordValues } from "@yadad/core";
+import type { DocumentError, EntityDocument, FieldValue, RecordValues } from "@yadad/core";
 import type { KeyValueStore } from "./key-value-adapter.js";
+import { validateRecord } from "./record.js";
 
 /** What drafts need from storage: the key-value interface plus removal. localStorage fits as-is. */
 export interface DraftStorage extends KeyValueStore {
@@ -82,19 +83,34 @@ export interface RestoredDraft {
   readonly droppedFields: readonly string[];
   /** The record being edited was saved elsewhere since the draft was taken. */
   readonly recordChanged: boolean;
+  /**
+   * Restored values the current schema rejects — same issue shape as
+   * `FormState.errors`, so a caller seeds them into the form and the field
+   * frames show them. The values are still restored: a draft is the user's
+   * typed data, and silently dropping it is data loss. `required` is excluded
+   * — a draft typed halfway through legitimately lacks optional-but-required
+   * values, and the submit path (`submitForm`/`submitEdit`) reports those.
+   */
+  readonly invalidFields: readonly DocumentError[];
 }
 
 /**
  * Fits a stored draft to the entity as it is now: values for fields that no
- * longer exist are dropped. Returns null when nothing is left to restore.
+ * longer exist are dropped, and values the current schema rejects are kept but
+ * reported in `invalidFields`. Returns null when nothing is left to restore.
  */
 export function restoreDraft(entity: EntityDocument, draft: Draft, recordVersion?: string): RestoredDraft | null {
   const known = new Set(entity.fields.map((f) => f.id));
   const entries = Object.entries(draft.values);
   const kept = entries.filter(([id]) => known.has(id));
   if (kept.length === 0) return null;
+  const keptIds = new Set(kept.map(([id]) => id));
+  const invalidFields = validateRecord(entity, Object.fromEntries(kept)).filter(
+    (issue) => issue.code !== "required" && keptIds.has(issue.path.slice(1)),
+  );
   return {
     values: Object.fromEntries(kept),
+    invalidFields,
     savedAt: draft.savedAt,
     revisionChanged: draft.entityRevision !== entity.revision,
     droppedFields: entries.filter(([id]) => !known.has(id)).map(([id]) => id),
