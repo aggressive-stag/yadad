@@ -395,7 +395,7 @@ function SeriesLoader({
     text: g.value === undefined ? NO_VALUE : NUMBER_FORMAT.format(g.value),
   }));
 
-  return <Series label={widget.label} display={widget.display} groups={groups} skipped={result?.skipped ?? 0} {...(result?.partial ? { partial: result.partial } : {})} loading={result === undefined} measureLabel={measureLabel(widget.measure)} />;
+  return <Series label={widget.label} display={widget.display} groups={groups} skipped={result?.skipped ?? 0} {...(result?.partial ? { partial: result.partial } : {})} loading={result === undefined} measureLabel={measureLabel(widget.measure)} aggregation={widget.measure.op} />;
 }
 
 /** Every widget must point at a view that exists and fits it, with its entity and data source. */

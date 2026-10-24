@@ -492,6 +492,16 @@ describe("series widgets", () => {
     expect(calls().at(-1)!.loading).toBe(false);
   });
 
+  test("a min measure arrives with both the prose label and the machine aggregation (card 45g)", async () => {
+    const db = await seedSets();
+    const { registry, calls } = seriesRegistry();
+    show(board([series("min_weight", { field: "modality" }, { measure: { op: "min", field: "weight" } })]), db, registry);
+    await waitFor(() => expect(groupTexts()).toHaveLength(2));
+    const props = calls().at(-1)!;
+    expect(props.measureLabel).toBe("Minimum weight");
+    expect(props.aggregation).toBe("min"); // components branch on this, never on the label's first word
+  });
+
   test("boolean groups label Yes/No", async () => {
     const db = await seedSets();
     const { registry } = seriesRegistry();

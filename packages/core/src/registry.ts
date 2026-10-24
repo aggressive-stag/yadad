@@ -2,7 +2,7 @@
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
 // CellEditor and optionsSchema come later.
 
-import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, NumberField, ReferenceField, SelectField, SeriesDisplay, TextField } from "./document.js";
+import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, Measure, NumberField, ReferenceField, SelectField, SeriesDisplay, TextField } from "./document.js";
 import type { DocumentError } from "./errors.js";
 
 /**
@@ -309,8 +309,10 @@ export interface SeriesWidgetProps {
   readonly loading: boolean;
   /** A read failed outright; the component shows the message instead of empty axes. */
   readonly error?: string;
-  /** What each group's number is, e.g. "Sum of weight × reps" — the value-axis label. */
+  /** What each group's number is, e.g. "Sum of weight × reps" — the value-axis label. Prose for humans; read `aggregation` for behaviour. */
   readonly measureLabel: string;
+  /** What the number actually is. Components must branch on this, never on `measureLabel` — labels are copy, this is data. */
+  readonly aggregation: Measure["op"];
 }
 
 /** Widget components by widget type; "view" widgets render through the renderer itself. */

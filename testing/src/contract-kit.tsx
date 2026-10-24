@@ -1349,11 +1349,12 @@ function seriesChecks(registry: Registry<ReactNode>): ContractCheck[] {
   const Series = registry.widgets.series;
   if (!Series) return [];
 
-  const base: Pick<SeriesWidgetProps, "label" | "display" | "loading" | "measureLabel"> = {
+  const base: Pick<SeriesWidgetProps, "label" | "display" | "loading" | "measureLabel" | "aggregation"> = {
     label: "Sets per day",
     display: "bar",
     loading: false,
     measureLabel: "Sum of sets",
+    aggregation: "sum",
   };
   const groups: SeriesGroupProps[] = [
     { key: "2026-10-01", label: "Thursday 1 October", value: 12, text: "12" },
