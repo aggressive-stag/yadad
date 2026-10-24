@@ -1,5 +1,16 @@
 # @yadad/core
 
+## 0.14.0
+
+### Minor Changes
+
+- 78b0d67: New export `defaultTitleField(entity)` in @yadad/core: the single owner of the "an omitted view titleField falls back to the entity's first text field" rule. The validator's calendar/board title checks and both runtime `titleFieldOf` helpers now call it instead of re-encoding the rule — the four copies could drift apart silently, validator against runtime. Behaviour unchanged.
+- 08db8af: `SeriesWidgetProps.aggregation` — the chart stops reading English (card 45g). The series widget told its component what the number was only as prose (`measureLabel: "Minimum weight"`), and `/git/yadad-components`' `measureFitsData()` sniffed the label's first word to decide whether the axis may start above the data — so a copy edit or a translation silently changed chart behaviour. The engine already knows (`measure.op`); the renderer now passes it as `aggregation: Measure["op"]` alongside the unchanged `measureLabel`. **Breaking for hand-implementers:** components that build `SeriesWidgetProps` by hand must add the required `aggregation` field; components that only receive it are unaffected. Consumer sets should switch `measureFitsData` to read `aggregation` (yadad-components card 19).
+
+### Patch Changes
+
+- 43eab04: Validator internals, behaviour frozen: the calendar and board field checkers shared a verbatim preamble (find/idsOfType/unknown/typed), a title fallback and a filter/sort/actions tail — three copies of rules that had to be edited together. Now one file-local ViewFieldChecker factory, checkViewTitle and checkViewFilterSortTail, plus entityFieldIds for the seven repeated field-id lists. Same codes, paths, messages and check order, pinned by the untouched document-fixture suites.
+
 ## 0.13.1
 
 ### Patch Changes

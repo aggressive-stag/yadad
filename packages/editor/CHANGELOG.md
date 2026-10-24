@@ -1,5 +1,18 @@
 # @yadad/editor
 
+## 0.14.2
+
+### Patch Changes
+
+- 0832531: One `runEdit` owns what a rejected save does (card 45e): the four view editors (`board`, `calendar`, `form`, `table`) each carried the same nine-line `run` callback, and each `applyAndAnnounce` repeated its apply-and-report half. The rule and the apply step now live in `save-result.ts` — `runEdit`, `editRunner`, `applyEdit` — and the editors bind them. `viewer-panel`'s `run` sets the session only after its conflict check, so it stays its own function (renamed `runViewerEdit` to say so). No behaviour change is intended; if a rejected save announces itself differently anywhere, that is the bug.
+- Updated dependencies [78b0d67]
+- Updated dependencies [37ff50e]
+- Updated dependencies [08db8af]
+- Updated dependencies [a13f16d]
+- Updated dependencies [43eab04]
+  - @yadad/core@0.14.0
+  - @yadad/runtime@0.11.0
+
 ## 0.14.1
 
 ### Patch Changes

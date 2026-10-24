@@ -1,5 +1,20 @@
 # @yadad/runtime
 
+## 0.11.0
+
+### Minor Changes
+
+- 37ff50e: One `MovePlan` for every move: `moveDay` and `moveCard` return the same union (`none` / `blocked` / `update`, exported from `@yadad/runtime`). Board's `"rejected"` case is now `blocked` with `reason: "other"` — a breaking discriminant change for anyone switching on move plans, made deliberately so the two views' "we will not write" answers stay one design instead of two.
+
+### Patch Changes
+
+- 78b0d67: New export `defaultTitleField(entity)` in @yadad/core: the single owner of the "an omitted view titleField falls back to the entity's first text field" rule. The validator's calendar/board title checks and both runtime `titleFieldOf` helpers now call it instead of re-encoding the rule — the four copies could drift apart silently, validator against runtime. Behaviour unchanged.
+- a13f16d: The state grid builds its table shapes through `runQuery` instead of a hand-rolled copy: `matching` now follows the view's `sort` (the copy ignored it), `next` is what the matched set actually has (one record no longer claims a second page), and a filter a real adapter would reject (viewerIn) skips the state with the adapter's message instead of silently matching nothing. `runQuery` gained an optional `now` so the grid keeps its frozen clock. Generated field names are unchanged; values are now the adapter's answer, pinned by new view-states tests.
+- Updated dependencies [78b0d67]
+- Updated dependencies [08db8af]
+- Updated dependencies [43eab04]
+  - @yadad/core@0.14.0
+
 ## 0.10.1
 
 ### Patch Changes

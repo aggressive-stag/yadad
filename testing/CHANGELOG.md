@@ -1,5 +1,18 @@
 # @yadad/testing
 
+## 0.10.2
+
+### Patch Changes
+
+- 08db8af: `SeriesWidgetProps.aggregation` — the chart stops reading English (card 45g). The series widget told its component what the number was only as prose (`measureLabel: "Minimum weight"`), and `/git/yadad-components`' `measureFitsData()` sniffed the label's first word to decide whether the axis may start above the data — so a copy edit or a translation silently changed chart behaviour. The engine already knows (`measure.op`); the renderer now passes it as `aggregation: Measure["op"]` alongside the unchanged `measureLabel`. **Breaking for hand-implementers:** components that build `SeriesWidgetProps` by hand must add the required `aggregation` field; components that only receive it are unaffected. Consumer sets should switch `measureFitsData` to read `aggregation` (yadad-components card 19).
+- Updated dependencies [78b0d67]
+- Updated dependencies [37ff50e]
+- Updated dependencies [08db8af]
+- Updated dependencies [a13f16d]
+- Updated dependencies [43eab04]
+  - @yadad/core@0.14.0
+  - @yadad/runtime@0.11.0
+
 ## 0.10.1
 
 ### Patch Changes
