@@ -177,11 +177,11 @@ export function createMemoryAdapter(options?: AdapterOptions): DataAdapter {
   };
 }
 
-/** Filter, then sort, then page: the query semantics every in-process adapter shares. A `viewerIn` leaf in the filter is rejected. With `paging: "cursor"` the page carries no `total` and an opaque `next` (RFC 0007). */
-export function runQuery(records: readonly DataRecord[], query: Query, paging?: "cursor"): Page<DataRecord> {
+/** Filter, then sort, then page: the query semantics every in-process adapter shares. A `viewerIn` leaf in the filter is rejected. With `paging: "cursor"` the page carries no `total` and an opaque `next` (RFC 0007). `now` freezes relative-date resolution (the state grid's frozen clock); callers without one resolve against the current time. */
+export function runQuery(records: readonly DataRecord[], query: Query, paging?: "cursor", now?: Date): Page<DataRecord> {
   assertQueryHasNoViewer(query);
   const { filter } = query;
-  const matching = records.filter((r) => !filter || evaluateCondition(filter, r.values));
+  const matching = records.filter((r) => !filter || evaluateCondition(filter, r.values, now));
   const all = sortRecords(matching, query.sort ?? []);
   if (paging === "cursor") {
     const limit = query.page?.limit ?? all.length;
@@ -198,7 +198,13 @@ export function runQuery(records: readonly DataRecord[], query: Query, paging?: 
 
 const CURSOR_PREFIX = "c0:"; // an encoded offset: reversed base36, so it never looks like a plain number
 
-/** Opaque continuation token (RFC 0007): only the memory adapters' runQuery produces and reads it. */
+/**
+ * Opaque continuation token (RFC 0007): only `runQuery` produces and reads it
+ * (card 45c closed the one exception — the state-grid generator used to call
+ * `encodeCursor` directly to fabricate a `next`; it now goes through
+ * `runQuery`, like `createMemoryAdapter`, `createKeyValueAdapter` and
+ * `walkWithNext`). Nothing outside this file may mint or parse a token.
+ */
 export function encodeCursor(offset: number): string {
   return `${CURSOR_PREFIX}${offset.toString(36).split("").reverse().join("")}`;
 }

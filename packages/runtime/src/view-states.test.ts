@@ -587,14 +587,40 @@ describe("action and paging axes (RFC 0007)", () => {
     const a = axis(r, "paging");
     expect(ids(a)).toEqual(["total", "cursor-more", "cursor-end"]);
     expect(a.kind).toBe("paging");
-    const one = (pick: string): Extract<ViewStateRender, { kind: "table" }> | undefined =>
-      r.states.find((s) => s.values["paging"] === pick && s.values["records"] === "one")?.render as Extract<ViewStateRender, { kind: "table" }> | undefined;
-    expect(one("total")).toMatchObject({ total: 1 });
-    expect(one("total")).not.toHaveProperty("next");
-    expect(one("cursor-more")).toMatchObject({ next: expect.stringMatching(/^c0:/) });
-    expect(one("cursor-more")).not.toHaveProperty("total");
-    expect(one("cursor-end")).toMatchObject({ next: null });
-    expect(one("cursor-end")).not.toHaveProperty("total");
+    const pick = (paging: string, records: string): Extract<ViewStateRender, { kind: "table" }> | undefined =>
+      r.states.find((s) => s.values["paging"] === paging && s.values["records"] === records)?.render as Extract<ViewStateRender, { kind: "table" }> | undefined;
+    expect(pick("total", "one")).toMatchObject({ total: 1 });
+    expect(pick("total", "one")).not.toHaveProperty("next");
+    // Card 45c: `next` comes from runQuery, so it says what the matched set
+    // says. One record on a 25-size page has no next page — the fabricated
+    // `encodeCursor(pageSize)` this test used to pin was the grid lying.
+    expect(pick("cursor-more", "one")).toMatchObject({ next: null });
+    expect(pick("cursor-more", "one")).not.toHaveProperty("total");
+    const many = pick("cursor-more", "many"); // many is pageSize+1 by construction
+    expect(many).toMatchObject({ next: expect.stringMatching(/^c0:/) });
+    expect(many).not.toHaveProperty("total");
+    expect(pick("cursor-end", "one")).toMatchObject({ next: null });
+    expect(pick("cursor-end", "one")).not.toHaveProperty("total");
+    expect(pick("cursor-end", "many")).toMatchObject({ next: null }); // the axis names the last page, whatever the records choice
+  });
+
+  it("the state grid's matching follows the view's sort, as any adapter's page would (card 45c)", () => {
+    const sorted: TableView = { ...table(), sort: [{ field: "amount", dir: "desc" }] };
+    const r = viewStates(sorted, [entity, sorted], { now: NOW, limit: 48, manyRecords: 6 });
+    const state = r.states.find((s) => s.values["records"] === "many");
+    expect(state).toBeDefined();
+    const render = state?.render;
+    if (render?.kind !== "table") throw new Error("expected a table render");
+    const amounts = render.matching.map((id) => render.records.find((rec) => rec.id === id)?.values["amount"]);
+    expect(amounts.length).toBe(6);
+    expect([...amounts].sort((a, b) => Number(b) - Number(a))).toEqual(amounts); // descending, empty last
+  });
+
+  it("a table whose filter a real adapter would reject is skipped with the adapter's message (card 45c)", () => {
+    const viewerFiltered: TableView = { ...table(), filter: { op: "viewerIn", fact: "role", values: ["owner"] } as unknown as Condition };
+    const r = viewStates(viewerFiltered, [entity, viewerFiltered], { now: NOW, limit: 48 });
+    expect(r.states.filter((s) => s.values["records"] === "one")).toEqual([]);
+    expect(r.skipped.some((s) => /viewer/.test(s.reason))).toBe(true);
   });
 
   it("calendars and boards have no paging axis", () => {

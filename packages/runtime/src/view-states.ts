@@ -11,6 +11,7 @@ import type {
   Field,
   FieldValue,
   FormView,
+  Page,
   RecordAction,
   RecordValues,
   ResolvedViewer,
@@ -21,7 +22,7 @@ import type {
 } from "@yadad/core";
 import { AGGREGATE_MAX_RECORDS } from "./aggregate.js";
 import { BOARD_MAX_CARDS, boardGroupChoices } from "./board.js";
-import { encodeCursor } from "./memory-adapter.js";
+import { runQuery } from "./memory-adapter.js";
 import { CALENDAR_MAX_RECORDS, calendarToday, visibleDays, visibleRange } from "./calendar.js";
 import type { DateRange } from "./calendar.js";
 import { combineAxes } from "./combine-axes.js";
@@ -688,13 +689,39 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         if (problem) return { ok: false, reason: `generated record ${record.id} is not valid: ${problem.message}` };
       }
       const filter = view.filter;
-      const matching = marked.filter((r) => filter === undefined || evaluateCondition(filter, r.values, ctx.now)).map((r) => r.id);
+      // Card 45c: the grid's shapes come from runQuery — the same filter/sort/
+      // page semantics every in-process adapter has — never from a hand-rolled
+      // copy. A filter a real adapter would reject (viewerIn) skips the state
+      // with the adapter's own message instead of silently evaluating false.
+      const queryBase = {
+        ...(filter === undefined ? {} : { filter }),
+        ...(view.sort === undefined ? {} : { sort: view.sort }),
+      };
+      let page: Page<DataRecord>;
+      try {
+        page = runQuery(marked, { ...queryBase, page: { offset: 0, limit: Number.MAX_SAFE_INTEGER } }, undefined, ctx.now);
+      } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+      }
+      const matching = page.items.map((r) => r.id);
       const base = { view: view.id, records: marked, matching, now: ctx.now };
       if (view.kind === "table") {
         const pageSize = view.pageSize ?? TABLE_DEFAULT_PAGE_SIZE;
         const paging = selection[PAGING_AXIS] ?? "total";
-        const pageFields = paging === "cursor-more" ? { next: encodeCursor(pageSize) } : paging === "cursor-end" ? { next: null } : { total: matching.length };
-        return { ok: true, render: { kind: "table", ...base, pageSize, ...pageFields } };
+        // The page shape the axis names, produced the way an adapter produces
+        // it. `many` is pageSize+1 records by construction (recordsAxis), so a
+        // cursor page over the matched set answers "more" honestly.
+        if (paging === "total") return { ok: true, render: { kind: "table", ...base, pageSize, total: matching.length } };
+        // `cursor-more` is the first page of pageSize — its `next` is whatever
+        // the matched set says (token when a page follows, null when not).
+        // `cursor-end` is the last page: it holds the whole matched set, so
+        // runQuery can only answer `next: null`. Either way the shape is the
+        // adapter's, not a fabricated one.
+        const limit = paging === "cursor-more" ? pageSize : matching.length;
+        const cursorPage = runQuery(marked, { ...queryBase, page: { offset: 0, limit } }, "cursor", ctx.now);
+        // runQuery's cursor branch always answers with `next` (token or null);
+        // the `?? null` only satisfies the optional field on Page<T>.
+        return { ok: true, render: { kind: "table", ...base, pageSize, next: cursorPage.next ?? null } };
       }
       if (view.kind === "calendar") return { ok: true, render: { kind: "calendar", ...base, mode, anchor: ctx.today, range } };
       const groupBy = groupFields.find((f) => f === selection["group"]) ?? groupFields[0] ?? "";
