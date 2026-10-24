@@ -1295,7 +1295,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     errors.push(refError(view.id, ["entity"], `View references unknown entity "${view.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
     return;
   }
-  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const fieldIds = entityFieldIds(entity);
   const checkField = (fieldId: string, path: Path): void => {
     if (fieldIds.includes(fieldId)) return;
     errors.push(refError(view.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
@@ -1492,14 +1492,26 @@ function checkRowActionChains(errors: DocumentError[], idx: SetIndex): void {
   }
 }
 
-/** Checks a calendar's entity and every field it uses. */
-function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: SetIndex): void {
-  const entity = idx.entities.get(view.entity);
-  if (!entity) {
-    errors.push(refError(view.id, ["entity"], `View references unknown entity "${view.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
-    return;
-  }
-  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+/** De-duplicated field-id list for `allowed`/hint lists (card 45b: one owner for the seven copies). */
+function entityFieldIds(entity: EntityDocument): string[] {
+  return [...new Set(entity.fields.map((f) => f.id))];
+}
+
+/**
+ * The field helpers every view-kind checker repeats (card 45b): `find`/`idsOfType`
+ * over the entity plus `unknown`/`typed` error reports on the view document.
+ * File-local by design — the error wording is the frozen validator contract.
+ */
+interface ViewFieldChecker {
+  readonly fieldIds: string[];
+  readonly find: (id: string) => Field | undefined;
+  readonly idsOfType: (types: readonly FieldType[]) => string[];
+  readonly unknown: (id: string, path: Path) => void;
+  readonly typed: (id: string, path: Path, role: string, types: readonly FieldType[]) => Field | undefined;
+}
+
+function viewFieldChecker(errors: DocumentError[], view: { readonly id: string }, entity: EntityDocument, viewKind: "calendar" | "board"): ViewFieldChecker {
+  const fieldIds = entityFieldIds(entity);
   const find = (id: string): Field | undefined => entity.fields.find((f) => f.id === id);
   const idsOfType = (types: readonly FieldType[]): string[] => [...new Set(entity.fields.filter((f) => types.includes(f.type)).map((f) => f.id))];
   const unknown = (id: string, path: Path): void => {
@@ -1517,9 +1529,11 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
       errors.push({
         path: jsonPointer(path),
         code: "invalid-value",
-        message: `"${id}" is a ${field.type} field, but a calendar's ${role} must be a ${types.join(" or ")} field.`,
+        message: `"${id}" is a ${field.type} field, but a ${viewKind}'s ${role} must be a ${types.join(" or ")} field.`,
         hint:
-          field.type === "datetime"
+          // The instants warning is the calendar's (local-day placement); the
+          // board's hand-rolled checks never had it — keep the wording frozen.
+          field.type === "datetime" && viewKind === "calendar"
             ? "Use a date field; placing instants on local days is not supported yet."
             : allowed.length > 0
               ? `Use one of: ${allowed.join(", ")}.`
@@ -1531,25 +1545,78 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
     }
     return field;
   };
+  return { fieldIds, find, idsOfType, unknown, typed };
+}
+
+/**
+ * The omitted-titleField fallback both calendar and board repeat (card 45b):
+ * `defaultTitleField` (card 45a) or a `required` error whose wording names the
+ * view's role ("entries"/"cards"). Returns the title to use, if any.
+ */
+function checkViewTitle(
+  errors: DocumentError[],
+  view: { readonly id: string },
+  entity: EntityDocument,
+  checker: ViewFieldChecker,
+  titleField: string | undefined,
+  titleTypes: readonly FieldType[],
+  titleWord: string,
+): string | undefined {
+  if (titleField !== undefined) {
+    return checker.typed(titleField, ["titleField"], "titleField", titleTypes) ? titleField : undefined;
+  }
+  const title = defaultTitleField(entity);
+  if (title === undefined) {
+    const allowed = checker.idsOfType(titleTypes);
+    errors.push({
+      path: jsonPointer(["titleField"]),
+      code: "required",
+      message: `Entity "${entity.id}" has no text field to title ${titleWord} with, so "titleField" is required.`,
+      hint: allowed.length > 0 ? `Set "titleField" to a select field: ${allowed.join(", ")}.` : `Add a text or select field to "${entity.id}" and set "titleField" to it.`,
+      document: view.id,
+      allowed,
+    });
+  }
+  return title;
+}
+
+/**
+ * The filter/sort/actions tail both calendar and board run verbatim (card 45b).
+ * The order of the checks is part of the frozen error sequence.
+ */
+function checkViewFilterSortTail(
+  errors: DocumentError[],
+  checker: ViewFieldChecker,
+  entity: EntityDocument,
+  view: CalendarView | BoardView,
+  idx: SetIndex,
+): void {
+  checkConditionFields(view.filter, ["filter"], (id, path) => {
+    if (!checker.find(id)) checker.unknown(id, path);
+  });
+  checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
+  checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
+  checkDatetimeConditions(errors, view.id, entity, view.filter, ["filter"]);
+  view.sort?.forEach((key, i) => {
+    if (!checker.find(key.field)) checker.unknown(key.field, ["sort", i, "field"]);
+    else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
+  });
+  checkRecordActionRefs(errors, view, entity);
+  if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+}
+
+/** Checks a calendar's entity and every field it uses. */
+function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: SetIndex): void {
+  const entity = idx.entities.get(view.entity);
+  if (!entity) {
+    errors.push(refError(view.id, ["entity"], `View references unknown entity "${view.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
+    return;
+  }
+  const checker = viewFieldChecker(errors, view, entity, "calendar");
+  const { find, unknown, typed, fieldIds } = checker;
 
   typed(view.dateField, ["dateField"], "dateField", ["date"]);
-  let title: string | undefined;
-  if (view.titleField !== undefined) {
-    if (typed(view.titleField, ["titleField"], "titleField", CALENDAR_TITLE_FIELD_TYPES)) title = view.titleField;
-  } else {
-    title = defaultTitleField(entity);
-    if (title === undefined) {
-      const allowed = idsOfType(CALENDAR_TITLE_FIELD_TYPES);
-      errors.push({
-        path: jsonPointer(["titleField"]),
-        code: "required",
-        message: `Entity "${entity.id}" has no text field to title entries with, so "titleField" is required.`,
-        hint: allowed.length > 0 ? `Set "titleField" to a select field: ${allowed.join(", ")}.` : `Add a text or select field to "${entity.id}" and set "titleField" to it.`,
-        document: view.id,
-        allowed,
-      });
-    }
-  }
+  const title = checkViewTitle(errors, view, entity, checker, view.titleField, CALENDAR_TITLE_FIELD_TYPES, "entries");
   view.detailFields?.forEach((id, i) => {
     const path: Path = ["detailFields", i];
     if (!find(id)) unknown(id, path);
@@ -1565,18 +1632,7 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
     }
   });
   if (view.colorField !== undefined) typed(view.colorField, ["colorField"], "colorField", CALENDAR_COLOR_FIELD_TYPES);
-  checkConditionFields(view.filter, ["filter"], (id, path) => {
-    if (!find(id)) unknown(id, path);
-  });
-  checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
-  checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
-  checkDatetimeConditions(errors, view.id, entity, view.filter, ["filter"]);
-  view.sort?.forEach((key, i) => {
-    if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
-    else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
-  });
-  checkRecordActionRefs(errors, view, entity);
-  if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+  checkViewFilterSortTail(errors, checker, entity, view, idx);
 }
 
 /** Checks a board's entity and every field it uses. */
@@ -1586,12 +1642,8 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
     errors.push(refError(view.id, ["entity"], `View references unknown entity "${view.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
     return;
   }
-  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
-  const find = (id: string): Field | undefined => entity.fields.find((f) => f.id === id);
-  const idsOfType = (types: readonly FieldType[]): string[] => [...new Set(entity.fields.filter((f) => types.includes(f.type)).map((f) => f.id))];
-  const unknown = (id: string, path: Path): void => {
-    errors.push(refError(view.id, path, `Field "${id}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
-  };
+  const checker = viewFieldChecker(errors, view, entity, "board");
+  const { find, unknown, fieldIds } = checker;
   /** A required boolean can only ever be true, so it cannot usefully group a board. */
   const groupable = (field: Field): boolean => BOARD_GROUP_FIELD_TYPES.includes(field.type) && !(field.type === "boolean" && field.required === true);
   const groupableIds = entity.fields.filter(groupable).map((f) => f.id);
@@ -1624,38 +1676,10 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
     }
   });
 
-  let title: string | undefined;
-  if (view.titleField !== undefined) {
-    const field = find(view.titleField);
-    if (!field) {
-      unknown(view.titleField, ["titleField"]);
-    } else if (!BOARD_TITLE_FIELD_TYPES.includes(field.type)) {
-      const allowed = idsOfType(BOARD_TITLE_FIELD_TYPES);
-      errors.push({
-        path: jsonPointer(["titleField"]),
-        code: "invalid-value",
-        message: `"${view.titleField}" is a ${field.type} field, but a board's titleField must be a text or select field.`,
-        hint: allowed.length > 0 ? `Use one of: ${allowed.join(", ")}.` : `Entity "${entity.id}" has no text or select field; add one.`,
-        document: view.id,
-        allowed,
-      });
-    } else {
-      title = view.titleField;
-    }
-  } else {
-    title = defaultTitleField(entity);
-    if (title === undefined) {
-      const allowed = idsOfType(BOARD_TITLE_FIELD_TYPES);
-      errors.push({
-        path: jsonPointer(["titleField"]),
-        code: "required",
-        message: `Entity "${entity.id}" has no text field to title cards with, so "titleField" is required.`,
-        hint: allowed.length > 0 ? `Set "titleField" to a select field: ${allowed.join(", ")}.` : `Add a text or select field to "${entity.id}" and set "titleField" to it.`,
-        document: view.id,
-        allowed,
-      });
-    }
-  }
+  // Present-case wording is byte-identical to the checker's `typed` for
+  // BOARD_TITLE_FIELD_TYPES (verified against the deleted block); only the
+  // missing-title noun differs ("cards"), which checkViewTitle parameterises.
+  const title = checkViewTitle(errors, view, entity, checker, view.titleField, BOARD_TITLE_FIELD_TYPES, "cards");
 
   view.cardFields?.forEach((id, i) => {
     const path: Path = ["cardFields", i];
@@ -1672,18 +1696,7 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
     }
   });
 
-  checkConditionFields(view.filter, ["filter"], (id, path) => {
-    if (!find(id)) unknown(id, path);
-  });
-  checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
-  checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
-  checkDatetimeConditions(errors, view.id, entity, view.filter, ["filter"]);
-  view.sort?.forEach((key, i) => {
-    if (!find(key.field)) unknown(key.field, ["sort", i, "field"]);
-    else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
-  });
-  checkRecordActionRefs(errors, view, entity);
-  if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+  checkViewFilterSortTail(errors, checker, entity, view, idx);
 }
 
 /** Checks that each id in a view's `recordActions` is an action of the view's entity. */
@@ -1699,7 +1712,7 @@ function checkRecordActionRefs(errors: DocumentError[], view: TableView | Calend
 
 /** Checks that the fields an action's `visibleWhen` reads exist on its entity and fit the ops used on them (RFC 0007). */
 function checkActionConditions(errors: DocumentError[], entity: EntityDocument): void {
-  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const fieldIds = entityFieldIds(entity);
   entity.actions?.forEach((action, i) => {
     const base: Path = ["actions", i, "visibleWhen"];
     checkConditionFields(action.visibleWhen, base, (fieldId, path) => {
@@ -1890,7 +1903,7 @@ function checkConditionFields(condition: Condition | undefined, base: Path, chec
  * a date field. Errors list the qualifying fields the way stat's do.
  */
 function checkSeriesFields(errors: DocumentError[], document: string, entity: EntityDocument, groupBy: SeriesWidget["groupBy"], base: Path): void {
-  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const fieldIds = entityFieldIds(entity);
   const field = entity.fields.find((f) => f.id === groupBy.field);
   if (!field) {
     errors.push(refError(document, [...base, "field"], `Field "${groupBy.field}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
@@ -1923,7 +1936,7 @@ function checkSeriesFields(errors: DocumentError[], document: string, entity: En
 /** Checks that a measure's fields exist on the entity and have a type its op accepts. */
 function checkMeasureFields(errors: DocumentError[], document: string, entity: EntityDocument, measure: Measure, base: Path): void {
   if (measure.op === "count") return;
-  const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+  const fieldIds = entityFieldIds(entity);
   const accepted = MEASURE_FIELD_TYPES[measure.op];
   const check = (fieldId: string, path: Path, types: readonly FieldType[]): void => {
     const field = entity.fields.find((f) => f.id === fieldId);
@@ -1971,7 +1984,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       }
       const entity = idx.entities.get(table.entity);
       if (!entity) return; // the table's own missing entity is reported on the table
-      const fieldIds = [...new Set(entity.fields.map((f) => f.id))];
+      const fieldIds = entityFieldIds(entity);
       checkRelativeDateFields(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkReferenceOps(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkDatetimeConditions(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
