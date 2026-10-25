@@ -1,6 +1,6 @@
 # RFC 0008: Consumer feedback round 1
 
-- Status: Draft (2026-10-22). Items 1–15, all drafted.
+- Status: Accepted (2026-10-25). All 15 items accepted as recommended — see `## Owner decisions`.
 - Touches: `core` (`RowBinding`, `ReferenceField.display`/`colorFrom`, `CalendarView.doneField`/`maxEntriesPerDay`, `BoardView.doneField`/`columnsFrom`, `TableView.addForm`, `StaticOptions`, `FormItem.label`, `TextField.multiline`/`maxLength`, new `time`/`tags` field types, the validators, `describeContract`, `recordJsonSchema`), `runtime` (condition/quick-filter helpers, reference labels, `canUpdate` narrowing, board columns), `renderer` (completion toggle, table add, reference display, pager slot, quick filters, forms), `testing` (contract kit, state checks), `editor` (the matching editors), `docs/records-protocol.md` (`can.fields`, `tags` values), `apps/showcase`, and the components repo (select/textarea/tags/time inputs, headings, pager styles).
 - Bumps `specVersion` from 6 to **7** (read `SPEC_VERSION`; if another step landed first, take the next number) with an identity `migrate()` step (everything here is optional and additive) and a before/after fixture pair.
 
@@ -254,3 +254,23 @@ Nothing here moves authority: the server remains the only one, documents decide 
 13. `multiline` + `maxLength` on `text` (recommended), or a `longText` type?
 14. A `time` field type (recommended), or `format` on text (rejected in the draft — confirm)?
 15. `tags` first (recommended), `multiselect` later, or both now?
+
+## Owner decisions (2026-10-25)
+
+The owner delegated the per-item calls to the droid; each item is accepted **as recommended** in its own section above, and each numbered answer below records the option taken. `specVersion` moves 7 → 8 (0008 + 0009 buildable items ship together; AGENTS.md rule 8: one identity `migrate()` step, before/after fixture pair).
+
+1. **(a)** — reserved `field: "id"` in `RowBinding`; one reserved word in the type, one special case in `bindable()`.
+2. **(a) + (b)** — `ReferenceField.display` accepts `date`/`datetime`, and the improved error message ships too.
+3. **(a)** — `doneField` on `CalendarView` **and** `BoardView`, opt-in, with a keyboard path mirroring "Move to day…".
+4. **(a)** — `TableView.addForm` (target must exist, be a form, share the entity).
+5. **(a)** — select options become `{ value, label?, color? }`; the field stays a `select`.
+6. **(a)** — per-item `FormItem.label`, display-only; editor gets a Label input.
+7. **(a) + (c)** — calendar detail lines labelled by default; `maxEntriesPerDay` default 3.
+8. **(a)** — `colorFrom` reads the target's own colour; stable hash kept as fallback; README sentence either way.
+9. **(a)** — `can.fields` in the records protocol, consumed by `movable` and inline edit; degrades to today's fail-open for silent servers.
+10. **(a)** — `columnsFrom: "options"` on board views, opt-in, capped per the 500-id reference-fetch guard; state grid gains the empty-column state.
+11. **(a) and (b)** — `layout.Pager` registry key **and** base-set styling.
+12. **(a)** — components render `h2`; no document field. If a level need appears, it is a component prop.
+13. **(a) + (c)** — `multiline` (default false) and `maxLength` on `text`, mirroring `number`'s `min`/`max`.
+14. **(a)** — new `time` field type; separate fields from `date`; `calendar.dateField` stays `date`-only; runtime helpers mirror `date`'s.
+15. **(a)** — `tags` now (`string[]`, `contains`/`notContains`, any-element `in`/`notIn`, no sort, no `groupBy`); `multiselect` only when a consumer needs a closed vocabulary.

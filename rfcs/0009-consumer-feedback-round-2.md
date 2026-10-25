@@ -1,6 +1,6 @@
 # RFC 0009: Consumer feedback round 2 — the task app's SPA audit
 
-- Status: Draft (2026-10-24). Items 1–7, all drafted.
+- Status: Accepted (2026-10-25). Items 1, 3, 4, 5 accepted as recommended (build); items 2, 6, 7 ratified as drafted (docs/record, no build). See `## Owner decisions`.
 - Touches: `core` (a new condition leaf, `steps` sub-records, `quickFilters` naming, possibly a form repeat), `runtime` (condition evaluation, the state-grid axis for the new leaf, quick-filter helpers), `renderer` (the sub-record section, saved-filter chips, the composer), `testing` (contract kit, state checks), `editor` (the matching editors), `docs/records-protocol.md` (the membership verdict), and the components repo (chips, repeatable rows).
 - `specVersion` stays at **7** while this is a draft (read `SPEC_VERSION`; 0008's 6→7 step has landed). The bump to 8 happens once, when the first accepted item lands, with an identity `migrate()` step and a before/after fixture pair — the same rule 0008 followed.
 
@@ -121,3 +121,15 @@ Per-item accept/reject, as with 0008. The decisions that need an owner, not an a
 7. **Item 7** — ratify the boundary-plus-exception paragraph for `docs/records-protocol.md`.
 
 `time`-of-day is RFC 0008 item 14 — not re-drafted here; the task panel's `due_time` waits on it, not on this RFC.
+
+## Owner decisions (2026-10-25)
+
+The owner delegated the per-item calls to the droid; each item lands **as recommended/drafted** above. `specVersion` moves 7 → 8 together with RFC 0008's accepted items — one identity `migrate()` step, one before/after fixture pair for the combined bump.
+
+1. **Accepted (a)** — new condition leaf, named **`fieldEqFact`**: a record field compared to a declared viewer fact, reusing `eq`'s type rules (including reference-to-fact); the fact must be declared in the context's `viewer` document; the state grid gains one viewer axis per compared fact. Name settled per the audit's request.
+2. **Ratified** — union lists are **read-only host entities**: the data source exposes the combined list; the document stays unaware. Documented as the pattern in `docs/records-protocol.md`; the in-contract union (option a) stays closed until a second consumer proves the pattern insufficient.
+3. **Ratified and accepted (b)** — a checklist is an **entity with a declared sub-record section**, never a field type: the step keeps its own record, `can`, and version; the form hosts the editing affordance; added steps land focused; focus return follows the table's rule. Option (a) stays rejected even as sugar. This is the RFC's largest build surface.
+4. **Accepted (a)** — `repeat: "batch"` on a form view: the host renders the shared field set N times and the write path creates N records atomically; reuses every form validator and field widget; the composer is the renderer's.
+5. **Accepted (a)** — document-level **named saved filters**: each is only a `Condition` over the view's entity, checked by the same `checkCondition` — query *shape*, not query state; which filter is selected stays the host's.
+6. **Ratified** — the cross-field search box stays deferred (option b); the rejection is recorded. A second consumer asking for the same box promotes it to a micro-RFC against this item.
+7. **Ratified** — the membership boundary-plus-exception paragraph lands in `docs/records-protocol.md`: membership rows are ordinary records (a `member` entity with record actions); authorization remains the server's alone.
