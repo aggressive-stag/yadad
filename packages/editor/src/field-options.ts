@@ -1,4 +1,4 @@
-import { isIsoDate, isIsoDatetime } from "@yadad/core";
+import { isIsoDate, isIsoDatetime, optionValue } from "@yadad/core";
 import type { Field, FieldType, FieldValue, RecordValues } from "@yadad/core";
 
 /**
@@ -120,7 +120,7 @@ export function propertiesFromField(field: Field): RecordValues {
     case "reference":
       return { ...base, entity: field.entity, display: field.display ?? null };
     case "select":
-      return { ...base, choices: field.options.values.join(", ") };
+      return { ...base, choices: field.options.values.map(optionValue).join(", ") }; // RFC 0008: card 47a
     default:
       return base;
   }

@@ -25,6 +25,7 @@ import type {
   TabsProps,
   TextField,
 } from "@yadad/core";
+import { optionValue } from "@yadad/core"; // RFC 0008: card 47a
 import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -89,11 +90,11 @@ function MockSelectInput(props: InputProps<SelectField, string>): ReactNode {
   return (
     <select {...controlProps(props)} value={props.value ?? ""} onChange={(e) => props.onChange(orUndefined(e.target.value))}>
       <option value="">Choose…</option>
-      {props.field.options.values.map((v) => (
-        <option key={v} value={v}>
-          {v}
+      {props.field.options.values.map((o) => (
+        <option key={optionValue(o)} value={optionValue(o)}>
+          {optionValue(o)}
         </option>
-      ))}
+      ))} /* RFC 0008: card 47a */
     </select>
   );
 }

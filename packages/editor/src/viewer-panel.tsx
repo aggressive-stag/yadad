@@ -1,3 +1,4 @@
+import { optionValue } from "@yadad/core"; // RFC 0008: card 47a
 import type { Document, DocumentError, Registry, ViewerDocument, ViewerFact } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
@@ -90,7 +91,7 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
         {fact.type === "select" ? (
           <>
             <ul aria-label={`Values of ${fact.id}`} data-yadad-fact-values={fact.id}>
-              {fact.options.values.map((value) => (
+              {fact.options.values.map(optionValue).map((value) => (
                 <li key={value}>
                   {value}
                   {value === fact.default ? " (default)" : ""}{" "}
@@ -107,7 +108,7 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
                 disabled={newValue.trim() === ""}
                 onPress={() => runViewerEdit(addViewerFactValue(current, fact.id, newValue), `${newValue.trim()} added to ${fact.label}.`, () => setNewValues((n) => ({ ...n, [fact.id]: "" })))}
               />
-              {propertyInput(registry, `${base}-default-${fact.id}`, choiceField("default", `Default of ${fact.id} (for a viewer nobody described)`, fact.options.values), fact.default, (v) =>
+              {propertyInput(registry, `${base}-default-${fact.id}`, choiceField("default", `Default of ${fact.id} (for a viewer nobody described)`, fact.options.values.map(optionValue)), fact.default, (v) =>
                 runViewerEdit(setViewerFactDefault(current, fact.id, asText(v)), `${fact.label} defaults to ${asText(v)}.`),
               )}
             </div>

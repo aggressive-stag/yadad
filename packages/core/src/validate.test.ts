@@ -464,3 +464,71 @@ describe("calendar view", () => {
     expect(problems({ ...calendar, rowAction: { open: "t", bind: [] } })).toEqual([["/rowAction/bind", "invalid-value"]]);
   });
 });
+
+describe("RFC 0008 item 5 — labelled, coloured static options", () => {
+  const selectEntity = (values: unknown[]) => ({
+    kind: "entity", specVersion: 0, id: "list", revision: 1,
+    fields: [{ id: "color", type: "select", label: "Color", options: { source: "static", values } }],
+  });
+
+  test("plain strings and option objects both validate, mixed included", () => {
+    expect(problems(selectEntity(["red", "blue"]))).toEqual([]);
+    expect(problems(selectEntity([{ value: "#D13438", label: "Red", color: "#D13438" }, { value: "plain" }]))).toEqual([]);
+  });
+
+  test("duplicate values across the two forms collide", () => {
+    expect(problems(selectEntity(["red", { value: "red", label: "Reddish" }]))).toEqual([["/fields/0/options/values/1", "duplicate-id"]]);
+  });
+
+  test("color must be #RRGGBB; label must be non-empty bounded text; unknown keys refused", () => {
+    expect(problems(selectEntity([{ value: "a", color: "red" }]))).toEqual([["/fields/0/options/values/0/color", "invalid-value"]]);
+    expect(problems(selectEntity([{ value: "a", color: "#D1343" }]))).toEqual([["/fields/0/options/values/0/color", "invalid-value"]]);
+    expect(problems(selectEntity([{ value: "a", label: "  " }]))).toEqual([["/fields/0/options/values/0/label", "type"]]);
+    expect(problems(selectEntity([{ value: "a", label: "x".repeat(121) }]))).toEqual([["/fields/0/options/values/0/label", "invalid-value"]]);
+    expect(problems(selectEntity([{ value: "a", hex: "#D13438" }]))).toEqual([["/fields/0/options/values/0/hex", "unknown-property"]]);
+    expect(problems(selectEntity([{ label: "no value" }]))).toEqual([["/fields/0/options/values/0/value", "required"]]);
+  });
+});
+
+describe("RFC 0008 item 6 — a form item may relabel its field", () => {
+  const itemForm = (item: object) => ({
+    kind: "form", specVersion: 0, id: "f", entity: "hello", revision: 1, dataSource: "default",
+    sections: [{ id: "main", items: [item] }],
+  });
+
+  test("label is optional, string when present", () => {
+    expect(problems(itemForm({ field: "name", label: "Important" }))).toEqual([]);
+    expect(problems(itemForm({ field: "name", label: "" }))).toEqual([["/sections/0/items/0/label", "type"]]);
+    expect(problems(itemForm({ field: "name", label: 7 }))).toEqual([["/sections/0/items/0/label", "type"]]);
+    expect(problems(itemForm({ field: "name", label: "x".repeat(121) }))).toEqual([["/sections/0/items/0/label", "invalid-value"]]);
+  });
+});
+
+describe("RFC 0008 item 7 — the busy-day cap", () => {
+  const cal = (extra: object) => ({
+    kind: "calendar", specVersion: 0, id: "cal", entity: "hello", revision: 1, dataSource: "default",
+    dateField: "name", ...extra,
+  });
+
+  test("an integer 1..31 validates; anything else is refused", () => {
+    expect(problems(cal({ maxEntriesPerDay: 1 }))).toEqual([]);
+    expect(problems(cal({ maxEntriesPerDay: 31 }))).toEqual([]);
+    expect(problems(cal({ maxEntriesPerDay: 0 }))).toEqual([["/maxEntriesPerDay", "invalid-value"]]);
+    expect(problems(cal({ maxEntriesPerDay: 32 }))).toEqual([["/maxEntriesPerDay", "invalid-value"]]);
+    expect(problems(cal({ maxEntriesPerDay: 2.5 }))).toEqual([["/maxEntriesPerDay", "invalid-value"]]);
+    expect(problems(cal({ maxEntriesPerDay: "3" }))).toEqual([["/maxEntriesPerDay", "invalid-value"]]);
+  });
+});
+
+describe("RFC 0008 item 8 — a reference may borrow the target's colour", () => {
+  const withRef = (extra: object) => ({
+    kind: "entity", specVersion: 0, id: "item", revision: 1,
+    fields: [{ id: "list", type: "reference", label: "List", entity: "hello", ...extra }],
+  });
+
+  test("colorFrom is an optional id; display stays optional", () => {
+    expect(problems(withRef({}))).toEqual([]);
+    expect(problems(withRef({ colorFrom: "name" }))).toEqual([]);
+    expect(problems(withRef({ colorFrom: "Bad Id" }))).toEqual([["/fields/0/colorFrom", "invalid-value"]]);
+  });
+});

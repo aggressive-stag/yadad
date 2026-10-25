@@ -1,4 +1,4 @@
-import { validateDocument } from "@yadad/core";
+import { optionValue, validateDocument } from "@yadad/core"; // RFC 0008: card 47a adds optionValue
 import type { ResolvedViewer, ViewerDocument, ViewerFactValue, BoardView, CalendarView, DashboardView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
 import { addWidget, blankBoard, blankDashboard, blankEntity, blankForm, blankTable, BoardViewEditor, CalendarViewEditor, ViewerPanel, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor, uniqueItemId } from "@yadad/editor";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
@@ -481,7 +481,7 @@ function ViewAs({ document: doc, viewer, onChange }: { readonly document: Viewer
           <label key={fact.id}>
             {fact.label}{" "}
             <select value={String(value)} onChange={(e) => onChange(fact.id, e.target.value)}>
-              {fact.options.values.map((v) => (
+              {fact.options.values.map(optionValue).map((v) => (
                 <option key={v} value={v}>
                   {v}
                 </option>

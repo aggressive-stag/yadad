@@ -1,4 +1,4 @@
-import { jsonPointer } from "@yadad/core";
+import { jsonPointer, optionValue } from "@yadad/core";
 import type {
   BoardView,
   CalendarView,
@@ -84,16 +84,16 @@ export function resolveViewer(
       return;
     }
     if (typeof value !== "string") {
-      issues.push({ path: jsonPointer([i, "value"]), code: "type", message: `The fact "${fact.id}" takes one of its listed values.`, hint: "Pass a string; the default is used instead.", allowed: fact.options.values });
+      issues.push({ path: jsonPointer([i, "value"]), code: "type", message: `The fact "${fact.id}" takes one of its listed values.`, hint: "Pass a string; the default is used instead.", allowed: fact.options.values.map(optionValue) }); // RFC 0008: card 47a
       return;
     }
-    if (!fact.options.values.includes(value)) {
+    if (!fact.options.values.some((o) => optionValue(o) === value)) { // RFC 0008: card 47a
       issues.push({
         path: jsonPointer([i, "value"]),
         code: "invalid-value",
         message: `"${value}" is not a value of the fact "${fact.id}".`,
-        hint: `Use one of: ${fact.options.values.join(", ")}. The default is used instead.`,
-        allowed: fact.options.values,
+        hint: `Use one of: ${fact.options.values.map(optionValue).join(", ")}. The default is used instead.`,
+        allowed: fact.options.values.map(optionValue),
       });
       return;
     }

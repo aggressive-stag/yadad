@@ -376,3 +376,55 @@ describe("calendar views", () => {
     expect(validateDocuments([noText, cal({ titleField: "status" })]).ok).toBe(true);
   });
 });
+
+describe("RFC 0008 item 4 — table addForm", () => {
+  const ent = entity("thing", [{ id: "name", type: "text" }]);
+
+  test("a form over the same entity is accepted", () => {
+    expect(validateDocuments([ent, table("t", "thing", { addForm: "t_form" }), form("t_form", "thing", [{ field: "name" }])]).ok).toBe(true);
+  });
+
+  test("unknown, non-form, and wrong-entity targets are reported on the table", () => {
+    expect(problems([ent, table("t", "thing", { addForm: "nope" })])).toEqual([
+      { path: "/addForm", code: "unknown-reference", document: "t", allowed: [] },
+    ]);
+    const wrongKind = [ent, table("t", "thing", { addForm: "other" }), table("other", "thing")];
+    expect(problems(wrongKind)).toEqual([{ path: "/addForm", code: "invalid-value", document: "t", allowed: [] }]);
+    const otherEnt = entity("other_thing", [{ id: "name", type: "text" }]);
+    const wrongEnt = [ent, otherEnt, table("t", "thing", { addForm: "o_form" }), form("o_form", "other_thing", [{ field: "name" }])];
+    const errs = problems(wrongEnt);
+    expect(errs).toEqual([{ path: "/addForm", code: "invalid-value", document: "t", allowed: undefined }]);
+  });
+});
+
+describe("RFC 0008 item 10 — board columnsFrom", () => {
+  const board = (extra: Record<string, unknown>): unknown => ({
+    kind: "board", specVersion: 0, id: "b", entity: "task", revision: 1, dataSource: "default",
+    groupBy: [{ field: "who" }], ...extra,
+  });
+  const tasks = {
+    kind: "entity", specVersion: 0, id: "task", revision: 1,
+    fields: [
+      { id: "title", type: "text", label: "Title" },
+      { id: "who", type: "reference", label: "Who", entity: "person" },
+      { id: "status", type: "select", label: "Status", options: { source: "static", values: ["todo", "done"] } },
+    ],
+  };
+  const people = entity("person", [{ id: "name", type: "text" }]);
+
+  test("options is legal with a reference groupBy; the default needs nothing", () => {
+    expect(validateDocuments([people, tasks, board({})]).ok).toBe(true);
+    expect(validateDocuments([people, tasks, board({ columnsFrom: "options" })]).ok).toBe(true);
+    expect(validateDocuments([people, tasks, board({ columnsFrom: "records" })]).ok).toBe(true);
+  });
+
+  test("options on a non-reference grouping is refused with a hint", () => {
+    const bySelect = { ...tasks, fields: tasks.fields.filter((f) => f.id !== "who").map((f) => (f.id === "status" ? { ...f, required: true } : f)) };
+    const b = { ...(board({ columnsFrom: "options" }) as Record<string, unknown>), groupBy: [{ field: "status" }] };
+    const result = validateDocuments([people, bySelect, b]);
+    expect(result.ok).toBe(false);
+    const err = (result as { errors: readonly { path: string; hint: string }[] }).errors.find((e) => e.path === "/columnsFrom");
+    expect(err).toBeDefined();
+    expect(err?.hint).toContain("reference");
+  });
+});

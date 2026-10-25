@@ -1,4 +1,5 @@
 import type { EntityDocument, Field } from "./document.js";
+import { optionValue } from "./document.js";
 
 /**
  * A standard JSON Schema (draft 2020-12) for the `values` of a record under
@@ -94,11 +95,13 @@ function fieldSchema(field: Field): RecordFieldSchema {
       // A required boolean means "must be checked".
       return field.required === true ? { type: "boolean", const: true } : { type: ["boolean", "null"] };
 
-    case "select":
+    case "select": {
+      const values = field.options.values.map(optionValue);
       return {
         type: nullable("string", field),
-        enum: field.required === true ? [...field.options.values] : [...field.options.values, null],
+        enum: field.required === true ? [...values] : [...values, null],
       };
+    }
 
     case "date": {
       const bounds: { pattern: string }[] = [];

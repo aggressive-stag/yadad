@@ -1,4 +1,4 @@
-import { jsonPointer, validateDocuments, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN, VIEWER_FACTS_MAX } from "@yadad/core";
+import { jsonPointer, validateDocuments, optionValue, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN, VIEWER_FACTS_MAX } from "@yadad/core";
 import type { Document, DocumentError, ViewerDocument, ViewerFact } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
@@ -60,7 +60,7 @@ export function setViewerFactDefault(doc: ViewerDocument, factId: string, value:
   const i = indexOf(doc, factId);
   const fact = doc.facts[i];
   if (!fact) return fail(["facts"], `"${factId}" is not a fact.`, "Pick one of the declared facts.");
-  if (fact.type === "select" ? typeof value !== "string" || !fact.options.values.includes(value) : typeof value !== "boolean") {
+  if (fact.type === "select" ? typeof value !== "string" || !fact.options.values.some((o) => optionValue(o) === value) : typeof value !== "boolean") {
     return fail(["facts", i, "default"], `${String(value)} is not a value of ${factId}.`, "Pick one of the fact's values.");
   }
   if (fact.default === value) return ok([]);
@@ -74,7 +74,7 @@ export function addViewerFactValue(doc: ViewerDocument, factId: string, value: s
   if (!fact || fact.type !== "select") return fail(["facts"], `"${factId}" is not a select fact.`, "Only select facts have values.");
   const v = value.trim();
   if (v === "") return fail(["facts", i, "options", "values"], "A value cannot be blank.", "Type the value.");
-  if (fact.options.values.includes(v)) return fail(["facts", i, "options", "values"], `${factId} already has the value "${v}".`, "Pick another value.");
+  if (fact.options.values.some((o) => optionValue(o) === v)) return fail(["facts", i, "options", "values"], `${factId} already has the value "${v}".`, "Pick another value.");
   if (fact.options.values.length >= VIEWER_FACT_VALUES_MAX) return fail(["facts", i, "options", "values"], `A select fact has at most ${VIEWER_FACT_VALUES_MAX} values.`, "Remove a value first.");
   return ok([guard(doc), { op: "test", path: `/facts/${i}/id`, value: factId }, { op: "add", path: `/facts/${i}/options/values/-`, value: v }]);
 }
@@ -84,7 +84,7 @@ export function removeViewerFactValue(doc: ViewerDocument, factId: string, value
   const i = indexOf(doc, factId);
   const fact = doc.facts[i];
   if (!fact || fact.type !== "select") return fail(["facts"], `"${factId}" is not a select fact.`, "Only select facts have values.");
-  const at = fact.options.values.indexOf(value);
+  const at = fact.options.values.findIndex((o) => optionValue(o) === value);
   if (at < 0) return fail(["facts", i, "options", "values"], `${factId} has no value "${value}".`, "Pick one of its values.");
   if (fact.options.values.length <= VIEWER_FACT_VALUES_MIN) return fail(["facts", i, "options", "values"], `A select fact keeps at least ${VIEWER_FACT_VALUES_MIN} values.`, "Add another value first.");
   if (fact.default === value) return fail(["facts", i, "default"], `"${value}" is the default of ${factId}.`, "Make another value the default, then remove this one.");

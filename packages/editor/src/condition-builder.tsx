@@ -1,4 +1,4 @@
-import { isRelativeDate } from "@yadad/core";
+import { isRelativeDate, optionValue } from "@yadad/core";
 import type { Condition, EntityDocument, Field, FieldValue, Registry, RelativeDate, ViewerDocument, ViewerFact } from "@yadad/core";
 import type { ReactNode } from "react";
 import { buildGroup, describeComparisonValue, isViewerComparison, OPERATOR_WORDS, operatorsFor, parseGroup, roundTrips, takesRelativeDate, takesValue } from "./conditions.js";
@@ -105,7 +105,7 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
   const factLabelOf = (factId: string) => facts.find((f) => f.id === factId)?.label ?? factId;
   const fieldOf = (c: DraftComparison): Field => entity?.fields.find((f) => f.id === c.field) ?? candidates[0]!;
   const factOf = (c: DraftComparison): ViewerFact => facts.find((f) => f.id === c.field) ?? facts[0]!;
-  const factValues = (fact: ViewerFact): readonly (string | boolean)[] => (fact.type === "select" ? fact.options.values : [true, false]);
+  const factValues = (fact: ViewerFact): readonly (string | boolean)[] => (fact.type === "select" ? fact.options.values.map(optionValue) : [true, false]); // RFC 0008: card 47a
   const showValue = (v: FieldValue | undefined): string => (typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
   const SOURCES = { field: "A field of the record", viewer: "The viewer" } as const;
 
@@ -205,7 +205,7 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
                 })}
                 {c.op === "in" && f.type === "select" ? (
                   <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-space-1, 0.25rem)" }}>
-                    {f.options.values.map((v) => (
+                    {f.options.values.map(optionValue).map((v) => ( /* RFC 0008: card 47a */
                       <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>
                         {renderInput(registry, { id: `${c.field}_${v}`, type: "boolean", label: v }, (c.values ?? []).includes(v), { inputId: `${id}-in-${i}-${v}`, invalid: false }, (on) =>
                           setComparison(i, { values: on ? [...(c.values ?? []), v] : (c.values ?? []).filter((x) => x !== v) }),

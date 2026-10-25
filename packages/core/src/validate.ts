@@ -8,7 +8,7 @@
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, FORM_ITEM_LABEL_MAX, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField, optionValue } from "./document.js";
 import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, SeriesWidget, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
@@ -241,6 +241,7 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
     case "reference":
       checkId(errors, field, path, "entity");
       if (field["display"] !== undefined) checkId(errors, field, path, "display");
+      if (field["colorFrom"] !== undefined) checkId(errors, field, path, "colorFrom");
       return;
   }
 }
@@ -253,7 +254,7 @@ const FIELD_KEYS: { readonly [K in FieldType]: { readonly required: readonly str
   select: { required: ["options"], optional: [] },
   date: { required: [], optional: ["min", "max"] },
   datetime: { required: [], optional: ["min", "max"] },
-  reference: { required: ["entity"], optional: ["display"] },
+  reference: { required: ["entity"], optional: ["display", "colorFrom"] },
 };
 
 function validateForm(errors: Errors, doc: JsonObject): void {
@@ -286,8 +287,9 @@ function validateForm(errors: Errors, doc: JsonObject): void {
         errors.add(itemPath, "type", "A form item must be a JSON object.", 'Use { "field": "<field id>" }.');
         return;
       }
-      checkKeys(errors, item, itemPath, ["field"], ["visibleWhen", "requiredWhen", "clearWhenHidden"]);
+      checkKeys(errors, item, itemPath, ["field"], ["visibleWhen", "requiredWhen", "clearWhenHidden", "label"]);
       checkId(errors, item, itemPath, "field");
+      checkBoundedLabel(errors, item, itemPath, "label");
       checkCondition(errors, item["visibleWhen"], [...itemPath, "visibleWhen"]);
       checkCondition(errors, item["requiredWhen"], [...itemPath, "requiredWhen"]);
       checkBoolean(errors, item, itemPath, "clearWhenHidden");
@@ -310,7 +312,7 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters", "rowAction", "recordActions"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters", "rowAction", "recordActions", "addForm"]);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkRecordActions(errors, doc["recordActions"]);
@@ -385,7 +387,7 @@ function checkSort(errors: Errors, doc: JsonObject, scope: string): void {
 const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField"] as const;
 
 function validateCalendar(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction", "recordActions"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "maxEntriesPerDay", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction", "recordActions"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -400,6 +402,11 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
   checkBoolean(errors, doc, [], "editable");
   checkCondition(errors, doc["editableWhen"], ["editableWhen"], "viewer");
   checkEditableWhen(errors, doc, []);
+
+  const cap = doc["maxEntriesPerDay"];
+  if (cap !== undefined && (typeof cap !== "number" || !Number.isInteger(cap) || cap < 1 || cap > CALENDAR_MAX_ENTRIES_PER_DAY_MAX)) {
+    errors.add(["maxEntriesPerDay"], "invalid-value", `maxEntriesPerDay must be an integer from 1 to ${CALENDAR_MAX_ENTRIES_PER_DAY_MAX} (default ${CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT}).`, "Use a whole day-cell count in that range.");
+  }
 
   const details = checkArray(errors, doc, [], "detailFields");
   if (details) {
@@ -436,7 +443,7 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
 }
 
 function validateBoard(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction", "recordActions"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction", "recordActions", "columnsFrom"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -984,11 +991,22 @@ function validateViewerFact(errors: Errors, fact: JsonObject, path: Path): void 
         }
         const seenValues = new Set<string>();
         list.forEach((v, j) => {
-          if (typeof v !== "string" || v.trim() === "") errors.add([...opath, "values", j], "invalid-value", "Each value must be non-empty text.", "Remove it or give it a name.");
-          else if (seenValues.has(v)) errors.add([...opath, "values", j], "invalid-value", `Value "${v}" is listed twice.`, "Remove the duplicate.");
-          else seenValues.add(v);
+          const vpath = [...opath, "values", j];
+          const value = typeof v === "string" ? v : isObject(v) && typeof v["value"] === "string" ? v["value"] : undefined;
+          if (value === undefined || value.trim() === "") {
+            errors.add(vpath, "invalid-value", "Each value must be non-empty text or { \"value\", \"label?\", \"color?\" }.", "Remove it or give it a name.");
+            return;
+          }
+          if (seenValues.has(value)) errors.add(vpath, "invalid-value", `Value "${value}" is listed twice.`, "Remove the duplicate.");
+          else seenValues.add(value);
+          if (!isObject(v)) return;
+          checkKeys(errors, v, vpath, ["value"], ["label", "color"]);
+          checkBoundedLabel(errors, v, vpath, "label");
+          if (v["color"] !== undefined && (typeof v["color"] !== "string" || !/^#[0-9a-fA-F]{6}$/.test(v["color"]))) {
+            errors.add([...vpath, "color"], "invalid-value", 'Option color must be "#RRGGBB".', `Got ${JSON.stringify(v["color"])}. Use six hex digits with a leading #.`);
+          }
         });
-        values = list.filter((v): v is string => typeof v === "string" && v.trim() !== "");
+        values = list.map((v) => (typeof v === "string" ? v : isObject(v) && typeof v["value"] === "string" ? v["value"] : "")).filter((s) => s !== "");
       }
     }
     if (dflt === undefined) errors.add([...path, "default"], "required", 'Missing required property "default".', VIEWER_DEFAULT_HINT);
@@ -1146,14 +1164,44 @@ function checkStaticOptions(errors: Errors, field: JsonObject, path: Path): void
   }
   const seen = new Set<string>();
   values.forEach((v, i) => {
-    if (typeof v !== "string" || v.trim() === "") {
-      errors.add([...path, "values", i], "invalid-value", "Each choice must be non-empty text.", "Remove it or give it a name.");
-    } else if (seen.has(v)) {
-      errors.add([...path, "values", i], "duplicate-id", `Choice "${v}" is listed twice.`, "Remove the duplicate.");
-    } else {
-      seen.add(v);
+    const vpath = [...path, "values", i];
+    if (typeof v === "string") {
+      if (v.trim() === "") {
+        errors.add(vpath, "invalid-value", "Each choice must be non-empty text.", "Remove it or give it a name.");
+        return;
+      }
+      if (seen.has(v)) errors.add(vpath, "duplicate-id", `Choice "${v}" is listed twice.`, "Remove the duplicate.");
+      else seen.add(v);
+      return;
+    }
+    if (!isObject(v)) {
+      errors.add(vpath, "invalid-value", "Each choice must be non-empty text or { \"value\", \"label?\", \"color?\" }.", "Remove it or give it a name.");
+      return;
+    }
+    checkKeys(errors, v, vpath, ["value"], ["label", "color"]);
+    const value = typeof v["value"] === "string" ? v["value"] : undefined;
+    if (value === undefined || value.trim() === "") return; // checkKeys already reported a missing value
+    if (seen.has(value)) errors.add(vpath, "duplicate-id", `Choice "${value}" is listed twice.`, "Remove the duplicate.");
+    else seen.add(value);
+    checkBoundedLabel(errors, v, vpath, "label");
+    if (v["color"] !== undefined && (typeof v["color"] !== "string" || !/^#[0-9a-fA-F]{6}$/.test(v["color"]))) {
+      errors.add([...vpath, "color"], "invalid-value", 'Option color must be "#RRGGBB".', `Got ${JSON.stringify(v["color"])}. Use six hex digits with a leading #.`);
     }
   });
+}
+
+/** A display label: non-empty text, at most FORM_ITEM_LABEL_MAX chars (RFC 0008 items 5/6). */
+function checkBoundedLabel(errors: Errors, obj: JsonObject, path: Path, key: string): void {
+  const v = obj[key];
+  if (v === undefined) return;
+  const lpath = [...path, key];
+  if (typeof v !== "string" || v.trim() === "") {
+    errors.add(lpath, "type", `"${key}" must be non-empty text.`, "Remove it or give it a name.");
+    return;
+  }
+  if (v.length > FORM_ITEM_LABEL_MAX) {
+    errors.add(lpath, "invalid-value", `"${key}" is limited to ${FORM_ITEM_LABEL_MAX} characters.`, "Shorten it.");
+  }
 }
 
 function reportDuplicates(errors: Errors, entries: readonly { id: string; path: Path }[], what: string, scope: string): void {
@@ -1323,6 +1371,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     checkField(key.field, ["sort", i, "field"]);
     checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
   });
+  if (view.kind === "table" && view.addForm !== undefined) checkAddFormTarget(errors, view, entity, idx);
   view.quickFilters?.forEach((filter, i) => {
     checkField(filter.field, ["quickFilters", i, "field"]);
     checkNotReference(errors, view.id, entity, filter.field, ["quickFilters", i, "field"], "quick filter");
@@ -1362,6 +1411,52 @@ function checkCompareFields(errors: DocumentError[], view: TableView, entity: En
       errors.push({ path: jsonPointer(path), code: "invalid-value", message: `A column cannot compare "${other.id}" with itself.`, hint: `Use another text field${textIds.length > 1 ? `: ${textIds.filter((id) => id !== other.id).join(", ")}` : ""}, or compare with "to": "previousRow".`, document: view.id, allowed: textIds.filter((id) => id !== other.id) });
     }
   });
+}
+
+/** Checks a table's add form (RFC 0008 item 4): it exists, is a form, and shares the entity. */
+function checkAddFormTarget(errors: DocumentError[], view: TableView, entity: EntityDocument, idx: SetIndex): void {
+  const target = idx.forms.get(view.addForm!);
+  if (!target) {
+    if (idx.tables.has(view.addForm!) || idx.calendars.has(view.addForm!) || idx.boards.has(view.addForm!) || idx.dashboards.has(view.addForm!)) {
+      errors.push({
+        path: jsonPointer(["addForm"]),
+        code: "invalid-value",
+        message: `addForm "${view.addForm}" is not a form view.`,
+        hint: "An add form must be a form view over the same entity; point at a form in the set.",
+        document: view.id,
+        allowed: [...idx.forms.keys()],
+      });
+    } else {
+      errors.push(refError(view.id, ["addForm"], `addForm references unknown view "${view.addForm}".`, "Point at a form view in the set.", [...idx.forms.keys()]));
+    }
+    return;
+  }
+  if (target.entity !== entity.id) {
+    errors.push({
+      path: jsonPointer(["addForm"]),
+      code: "invalid-value",
+      message: `addForm "${view.addForm}" is a form over "${target.entity}", not over "${entity.id}".`,
+      hint: "The add form must create records of the table's own entity.",
+      document: view.id,
+    });
+  }
+}
+
+/** Checks a board's columnsFrom (RFC 0008 item 10): only meaningful with a reference groupBy. */
+function checkColumnsFrom(errors: DocumentError[], view: BoardView, entity: EntityDocument): void {
+  if (view.columnsFrom !== "options") return;
+  const first = view.groupBy[0];
+  if (!first) return; // the groupBy array itself is reported elsewhere
+  const field = entity.fields.find((f) => f.id === first.field);
+  if (field && field.type !== "reference") {
+    errors.push({
+      path: jsonPointer(["columnsFrom"]),
+      code: "invalid-value",
+      message: `columnsFrom "options" needs a reference groupBy, but "${first.field}" is a ${field.type} field.`,
+      hint: 'Drop columnsFrom (records-derived columns) or group by a reference field — options come from the target entity.',
+      document: view.id,
+    });
+  }
 }
 
 /** Checks a table's row action: the target is a table, the bound fields exist on both entities and have the same type. */
@@ -1603,6 +1698,7 @@ function checkViewFilterSortTail(
   });
   checkRecordActionRefs(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
+  if (view.kind === "board" && view.columnsFrom !== undefined) checkColumnsFrom(errors, view, entity);
 }
 
 /** Checks a calendar's entity and every field it uses. */
@@ -1735,6 +1831,22 @@ function checkReferenceFields(errors: DocumentError[], entity: EntityDocument, i
     if (!target) {
       errors.push(refError(entity.id, [...path, "entity"], `Reference field "${field.id}" points at unknown entity "${field.entity}".`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
       return;
+    }
+    if (field.colorFrom !== undefined) {
+      const colour = target.fields.find((f) => f.id === field.colorFrom);
+      if (!colour) {
+        errors.push(
+          refError(entity.id, [...path, "colorFrom"], `Field "${field.colorFrom}" is not on entity "${target.id}".`, `Use a text or select field id on "${target.id}" (RFC 0008 item 8).`, target.fields.filter(isLabelField).map((f) => f.id)),
+        );
+      } else if (!isLabelField(colour)) {
+        errors.push({
+          path: jsonPointer([...path, "colorFrom"]),
+          code: "invalid-value",
+          message: `"colorFrom" must be a hex text or colour-optioned select field, but "${colour.id}" on "${target.id}" is a ${colour.type} field.`,
+          hint: `Use one of: ${target.fields.filter(isLabelField).map((f) => f.id).join(", ") || "(none; add a text field to the target)"}.`,
+          document: entity.id,
+        });
+      }
     }
     if (field.display === undefined) return;
     const shown = target.fields.find((f) => f.id === field.display);
@@ -2056,9 +2168,11 @@ function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[
               errors.push({ path: jsonPointer(vpath), code: "type", message: `Fact "${fact.id}" is a boolean, but ${JSON.stringify(value)} is text.`, hint: "Use true or false (without quotes).", document: doc.id });
             }
           } else if (typeof value !== "string") {
-            errors.push({ path: jsonPointer(vpath), code: "type", message: `Fact "${fact.id}" is a select, but ${JSON.stringify(value)} is a boolean.`, hint: `Use one of: ${fact.options.values.join(", ")}.`, document: doc.id });
-          } else if (!fact.options.values.includes(value)) {
-            errors.push({ path: jsonPointer(vpath), code: "invalid-value", message: `${JSON.stringify(value)} is not a value of fact "${fact.id}".`, hint: `Use one of: ${fact.options.values.join(", ")}.`, document: doc.id, allowed: [...fact.options.values] });
+            const allowedValues = fact.options.values.map(optionValue);
+            errors.push({ path: jsonPointer(vpath), code: "type", message: `Fact "${fact.id}" is a select, but ${JSON.stringify(value)} is a boolean.`, hint: `Use one of: ${allowedValues.join(", ")}.`, document: doc.id });
+          } else if (!fact.options.values.some((o) => optionValue(o) === value)) {
+            const allowedValues = fact.options.values.map(optionValue);
+            errors.push({ path: jsonPointer(vpath), code: "invalid-value", message: `${JSON.stringify(value)} is not a value of fact "${fact.id}".`, hint: `Use one of: ${allowedValues.join(", ")}.`, document: doc.id, allowed: allowedValues });
           }
         });
       });

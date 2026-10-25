@@ -1,4 +1,4 @@
-import { isIsoDate, isRelativeDate, jsonPointer } from "@yadad/core";
+import { isIsoDate, isRelativeDate, jsonPointer, optionValue } from "@yadad/core"; // RFC 0008: card 47a (optionValue keeps compiling; 47d reviews)
 import type {
   BoardView,
   CalendarMode,
@@ -262,7 +262,7 @@ function typicalValue(field: Field, today: string, datetime?: string): FieldValu
     case "boolean":
       return true;
     case "select":
-      return field.options.values[0] ?? null;
+      return (field.options.values[0] === undefined ? null : optionValue(field.options.values[0])); // RFC 0008: card 47a
     case "date":
       return firstValid(field, [today, field.min, field.max].filter((v): v is string => v !== undefined));
     case "datetime":
@@ -282,7 +282,7 @@ function variedValue(field: Field, index: number, today: string, datetime?: stri
     case "boolean":
       return validFor(field, index % 2 === 0) ? index % 2 === 0 : base;
     case "select":
-      return field.options.values[index % Math.max(1, field.options.values.length)] ?? base;
+      { const vs = field.options.values; const pick = vs[index % Math.max(1, vs.length)]; return pick === undefined ? base : optionValue(pick); } // RFC 0008: card 47a
     case "reference":
       return `ref-${(index % 3) + 1}`;
     default:
@@ -292,7 +292,7 @@ function variedValue(field: Field, index: number, today: string, datetime?: stri
 
 function longValue(field: Field, today: string, datetime?: string): FieldValue {
   if (field.type === "text") return LONG_TEXT;
-  if (field.type === "select") return [...field.options.values].sort((a, b) => b.length - a.length)[0] ?? typicalValue(field, today, datetime);
+  if (field.type === "select") { const vs = field.options.values.map(optionValue); return vs.sort((a, b) => b.length - a.length)[0] ?? typicalValue(field, today, datetime); } // RFC 0008: card 47a
   return typicalValue(field, today, datetime);
 }
 
@@ -399,7 +399,7 @@ function fieldCandidates(field: Field, probes: Probes, ctx: CandidateContext): F
 
   switch (field.type) {
     case "select":
-      all.push(emptyCandidate, ...field.options.values.map((v) => valued(v)));
+      all.push(emptyCandidate, ...field.options.values.map((v) => valued(optionValue(v)))); // RFC 0008: card 47a
       break;
     case "boolean":
       all.push(emptyCandidate, valued(false), valued(true));
@@ -785,8 +785,9 @@ function buildViewerPlan(view: ViewDocument, ctx: Context): ViewerPlan {
       choices.push(true, false);
     } else {
       // Values a leaf names, plus one that none names (the "everyone else" class): the default when unnamed, else the first unnamed.
-      const everyoneElse = named.includes(fact.default) ? fact.options.values.find((v) => !named.includes(v)) : fact.default;
-      choices.push(...fact.options.values.filter((v) => named.includes(v) || v === everyoneElse));
+      const factValues = fact.options.values.map(optionValue); // RFC 0008: card 47a
+      const everyoneElse = named.includes(fact.default) ? factValues.find((v) => !named.includes(v)) : fact.default;
+      choices.push(...factValues.filter((v) => named.includes(v) || v === everyoneElse));
     }
     if (choices.length < 2) continue;
     const id = `${VIEWER_AXIS}${fact.id}`;
@@ -849,7 +850,7 @@ const SERIES_CHOICE_LABEL: Record<SeriesChoice, string> = { none: "no groups", o
 function candidateGroupValues(field: Field, bucket: SeriesBucket | undefined, ctx: Context): FieldValue[] {
   switch (field.type) {
     case "select":
-      return [...field.options.values];
+      return field.options.values.map(optionValue); // RFC 0008: card 47a
     case "boolean":
       return [true, false];
     case "reference":

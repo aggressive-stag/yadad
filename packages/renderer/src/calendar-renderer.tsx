@@ -1,4 +1,4 @@
-import { AdapterError, RecordValidationError, conditionFields } from "@yadad/core";
+import { AdapterError, RecordValidationError, conditionFields, optionValue } from "@yadad/core";
 import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
 import { bindFilter, calendarToday, canUpdate, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
@@ -306,7 +306,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
 
   const byDay = groupByDay(records, view.dateField);
   const today = calendarToday(clock());
-  const colorOptions = colorField?.type === "select" ? colorField.options.values : [];
+  const colorOptions = colorField?.type === "select" ? colorField.options.values.map(optionValue) : []; // RFC 0008: card 47a
   const colorOf = (record: DataRecord): { slot: number; label: string } | undefined => {
     if (!colorField || (colorField.type !== "select" && colorField.type !== "reference")) return undefined;
     const value = record.values[colorField.id];

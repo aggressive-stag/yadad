@@ -54,10 +54,29 @@ export interface BooleanField extends FieldBase {
   readonly type: "boolean";
 }
 
+/** One option of a fixed list. Plain strings stay legal and mean `{ value }` (RFC 0008 item 5). */
+export interface StaticOptionValue {
+  readonly value: string;
+  /** Human-readable name; defaults to `value`. Display-only — records store `value`. */
+  readonly label?: string;
+  /** `#RRGGBB` display hint (a swatch). Display-only; never stored. */
+  readonly color?: string;
+}
+
 /** A fixed list of choices. Dynamic sources (another entity) come later. */
 export interface StaticOptions {
   readonly source: "static";
-  readonly values: readonly string[];
+  readonly values: readonly (string | StaticOptionValue)[];
+}
+
+/** Whether a static option is written as an object (RFC 0008 item 5). */
+export function isStaticOptionValue(option: string | StaticOptionValue): option is StaticOptionValue {
+  return typeof option === "object" && option !== null;
+}
+
+/** The stored value of a static option, however it was written. */
+export function optionValue(option: string | StaticOptionValue): string {
+  return isStaticOptionValue(option) ? option.value : option;
 }
 
 export interface SelectField extends FieldBase {
@@ -95,6 +114,12 @@ export interface ReferenceField extends FieldBase {
   readonly entity: string;
   /** Id of a text or select field on the target that labels a record. Defaults to the target's first text field. */
   readonly display?: string;
+  /**
+   * Id of a colour-shaped field on the target (a hex-constrained `text`, or a `select` whose chosen
+   * option carries `color` — RFC 0008 item 5): the entry borrows the referenced record's colour
+   * (RFC 0008 item 8). Absent: the stable hash stays the colouring.
+   */
+  readonly colorFrom?: string;
 }
 
 /** Discriminated on `type`. */
@@ -105,6 +130,11 @@ export const ACTIONS_MAX = 12;
 export const ACTION_INPUT_MAX = 5;
 /** A table, board or calendar offers at most this many actions on a record. */
 export const RECORD_ACTIONS_MAX = 6;
+/** A day cell shows this many entries before "+N more" unless the view says otherwise (RFC 0008 item 7). */
+export const CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT = 3;
+export const CALENDAR_MAX_ENTRIES_PER_DAY_MAX = 31;
+/** Upper bound for a view-level label override (RFC 0008 item 6). */
+export const FORM_ITEM_LABEL_MAX = 120;
 /** Field types an action's input fields may have: those with a plain input, not `reference` (a picker needs a target query). */
 export const ACTION_INPUT_FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime"] as const;
 export type ActionInputFieldType = (typeof ACTION_INPUT_FIELD_TYPES)[number];
@@ -153,6 +183,8 @@ export interface EntityDocument {
 export interface FormItem {
   /** Id of a field on the view's entity. */
   readonly field: string;
+  /** Display label for this view only; defaults to the entity field's label (RFC 0008 item 6). */
+  readonly label?: string;
   /** Show the field only while this holds. */
   readonly visibleWhen?: Condition;
   /** Require the field while this holds (views can only tighten the entity's rules). */
@@ -228,6 +260,11 @@ export interface TableView {
   readonly pageSize?: number;
   /** Rows must always match this. */
   readonly filter?: Condition;
+  /**
+   * Id of a form view over the SAME entity (RFC 0008 item 4): the table offers "Add {entity}" and
+   * opens that form; a save reloads the table. It is `rowAction.open` in the create direction.
+   */
+  readonly addForm?: string;
   /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring, number, date and datetime fields as a from/to range (gte/lte, either end optional). */
   readonly quickFilters?: readonly QuickFilter[];
   /** Clicking a row opens another table view scoped to that row (RFC 0003). */
@@ -285,6 +322,11 @@ export interface CalendarView {
   readonly titleField?: string;
   /** Up to CALENDAR_DETAIL_FIELDS_MAX field ids shown small under the title (not the date or title field). */
   readonly detailFields?: readonly string[];
+  /**
+   * Entries a day cell shows before "+N more" (RFC 0008 item 7). 1 to CALENDAR_MAX_ENTRIES_PER_DAY_MAX;
+   * defaults to CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT (today's fixed cutoff, so no document changes today).
+   */
+  readonly maxEntriesPerDay?: number;
   /** Id of a select or reference field that colours entries. */
   readonly colorField?: string;
   /** Entries must always match this. */
@@ -335,6 +377,12 @@ export interface BoardView {
   readonly cardFields?: readonly string[];
   /** Cards must always match this. */
   readonly filter?: Condition;
+  /**
+   * For a reference `groupBy`: build columns from the target entity's records (through the adapter)
+   * instead of from the loaded page, so a group with no cards is still a drop target
+   * (RFC 0008 item 10). Defaults to "records" — today's behaviour. Meaningful only with a reference groupBy.
+   */
+  readonly columnsFrom?: "options" | "records";
   /** Order of cards within a column. */
   readonly sort?: readonly SortSpec[];
   /** Dragging a card changes the field it is currently grouped by. Defaults to false. */
