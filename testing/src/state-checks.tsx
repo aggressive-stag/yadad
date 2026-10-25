@@ -6,7 +6,7 @@
 import { act, render as mount } from "@testing-library/react";
 import { sectionItems } from "@yadad/core"; // RFC 0008/9: card 47b
 import type { BoardProps, CalendarProps, DataAdapter, DataRecord, DiffSegment, Document, EntityDocument, FieldDisplayProps, FormView, Registry, ResolvedViewer, TableProps, TabsProps, ViewDocument } from "@yadad/core";
-import { availableActions, canUpdate, columnEditable, compareCells, createDraftStore, evaluateFormRules, rowActionVisible, viewEditable, viewStates, visibleColumns, visibleTabs } from "@yadad/runtime";
+import { availableActions, canEditField, canUpdate, columnEditable, compareCells, createDraftStore, evaluateFormRules, rowActionVisible, viewEditable, viewStates, visibleColumns, visibleTabs } from "@yadad/runtime";
 import type { DraftStore, ViewStatesOptions } from "@yadad/runtime";
 import axe from "axe-core";
 import type { ReactNode } from "react";
@@ -29,6 +29,8 @@ export type StateCheck =
   | "viewer-visibility"
   | "editable-offered"
   | "editable-missing"
+  | "can-fields-offered"
+  | "can-fields-missing"
   | "group-by-ignored"
   | "mode-ignored"
   | "anchor-ignored"
@@ -559,7 +561,18 @@ function viewerChecks(container: HTMLElement, view: ViewDocument, state: SourceV
     if (table && shown.length === 0) out.push({ check: "viewer-visibility", message: "a table is rendered although this viewer may see none of its columns" });
     if (table) {
       const anyColumn = shown.some((c) => columnEditable(c, viewer));
-      const expected = anyColumn ? table.rows.filter((r) => !refusedId(r.id)).length : 0;
+      // RFC 0008 item 9 (card 47h): can.fields narrows the edit affordance per record — a row
+      // offers Edit only when some editable column's field is open on THAT record.
+      const recordFor = (id: string): DataRecord | undefined => {
+        const render = state.render;
+        return render.kind === "table" ? render.records.find((r) => r.id === id) : undefined;
+      };
+      const mayEdit = (rowId: string): boolean => {
+        const record = recordFor(rowId);
+        if (record === undefined) return !refusedId(rowId);
+        return canUpdate(record) && shown.some((c) => columnEditable(c, viewer) && canEditField(record, c.field));
+      };
+      const expected = anyColumn ? table.rows.filter((r) => mayEdit(r.id)).length : 0;
       const edits = buttonsNamed(container, (t) => t === "Edit");
       if (edits > expected) out.push({ check: "editable-offered", message: `${edits} rows offer an inline edit but this viewer or the record may edit in ${expected}` });
       if (edits < expected) out.push({ check: "editable-missing", message: `${edits} rows offer an inline edit but ${expected} may be edited` });
@@ -576,6 +589,19 @@ function viewerChecks(container: HTMLElement, view: ViewDocument, state: SourceV
     const calendar = seen.calendars.at(-1);
     const board = seen.boards.at(-1);
     const items: readonly { readonly id: string; readonly movable: boolean }[] = calendar ? calendar.days.flatMap((d) => d.entries) : board ? board.columns.flatMap((c) => c.cards) : [];
+    // RFC 0008 item 9 (card 47h): can.fields narrows the drag — a record whose move field the
+    // server withheld is not movable, and one it left open is movable whenever the view is.
+    const collection = state.render.kind === "calendar" || state.render.kind === "board" ? state.render : undefined;
+    const moveFieldId = collection === undefined || view.editable !== true || editable !== true ? undefined : collection.kind === "board" ? collection.groupBy : view.kind === "calendar" ? view.dateField : undefined;
+    if (collection !== undefined && moveFieldId !== undefined) {
+      for (const record of collection.records) {
+        const item = items.find((i) => i.id === record.id);
+        if (item === undefined || record.can?.fields === undefined) continue; // a plain lock is the editable check's business
+        const expected = canUpdate(record) && canEditField(record, moveFieldId);
+        if (item.movable && !expected) out.push({ check: "can-fields-offered", message: `"${record.id}" is movable but can.fields withholds "${moveFieldId}" (or the record is locked)` });
+        if (!item.movable && expected) out.push({ check: "can-fields-missing", message: `"${record.id}" is not movable although can.fields leaves "${moveFieldId}" open` });
+      }
+    }
     const onMove = calendar ? calendar.onMove : board?.onMove;
     const onOpen = calendar ? calendar.onOpenEntry : board?.onOpenCard;
     if (calendar || board) {

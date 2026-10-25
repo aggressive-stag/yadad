@@ -338,7 +338,7 @@ interface Probes {
 }
 
 /** Collects, per compared field and in order of first appearance, what the conditions compare it with. Relative dates resolve against `now`. */
-function collectProbes(conditions: readonly Condition[], now: Date, into: Map<string, Probes> = new Map()): Map<string, Probes> {
+function collectProbes(conditions: readonly Condition[], now: Date, into: Map<string, Probes> = new Map(), factValues?: ReadonlyMap<string, readonly Scalar[]>): Map<string, Probes> {
   const probesOf = (field: string): Probes => {
     let probes = into.get(field);
     if (!probes) {
@@ -369,9 +369,13 @@ function collectProbes(conditions: readonly Condition[], now: Date, into: Map<st
       case "viewerIn":
         // A viewer leaf compares no record field, so it adds no probes; its fact becomes a viewer axis (buildViewerPlan).
         return;
-      case "fieldEqFact":
-        // RFC 0008/9: card 47b — the comparison value is the viewer's, not a literal; 47d adds the fact-axis probes.
+      case "fieldEqFact": {
+        // RFC 0009 (card 47h): the compared value is the viewer's. The record field still needs an
+        // axis: probe it, and seed it with the fact's own values so a state can make the comparison true.
+        const compared = probesOf(condition.field);
+        for (const value of factValues?.get(condition.field) ?? []) compared.thresholds.push(value);
         return;
+      }
       default:
         probesOf(condition.field).thresholds.push(isRelativeDate(condition.value) ? dateFromToday(condition.value.daysFromToday, now) : condition.value);
     }
@@ -459,14 +463,16 @@ function fieldCandidates(field: Field, probes: Probes, ctx: CandidateContext): F
     }
     case "time": {
       // RFC 0008: card 47k — a few clocks plus whatever a condition compares against.
-      const values = unique([...strings(probes.thresholds).filter(isHhMm), ...strings(probes.members).filter(isHhMm), "09:30", "17:00"]);
+      // Card 47h adds the boundary: 23:59, the last minute the `hh:mm` contract admits.
+      const values = unique([...strings(probes.thresholds).filter(isHhMm), ...strings(probes.members).filter(isHhMm), "09:30", "17:00", "23:59"]);
       all.push(emptyCandidate, ...values.map((v) => valued(v)));
       break;
     }
     case "tags": {
       // RFC 0008: card 47k — empty, one tag, many; condition values become single-tag lists (evaluation is 47d's).
       const tags = unique([...strings(probes.members), ...strings(probes.contains)].filter((v) => v !== ""));
-      all.push(emptyCandidate, valued(["alpha"], `${name} = alpha`), ...tags.map((v) => valued([v], `${name} = ${v}`)), valued(["alpha", "beta"], `${name} = alpha, beta`));
+      // Card 47h: a duplicate-tag list is valid (0008 item 15 tolerates duplicates on read) — the display must survive it.
+      all.push(emptyCandidate, valued(["alpha"], `${name} = alpha`), ...tags.map((v) => valued([v], `${name} = ${v}`)), valued(["alpha", "beta"], `${name} = alpha, beta`), valued(["alpha", "alpha"], `${name} = alpha, alpha (duplicate)`));
       break;
     }
   }
@@ -536,6 +542,25 @@ function buildFieldAxes(entity: EntityDocument, probes: ReadonlyMap<string, Prob
   return { axes, skipped, byAxis };
 }
 
+/**
+ * RFC 0009 (card 47h): per record field a `fieldEqFact` leaf compares with a
+ * fact, the fact's own possible values (booleans both, selects at most two).
+ * `collectProbes` seeds these so the field axis holds a value some viewer
+ * state equals — the comparison gets a true state as well as a false one.
+ */
+function factValuesByField(view: ViewDocument, ctx: Context): Map<string, Scalar[]> {
+  const out = new Map<string, Scalar[]>();
+  const document = findViewerDocument(ctx.documents);
+  for (const leaf of viewerLeavesRead(view, ctx.documents)) {
+    if (leaf.field === undefined) continue;
+    const fact = document?.facts.find((f) => f.id === leaf.fact);
+    if (fact === undefined) continue;
+    const values: Scalar[] = fact.type === "boolean" ? [true, false] : fact.options.values.slice(0, 2).map(optionValue);
+    out.set(leaf.field, [...(out.get(leaf.field) ?? []), ...values]);
+  }
+  return out;
+}
+
 /** The values the selection sets on field axes. */
 function selectedValues(byAxis: ReadonlyMap<string, readonly Candidate[]>, selection: AxisSelection): Map<string, FieldValue> {
   const out = new Map<string, FieldValue>();
@@ -555,7 +580,10 @@ function planForm(view: FormView, ctx: Context): Plan {
   const entity = findEntity(ctx, view.entity);
   if (!entity) return missing(`entity "${view.entity}" is not among the documents`);
   const conditions = formItems(view).flatMap((i) => [i.visibleWhen, i.requiredWhen].filter((c): c is Condition => c !== undefined));
-  const found = buildFieldAxes(entity, collectProbes(conditions, ctx.now), { today: ctx.today, datetime: ctx.datetime, draft: true });
+  // A batch composer renders empty rows only (drafts do not apply to it), so fact values seeded
+  // into a `fieldEqFact` field axis would ask for a true-comparison state it can never render.
+  const factSeed = view.repeat === "batch" ? undefined : factValuesByField(view, ctx);
+  const found = buildFieldAxes(entity, collectProbes(conditions, ctx.now, undefined, factSeed), { today: ctx.today, datetime: ctx.datetime, draft: true });
   const fill: StateAxis = {
     id: "fill",
     label: "Other fields",
@@ -609,7 +637,7 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
   const entity = findEntity(ctx, view.entity);
   if (!entity) return missing(`entity "${view.entity}" is not among the documents`);
 
-  const probes = collectProbes(view.filter ? [view.filter] : [], ctx.now);
+  const probes = collectProbes(view.filter ? [view.filter] : [], ctx.now, undefined, factValuesByField(view, ctx));
   // A row action copies a field of the clicked row into the target's filter: both an empty and a set value matter.
   for (const binding of view.rowAction?.bind ?? []) if (!probes.has(binding.field)) probes.set(binding.field, { thresholds: [], members: [], contains: [] });
   const found = buildFieldAxes(entity, probes, { today: ctx.today, datetime: ctx.datetime, draft: false });
@@ -646,6 +674,33 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
       ],
     });
   }
+  // RFC 0008 item 12 (card 47h): a calendar or board with a doneField varies the completion toggle both ways.
+  const doneFieldId = view.kind === "calendar" || view.kind === "board" ? view.doneField : undefined;
+  const doneField = doneFieldId === undefined ? undefined : entity.fields.find((f) => f.id === doneFieldId && f.type === "boolean");
+  if (doneField !== undefined)
+    axes.push({ id: DONE_AXIS, label: `${doneField.label} toggle`, kind: "field", values: [{ id: "done-true", label: `${doneField.id} done` }, { id: "done-false", label: `${doneField.id} not done` }] });
+  // RFC 0008 item 10 (card 47h): a columnsFrom "options" board gains the empty-column state — a
+  // target column no card references. The target records ride in the state's record set, so
+  // loadBoardTargets really answers with them through the state's adapter.
+  const columnsTarget = (() => {
+    if (view.kind !== "board" || view.columnsFrom !== "options" || groupFields.length === 0) return undefined;
+    const field = entity.fields.find((f) => f.id === groupFields[0]);
+    if (field === undefined || field.type !== "reference") return undefined;
+    const target = findEntity(ctx, field.entity);
+    if (target === undefined) return undefined;
+    const display = target.fields.find((f) => f.id === field.display);
+    if (display === undefined) return undefined;
+    axes.push({
+      id: COLUMNS_AXIS,
+      label: "Board columns",
+      kind: "group",
+      values: [
+        { id: "covered", label: "every column has cards" },
+        { id: "empty-column", label: "a column has no cards" },
+      ],
+    });
+    return { target, displayField: display.id };
+  })();
   // RFC 0007: a table also varies how its page is described — counted, a cursor page with more, the last cursor page.
   if (view.kind === "table") {
     axes.push({
@@ -698,6 +753,11 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         for (let i = 1; i < manyCount; i++) valueList.push(varied(i));
       }
 
+      // RFC 0008 item 12 (card 47h): the doneField axis puts the toggle in every generated record.
+      if (doneField !== undefined) {
+        const done = selection[DONE_AXIS] !== "done-false";
+        valueList = valueList.map((values) => ({ ...values, [doneField.id]: done }));
+      }
       const records: DataRecord[] = valueList.map((values, i) => ({ id: `rec-${i + 1}`, entityId: entity.id, entityRevision: entity.revision, version: "1", values }));
       // "withheld" sets can.actions[id] = false on the first generated record, as the permission axis does with update.
       const withheld = offered.filter((a) => selection[`${ACTION_AXIS}${a.id}`] === WITHHELD).map((a) => a.id);
@@ -746,7 +806,21 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
       }
       if (view.kind === "calendar") return { ok: true, render: { kind: "calendar", ...base, mode, anchor: ctx.today, range } };
       const groupBy = groupFields.find((f) => f === selection["group"]) ?? groupFields[0] ?? "";
-      return { ok: true, render: { kind: "board", ...base, groupBy } };
+      let boardRecords: readonly DataRecord[] = marked;
+      if (columnsTarget !== undefined && groupBy === groupFields[0]) {
+        // One target record per reference value the cards carry (the id IS the value, so a card lands
+        // in its column), plus — in the empty-column state — one target no card references.
+        const seeded = new Map<string, DataRecord>();
+        for (const record of marked) {
+          const value = record.values[groupBy];
+          if (typeof value === "string" && value !== "" && !seeded.has(value))
+            seeded.set(value, { id: value, entityId: columnsTarget.target.id, entityRevision: columnsTarget.target.revision, version: "1", values: { [columnsTarget.displayField]: `Column ${value}` } });
+        }
+        if (selection[COLUMNS_AXIS] === "empty-column")
+          seeded.set("ref-uncovered", { id: "ref-uncovered", entityId: columnsTarget.target.id, entityRevision: columnsTarget.target.revision, version: "1", values: { [columnsTarget.displayField]: "No cards" } });
+        boardRecords = [...marked, ...seeded.values()];
+      }
+      return { ok: true, render: { kind: "board", ...base, records: boardRecords, groupBy } };
     },
   };
 }
@@ -758,6 +832,8 @@ const PERMISSION_AXIS = "permission";
 const RECORD_LOCKED = "record-locked";
 const ACTION_AXIS = "action:";
 const WITHHELD = "withheld";
+const DONE_AXIS = "done"; // RFC 0008 item 12 (card 47h): the doneField toggle axis.
+const COLUMNS_AXIS = "columns"; // RFC 0008 item 10 (card 47h): the columnsFrom "options" empty-column axis.
 const PAGING_AXIS = "paging";
 /** Id of the extra state that renders with the viewer omitted. */
 export const VIEWER_NOT_PROVIDED_STATE = "viewer-not-provided";
@@ -799,11 +875,14 @@ function buildViewerPlan(view: ViewDocument, ctx: Context): ViewerPlan {
   const valueIds = new Map<string, Map<string, string | boolean>>();
   const defaults: Record<string, string> = {};
   for (const fact of document?.facts ?? []) {
-    const named = leaves.filter((l) => l.fact === fact.id).flatMap((l) => l.values);
-    if (named.length === 0) continue;
+    const factLeaves = leaves.filter((l) => l.fact === fact.id);
+    const named = factLeaves.flatMap((l) => l.values);
+    if (named.length === 0 && !factLeaves.some((l) => l.field !== undefined)) continue; // card 47h: a fieldEqFact leaf names no value but still reads the fact
     const choices: (string | boolean)[] = [];
     if (fact.type === "boolean") {
       choices.push(true, false);
+    } else if (named.length === 0) {
+      choices.push(fact.default, fact.options.values.map(optionValue).find((v) => v !== fact.default) ?? fact.default); // card 47h: the compared-fact pair
     } else {
       // Values a leaf names, plus one that none names (the "everyone else" class): the default when unnamed, else the first unnamed.
       const factValues = fact.options.values.map(optionValue); // RFC 0008: card 47a
@@ -843,7 +922,8 @@ function buildViewerPlan(view: ViewDocument, ctx: Context): ViewerPlan {
 
 /** True when the selection marks a record: locked or withheld states are impossible next to "no records". */
 const needsRecord = (selection: AxisSelection): boolean =>
-  selection[PERMISSION_AXIS] === RECORD_LOCKED || Object.entries(selection).some(([axisId, value]) => axisId.startsWith(ACTION_AXIS) && value === WITHHELD);
+  selection[PERMISSION_AXIS] === RECORD_LOCKED ||
+  Object.entries(selection).some(([axisId, value]) => axisId.startsWith(ACTION_AXIS) && value === WITHHELD);
 
 /** True when a render has a record to lock: "1 record locked" is impossible next to "no records". */
 function hasRecordToLock(render: ViewStateRender): boolean {

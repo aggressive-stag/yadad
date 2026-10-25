@@ -12,7 +12,7 @@ import { createMemoryAdapter } from "@yadad/runtime";
 
 export const bookingEntity: EntityDocument = {
   kind: "entity",
-  specVersion: 3,
+  specVersion: 8,
   id: "booking",
   revision: 1,
   fields: [
@@ -21,6 +21,7 @@ export const bookingEntity: EntityDocument = {
     { id: "client", type: "text", label: "Client" },
     { id: "status", type: "select", label: "Status", options: { source: "static", values: ["Confirmed", "Pending", "Done"] } },
     { id: "kind", type: "select", label: "Kind", options: { source: "static", values: ["Call", "Workshop", "Deadline", "Visit"] } },
+    { id: "completed", type: "boolean", label: "Completed" },
   ],
 };
 

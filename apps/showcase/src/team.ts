@@ -23,6 +23,8 @@ export const teamViewer: ViewerDocument = {
   facts: [
     { id: "role", label: "Role", type: "select", options: { source: "static", values: [...ROLES] }, default: "viewer" },
     { id: "plan", label: "Plan", type: "select", options: { source: "static", values: ["free", "pro"] }, default: "free" },
+    // RFC 0009 item 1: the record field `fieldEqFact` compares against — the person the viewer is.
+    { id: "me", label: "Me", type: "select", options: { source: "static", values: ["1", "2", "3", "4"] }, default: "1" },
   ],
 };
 
@@ -31,13 +33,15 @@ const plan = (...values: string[]) => ({ op: "viewerIn" as const, fact: "plan", 
 
 export const teamBoard: BoardView = {
   kind: "board",
-  specVersion: 5,
+  specVersion: 8,
   id: "team_board",
   title: "Team board",
   entity: "task",
   revision: 1,
   dataSource: "team",
-  groupBy: [{ field: "status" }, { field: "priority" }],
+  groupBy: [{ field: "owner" }, { field: "status" }, { field: "priority" }],
+  columnsFrom: "options",
+  doneField: "done",
   titleField: "title",
   cardFields: ["owner", "priority"],
   sort: [{ field: "title", dir: "asc" }],

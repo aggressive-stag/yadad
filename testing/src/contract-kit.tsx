@@ -7,7 +7,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { FIELD_TYPES, ForbiddenError, SPEC_VERSION } from "@yadad/core";
-import type { BoardProps, CalendarDayProps, CalendarProps, DataAdapter, DataRecord, DatetimeField, DiffSegment, DocumentError, EntityDocument, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, FieldType, FieldValueTypes, RecordValues, Registry, RequiredFieldEntries, SeriesGroupProps, SeriesWidgetProps, TableView, TextField } from "@yadad/core";
+import type { BoardProps, CalendarDayProps, CalendarProps, DataAdapter, DataRecord, DatetimeField, DiffSegment, DocumentError, EntityDocument, FieldDefinitions, DisplayProps, FieldDisplayExtras, FieldDisplayProps, FieldInputExtras, FieldInputProps, InputProps, PagerProps, FieldType, FieldValueTypes, RecordValues, Registry, RequiredFieldEntries, SeriesGroupProps, SeriesWidgetProps, TableView, TextField } from "@yadad/core";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -174,6 +174,7 @@ export function registryContractChecks(registry: Registry<ReactNode>, samples: F
     ...layoutChecks(registry),
     ...calendarChecks(registry),
     ...boardChecks(registry),
+    ...pagerChecks(registry),
     ...seriesChecks(registry),
     ...dialogChecks(registry),
     ...datetimeChecks(registry),
@@ -1340,6 +1341,56 @@ function boardChecks(registry: Registry<ReactNode>): ContractCheck[] {
       if (container.querySelector('[aria-busy="true"]') === null) problems.push('While loading, the board must set aria-busy="true".');
       if (!screen.queryByText(/Showing the first 1,000 of 1,412 cards/)) problems.push("Board must show the notice above the columns.");
       problems.push(...(await axeProblems(container, "board loading")));
+    }),
+  ];
+}
+
+/**
+ * Checks for `layout.Pager` (RFC 0008 item 11). The key is optional, so a registry
+ * without a pager has no pager checks (the table keeps its plain nav markup); one
+ * with a pager must pass all. Card 47h.
+ */
+function pagerChecks(registry: Registry<ReactNode>): ContractCheck[] {
+  const { Pager } = registry.layout;
+  if (!Pager) return [];
+
+  const none = () => {};
+  const base: PagerProps = { label: "Tasks pages", hasPrevious: true, hasNext: true, page: 2, pageCount: 3, onPrevious: none, onNext: none };
+  const button = (name: RegExp) => screen.queryByRole("button", { name });
+
+  return [
+    layoutCheck("Pager is a navigation region named by its label, with both controls and the page position", async (problems) => {
+      const { container } = render(<Pager {...base} />);
+      if (!screen.queryByRole("navigation", { name: "Tasks pages" })) problems.push('Pager must render role="navigation" named by its label.');
+      if (!button(/Previous/i)) problems.push('Pager must have a "Previous" control.');
+      if (!button(/Next/i)) problems.push('Pager must have a "Next" control.');
+      if (!screen.queryByText(/2.*3|Page 2/i)) problems.push("Pager must show the page position (page 2 of 3).");
+      problems.push(...(await axeProblems(container, "pager")));
+    }),
+
+    layoutCheck("Pager disables the controls the position rules out and fires the others", async (problems) => {
+      const calls: string[] = [];
+      const first: PagerProps = { ...base, hasPrevious: false, page: 1, onPrevious: () => calls.push("previous"), onNext: () => calls.push("next") };
+      render(<Pager {...first} />);
+      const prev = button(/Previous/i);
+      const next = button(/Next/i);
+      if (prev && !prev.hasAttribute("disabled") && prev.getAttribute("aria-disabled") !== "true") problems.push("Without a previous page the Previous control must be disabled.");
+      if (next) fireEvent.click(next);
+      if (!calls.includes("next")) problems.push("The enabled Next control must call onNext.");
+      if (prev) fireEvent.click(prev);
+      if (calls.includes("previous")) problems.push("A disabled Previous must not fire onPrevious.");
+    }),
+
+    layoutCheck("Pager drops the total in cursor mode (pageCount undefined) and keeps the page number", async (problems) => {
+      const { pageCount: _omitted, ...cursor } = base;
+      const { container } = render(<Pager {...cursor} />);
+      const region = screen.queryByRole("navigation", { name: "Tasks pages" });
+      if (!region) problems.push('The cursor pager must still be role="navigation" named by its label.');
+      else {
+        if (!/2/.test(region.textContent ?? "")) problems.push("Cursor mode must still show the 1-based page number (page 2).");
+        if (/3/.test(region.textContent ?? "")) problems.push("Cursor mode must not show a total page count the host does not know.");
+      }
+      problems.push(...(await axeProblems(container, "pager cursor")));
     }),
   ];
 }

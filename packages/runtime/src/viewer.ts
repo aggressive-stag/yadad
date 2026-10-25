@@ -156,10 +156,12 @@ export function canMoveColumn(record: DataRecord, groupFieldId: string): boolean
   return canEditField(record, groupFieldId);
 }
 
-/** One `viewerIn` leaf found in a view: the fact and the values it names. */
+/** One viewer leaf found in a view: the fact and the values it names (`values` empty for a `fieldEqFact`). */
 export interface ViewerLeaf {
   readonly fact: string;
   readonly values: readonly (string | boolean)[];
+  /** RFC 0009: the record field a `fieldEqFact` compares against the fact. */
+  readonly field?: string;
 }
 
 function leavesOf(condition: Condition | ViewerCondition | undefined, into: ViewerLeaf[]): void {
@@ -174,6 +176,9 @@ function leavesOf(condition: Condition | ViewerCondition | undefined, into: View
       return;
     case "viewerIn":
       into.push({ fact: condition.fact, values: condition.values });
+      return;
+    case "fieldEqFact": // RFC 0009 (card 47h): the fact joins the viewer axes; the field joins the record axes.
+      into.push({ fact: condition.fact, values: [], field: condition.field });
       return;
     default:
       return;

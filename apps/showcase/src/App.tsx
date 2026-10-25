@@ -9,7 +9,7 @@ import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
 import { Fragment, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { bookingEntity, bookingsAdapter } from "./bookings";
-import { personEntity, taskEntity, tasksAdapter } from "./tasks";
+import { checklistItemEntity, personEntity, taskEntity, tasksAdapter } from "./tasks";
 import { teamAdapter, teamViewer, teamViews } from "./team";
 import { DECISION_CODES, NOTE_KEYS, reviewDocuments, reviewStore } from "./review";
 import type { ReviewStore } from "./review";
@@ -28,7 +28,7 @@ import { StatesPage } from "./states";
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
 
 /** Views rendered at the top level of the page, by id. */
-export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_home", "team_home"];
+export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_table", "tasks_home", "team_home"];
 
 /** The review page's sections, in reading order: changes, history, decisions, the join. */
 const REVIEW_ROOTS: readonly string[] = ["review_changes", "review_history", "review_decisions", "review_decision_records"];
@@ -54,7 +54,7 @@ const bookingsTable: TableView = {
  */
 const bookingsView: CalendarView = {
   kind: "calendar",
-  specVersion: 3,
+  specVersion: 8,
   id: "bookings_calendar",
   title: "Bookings",
   entity: "booking",
@@ -64,6 +64,8 @@ const bookingsView: CalendarView = {
   titleField: "title",
   detailFields: ["client", "kind"],
   colorField: "status",
+  doneField: "completed",
+  maxEntriesPerDay: 4,
   sort: [{ field: "title", dir: "asc" }],
   modes: ["month", "week"],
   weekStartsOn: 1,
@@ -78,7 +80,7 @@ const bookingsView: CalendarView = {
  */
 const tasksView: BoardView = {
   kind: "board",
-  specVersion: 4,
+  specVersion: 8,
   id: "tasks_board",
   title: "Tasks",
   entity: "task",
@@ -86,9 +88,56 @@ const tasksView: BoardView = {
   dataSource: "tasks",
   groupBy: [{ field: "status" }, { field: "owner" }, { field: "priority" }],
   titleField: "title",
-  cardFields: ["owner", "priority"],
+  cardFields: ["owner", "priority", "tags"],
   sort: [{ field: "title", dir: "asc" }],
   editable: true,
+  doneField: "done",
+};
+
+/**
+ * The tasks table (card 47h): a tags column with a quick filter over tags,
+ * one named saved filter (RFC 0009 item 5) and a `fieldEqFact` filter against
+ * the viewer's `me` fact (RFC 0009 item 1), and an addForm the "Add task"
+ * control opens (RFC 0008 item 4).
+ */
+const tasksTable: TableView = {
+  kind: "table",
+  specVersion: 8,
+  id: "tasks_table",
+  title: "All tasks",
+  entity: "task",
+  revision: 1,
+  dataSource: "tasks",
+  columns: [
+    { field: "title" },
+    { field: "status" },
+    { field: "priority" },
+    { field: "tags" },
+    { field: "due_time" },
+    { field: "owner" },
+  ],
+  quickFilters: [{ field: "tags" }, { field: "priority" }],
+  filters: [
+    { id: "open", name: "Open", condition: { op: "neq", field: "status", value: "Done" } },
+    { id: "mine", name: "Mine", condition: { op: "fieldEqFact", field: "owner", fact: "me" } },
+  ],
+  addForm: "tasks_batch_form",
+  sort: [{ field: "title", dir: "asc" }],
+};
+
+/** The table's addForm: a batch form (RFC 0008 item 6) with a sub-record checklist (RFC 0009 item 3). */
+const tasksBatchForm: FormView = {
+  kind: "form",
+  specVersion: 8,
+  id: "tasks_batch_form",
+  entity: "task",
+  revision: 1,
+  dataSource: "tasks",
+  repeat: "batch",
+  sections: [
+    { id: "details", title: "Task", items: [{ field: "title" }, { field: "priority" }, { field: "owner" }, { field: "tags" }, { field: "due_time" }] },
+    { id: "checklist", title: "First steps", subRecords: { entity: "checklist_item", via: "task", titleField: "title", doneField: "done", orderField: "order", addLabel: "Add step" } },
+  ],
 };
 
 const tasksHome: DashboardView = {
@@ -107,7 +156,10 @@ function withBookings(base: DocumentSet): DocumentSet {
   entities.set(personEntity.id, personEntity);
   entities.set(taskEntity.id, taskEntity);
   views.set(tasksView.id, tasksView);
+  views.set(tasksTable.id, tasksTable);
+  views.set(tasksBatchForm.id, tasksBatchForm);
   views.set(tasksHome.id, tasksHome);
+  entities.set(checklistItemEntity.id, checklistItemEntity);
   entities.set(bookingEntity.id, bookingEntity);
   views.set(bookingsView.id, bookingsView);
   views.set(bookingsTable.id, bookingsTable);
