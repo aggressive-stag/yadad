@@ -1,8 +1,8 @@
 # RFC 0008: Consumer feedback round 1
 
-- Status: Accepted (2026-10-25). All 15 items accepted as recommended — see `## Owner decisions`.
+- Status: Implemented (2026-10-25). Accepted 2026-10-25, all 15 items as recommended — see `## Owner decisions`.
 - Touches: `core` (`RowBinding`, `ReferenceField.display`/`colorFrom`, `CalendarView.doneField`/`maxEntriesPerDay`, `BoardView.doneField`/`columnsFrom`, `TableView.addForm`, `StaticOptions`, `FormItem.label`, `TextField.multiline`/`maxLength`, new `time`/`tags` field types, the validators, `describeContract`, `recordJsonSchema`), `runtime` (condition/quick-filter helpers, reference labels, `canUpdate` narrowing, board columns), `renderer` (completion toggle, table add, reference display, pager slot, quick filters, forms), `testing` (contract kit, state checks), `editor` (the matching editors), `docs/records-protocol.md` (`can.fields`, `tags` values), `apps/showcase`, and the components repo (select/textarea/tags/time inputs, headings, pager styles).
-- Bumps `specVersion` from 6 to **7** (read `SPEC_VERSION`; if another step landed first, take the next number) with an identity `migrate()` step (everything here is optional and additive) and a before/after fixture pair.
+- Bumped `specVersion` to **8** (the RFC was drafted when it was 6 and asked for "the next number"; RFC 0001 slice 2's `series` widget took 7 first, so the round-1 and round-2 items ride 8 together, per the take-the-next-number rule) with an identity `migrate()` step (everything here is optional and additive) and a before/after fixture pair.
 
 ## Summary
 

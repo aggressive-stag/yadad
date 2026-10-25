@@ -1,8 +1,8 @@
 # RFC 0009: Consumer feedback round 2 — the task app's SPA audit
 
-- Status: Accepted (2026-10-25). Items 1, 3, 4, 5 accepted as recommended (build); items 2, 6, 7 ratified as drafted (docs/record, no build). See `## Owner decisions`.
+- Status: Implemented (2026-10-25). Accepted 2026-10-25 — items 1, 3, 4, 5 as recommended (built); items 2, 6, 7 ratified as drafted (docs/record, no build). See `## Owner decisions`.
 - Touches: `core` (a new condition leaf, `steps` sub-records, `quickFilters` naming, possibly a form repeat), `runtime` (condition evaluation, the state-grid axis for the new leaf, quick-filter helpers), `renderer` (the sub-record section, saved-filter chips, the composer), `testing` (contract kit, state checks), `editor` (the matching editors), `docs/records-protocol.md` (the membership verdict), and the components repo (chips, repeatable rows).
-- `specVersion` stays at **7** while this is a draft (read `SPEC_VERSION`; 0008's 6→7 step has landed). The bump to 8 happens once, when the first accepted item lands, with an identity `migrate()` step and a before/after fixture pair — the same rule 0008 followed.
+- Bumped `specVersion` to **8** with RFC 0008's accepted items, once, when the first accepted item landed, with an identity `migrate()` step and a before/after fixture pair — the same rule 0008 followed. (Items 2, 6, 7 are docs/record only and needed no key.)
 
 ## Summary
 

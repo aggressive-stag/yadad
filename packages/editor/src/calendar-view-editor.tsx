@@ -169,7 +169,7 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
   const dateIds = dateFieldsOf(entity);
   const titleIds = entity.fields.filter((f) => CALENDAR_TITLE_FIELD_TYPES.includes(f.type)).map((f) => f.id);
   const colorIds = entity.fields.filter((f) => CALENDAR_COLOR_FIELD_TYPES.includes(f.type)).map((f) => f.id);
-  const doneIds = calendarDoneFieldsOf(entity); // RFC 0008 item 20: the tick that clears a day's entries
+  const doneIds = calendarDoneFieldsOf(entity); // RFC 0008 item 3: the completion toggle
   // A reference holds a record id, which says nothing about order, so it is not offered as a sort key.
   const entityIds = entity.fields.filter((f) => f.type !== "reference").map((f) => f.id);
   const applySettings = () =>
@@ -314,7 +314,7 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
             setSettings((s) => ({ ...s, weekStartsOn: typeof v === "number" ? v : undefined })),
           )}
           {propertyInput(registry, `${base}-donefield`, choiceField("done_field", "Done field", [NO_DONE, ...doneIds.map(label)]), settings.doneField ? label(settings.doneField) : NO_DONE, (v) =>
-            setSettings((s) => ({ ...s, doneField: byLabel(doneIds, v) })), // RFC 0008 item 20: the tick that clears a day's entries
+            setSettings((s) => ({ ...s, doneField: byLabel(doneIds, v) })), // RFC 0008 item 3: the completion toggle
           )}
           {propertyInput(registry, `${base}-maxentries`, { id: "max_entries_per_day", type: "number", label: "Entries per day before \"+N more\"", min: 1, max: CALENDAR_MAX_ENTRIES_PER_DAY_MAX, step: 1 }, settings.maxEntriesPerDay, (v) =>
             setSettings((s) => ({ ...s, maxEntriesPerDay: typeof v === "number" ? v : undefined })),

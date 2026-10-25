@@ -19,7 +19,7 @@ Positioning: Puck is a visual page builder for content. This engine is for data-
 | Repo | Contains | Depends on | Role |
 | --- | --- | --- | --- |
 | `yadad` (this repo) | Schema format, runtime, renderer, editor, theme, fixtures, test kit, showcase | React (renderer/editor only) | The open-source project. Gets the README, docs and polish. |
-| `yadad-components` | Styled field, layout and widget components (including `layout.Calendar`, `layout.Board` and `layout.Dialog`, and the optional `fields.datetime`), the base registry | `@yadad/core` as a peer dependency (a published version range); `@yadad/testing` as a dev dependency | Reference component set. Users can bring their own instead. |
+| `yadad-components` | Styled field, layout and widget components (including `layout.Calendar`, `layout.Board`, `layout.Dialog` and `layout.Pager`, and the optional `fields.datetime`), the base registry | `@yadad/core` as a peer dependency (a published version range); `@yadad/testing` as a dev dependency | Reference component set. Users can bring their own instead. |
 
 The engine never imports from the components repo. Components implement the engine's contract and are handed to the engine through an injected registry. Separate repos make that boundary physical. The components repo is mirrored on the same GitLab instance and publishes to the same npm registry (D17).
 
@@ -124,14 +124,14 @@ An **entity** owns fields, types and validation. A **view** owns layout and refe
 
 ```jsonc
 // Entity: data model
-{ "kind": "entity", "specVersion": 5, "id": "workout_set", "revision": 7,
+{ "kind": "entity", "specVersion": 8, "id": "workout_set", "revision": 7,
   "fields": [
     { "id": "exercise", "type": "select", "label": "Exercise", "required": true,
       "options": { "source": "static", "values": ["Squat", "Bench"] } },
     { "id": "weight", "type": "number", "label": "Weight", "min": 0, "unit": "kg" } ] }
 
 // Form view: layout only
-{ "kind": "form", "specVersion": 5, "id": "log_set", "entity": "workout_set", "revision": 3,
+{ "kind": "form", "specVersion": 8, "id": "log_set", "entity": "workout_set", "revision": 3,
   "dataSource": "default",
   "sections": [ { "id": "main", "title": "Set", "items": [
     { "field": "exercise" },
@@ -180,7 +180,7 @@ The `viewerIn` op (`{ "op": "viewerIn", "fact": "role", "values": ["editor", "ow
 
 `editableWhen` is a separate key that can only tighten `editable: true`; it never turns editing on.
 
-**Per-record permissions** travel with the data, not the document. A record may carry `can: { update?, delete? }` (see `docs/records-protocol.md`). It states what the current viewer may do with that record and can only restrict: a missing `can` or key means "offered", and `true` enables nothing the document does not already offer. The renderers withhold in-place edit and "Move to…" on a record whose `can.update` is `false`. The server still decides: a refused write is a 403, the card or cell goes back and the record list reloads, which also refreshes `can`. The memory and key-value adapters take a `recordPermissions` option that states and enforces `can`, so a demo behaves like a server.
+**Per-record permissions** travel with the data, not the document. A record may carry `can: { update?, delete?, actions?, fields? }` (see `docs/records-protocol.md`). It states what the current viewer may do with that record and can only restrict: a missing `can` or key means "offered", and `true` enables nothing the document does not already offer. `actions` takes single record actions away by id (RFC 0007); `fields` is the per-writable-field map from RFC 0008 item 9 — a missing key or an absent map fails open, exactly like `can` itself. The renderers withhold in-place edit and "Move to…" on a record whose `can.update` is `false`, and an individual cell, checkbox or entry control when `can.fields` says its field is not writable. The server still decides: a refused write is a 403, the card or cell goes back and the record list reloads, which also refreshes `can`. The memory and key-value adapters take a `recordPermissions` option that states and enforces `can`, so a demo behaves like a server.
 
 All of this narrows what is offered. It is not authorization: the server checks every write.
 
@@ -188,7 +188,7 @@ All of this narrows what is offered. It is not authorization: the server checks 
 
 An **action** is a command the entity declares and a view offers — approve, restore, close — a thing a record *does* rather than a value it holds, so it lives in neither the field list nor the layout.
 
-- **Document** (`core`): an entity declares at most 12 `actions`, each `{ id, label, confirm?, input?, visibleWhen? }`. `confirm` is `{ message, title?, confirmLabel?, tone?: "neutral" | "danger" }`; `input` is 1 to 5 fields typed text, number, boolean, select, date or datetime — never `reference`, because a record the viewer picked from another entity has no meaning to the server running the command. `visibleWhen` mixes record and viewer leaves: the action is offered on a record only while it holds. A view (table, calendar or board) offers at most 6 of its entity's action ids by `recordActions`, in the order they appear on the row; a dashboard embedding the view inherits them. Caps and shapes live in `core` and print from `pnpm describe-registry`.
+- **Document** (`core`): an entity declares at most 12 `actions`, each `{ id, label, confirm?, input?, visibleWhen? }`. `confirm` is `{ message, title?, confirmLabel?, tone?: "neutral" | "danger" }`; `input` is 1 to 5 fields typed text, number, boolean, select, date, datetime or time — never `reference` or `tags`, because a record the viewer picked from another entity has no meaning to the server running the command, and a tag list is not a command parameter until the components chips widget ships (D49). `visibleWhen` mixes record and viewer leaves: the action is offered on a record only while it holds. A view (table, calendar or board) offers at most 6 of its entity's action ids by `recordActions`, in the order they appear on the row; a dashboard embedding the view inherits them. Caps and shapes live in `core` and print from `pnpm describe-registry`.
 - **Runtime**: `availableActions(record, view, action...)` is the one answer to "may this row offer this action" — declared on the entity, offered by the view, `visibleWhen` holds for this record and viewer, and `can.actions[id]` does not say `false`. The renderer and the editor both call it, so an editor preview cannot drift from what the table draws. `actionNeedsDialog` says whether a press runs immediately or asks first: an action with `input` always asks, one with only `confirm` asks, a bare one runs.
 - **Adapter**: `act(entity, id, action, request)` on `DataAdapter` (optional until the next major). A view whose adapter has none shows an error instead of buttons that would fail. The request carries the input values and the required `baseVersion`; the response is the record after the action (with its new `can`) or `null` when the action removed it. The HTTP adapter posts the protocol's actions endpoint; the memory and key-value adapters take an `actions` handler map and enforce the same order of refusals (`adapter-guards`). A refusal is a `ForbiddenError`, a stale or no-longer-applicable action a `RecordConflictError`, bad input a `RecordValidationError`.
 - **Registry**: a dialog-requiring action renders through `layout.Dialog` — the component supplies only modal behaviour, the renderer supplies the title, message, confirm button and the input fields (drawn with the registry's own `Input`s). `Dialog` is optional like `layout.Calendar`: a view with such an action against a registry without it shows an `ErrorSummary` naming the missing key. Actions are never retried, and a row's button is `pending` until the response, so at most one is in flight per record.
@@ -204,6 +204,14 @@ A field type holding an instant, stored in one string form so that comparing, so
 - **Editor**: the author panel and the compare/bound controls edit the canonical string; the panel reads a bare local time as UTC rather than the machine's zone, so a document says the same instant on every machine.
 - Out of slice 1: relative values (`{ hoursFromNow }`), a calendar `dateField`, a board `groupBy`, and number/datetime `min`/`max` measures — all documented refusals, not omissions.
 
+### `time` and `tags`
+
+The two field types RFC 0008 added, each with a strict stored form, the way `datetime` has one.
+
+- **`time`** holds a time of day, stored `"HH:MM"` — 24-hour, zero-padded, no day and no zone — with optional `min`/`max` bounds and a `step` in minutes. A time-only comparison compares minutes from midnight and takes `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `empty`, `notEmpty`. It is separate from `date` by design: a due date and a due time stay two fields, and a calendar entry is never placed by a time.
+- **`tags`** holds `string[]` of non-empty strings in the order entered — the only field type whose value is an array. `contains` and `in` match ANY element (negate with `not`), `empty`/`notEmpty` work as usual. A tags field is never a sort key, a board `groupBy` or a series `groupBy`. Reads tolerate duplicates; the server may dedupe.
+- **Registry**: unlike `fields.datetime`, both entries are *required* — the mapped type has no index signature, so a registry written before RFC 0008 does not type-check until it adds them. The reference set and `mockRegistry` shipped both in the same release.
+
 ### Compare
 
 `compare` on a table column shows what changed in a text field: `{ "to": "previousRow" | "nextRow" }` diffs it against that neighbour in the table's own order, or `{ "field": "<other text field>" }` against another text field of the same record. The cell's value is the *after*; the comparator is the *before*. Text fields only, never together with `editable`.
@@ -215,7 +223,7 @@ A field type holding an instant, stored in one string form so that comparing, so
 
 ### The new state axes
 
-The grid grew three axis families past the condition and kind axes (§13): one `action:<id>` axis per offered action (`available`, `withheld on 1 record` — withheld sets `can.actions[id] = false` on the first generated record), a `paging` axis on tables (`pages by total`, `cursor page, more to come`, `cursor page, last`), and the `viewer:<fact>` and `permission` axes from RFC 0006. `checkViewStates` gained the matching checks: `action-offered` / `action-missing` (nothing withheld may be offered, nothing allowed may hide) and the two diff checks above. `StatesPreview` (`editor`) names the action and paging axes on their own line — "States this view varies" — because they answer what the *product* varies, while the viewer axes answer what the viewer is told.
+The grid grew axis families past the condition and kind axes (§13): one `action:<id>` axis per offered action (`available`, `withheld on 1 record` — withheld sets `can.actions[id] = false` on the first generated record), a `paging` axis on tables (`pages by total`, `cursor page, more to come`, `cursor page, last`), and the `viewer:<fact>` and `permission` axes from RFC 0006. RFC 0008 added two more: a `done` axis on a calendar or board that sets `doneField` (the checkbox on and off), and a `columns` axis on a reference board with `columnsFrom: "options"` (one option holds no cards — the column exists with no drop target). The `time` and `tags` field types brought their value probes along (thresholds plus 23:59; empty/one/many/duplicate tags), and a `fieldEqFact` leaf seeds the compared field from the fact so a true-comparison state can render. `checkViewStates` gained the matching checks: `action-offered` / `action-missing` (nothing withheld may be offered, nothing allowed may hide), the pager checks, and the two diff checks above. `StatesPreview` (`editor`) names the action and paging axes on their own line — "States this view varies" — because they answer what the *product* varies, while the viewer axes answer what the viewer is told.
 
 ## 7. Validation: two kinds, one owner each
 
@@ -256,9 +264,9 @@ interface FieldTypeEntry<K extends FieldType, N> {
 }
 
 interface Registry<N> {
-  fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> }; // mapped type, no index signature; `datetime` is optional until the reference set ships it (RFC 0007), like Calendar below
+  fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> }; // mapped type, no index signature; `datetime` is optional until the reference set ships it (RFC 0007), like Calendar below; `time` and `tags` (RFC 0008) are required entries — registries written before them must add both
   layout: { FieldFrame; Section; Button; Table; ErrorSummary; Tabs; Panel;
-            Calendar?; Board?; Dialog? };                      // optional keys: without one, that view kind (or, for Dialog, an action needing a dialog) renders an error summary
+            Calendar?; Board?; Dialog?; Pager? };              // optional keys: without Calendar/Board (or, for Dialog, an action needing a dialog) that view renders an error summary; without Pager, a table keeps the renderer's own Previous/Next markup
   widgets: { count: Component<CountWidgetProps, N> };         // "view" widgets render through the renderer itself; "stat" shows its number through "count"
 }
 ```
