@@ -1,5 +1,129 @@
 # @yadad/testing
 
+## 0.11.0
+
+### Minor Changes
+
+- ea7fd75: RFC 0008 renderer surfaces (card 47e).
+  
+  Registry contract (`@yadad/core/registry`):
+  
+  - `CalendarEntry.done` — the completion toggle a view's `doneField` asks for:
+    `checked`, `disabled` (folding editability, `can.fields` and an in-flight
+    toggle), and `toggle`. The renderer owns the write; the component owns the
+    checkbox.
+  - `CalendarDayProps.overflow` — `{ shown, hidden }` when a day exceeds
+    `maxEntriesPerDay`. The renderer decides the cap; the component discloses
+    the rest behind its own "+N more" affordance. No double-capping.
+  - `BoardCardProps.done` — the card twin of `CalendarEntry.done`.
+  - `BoardColumn.color` — the grouping option's `#RRGGBB` swatch hint beside
+    the label (RFC 0008 item 5); an option without a colour keeps the label
+    alone.
+  - `BoardColumn.label` / select option labels — options may carry a `label`
+    that defaults to the value; columns and displays show the label.
+  - `ReferenceDisplayExtras.color` — the target's own colour when the reference
+    field declares `colorFrom` (item 8). A hint beside the text, never the
+    only signal.
+  - `PagerProps` + `Registry.layout.Pager` — the table's paging control as a
+    slot (item 6). The renderer owns the cursor/offset policy; the component
+    owns Previous/Next chrome.
+  - Pruned dead API: `BoardProps.onAdd` and `FieldFrameProps.heading` had no
+    renderer implementation sites.
+  
+  Runtime:
+  
+  - `resolveReferenceColors` — resolves `colorFrom` for a set of ids the same
+    shape as `resolveReferenceLabels` (parallel `findOne`, capped); keeps only
+    colour-shaped values (text `#RRGGBB`, or the chosen select option's colour).
+  - `boardColumns` carries each option's `label` (defaulting to the value) and
+    `color` on the column definition; the board renderer passes both through.
+  
+  Renderer:
+  
+  - Calendar and board render a `doneField` toggle per entry/card: one field
+    patched through the adapter's normal `update` (not `act`), optimistic
+    settled against the saved record, announced, gated by `can.update` and
+    `can.fields`.
+  - Calendar entries cap at `maxEntriesPerDay` and hand the overflow to the
+    day component.
+  - Calendar entry and board card labels compose the detail fields as
+    "Label: value", so the accessible name says what each detail is.
+  - Table pages through the registry's `Pager` slot.
+  - Table `addForm` (item 10, table side): an "Add {entity}" control under the
+    top-level table opens the named form view inline; a save closes the panel
+    and reloads the rows. A broken reference fails loudly in an ErrorSummary.
+  
+  Testing:
+  
+  - Mock registry gained `MockPager`, done-checkboxes, day overflow expansion,
+    option labels/colours on selects, and entry/card colour attributes.
+- f918c21: State grid and contract kit for the RFC 0008 / RFC 0009 additions (card 47h).
+  
+  State grid (`viewStates`, `@yadad/runtime`):
+  
+  - `time` fields: the grid carries the `23:59` boundary next to the empty and mid-day values.
+  - `tags` fields: an empty-tags, a one-tag, a many-tags and a duplicates-tolerated state (the display must not deduplicate what the record holds).
+  - `fieldEqFact` (RFC 0009 item 1): one viewer axis per fact a view compares a field against, and the compared field's axis is seeded with the fact's own values so the comparison gets a true state as well as a false one. A `repeat: "batch"` composer keeps only the viewer axis — its rows always start empty, so an injected-value comparison state could never render.
+  - Board `columnsFrom: "options"`: an empty-column state — a grouping option no card references (RFC 0008 item 10).
+  - `doneField` true/false pairs on calendar and board states (RFC 0008 item 12).
+  
+  Contract kit (`registryContractChecks`, `checkViewStates` in `@yadad/testing`):
+  
+  - `layout.Pager` assertions, optional like `layout.Calendar`: a registry without a Pager has no pager checks; one with a Pager must render a navigation region named by its label, disable the controls the position rules out, fire the others, and drop the total page count in cursor mode.
+  - `can.fields` narrowing (RFC 0008 item 9): a table row offers Edit only when some editable column's field is open on that record (`canEditField`), and a calendar/board entry is movable only when the move field is open on it. Records without `can.fields` are untouched — fail-open, the server decides. New checks: `can-fields-offered`, `can-fields-missing`.
+  
+  The showcase's document set exercises the new keys at v8: tags/time/boolean task fields, a table with `addForm`, named `filters` (one `fieldEqFact` against a `me` fact) and a tags quick filter, a batch form with a sub-record checklist, `columnsFrom: "options"` plus `doneField` on the team board, and `doneField` + `maxEntriesPerDay` on the bookings calendar.
+
+### Patch Changes
+
+- afa08dd: RFC 0008 view/field contract keys (validator side; the renderer follows in its own card).
+  
+  - `StaticOptions.values` entries may now be `{ value, label?, color? }` as well as plain strings (item 5): `label` defaults to `value`, `color` is a `#RRGGBB` display hint. Stored records, filters and conditions keep using `value`. Helper `optionValue()` returns the stored value of either form.
+  - `FormItem.label?` relabels a field in one form view (item 6).
+  - `CalendarView.maxEntriesPerDay?` replaces the fixed "+N more" cutoff of 3 (item 7); default is still 3, so no document changes meaning.
+  - `ReferenceField.colorFrom?` names a colour-shaped field on the target (item 8); the renderer consumes it later.
+  - `TableView.addForm?` names a form view over the same entity the table offers as "Add" (item 4); the set validator checks existence, kind and entity.
+  - `BoardView.columnsFrom?: "options" | "records"` opts a reference grouping into target-derived columns (item 10); default `"records"` is today's behaviour.
+  
+  No `specVersion` bump: every new key is optional and old documents validate and render exactly as before.
+- e038f8b: RFC 0009 renderer surfaces (items 3, 4, 5) — the three build items, on the contracts 47c landed.
+  
+  - **Sub-record checklist** (`SubRecordChecklist`, exported): a form section that declares
+    `subRecords` renders an inline checklist over the child entity — rows scoped by the `via`
+    reference back at the form's entity, ordered by `orderField`, added by an input + Add
+    button (Enter works; the new row lands focused in edit mode), titles click-to-edit, the
+    `doneField` checkbox, Remove. Rows are ordinary records of the child entity: every write
+    goes through the standard adapter verbs under `baseVersion`, and `can.update`/`can.fields`
+    decide what is operable. A form for a record that does not exist yet says so instead of
+    writing orphans; a misdeclared section states the problem in place.
+  - **`repeat: "batch"` composer**: the create form becomes a queued composer — "+ another"
+    adds an unsaved row, Remove drops one, the single Add flushes all rows through
+    `submitBatchCreate` (runtime, new export): validate every row first, then ONE adapter
+    `batch` call — all rows land or none do. Row errors stay on their row (scoped
+    `/rows/<i>/…`); drafts never apply to a batch composer.
+  - **Named saved filters as chips**: `TableRenderer` gains host-owned `savedFilter` /
+    `onSavedFilterChange` props; the view's `filters` render as a chip row (registry Buttons,
+    `aria-pressed`) beside the quick filters. The lit chip's condition is ANDed into the base
+    filter before the quick filters combine — it rides the adapter query, never post-filtering.
+    The renderer stores no chip state.
+  - `ButtonProps.pressed` (core, additive): a toggle control's state, so a registry component
+    can draw the pressed look and set `aria-pressed`. The mock registry draws it.
+  
+  Renderer is minor, not patch: `FormRendererProps` gains `parent`/`reloadKey` and
+  `TableRendererProps` gains the saved-filter pair (both optional), and `ButtonProps`
+  gained `pressed` — implementors of the registry contract see a widened component contract.
+- Updated dependencies [d11aad3]
+- Updated dependencies [ea7fd75]
+- Updated dependencies [8d7ffdb]
+- Updated dependencies [920dffa]
+- Updated dependencies [5d25641]
+- Updated dependencies [9574fa8]
+- Updated dependencies [f918c21]
+- Updated dependencies [afa08dd]
+- Updated dependencies [e038f8b]
+  - @yadad/core@0.15.0
+  - @yadad/runtime@0.12.0
+
 ## 0.10.2
 
 ### Patch Changes

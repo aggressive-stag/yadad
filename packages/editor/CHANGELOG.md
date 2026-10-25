@@ -1,5 +1,51 @@
 # @yadad/editor
 
+## 0.15.0
+
+### Minor Changes
+
+- 9574fa8: Author the RFC 0008 and RFC 0009 contract keys (card 47g).
+  
+  Editor: `doneField` and `maxEntriesPerDay` rows in the calendar editor; `doneField` and a
+  `columnsFrom` switch in the board editor; an `addForm` picker and named-filter rows (`filters`)
+  in the table editor; option label + colour rows in the field-options editor; per-item
+  `FormItem.label`, `multiline`/`maxLength`, `colorFrom`, the sub-record section builder and the
+  `repeat: "batch"` toggle in the form editor; and the `fieldEqFact` leaf (field + declared-fact
+  pickers, no free text) in the condition builder.
+  
+  Core: `TextField.multiline` and `TextField.maxLength` (validated, ceiling
+  `TEXT_MAX_LENGTH_CEILING`), the keys the text-field panel writes.
+
+### Patch Changes
+
+- 920dffa: Add the `time` and `tags` field types (RFC 0008 items 14 and 15).
+  
+  - `time` stores a time of day as `"HH:MM"` — 24-hour, zero-padded, no day and no zone. It compares with eq/neq/gt/gte/lt/lte/in/empty/notEmpty (never `contains`, never a relative date), takes optional `min`/`max` bounds and a `step` in whole minutes, and can be an action input. A `time` field is never a stand-in for `date`: it cannot place a calendar entry, and `due_date` plus `due_time` stay two fields.
+  - `tags` stores an array of non-empty strings in the order entered — the only field type whose value is a list. `contains` and `in` match ANY element (wrap in `not` for the negation); it has no ordering, so gt/gte/lt/lte are refused. It cannot be a sort key or a board `groupBy` (a card carries many tags and a column needs one value per card), and it declares no properties beyond label and required — no options, static or from an entity.
+  - `recordJsonSchema`: `time` is a string with the `HH:MM` pattern; `tags` is an array of string with `uniqueItems`. `validateRecord` is the step gate and leaves duplicates to the input, so the two deliberate divergences are pinned in the parity table.
+  - Editor: both types appear in the new-field type menu with no property panel of their own, and the input/display dispatcher routes them through the registry. The mock registry drives them with a native time box and a comma-separated text box; the real widgets (including the tags chips input) ship with the components repo's card 23a. `tags` is not an action input until that chips widget exists.
+- afa08dd: RFC 0008 view/field contract keys (validator side; the renderer follows in its own card).
+  
+  - `StaticOptions.values` entries may now be `{ value, label?, color? }` as well as plain strings (item 5): `label` defaults to `value`, `color` is a `#RRGGBB` display hint. Stored records, filters and conditions keep using `value`. Helper `optionValue()` returns the stored value of either form.
+  - `FormItem.label?` relabels a field in one form view (item 6).
+  - `CalendarView.maxEntriesPerDay?` replaces the fixed "+N more" cutoff of 3 (item 7); default is still 3, so no document changes meaning.
+  - `ReferenceField.colorFrom?` names a colour-shaped field on the target (item 8); the renderer consumes it later.
+  - `TableView.addForm?` names a form view over the same entity the table offers as "Add" (item 4); the set validator checks existence, kind and entity.
+  - `BoardView.columnsFrom?: "options" | "records"` opts a reference grouping into target-derived columns (item 10); default `"records"` is today's behaviour.
+  
+  No `specVersion` bump: every new key is optional and old documents validate and render exactly as before.
+- Updated dependencies [d11aad3]
+- Updated dependencies [ea7fd75]
+- Updated dependencies [8d7ffdb]
+- Updated dependencies [920dffa]
+- Updated dependencies [5d25641]
+- Updated dependencies [9574fa8]
+- Updated dependencies [f918c21]
+- Updated dependencies [afa08dd]
+- Updated dependencies [e038f8b]
+  - @yadad/core@0.15.0
+  - @yadad/runtime@0.12.0
+
 ## 0.14.3
 
 ### Patch Changes

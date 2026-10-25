@@ -1,5 +1,124 @@
 # @yadad/renderer
 
+## 0.14.0
+
+### Minor Changes
+
+- ea7fd75: RFC 0008 renderer surfaces (card 47e).
+  
+  Registry contract (`@yadad/core/registry`):
+  
+  - `CalendarEntry.done` — the completion toggle a view's `doneField` asks for:
+    `checked`, `disabled` (folding editability, `can.fields` and an in-flight
+    toggle), and `toggle`. The renderer owns the write; the component owns the
+    checkbox.
+  - `CalendarDayProps.overflow` — `{ shown, hidden }` when a day exceeds
+    `maxEntriesPerDay`. The renderer decides the cap; the component discloses
+    the rest behind its own "+N more" affordance. No double-capping.
+  - `BoardCardProps.done` — the card twin of `CalendarEntry.done`.
+  - `BoardColumn.color` — the grouping option's `#RRGGBB` swatch hint beside
+    the label (RFC 0008 item 5); an option without a colour keeps the label
+    alone.
+  - `BoardColumn.label` / select option labels — options may carry a `label`
+    that defaults to the value; columns and displays show the label.
+  - `ReferenceDisplayExtras.color` — the target's own colour when the reference
+    field declares `colorFrom` (item 8). A hint beside the text, never the
+    only signal.
+  - `PagerProps` + `Registry.layout.Pager` — the table's paging control as a
+    slot (item 6). The renderer owns the cursor/offset policy; the component
+    owns Previous/Next chrome.
+  - Pruned dead API: `BoardProps.onAdd` and `FieldFrameProps.heading` had no
+    renderer implementation sites.
+  
+  Runtime:
+  
+  - `resolveReferenceColors` — resolves `colorFrom` for a set of ids the same
+    shape as `resolveReferenceLabels` (parallel `findOne`, capped); keeps only
+    colour-shaped values (text `#RRGGBB`, or the chosen select option's colour).
+  - `boardColumns` carries each option's `label` (defaulting to the value) and
+    `color` on the column definition; the board renderer passes both through.
+  
+  Renderer:
+  
+  - Calendar and board render a `doneField` toggle per entry/card: one field
+    patched through the adapter's normal `update` (not `act`), optimistic
+    settled against the saved record, announced, gated by `can.update` and
+    `can.fields`.
+  - Calendar entries cap at `maxEntriesPerDay` and hand the overflow to the
+    day component.
+  - Calendar entry and board card labels compose the detail fields as
+    "Label: value", so the accessible name says what each detail is.
+  - Table pages through the registry's `Pager` slot.
+  - Table `addForm` (item 10, table side): an "Add {entity}" control under the
+    top-level table opens the named form view inline; a save closes the panel
+    and reloads the rows. A broken reference fails loudly in an ErrorSummary.
+  
+  Testing:
+  
+  - Mock registry gained `MockPager`, done-checkboxes, day overflow expansion,
+    option labels/colours on selects, and entry/card colour attributes.
+- e038f8b: RFC 0009 renderer surfaces (items 3, 4, 5) — the three build items, on the contracts 47c landed.
+  
+  - **Sub-record checklist** (`SubRecordChecklist`, exported): a form section that declares
+    `subRecords` renders an inline checklist over the child entity — rows scoped by the `via`
+    reference back at the form's entity, ordered by `orderField`, added by an input + Add
+    button (Enter works; the new row lands focused in edit mode), titles click-to-edit, the
+    `doneField` checkbox, Remove. Rows are ordinary records of the child entity: every write
+    goes through the standard adapter verbs under `baseVersion`, and `can.update`/`can.fields`
+    decide what is operable. A form for a record that does not exist yet says so instead of
+    writing orphans; a misdeclared section states the problem in place.
+  - **`repeat: "batch"` composer**: the create form becomes a queued composer — "+ another"
+    adds an unsaved row, Remove drops one, the single Add flushes all rows through
+    `submitBatchCreate` (runtime, new export): validate every row first, then ONE adapter
+    `batch` call — all rows land or none do. Row errors stay on their row (scoped
+    `/rows/<i>/…`); drafts never apply to a batch composer.
+  - **Named saved filters as chips**: `TableRenderer` gains host-owned `savedFilter` /
+    `onSavedFilterChange` props; the view's `filters` render as a chip row (registry Buttons,
+    `aria-pressed`) beside the quick filters. The lit chip's condition is ANDed into the base
+    filter before the quick filters combine — it rides the adapter query, never post-filtering.
+    The renderer stores no chip state.
+  - `ButtonProps.pressed` (core, additive): a toggle control's state, so a registry component
+    can draw the pressed look and set `aria-pressed`. The mock registry draws it.
+  
+  Renderer is minor, not patch: `FormRendererProps` gains `parent`/`reloadKey` and
+  `TableRendererProps` gains the saved-filter pair (both optional), and `ButtonProps`
+  gained `pressed` — implementors of the registry contract see a widened component contract.
+
+### Patch Changes
+
+- 8d7ffdb: RFC 0008/0009 evaluation (card 47d). Runtime: `fieldEqFact` evaluates against the record
+  (mirrors `viewerIn`'s unknown-fact rule); `tags` conditions — `contains`/`notContains` are
+  element membership, `in`/`notIn` match any element; `time` comparisons ride the string
+  ordering with a pin that lexicographic `HH:MM` is chronological; `can.fields` narrows
+  `canUpdate` per field through `canEditField`/`canMoveColumn`, malformed entries drop the
+  whole `can` like malformed `actions`. Board: `columnsFrom` is real — the default
+  `"records"` derives columns from the loaded page via `boardRecordColumns` (no target
+  fetch), `"options"` keeps the capped target load (RFC 0008 item 10, opt-in per the owner
+  decision). Renderer: board/calendar drags and table inline edits honour `can.fields`; a
+  tags quick filter chips with any-element semantics; `fields.tsx` gains the `time`/`tags`
+  dispatch cases so the registry entries from card 47k actually render.
+- afa08dd: RFC 0008 view/field contract keys (validator side; the renderer follows in its own card).
+  
+  - `StaticOptions.values` entries may now be `{ value, label?, color? }` as well as plain strings (item 5): `label` defaults to `value`, `color` is a `#RRGGBB` display hint. Stored records, filters and conditions keep using `value`. Helper `optionValue()` returns the stored value of either form.
+  - `FormItem.label?` relabels a field in one form view (item 6).
+  - `CalendarView.maxEntriesPerDay?` replaces the fixed "+N more" cutoff of 3 (item 7); default is still 3, so no document changes meaning.
+  - `ReferenceField.colorFrom?` names a colour-shaped field on the target (item 8); the renderer consumes it later.
+  - `TableView.addForm?` names a form view over the same entity the table offers as "Add" (item 4); the set validator checks existence, kind and entity.
+  - `BoardView.columnsFrom?: "options" | "records"` opts a reference grouping into target-derived columns (item 10); default `"records"` is today's behaviour.
+  
+  No `specVersion` bump: every new key is optional and old documents validate and render exactly as before.
+- Updated dependencies [d11aad3]
+- Updated dependencies [ea7fd75]
+- Updated dependencies [8d7ffdb]
+- Updated dependencies [920dffa]
+- Updated dependencies [5d25641]
+- Updated dependencies [9574fa8]
+- Updated dependencies [f918c21]
+- Updated dependencies [afa08dd]
+- Updated dependencies [e038f8b]
+  - @yadad/core@0.15.0
+  - @yadad/runtime@0.12.0
+
 ## 0.13.2
 
 ### Patch Changes
