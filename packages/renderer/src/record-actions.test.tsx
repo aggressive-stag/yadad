@@ -377,6 +377,50 @@ describe("the action dialog (RFC 0007)", () => {
     expect(document.activeElement).toBe(second); // the flight ended; the viewer's focus stays put
   });
 
+  // todo-app F14 part B (2026-10-24): the 46a restore holds the pressed NODE, but the
+  // completed row's action set changes on reload (Complete unmounts, Reopen mounts in its
+  // place — measured in Chromium: the button node is removed ~90ms into the press, the row
+  // survives). `held.element.isConnected` is false, so the press-time restore silently
+  // no-ops and focus stays on body. The press must return focus to the row's live control.
+  const swappingEntity: EntityDocument = {
+    kind: "entity",
+    specVersion: 1,
+    id: "doc",
+    revision: 1,
+    fields: [
+      { id: "n", type: "number", label: "N" },
+      { id: "tag", type: "text", label: "Tag" },
+    ],
+    actions: [
+      { id: "publish", label: "Publish", visibleWhen: { op: "eq", field: "tag", value: "draft" } },
+      { id: "archive", label: "Archive", visibleWhen: { op: "eq", field: "tag", value: "live" } },
+    ],
+  };
+  const swappingView: TableView = { ...view, recordActions: ["publish", "archive"] };
+
+  test("when the pressed button is replaced on reload, focus returns to the row's live button", async () => {
+    const base = await seeded({ actions: { "doc.publish": () => ({ values: { tag: "live" } }) } });
+    const inner = base.act!.bind(base);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const db = { ...base, act: async (e: string, id: string, a: string, request: Parameters<NonNullable<typeof inner>>[3]) => { await gate; return inner(e, id, a, request); } };
+    render(<TableRenderer entity={swappingEntity} view={swappingView} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
+    const btn = document.querySelector("[data-testid='action-publish']") as HTMLButtonElement;
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    dropFocusLikeABrowser(btn);
+    release();
+    await waitFor(() => expect(statusText()).toBe("Publish done"));
+    await waitFor(() => expect(tagOf(1)).toBe("live")); // the reload landed: the row now offers Archive
+    const replacement = document.querySelector("[data-testid='action-archive']") as HTMLButtonElement;
+    expect(btn.isConnected).toBe(false); // the pressed node is gone — the exact live-browser state
+    await waitFor(() => expect(document.activeElement).toBe(replacement)); // focus went back to the row's live control
+  });
+
   test("a removed record has nothing to return to, and focus is left alone", async () => {
     const { db, release } = await gated({ actions: { "doc.publish": () => ({ remove: true }) } });
     show(db);

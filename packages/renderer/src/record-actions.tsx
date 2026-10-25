@@ -7,6 +7,9 @@ import type { ReactNode } from "react";
 import { renderInput } from "./fields.js";
 import type { ReferenceSupport } from "./references.js";
 
+/** How many renders the focus-return effect retries across after a flight ends (todo-app F14 part B). */
+const RESTORE_ATTEMPTS = 50;
+
 /** What `useRecordActions` gives a view: the row's buttons, the failure summary, the announcement, and the open dialog. */
 export interface RecordActions {
   /** The record's available actions as ready-to-draw buttons (empty when the view offers none). */
@@ -68,7 +71,22 @@ export function useRecordActions(options: {
   // ends — Tab then restarts from the nav. The press records the focused control and `act`
   // records the flight; the effect below returns focus once the flight is over for that
   // record, unless the viewer has moved on in the meantime or a dialog owns focus.
-  const pressed = useRef<{ readonly recordId: string; readonly element: HTMLElement } | undefined>(undefined);
+  // todo-app F14 part B: the reload often REMOUNTS the pressed button — completing a row
+  // swaps its action set (Complete unmounts, Reopen mounts; measured in Chromium ~90ms into
+  // the press) — and the effect also runs BEFORE that commit lands, when the old button is
+  // still connected but doomed. So a restore is only kept once a later render finds focus
+  // still on it; a focus that fell to body (the node died under it) tries again: first the
+  // pressed node, then the first live button of the parent it held (the action cell/row,
+  // which survives the swap). A removed record takes its cell with it — no target, focus
+  // stays put — and an unsettled attempt gives up after the window so an old action can
+  // never steal focus much later.
+  const pressed = useRef<{
+    readonly recordId: string;
+    readonly element: HTMLElement;
+    readonly parent: Element | null;
+    focused: HTMLElement | undefined; // the last node this effect focused, awaiting confirmation
+    attempts: number; // renders spent retrying; bounds the retry window
+  } | undefined>(undefined);
   const flights = useRef(new Set<string>());
   useEffect(() => {
     mounted.current = true;
@@ -80,11 +98,42 @@ export function useRecordActions(options: {
     const held = pressed.current;
     if (held === undefined || !flights.current.has(held.recordId) || pending.has(held.recordId)) return;
     if (dialog !== undefined) return; // the dialog path owns focus until it closes (its own close-return applies)
-    flights.current.delete(held.recordId);
-    pressed.current = undefined; // one attempt per flight, whether or not it restored
+    const settle = (): void => {
+      pressed.current = undefined;
+      flights.current.delete(held.recordId);
+    };
+    // A previous attempt that SURVIVED the commits is the whole point: one render after
+    // focusing, focus is still on the node we gave it — done, and it can never come back
+    // to steal focus later (todo-app F14 part B: the first restore runs before the reload
+    // commits, onto a button that is about to be replaced).
+    if (held.focused !== undefined && held.focused.isConnected && document.activeElement === held.focused) {
+      settle();
+      return;
+    }
     const active = document.activeElement;
-    if (active !== null && active !== document.body) return; // focus is spoken for: leave it alone
-    if (held.element.isConnected) held.element.focus(); // a removed record has nothing to go back to
+    if (active !== null && active !== document.body && active !== held.focused) {
+      settle(); // focus is spoken for by someone else: leave it alone (the never-steal rule)
+      return;
+    }
+    if (held.attempts >= RESTORE_ATTEMPTS) {
+      settle(); // the replacement never landed (e.g. the record was removed): stop trying
+      return;
+    }
+    held.attempts += 1;
+    // Focus is on body (or on a node we focused that cannot take it, e.g. still disabled):
+    // the node we last held died — or will die — under it. Retry — the pressed node if it
+    // is (still) there, else the first live button of the parent it held (the action
+    // cell/row survives an action-set swap; a removed record takes it, leaving no target).
+    const live =
+      held.parent !== null && held.parent.isConnected
+        ? held.parent.querySelector<HTMLButtonElement>("button:not([disabled])")
+        : null;
+    const target: HTMLElement | null = held.element.isConnected ? held.element : live;
+    if (target !== null && (target as HTMLButtonElement).disabled !== true) {
+      target.focus();
+      held.focused = target;
+    }
+    // No target (or a disabled one): the reload's commit has not landed. The next render retries.
   });
 
   const announce = (text: string): void => {
@@ -163,7 +212,7 @@ export function useRecordActions(options: {
         pressed.current =
           actionNeedsDialog(action) || !(document.activeElement instanceof HTMLElement)
             ? undefined
-            : { recordId: record.id, element: document.activeElement };
+            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, focused: undefined, attempts: 0 };
         if (actionNeedsDialog(action)) openDialog(record, action);
         else run(record, action, undefined, undefined);
       },
