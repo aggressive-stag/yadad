@@ -431,10 +431,10 @@ function checkSort(errors: Errors, doc: JsonObject, scope: string): void {
   reportDuplicates(errors, sorted, "sort", scope);
 }
 
-const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField"] as const;
+const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField", "doneField"] as const;
 
 function validateCalendar(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "maxEntriesPerDay", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction", "recordActions"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "maxEntriesPerDay", "doneField", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction", "recordActions"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -490,7 +490,7 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
 }
 
 function validateBoard(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction", "recordActions", "columnsFrom"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction", "recordActions", "columnsFrom", "doneField"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -498,6 +498,7 @@ function validateBoard(errors: Errors, doc: JsonObject): void {
   checkNonEmptyString(errors, doc, [], "dataSource");
   checkNonEmptyString(errors, doc, [], "title");
   checkId(errors, doc, [], "titleField");
+  checkId(errors, doc, [], "doneField");
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkRecordActions(errors, doc["recordActions"]);
@@ -1813,6 +1814,10 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
     }
   });
   if (view.colorField !== undefined) typed(view.colorField, ["colorField"], "colorField", CALENDAR_COLOR_FIELD_TYPES);
+  // RFC 0008 item 3: the completion toggle patches one boolean field. A field
+  // is either date or boolean, so `typed` already refuses naming the dateField;
+  // the reachable overlap is the board's, where a boolean CAN group.
+  if (view.doneField !== undefined) typed(view.doneField, ["doneField"], "doneField", ["boolean"]);
   checkViewFilterSortTail(errors, checker, entity, view, idx);
 }
 
@@ -1824,7 +1829,7 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
     return;
   }
   const checker = viewFieldChecker(errors, view, entity, "board");
-  const { find, unknown, fieldIds } = checker;
+  const { find, unknown, typed, fieldIds } = checker;
   /** A required boolean can only ever be true, so it cannot usefully group a board. */
   const groupable = (field: Field): boolean => BOARD_GROUP_FIELD_TYPES.includes(field.type) && !(field.type === "boolean" && field.required === true);
   const groupableIds = entity.fields.filter(groupable).map((f) => f.id);
@@ -1860,6 +1865,19 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
       });
     }
   });
+
+  // RFC 0008 item 3: the completion toggle patches one boolean field.
+  if (view.doneField !== undefined) {
+    const done = typed(view.doneField, ["doneField"], "doneField", ["boolean"]);
+    if (done && view.groupBy.some((g) => g.field === view.doneField)) {
+      errors.push({
+        path: jsonPointer(["doneField"]), code: "invalid-value",
+        message: `doneField "${view.doneField}" also groups this board; a card cannot both toggle it and move columns with it.`,
+        hint: "Pick a boolean field the board does not group by.", document: view.id,
+        allowed: entity.fields.filter((f) => f.type === "boolean" && !view.groupBy.some((g) => g.field === f.id)).map((f) => f.id),
+      });
+    }
+  }
 
   // Present-case wording is byte-identical to the checker's `typed` for
   // BOARD_TITLE_FIELD_TYPES (verified against the deleted block); only the

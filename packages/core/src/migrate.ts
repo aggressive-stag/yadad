@@ -58,6 +58,12 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     description: "Version 7 adds the dashboard `series` widget (RFC 0001 slice 2). Every version 6 document stays valid, so this step only stamps the new version.",
     run: (doc) => ({ ...doc, specVersion: 7 }),
   },
+  {
+    from: 7,
+    to: 8,
+    description: "Version 8 adds every accepted item of RFC 0008 (view and field contract keys: labelled select options, form item labels, the busy-day cap, reference colours, table addForm, dashboard and table additions) and RFC 0009 (the fieldEqFact condition leaf, saved filters, batch repeat, sub-record sections) plus the `time` and `tags` field types. Every item landed optional and additive, so every version 7 document stays valid and this step only stamps the new version.",
+    run: (doc) => ({ ...doc, specVersion: 8 }),
+  },
 ];
 
 function isObject(value: unknown): value is JsonObject {

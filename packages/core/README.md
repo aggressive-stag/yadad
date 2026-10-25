@@ -95,7 +95,7 @@ A `datetime` quick filter is a from/to range on the viewer's clock (gte/lte, eit
 
 ## Rules worth knowing
 
-- `specVersion` is the document format (currently 6); `revision` counts user edits to a document and is data.
+- `specVersion` is the document format (currently 8); `revision` counts user edits to a document and is data.
 - Ids (documents, fields, sections, tabs, grid items) match `[a-z][a-z0-9_]*`, e.g. `workout_set`; grid-item ids need only be unique within their tab.
 - Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`; `viewerIn` tests a viewer fact.
 

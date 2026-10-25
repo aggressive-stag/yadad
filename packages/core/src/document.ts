@@ -20,9 +20,9 @@ import type { Condition, ViewerCondition } from "./condition.js";
  * Version 7 adds the dashboard `series` widget (RFC 0001 slice 2); older
  * documents stay valid and `migrate()` stamps them.
  */
-export const SPEC_VERSION = 7;
+export const SPEC_VERSION = 8;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
@@ -388,6 +388,12 @@ export interface CalendarView {
   readonly maxEntriesPerDay?: number;
   /** Id of a select or reference field that colours entries. */
   readonly colorField?: string;
+  /**
+   * Id of a boolean field of the entity (RFC 0008 item 3): each entry renders a
+   * completion toggle that patches just that field through the adapter's normal
+   * save (not `act`), disabled without `can.update`. Opt-in; absent today.
+   */
+  readonly doneField?: string;
   /** Entries must always match this. */
   readonly filter?: Condition;
   /** Order of entries within a day. */
@@ -442,6 +448,13 @@ export interface BoardView {
    * (RFC 0008 item 10). Defaults to "records" — today's behaviour. Meaningful only with a reference groupBy.
    */
   readonly columnsFrom?: "options" | "records";
+  /**
+   * Id of a boolean field of the entity (RFC 0008 item 3): each card renders a
+   * completion toggle that patches just that field through the adapter's normal
+   * save (not `act`), disabled without `can.update`. Not one of the `groupBy`
+   * fields — a card cannot both toggle it and move columns with it. Opt-in.
+   */
+  readonly doneField?: string;
   /** Order of cards within a column. */
   readonly sort?: readonly SortSpec[];
   /** Dragging a card changes the field it is currently grouped by. Defaults to false. */

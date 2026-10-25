@@ -91,8 +91,8 @@ describe("viewer document", () => {
 describe("version 5", () => {
   test("migrate stamps a version 4 document and changes nothing else", () => {
     const v4 = { kind: "table", specVersion: 4, id: "t", entity: "e", revision: 1, dataSource: "d", columns: [{ field: "a" }] };
-    expect(migrate(v4)).toEqual({ ...v4, specVersion: 7 });
-    expect(SPEC_VERSION).toBe(7);
+    expect(migrate(v4)).toEqual({ ...v4, specVersion: 8 });
+    expect(SPEC_VERSION).toBe(8);
   });
 
   test("a version 4 document with none of the new keys still validates unchanged", () => {

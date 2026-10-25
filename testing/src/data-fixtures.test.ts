@@ -44,7 +44,16 @@ test("fixtures/data holds exactly the expected files", () => {
     "page-cursor-last.json",
     "page-cursor-no-total.json",
     "record-can-actions.json",
+    "record-time-tags.json",
   ]);
+});
+
+test("a record carrying a time value and a tags list", () => {
+  const record = read("record-time-tags.json");
+  expect(isDataRecord(record)).toBe(true);
+  if (!isDataRecord(record)) return;
+  expect(record.values["due_time"]).toBe("18:30");
+  expect(record.values["labels"]).toEqual(["yard", "weekend"]);
 });
 
 test("a page with a cursor and no total", () => {

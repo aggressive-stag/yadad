@@ -1,0 +1,16 @@
+{
+  "id": "r1",
+  "entityId": "chore",
+  "entityRevision": 1,
+  "version": "3",
+  "values": {
+    "title": "Rake the leaves",
+    "state": "todo",
+    "color": "#D13438",
+    "due_day": "2026-10-27",
+    "due_time": "18:30",
+    "labels": ["yard", "weekend"],
+    "done": false
+  },
+  "can": { "update": true, "delete": false, "actions": { "snooze": true } }
+}

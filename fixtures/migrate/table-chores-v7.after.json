@@ -1,0 +1,35 @@
+{
+  "kind": "table",
+  "specVersion": 8,
+  "id": "chores_v7",
+  "title": "Chores, written before version 8",
+  "entity": "chore",
+  "revision": 3,
+  "dataSource": "default",
+  "columns": [
+    {
+      "field": "title"
+    },
+    {
+      "field": "state"
+    },
+    {
+      "field": "due_day"
+    }
+  ],
+  "sort": [
+    {
+      "field": "title",
+      "dir": "asc"
+    }
+  ],
+  "pageSize": 25,
+  "quickFilters": [
+    {
+      "field": "state"
+    }
+  ],
+  "recordActions": [
+    "snooze"
+  ]
+}

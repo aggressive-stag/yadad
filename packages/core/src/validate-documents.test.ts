@@ -429,6 +429,48 @@ describe("RFC 0008 item 10 — board columnsFrom", () => {
   });
 });
 
+describe("RFC 0008 item 3 — doneField on calendars and boards", () => {
+  const sched = {
+    kind: "entity", specVersion: 0, id: "sched", revision: 1,
+    fields: [
+      { id: "day", type: "date", label: "Day" },
+      { id: "title", type: "text", label: "Title" },
+      { id: "done", type: "boolean", label: "Done" },
+      { id: "who", type: "select", label: "Who", options: { source: "static", values: ["a", "b"] } },
+    ],
+  };
+  const cal = (extra: Record<string, unknown>): unknown => ({
+    kind: "calendar", specVersion: 0, id: "cal", entity: "sched", revision: 1, dataSource: "default",
+    dateField: "day", titleField: "title", ...extra,
+  });
+  const board = (extra: Record<string, unknown>): unknown => ({
+    kind: "board", specVersion: 0, id: "b", entity: "sched", revision: 1, dataSource: "default",
+    groupBy: [{ field: "who" }], titleField: "title", ...extra,
+  });
+
+  test("a boolean doneField passes on both kinds; absent passes", () => {
+    expect(validateDocuments([sched, cal({ doneField: "done" })]).ok).toBe(true);
+    expect(validateDocuments([sched, board({ doneField: "done" })]).ok).toBe(true);
+    expect(validateDocuments([sched, cal({})]).ok).toBe(true);
+    expect(validateDocuments([sched, board({})]).ok).toBe(true);
+  });
+
+  test("unknown and non-boolean doneFields are reported", () => {
+    expect(problems([sched, cal({ doneField: "nope" })])).toEqual([{ path: "/doneField", code: "unknown-reference", document: "cal", allowed: ["day", "title", "done", "who"] }]);
+    expect(problems([sched, cal({ doneField: "title" })])).toEqual([{ path: "/doneField", code: "invalid-value", document: "cal", allowed: ["done"] }]);
+    expect(problems([sched, board({ doneField: "nope" })])).toEqual([{ path: "/doneField", code: "unknown-reference", document: "b", allowed: ["day", "title", "done", "who"] }]);
+    expect(problems([sched, board({ doneField: "day" })])).toEqual([{ path: "/doneField", code: "invalid-value", document: "b", allowed: ["done"] }]);
+  });
+
+  test("the calendar's doneField cannot be its dateField; the board's cannot group the board", () => {
+    // A field is either date or boolean, so naming the dateField as the calendar's
+    // doneField is already refused by the boolean rule (same error shape as any
+    // non-boolean); the board case is the reachable one, since a boolean CAN group.
+    expect(problems([sched, cal({ doneField: "day" })])).toEqual([{ path: "/doneField", code: "invalid-value", document: "cal", allowed: ["done"] }]);
+    expect(problems([sched, board({ doneField: "done", groupBy: [{ field: "done" }] })])).toEqual([{ path: "/doneField", code: "invalid-value", document: "b", allowed: [] }]);
+  });
+});
+
 describe("RFC 0008 items 14-15 — time and tags", () => {
   const thing = {
     kind: "entity", specVersion: 0, id: "thing", revision: 1,

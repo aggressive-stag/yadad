@@ -5,7 +5,7 @@
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
 import type { CalendarMode, Document, FieldType, MeasureOp, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, ViewerFactType, WidgetType } from "./document.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
 export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] as const;
@@ -246,6 +246,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "filter", required: false, description: "A condition every row must always match." },
       { key: "filters", required: false, description: 'Named saved filters the host offers as chips (RFC 0009 item 5): an array of { id, name, condition }; the condition is a condition over this entity, checked exactly like the view\'s own filter. Which filter is selected is the host\'s business, not the document\'s.' },
       { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number, date and datetime fields as a from/to range (either end may stay empty)." },
+      { key: "addForm", required: false, description: "The id of a form document over the same entity (RFC 0008 item 4): the table renders an add affordance that opens that form and reloads after a save. The target must exist, be a form, and share this table's entity." },
       { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only. visibleWhen (a viewer condition) hides the action from viewers it does not hold for.` },
       { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each row, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a row only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
     ],
@@ -265,6 +266,8 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "titleField", required: false, description: "The id of a text or select field shown as the entry's title. Defaults to the entity's first text field; required when the entity has none." },
       { key: "detailFields", required: false, description: `Up to ${CALENDAR_DETAIL_FIELDS_MAX} field ids shown small under the title, each once, not the date or title field.` },
       { key: "colorField", required: false, description: "The id of a select or reference field that colours entries (eight colour slots; the value's text is always available too)." },
+      { key: "maxEntriesPerDay", required: false, description: `Entries a day cell shows before "+N more": an integer from 1 to ${CALENDAR_MAX_ENTRIES_PER_DAY_MAX}. Defaults to ${CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT} (RFC 0008 item 7).` },
+      { key: "doneField", required: false, description: "The id of a boolean field of the entity (RFC 0008 item 3): each entry renders a completion toggle that patches just that field through the adapter's normal save, disabled without can.update. Not the dateField." },
       { key: "filter", required: false, description: "A condition every entry must always match (relative dates allowed)." },
       { key: "sort", required: false, description: "Order of entries within a day: an array of { field, dir }. Defaults to the title field, ascending." },
       { key: "modes", required: false, description: `The periods the viewer can switch between, from ${CALENDAR_MODES.join(", ")}; non-empty, no duplicates, the first is the default. Defaults to [${CALENDAR_MODES_DEFAULT.map((m) => JSON.stringify(m)).join(", ")}].` },
@@ -286,6 +289,8 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "dataSource", required: true, description: "Key the host maps to a DataAdapter. Never a URL." },
       { key: "groupBy", required: true, description: `An array of { field }: the fields the viewer may group by, 1 to ${BOARD_GROUP_BY_MAX} entries, each once, the first is the default. Each field must be a select, boolean or reference field (not a required boolean, which can only be true).` },
+      { key: "columnsFrom", required: false, description: "With a reference groupBy: \"options\" builds columns from the target entity's records (through the adapter), so a group with no cards is still a drop target; \"records\" (the default) builds them from the loaded page (RFC 0008 item 10)." },
+      { key: "doneField", required: false, description: "The id of a boolean field of the entity (RFC 0008 item 3): each card renders a completion toggle that patches just that field through the adapter's normal save, disabled without can.update. Not one of the groupBy fields." },
       { key: "title", required: false, description: "Accessible name and heading. Defaults to the entity id." },
       { key: "titleField", required: false, description: "The id of a text or select field shown as the card's title. Defaults to the entity's first text field; required when the entity has none." },
       { key: "cardFields", required: false, description: `Up to ${BOARD_CARD_FIELDS_MAX} field ids shown small under the title, each once, not the title field.` },

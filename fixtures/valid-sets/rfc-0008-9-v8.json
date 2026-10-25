@@ -1,0 +1,81 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 8,
+    "id": "chore",
+    "revision": 1,
+    "fields": [
+      { "id": "title", "type": "text", "label": "Title", "required": true },
+      { "id": "state", "type": "select", "label": "State", "options": { "source": "static", "values": ["todo", "done"] } },
+      { "id": "color", "type": "select", "label": "Colour", "options": { "source": "static", "values": [{ "value": "#D13438", "label": "Red", "color": "#D13438" }, { "value": "#2DA44E", "label": "Green", "color": "#2DA44E" }] } },
+      { "id": "due_day", "type": "date", "label": "Due day" },
+      { "id": "due_time", "type": "time", "label": "Due time", "step": 15 },
+      { "id": "labels", "type": "tags", "label": "Labels" },
+      { "id": "done", "type": "boolean", "label": "Done" },
+      { "id": "list", "type": "reference", "label": "List", "entity": "list" }
+    ]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 8,
+    "id": "list",
+    "revision": 1,
+    "fields": [{ "id": "name", "type": "text", "label": "Name", "required": true }]
+  },
+  {
+    "kind": "viewer",
+    "specVersion": 8,
+    "id": "viewer",
+    "revision": 1,
+    "facts": [
+      { "id": "mylist", "label": "My list", "type": "select", "options": { "source": "static", "values": ["home", "errands"] }, "default": "home" }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 8,
+    "id": "chores",
+    "title": "Chores",
+    "entity": "chore",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [{ "field": "title" }, { "field": "state" }, { "field": "due_time" }, { "field": "labels" }],
+    "filters": [
+      { "id": "open", "name": "Open", "condition": { "op": "eq", "field": "state", "value": "todo" } },
+      { "id": "today", "name": "Due today", "condition": { "op": "eq", "field": "due_day", "value": { "daysFromToday": 0 } } }
+    ],
+    "addForm": "chore_add"
+  },
+  {
+    "kind": "form",
+    "specVersion": 8,
+    "id": "chore_add",
+    "entity": "chore",
+    "revision": 1,
+    "dataSource": "default",
+    "repeat": "batch",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          { "field": "title" },
+          { "field": "state" },
+          { "field": "list", "visibleWhen": { "op": "fieldEqFact", "field": "list", "fact": "mylist" } }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 8,
+    "id": "chores_cal",
+    "title": "Chore calendar",
+    "entity": "chore",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "due_day",
+    "titleField": "title",
+    "doneField": "done",
+    "maxEntriesPerDay": 4
+  }
+]
