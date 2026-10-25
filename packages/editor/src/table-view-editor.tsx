@@ -1,4 +1,4 @@
-import type { ColumnCompare, DocumentError, EntityDocument, Field, FieldValue, Registry, RowAction, TableView, ViewerDocument } from "@yadad/core";
+import type { ColumnCompare, DocumentError, EntityDocument, Field, FieldValue, FormView, NamedFilter, Registry, RowAction, TableView, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -8,12 +8,13 @@ import { useReportChange } from "./report-change.js";
 import { finish, isDirty, redo, startSession, undo } from "./session.js";
 import type { EditSession } from "./session.js";
 import { applyEdit, editRunner } from "./save-result.js";
+import type { EditorResult } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import { ViewerRule } from "./viewer-rule.js";
-import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableFilter, setTableSort, setTableTitle, QUICK_FILTER_REASON } from "./views.js";
+import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableAddForm, setTableFilter, setTableFilters, setTableSort, setTableTitle, tableAddFormTargets, QUICK_FILTER_REASON } from "./views.js";
 import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
 
@@ -39,6 +40,10 @@ export interface TableViewEditorProps {
 
 
 const NO_SORT = "(none)";
+const NO_ADD_FORM = "(plain add)";
+
+/** A table editor's apply-and-report helper, shared by its panels. */
+type RunFn = (result: EditorResult, onOk?: () => void) => boolean;
 const DIRECTIONS = { Ascending: "asc", Descending: "desc" } as const;
 type DirectionLabel = keyof typeof DIRECTIONS;
 
@@ -142,6 +147,7 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
   const addChoice = adding && missing.includes(adding) ? adding : missing[0];
   const filtered = new Set(current.quickFilters?.map((f) => f.field));
   const fieldType = (id: string) => entity.fields.find((f) => f.id === id)?.type;
+  const addFormTargets: readonly FormView[] = context ? tableAddFormTargets(current, context) : []; // RFC 0008 item 4
 
   // The compare chooser (RFC 0007): the cell shows this column's value as the
   // after and the comparator's as the before. Text columns only; an editable
@@ -302,6 +308,11 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
               setSettings((s) => ({ ...s, sortDir: key ? DIRECTIONS[key] : "asc" }));
             })}
           <Button label="Apply settings" type="button" variant="secondary" disabled={false} onPress={applySettings} />
+          {addFormTargets.length > 0 &&
+            propertyInput(registry, `${base}-addform`, choiceField("add_form", "Add button opens", [NO_ADD_FORM, ...addFormTargets.map((f) => f.id)]), current.addForm ?? NO_ADD_FORM, (v) => {
+              const picked = addFormTargets.find((f) => f.id === v)?.id; // RFC 0008 item 4
+              run(setTableAddForm(current, addFormTargets, picked), () => announce(picked ? `Add opens ${picked}.` : "Add opens the plain new-record form."));
+            })}
         </div>
         {current.filter ? (
           <p>
@@ -334,6 +345,7 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
           </div>
         )}
       </Section>
+      <SavedFiltersPanel view={current} entity={entity} registry={registry} run={run} announce={announce} base={base} />
       {context && (
         <Section id={`${base}-row-action`} title="Row action">
           {action ? <p>{describeAction(action)}</p> : <p>Clicking a row does nothing.</p>}
@@ -381,5 +393,73 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
         {status}
       </p>
     </div>
+  );
+}
+
+interface SavedFiltersPanelProps {
+  readonly view: TableView;
+  readonly entity: EntityDocument;
+  readonly registry: Registry<ReactNode>;
+  readonly run: RunFn;
+  readonly announce: (message: string) => void;
+  readonly base: string;
+}
+
+/**
+ * Named saved filters (RFC 0009 item 5): the chips a host offers above the
+ * table. Each row is a name plus a condition in the same language the view's
+ * own filter uses; which chip is selected stays the host's, never the document's.
+ */
+function SavedFiltersPanel({ view, entity, registry, run, announce, base }: SavedFiltersPanelProps): ReactNode {
+  const { Button, Section } = registry.layout;
+  const [editing, setEditing] = useState<number | "new" | undefined>(undefined);
+  const [draft, setDraft] = useState<ConditionDraft | undefined>(undefined);
+  const [name, setName] = useState("");
+  const filters = view.filters ?? [];
+  const label = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
+
+  const openRow = (i: number | "new") => {
+    setEditing(i);
+    setName(i === "new" ? "" : filters[i]?.name ?? "");
+    setDraft(draftFor(entity, i === "new" ? undefined : filters[i]?.condition));
+  };
+  const built = builtOf(draft);
+  const applyRow = () => {
+    if (built === undefined || name.trim() === "") return;
+    const i = editing;
+    const next: NamedFilter[] =
+      i === "new"
+        ? [...filters, { id: `saved_filter_${Date.now().toString(36)}`, name: name.trim(), condition: built }]
+        : filters.map((f, j) => (j === i ? { ...f, name: name.trim(), condition: built } : f));
+    run(setTableFilters(view, next), () => {
+      setEditing(undefined);
+      announce(i === "new" ? `Saved filter "${name.trim()}" added.` : `Saved filter "${name.trim()}" updated.`);
+    });
+  };
+  return (
+    <Section id={`${base}-saved-filters`} title="Saved filters">
+      <p>Named filters the host offers as chips above the table. Which one is selected is the app&apos;s business, not the document&apos;s.</p>
+      {filters.length === 0 ? <p>None yet.</p> : null}
+      {filters.map((f, i) => (
+        <p key={f.id} data-yadad-saved-filter={f.id}>
+          {f.name}: {describeCondition(f.condition, label)}.{" "}
+          <Button label={`Edit saved filter ${f.name}`} type="button" variant="secondary" disabled={false} onPress={() => openRow(i)} />{" "}
+          <Button label={`Remove saved filter ${f.name}`} type="button" variant="secondary" disabled={false} onPress={() => run(setTableFilters(view, filters.filter((_, j) => j !== i)), () => announce(`Saved filter "${f.name}" removed.`))} />
+        </p>
+      ))}
+      <div style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+        <Button label="Add saved filter" type="button" variant="secondary" disabled={false} onPress={() => openRow("new")} />
+      </div>
+      {editing !== undefined && (
+        <div data-yadad-saved-filter-builder="" style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+          {propertyInput(registry, `${base}-sf-name`, { id: "saved_filter_name", type: "text", label: "Name" }, name, (v) => setName(asText(v)))}
+          <ConditionBuilder id={`${base}-sf-cond`} label="rows match" registry={registry} entity={entity} draft={draft} onChange={setDraft} current={undefined} onReplace={() => setDraft(draftFor(entity, undefined))} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+            <Button label="Apply saved filter" type="button" variant="primary" disabled={built === undefined || name.trim() === ""} onPress={applyRow} />
+            <Button label="Cancel saved filter" type="button" variant="secondary" disabled={false} onPress={() => setEditing(undefined)} />
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }

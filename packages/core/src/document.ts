@@ -37,6 +37,10 @@ interface FieldBase {
 
 export interface TextField extends FieldBase {
   readonly type: "text";
+  /** Render the form input as a textarea and keep line breaks in display (RFC 0008 item 13a). Storage is unchanged — still a string. */
+  readonly multiline?: boolean;
+  /** Maximum stored length; the client can refuse "too long" before the round trip (RFC 0008 item 13c). A positive whole number. */
+  readonly maxLength?: number;
 }
 
 export interface NumberField extends FieldBase {

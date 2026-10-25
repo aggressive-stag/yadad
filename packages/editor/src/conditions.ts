@@ -11,9 +11,11 @@ import type { ComparisonValue, Condition, FieldType, Scalar, ViewerCondition } f
 export interface Comparison {
   readonly not: boolean;
   /** The operator, "not" aside: eq/neq, ordering for numbers and dates, in/contains, empty/notEmpty. */
-  readonly op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "contains" | "empty" | "notEmpty" | "viewerIn";
-  /** The record field; for "viewerIn" the viewer fact id (RFC 0006). */
+  readonly op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "contains" | "empty" | "notEmpty" | "viewerIn" | "fieldEqFact";
+  /** The record field; for "viewerIn" the viewer fact id (RFC 0006); for "fieldEqFact" the record field, with the fact in `fact` (RFC 0009 item 1). */
   readonly field: string;
+  /** Only for "fieldEqFact": the viewer fact id the field is compared with. */
+  readonly fact?: string;
   /** A value for eq/neq and ordering (on a date field also a relative date); absent for empty/notEmpty. */
   readonly value?: ComparisonValue;
   /** The list for "in", and for "viewerIn" the viewer fact's values (strings or booleans). */
@@ -65,6 +67,7 @@ export const OPERATOR_WORDS: Readonly<Record<Comparison["op"], string>> = {
   empty: "is empty",
   notEmpty: "is filled in",
   viewerIn: "is one of",
+  fieldEqFact: "equals the viewer's",
 };
 
 /** The ops on a date field that can compare with "today +/- N days". */
@@ -111,6 +114,8 @@ function toComparison(c: Condition): Comparison | undefined {
       return { not: false, op: "contains", field: c.field, value: c.value };
     case "viewerIn":
       return { not: false, op: "viewerIn", field: c.fact, values: c.values };
+    case "fieldEqFact": // RFC 0009 item 1: the record field rides `field`, the fact rides `fact`
+      return { not: false, op: "fieldEqFact", field: c.field, fact: c.fact };
     case "empty":
     case "notEmpty":
       return { not: false, op: c.op, field: c.field };
@@ -160,6 +165,10 @@ export function compareToCondition(c: Comparison): Condition | undefined {
       if (c.values === undefined || c.values.length === 0) return undefined;
       body = { op: "viewerIn", fact: c.field, values: c.values.filter((v): v is string | boolean => typeof v === "string" || typeof v === "boolean") };
       if (body.values.length !== c.values.length) return undefined;
+      break;
+    case "fieldEqFact":
+      if (c.fact === undefined || c.fact === "") return undefined;
+      body = { op: "fieldEqFact", field: c.field, fact: c.fact };
       break;
     case "contains":
       if (typeof c.value !== "string") return undefined;

@@ -1,5 +1,5 @@
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, FORM_ITEM_LABEL_MAX, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
+import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, NamedFilter, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -387,6 +387,28 @@ export function setQuickFilter(view: TableView, fieldId: string, on: boolean): P
   return setOptional(view.quickFilters !== undefined, "/quickFilters", next.length > 0 ? next : undefined);
 }
 
+/** The form views a table's "Add" button may open (RFC 0008 item 4): form views over the same entity, never the table itself. */
+export function tableAddFormTargets(view: TableView, context: RowActionContext): readonly FormView[] {
+  return (context.forms ?? []).filter((f) => f.entity === view.entity && f.id !== view.id);
+}
+
+/** Sets or clears the table's addForm: the form view "Add {entity}" opens (RFC 0008 item 4). */
+export function setTableAddForm(view: TableView, forms: readonly FormView[], formId: string | undefined): Result {
+  if (formId === undefined) return ok(setOptional(view.addForm !== undefined, "/addForm", undefined));
+  const target = forms.find((f) => f.id === formId);
+  if (!target) return fail(["addForm"], `No form view "${formId}" in the set.`, "Pick a form view, or clear the choice.");
+  if (target.entity !== view.entity) return fail(["addForm"], `Form "${formId}" is over "${target.entity}", not "${view.entity}".`, "addForm must point at a form over the table's own entity (RFC 0008 item 4).");
+  if (view.addForm === formId) return ok([]);
+  return ok(setOptional(view.addForm !== undefined, "/addForm", formId));
+}
+
+/** Replaces the table's named saved filters (RFC 0009 item 5); the whole array is one undoable edit. */
+export function setTableFilters(view: TableView, filters: readonly NamedFilter[]): Result {
+  const next = filters.map((f) => ({ id: f.id, name: f.name, condition: f.condition }));
+  if (JSON.stringify(view.filters ?? []) === JSON.stringify(next)) return ok([]);
+  return ok(setOptional(view.filters !== undefined, "/filters", next.length > 0 ? (next as unknown as Json) : undefined));
+}
+
 // ---- conditions -----------------------------------------------------------
 // A condition is a whole object: set it or remove it, one guarded patch each.
 // The builder (conditions.ts) decides what a condition may look like; the
@@ -414,6 +436,71 @@ export function setClearWhenHidden(view: FormView, fieldId: string, on: boolean)
       ? [{ op: "remove" as const, path }]
       : [];
   return ok([{ op: "test", path: `/sections/${at.s}/items/${at.i}/field`, value: fieldId }, ...ops]);
+}
+
+/** Sets or clears a form item's label (RFC 0008 item 6); empty clears it back to the field's own label. */
+export function setFormItemLabel(view: FormView, fieldId: string, label: string | undefined): Result {
+  const at = findItem(view, fieldId);
+  if (!at) return fail(["sections"], `No field "${fieldId}" on this form.`, "Add it first.");
+  const trimmed = label?.trim() ?? "";
+  if (trimmed !== "" && trimmed.length > FORM_ITEM_LABEL_MAX) return fail(["sections"], `A form item label is at most ${FORM_ITEM_LABEL_MAX} characters; "${trimmed.slice(0, 20)}…" is ${trimmed.length}.`, "Shorten it.");
+  const has = sectionItems(view.sections[at.s]!)[at.i]?.label !== undefined;
+  const guard: PatchOperation = { op: "test", path: `/sections/${at.s}/items/${at.i}/field`, value: fieldId };
+  return ok([guard, ...setOptional(has, `/sections/${at.s}/items/${at.i}/label`, trimmed === "" ? undefined : trimmed)]);
+}
+
+/** Turns a form view's batch composer on or off (RFC 0009 item 4): `repeat: "batch"` or absent. */
+export function setFormRepeat(view: FormView, on: boolean): Result {
+  const at = view.repeat !== undefined;
+  if (on === (view.repeat === "batch")) return ok([]);
+  return ok([{ op: "test", path: "/id", value: view.id }, ...setOptional(at, "/repeat", on ? "batch" : undefined)]);
+}
+
+/** Child entities a sub-record section may point at: those carrying a reference back to the form's entity. */
+export function subRecordTargetsOf(entity: EntityDocument, entities: readonly EntityDocument[]): readonly EntityDocument[] {
+  return entities.filter((e) => e.id !== entity.id && e.fields.some((f) => f.type === "reference" && f.entity === entity.id));
+}
+
+/** The reference fields on `child` that point back at the form's entity — the legal `via` values. */
+export function subRecordViaFieldsOf(child: EntityDocument, entity: EntityDocument): readonly string[] {
+  return child.fields.filter((f) => f.type === "reference" && f.entity === entity.id).map((f) => f.id);
+}
+
+/** A sub-record section as the editor builds it; the whole edit is one patch, so one Undo removes the checklist. */
+export interface SubRecordDraft {
+  readonly entity: string;
+  readonly via: string;
+  readonly titleField: string;
+  readonly doneField: string;
+  readonly orderField?: string | undefined;
+  readonly addLabel?: string | undefined;
+}
+
+/** Turns a plain section into a sub-record checklist (RFC 0009 item 3), or replaces an existing checklist. */
+export function setSectionSubRecords(view: FormView, sectionId: string, draft: SubRecordDraft): Result {
+  const s = sectionIndex(view, sectionId);
+  if (s < 0) return fail(["sections"], `No section "${sectionId}".`, "Add a section first.");
+  const section = view.sections[s]!;
+  const guard: PatchOperation = { op: "test", path: `/sections/${s}/id`, value: sectionId };
+  if (section.subRecords === undefined && (section.items ?? []).length > 0) {
+    return fail(["sections", s], `"${sectionId}" already holds ${section.items?.length} field(s).`, "A section is fields or a checklist, never both. Make a new section for the checklist.");
+  }
+  const value: Record<string, Json> = { entity: draft.entity, via: draft.via, titleField: draft.titleField, doneField: draft.doneField };
+  if (draft.orderField !== undefined) value["orderField"] = draft.orderField;
+  if (draft.addLabel !== undefined && draft.addLabel.trim() !== "") value["addLabel"] = draft.addLabel.trim();
+  return ok([guard, { op: "replace", path: `/sections/${s}`, value: { id: sectionId, ...(section.title !== undefined ? { title: section.title } : {}), subRecords: value } }]);
+}
+
+/** Removes a section's checklist, leaving an empty fields section (fields can be placed again). */
+export function removeSectionSubRecords(view: FormView, sectionId: string): Result {
+  const s = sectionIndex(view, sectionId);
+  if (s < 0) return fail(["sections"], `No section "${sectionId}".`, "Nothing to remove.");
+  const section = view.sections[s]!;
+  if (section.subRecords === undefined) return ok([]);
+  return ok([
+    { op: "test", path: `/sections/${s}/id`, value: sectionId },
+    { op: "replace", path: `/sections/${s}`, value: { id: sectionId, ...(section.title !== undefined ? { title: section.title } : {}), items: [] } },
+  ]);
 }
 
 /** Sets or clears a table's fixed filter ("rows always match"). */
@@ -601,10 +688,11 @@ function findWidget(view: DashboardView, tabId: string, itemId: string): { ok: t
 
 // ---- row action -----------------------------------------------------------
 
-/** The other documents a row action may point at: table views and the entities they (and this table) use. */
+/** The other documents a row action may point at: table views and the entities they (and this table) use. `forms` additionally feeds the table's addForm picker (RFC 0008 item 4). */
 export interface RowActionContext {
   readonly tables: readonly TableView[];
   readonly entities: readonly EntityDocument[];
+  readonly forms?: readonly FormView[];
 }
 
 /** The table views a row action on `view` may open: every other table in the context. */
@@ -740,6 +828,22 @@ export function setCalendarDefaultMode(view: CalendarView, mode: CalendarMode): 
 /** Sets or clears the first day of the week; undefined falls back to Monday. */
 export function setCalendarWeekStartsOn(view: CalendarView, day: number | undefined): PatchOperation[] {
   return [guardCalendar(view), ...setOptional(view.weekStartsOn !== undefined, "/weekStartsOn", day)];
+}
+
+/** Fields of the entity a calendar may use as its done checkbox: booleans only (RFC 0008 item 3). */
+export function calendarDoneFieldsOf(entity: EntityDocument): string[] {
+  return entity.fields.filter((f) => f.type === "boolean").map((f) => f.id);
+}
+
+/** Sets or clears the calendar's done field: the entry's completion checkbox. */
+export function setCalendarDoneField(view: CalendarView, fieldId: string | undefined): PatchOperation[] {
+  return [guardCalendar(view), ...setOptional(view.doneField !== undefined, "/doneField", fieldId)];
+}
+
+/** Sets the entries a day cell shows before "+N more"; undefined returns it to the default (RFC 0008 item 7). */
+export function setCalendarMaxEntriesPerDay(view: CalendarView, max: number | undefined): PatchOperation[] {
+  if (max !== undefined && (!Number.isInteger(max) || max < 1 || max > CALENDAR_MAX_ENTRIES_PER_DAY_MAX)) return [];
+  return [guardCalendar(view), ...setOptional(view.maxEntriesPerDay !== undefined, "/maxEntriesPerDay", max)];
 }
 
 /** Lets a drag to another day change the date field, or stops it. */
@@ -896,6 +1000,35 @@ export function moveBoardCardField(view: BoardView, fieldId: string, by: number)
 /** Sets or clears the board's fixed filter ("cards always match"). */
 export function setBoardFilter(view: BoardView, condition: Condition | undefined): Result {
   return ok([guardBoard(view), ...setOptional(view.filter !== undefined, "/filter", condition as unknown as Json | undefined)]);
+}
+
+/** Fields of the entity a board may use as its card checkbox: booleans that are not a grouping (RFC 0008 item 3). */
+export function boardDoneFieldsOf(entity: EntityDocument, view: BoardView): string[] {
+  const grouped = new Set(view.groupBy.map((g) => g.field));
+  return entity.fields.filter((f) => f.type === "boolean" && !grouped.has(f.id)).map((f) => f.id);
+}
+
+/** Sets or clears the board's done field: each card's completion toggle (RFC 0008 item 3). */
+export function setBoardDoneField(view: BoardView, fieldId: string | undefined): Result {
+  if (fieldId !== undefined && view.groupBy.some((g) => g.field === fieldId)) {
+    return fail(["doneField"], `"${fieldId}" is a grouping; a card cannot both toggle it and move columns with it.`, "Pick a boolean that is not in Group by, or remove the grouping.");
+  }
+  return ok([guardBoard(view), ...setOptional(view.doneField !== undefined, "/doneField", fieldId)]);
+}
+
+/** Whether the board's first grouping is a reference field — when `columnsFrom` means anything (RFC 0008 item 10). */
+export function boardColumnsFromAllowed(entity: EntityDocument, view: BoardView): boolean {
+  const first = view.groupBy[0];
+  if (!first) return false;
+  return entity.fields.find((f) => f.id === first.field)?.type === "reference";
+}
+
+/** Builds columns from the reference target's records ("options") or the loaded page ("records"); undefined keeps the default. */
+export function setBoardColumnsFrom(view: BoardView, entity: EntityDocument, columnsFrom: "options" | undefined): Result {
+  if (columnsFrom === "options" && !boardColumnsFromAllowed(entity, view)) {
+    return fail(["columnsFrom"], "columnsFrom \"options\" needs a reference groupBy.", "Group by a reference field first, or leave columns built from records.");
+  }
+  return ok([guardBoard(view), ...setOptional(view.columnsFrom !== undefined, "/columnsFrom", columnsFrom)]);
 }
 
 /** Sets the card order within a column to one key, or clears it. */

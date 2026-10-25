@@ -2,7 +2,8 @@ import { ACTION_INPUT_FIELD_TYPES, FIELD_TYPES } from "@yadad/core";
 import type { ActionConfirm, ActionConfirmTone, ActionInputField, DocumentError, EntityDocument, Field, FieldType, FieldValue, RecordAction, RecordValues, Registry, SelectField, ViewerDocument, ViewDocument } from "@yadad/core";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
-import { COMMON_PROPERTIES, FIELD_PROPERTIES, FIELD_TYPE_LABELS, fieldFromProperties, propertiesFromField } from "./field-options.js";
+import { COMMON_PROPERTIES, FIELD_PROPERTIES, FIELD_TYPE_LABELS, fieldFromProperties, optionRowsFromValues, optionValuesFromRows, propertiesFromField } from "./field-options.js";
+import type { OptionRowDraft } from "./field-options.js";
 import { addAction, addActionInput, moveAction, removeAction, removeActionInput, setActionVisibleWhen, updateAction, updateActionInput } from "./actions.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
@@ -40,6 +41,8 @@ interface PanelState {
   readonly editing?: string;
   readonly type: FieldType;
   readonly values: RecordValues;
+  /** A select field's option rows (RFC 0008 item 5), kept while the panel is open. */
+  readonly options?: readonly OptionRowDraft[] | undefined;
 }
 
 /** The Actions panel's form: the id is typed once and then fixed, as a field's is. */
@@ -208,7 +211,11 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
 
   const applyPanel = () => {
     if (!panel) return;
-    const field = fieldFromProperties(panel.type, panel.editing ? { ...panel.values, id: panel.editing } : panel.values);
+    const field = fieldFromProperties(
+      panel.type,
+      panel.editing ? { ...panel.values, id: panel.editing } : panel.values,
+      panel.type === "select" && panel.options !== undefined ? optionValuesFromRows(panel.options) : undefined,
+    );
     if (!panel.editing) {
       // Same patch the dry-run above already computed; a rejection is shown
       // in-panel by the draft's ErrorSummary, so no editor-level copy.
@@ -230,7 +237,9 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
    * never touches the session — the two-step commit stays, it just stops
    * being silent.
    */
-  const draft = panel && panel.editing === undefined && Object.values(panel.values).some((v) => v !== undefined && v !== null && v !== "") ? fieldFromProperties(panel.type, panel.values) : undefined;
+  const draft = panel && panel.editing === undefined && Object.values(panel.values).some((v) => v !== undefined && v !== null && v !== "")
+    ? fieldFromProperties(panel.type, panel.values, panel.type === "select" && panel.options !== undefined ? optionValuesFromRows(panel.options) : undefined)
+    : undefined;
   const draftSession = draft !== undefined ? edit(session, addField(current, draft)) : undefined;
   const draftOk = draftSession !== undefined && draftSession.rejected.length === 0;
   const draftBad = draftSession !== undefined && draftSession.rejected.length > 0;
@@ -254,13 +263,36 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
     const chosen = panel.values["entity"];
     const target = typeof chosen === "string" ? targets.find((e) => e.id === chosen) : undefined;
     const labelFields = (target?.fields ?? []).filter((f) => f.type === "text" || f.type === "select").map((f) => f.id);
+    const colorFields = (target?.fields ?? []).map((f) => f.id);
     return [
       { id: "entity", type: "select", label: "Target entity", required: true, options: { source: "static", values: targets.map((e) => e.id) } },
       ...(labelFields.length > 0
         ? [{ id: "display", type: "select", label: "Display field (default: the first text field)", options: { source: "static", values: labelFields } } satisfies Field]
         : []),
+      // RFC 0008 item 5: a reference can borrow its colour from a field on the record it points at.
+      ...(colorFields.length > 0
+        ? [{ id: "colorFrom", type: "select", label: "Colour source field on the target (optional)", options: { source: "static", values: colorFields } } satisfies Field]
+        : [{ id: "colorFrom", type: "text", label: "Colour source field on the target (optional)" } satisfies Field]),
     ];
   };
+
+  const setOptionRow = (i: number, patch: Partial<OptionRowDraft>) =>
+    setPanel((p) => (p && p.options ? { ...p, options: p.options.map((r, j) => (j === i ? { ...r, ...patch } : r)) } : p));
+  const optionRowsView =
+    panel?.type === "select" ? (
+      <div data-yadad-option-rows="">
+        <p>Options, in order. A label is what people see; a colour (&quot;#RRGGBB&quot;) is what a coloured view paints. Leave both blank for a plain option.</p>
+        {(panel.options ?? []).map((row, i) => (
+          <div key={i} data-yadad-option-row={String(i)} style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", alignItems: "flex-end" }}>
+            {propertyInput(registry, `${base}-opt-${i}-value`, { id: `opt_${i}_value`, type: "text", label: "Value", required: true }, row.value, (v) => setOptionRow(i, { value: typeof v === "string" ? v : "" }))}
+            {propertyInput(registry, `${base}-opt-${i}-label`, { id: `opt_${i}_label`, type: "text", label: "Label (optional)" }, row.label ?? "", (v) => setOptionRow(i, { label: typeof v === "string" ? v : undefined }))}
+            {propertyInput(registry, `${base}-opt-${i}-color`, { id: `opt_${i}_color`, type: "text", label: "Colour (optional, #RRGGBB)" }, row.color ?? "", (v) => setOptionRow(i, { color: typeof v === "string" ? v : undefined }))}
+            <Button label={`Remove option ${row.value || i + 1}`} type="button" variant="secondary" disabled={false} onPress={() => setPanel((p) => (p && p.options ? { ...p, options: p.options.filter((_, j) => j !== i) } : p))} />
+          </div>
+        ))}
+        <Button label="Add option" type="button" variant="secondary" disabled={false} onPress={() => setPanel((p) => (p === undefined ? p : { ...p, options: [...(p.options ?? []), { value: "" }] }))} />
+      </div>
+    ) : null;
 
   const typeInputId = `${base}-type`;
   const panelView = panel && (
@@ -279,6 +311,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
       )}
       {COMMON_PROPERTIES.filter((p) => !(panel.editing && p.id === "id")).map(property)}
       {propertiesFor(panel.type).map(property)}
+      {optionRowsView}
       {draftBad && draftSession !== undefined && <ErrorSummary errors={draftSession.rejected} />}
       <Button label={panel.editing ? "Apply changes" : "Add field"} type="button" variant="primary" disabled={false} onPress={applyPanel} />
       <Button label="Close" type="button" variant="secondary" disabled={false} onPress={() => setPanel(undefined)} />
@@ -382,7 +415,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
       FIELD_TYPE_LABELS[field.type],
       field.required === true ? "Yes" : "No",
       <span key="actions" style={{ display: "inline-flex", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
-        <Button label={`Edit ${field.label}`} type="button" variant="secondary" disabled={false} onPress={() => setPanel({ editing: field.id, type: field.type, values: propertiesFromField(field) })} />
+        <Button label={`Edit ${field.label}`} type="button" variant="secondary" disabled={false} onPress={() => setPanel({ editing: field.id, type: field.type, values: propertiesFromField(field), ...(field.type === "select" ? { options: optionRowsFromValues(field.options.values) } : {}) })} />
         <Button label={`Remove ${field.label}`} type="button" variant="secondary" disabled={false} onPress={() => remove(field)} />
       </span>,
     ],

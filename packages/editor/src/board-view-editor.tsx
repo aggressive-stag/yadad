@@ -16,6 +16,8 @@ import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } f
 import {
   addBoardCardField,
   addBoardGroupBy,
+  boardColumnsFromAllowed,
+  boardDoneFieldsOf,
   boardRowActionTargets,
   boardTitleFieldsOf,
   effectiveBoardTitleField,
@@ -26,6 +28,8 @@ import {
   moveBoardGroupBy,
   removeBoardCardField,
   removeBoardGroupBy,
+  setBoardColumnsFrom,
+  setBoardDoneField,
   setBoardEditable,
   setBoardFilter,
   setBoardRowAction,
@@ -61,6 +65,7 @@ export interface BoardViewEditorProps {
 
 const NO_SORT = "(none)";
 const NO_FIELD = "(default)";
+const NO_DONE = "(none)";
 const DIRECTIONS = { Ascending: "asc", Descending: "desc" } as const;
 type DirectionLabel = keyof typeof DIRECTIONS;
 
@@ -206,6 +211,7 @@ export function BoardViewEditor({ view, entity, registry, context, viewer, onSav
 
   // Title, editable and sort apply together, as one undoable edit.
   const titleIds = boardTitleFieldsOf(entity);
+  const doneIds = boardDoneFieldsOf(entity, current); // RFC 0008 item 3: a boolean card checkbox, never a grouping
   // A reference holds a record id, which says nothing about order, so it is not offered as a sort key.
   const sortIds = entity.fields.filter((f) => f.type !== "reference").map((f) => f.id);
   const entityIds = sortIds;
@@ -312,6 +318,14 @@ export function BoardViewEditor({ view, entity, registry, context, viewer, onSav
               setSettings((s) => ({ ...s, sortDir: key ? DIRECTIONS[key] : "asc" }));
             })}
           <Button label="Apply settings" type="button" variant="secondary" disabled={false} onPress={applySettings} />
+          {propertyInput(registry, `${base}-donefield`, choiceField("done_field", "Done field", [NO_DONE, ...doneIds.map(label)]), current.doneField ? label(current.doneField) : NO_DONE, (v) => {
+            const picked = byLabel(doneIds, v); // RFC 0008 item 3
+            run(setBoardDoneField(current, picked), () => announce(picked ? `Cards get a completion checkbox on ${label(picked)}.` : "Card checkbox removed."));
+          })}
+          {boardColumnsFromAllowed(entity, current) &&
+            propertyInput(registry, `${base}-columnsfrom`, { id: "columns_from", type: "boolean", label: "Build columns from every record of the grouped entity" }, current.columnsFrom === "options", (v) =>
+              run(setBoardColumnsFrom(current, entity, v === true ? "options" : undefined), () => announce(v === true ? "Columns come from the grouped entity's records." : "Columns come from the loaded cards.")), // RFC 0008 item 10
+            )}
         </div>
         {viewer && current.editable === true && (
           <ViewerRule registry={registry} viewer={viewer} rule="Allow moving" target={current.title ?? current.id} condition={current.editableWhen} otherwise="Moving is offered to everyone" onSet={(c) => run(setBoardEditableWhen(current, c), () => announce(c === undefined ? "Moving is offered to everyone." : "Moving is limited by a viewer condition."))} />

@@ -1,5 +1,5 @@
 import { conditionViewerFacts, sectionItems } from "@yadad/core";
-import type { DocumentError, EntityDocument, FieldValue, FormItem, FormView, Registry, ViewerDocument } from "@yadad/core";
+import type { DocumentError, EntityDocument, FieldValue, FormItem, FormSection, FormView, Registry, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { Fragment, useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -23,10 +23,17 @@ import {
   moveSectionTo,
   removeFormItem,
   removeSection,
+  removeSectionSubRecords,
   setClearWhenHidden,
   setFormItemCondition,
+  setFormItemLabel,
+  setFormRepeat,
+  setSectionSubRecords,
   setSectionTitle,
+  subRecordTargetsOf,
+  subRecordViaFieldsOf,
 } from "./views.js";
+import type { SubRecordDraft } from "./views.js";
 
 export interface FormViewEditorProps {
   readonly view: FormView;
@@ -35,6 +42,8 @@ export interface FormViewEditorProps {
   readonly registry: Registry<ReactNode>;
   /** The set's viewer document: with it, "show only when" and "required while" can read a viewer fact (RFC 0006). */
   readonly viewer?: ViewerDocument;
+  /** The whole set's entities: with them, a section can become a sub-record checklist over a child entity (RFC 0009 item 3). */
+  readonly entities?: readonly EntityDocument[];
   /** Receives the edited form with its revision bumped. */
   readonly onSave: (view: FormView) => void;
   /** Called with the document as it is edited, after every edit, undo or redo; a states preview next to the editor follows it. */
@@ -50,7 +59,7 @@ export interface FormViewEditorProps {
  * step with the arrow keys; each move is one undoable patch, and where it
  * lands is announced. Conditions on a field are kept and shown.
  */
-export function FormViewEditor({ view, entity, registry, viewer, onSave, onChange, onCancel }: FormViewEditorProps): ReactNode {
+export function FormViewEditor({ view, entity, registry, viewer, entities, onSave, onChange, onCancel }: FormViewEditorProps): ReactNode {
   const base = useId();
   const [session, setSession] = useState<EditSession<FormView>>(() => startSession(view));
   useReportChange(session.current, onChange);
@@ -58,11 +67,26 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
   const [newSection, setNewSection] = useState("");
   const [titles, setTitles] = useState<Readonly<Record<string, string>>>({});
   const [adding, setAdding] = useState<{ readonly field?: string | undefined; readonly section?: string | undefined }>({});
+  const [labels, setLabels] = useState<Readonly<Record<string, string>>>({});
+  const [subEdit, setSubEdit] = useState<{ readonly sectionId: string; readonly draft: SubRecordDraft } | undefined>(undefined);
   const [status, setStatus] = useState("");
   const { Table, Button, Section, ErrorSummary } = registry.layout;
   const current = session.current;
 
   const label = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
+
+  // Sub-record checklists (RFC 0009 item 3): children of this entity — those carrying a reference back to it —
+  // that can hold a checklist: a text field for the row title and a boolean for the tick.
+  const checklistTargets = subRecordTargetsOf(entity, entities ?? []).filter((e) => e.fields.some((f) => f.type === "text") && e.fields.some((f) => f.type === "boolean"));
+  const childOf = (childId: string) => entities?.find((e) => e.id === childId);
+  const childLabel = (childId: string, fieldId: string) => childOf(childId)?.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
+  const draftForChild = (child: EntityDocument): SubRecordDraft => ({
+    entity: child.id,
+    via: subRecordViaFieldsOf(child, entity)[0] ?? "",
+    titleField: child.fields.find((f) => f.type === "text")?.id ?? "",
+    doneField: child.fields.find((f) => f.type === "boolean")?.id ?? "",
+    orderField: child.fields.find((f) => f.type === "number")?.id,
+  });
   const factLabel = (id: string) => viewer?.facts.find((f) => f.id === id)?.label ?? id;
   const sectionName = (id: string) => current.sections.find((s) => s.id === id)?.title ?? id;
   const announce = (message: string) => {
@@ -305,16 +329,136 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
     />
   );
 
-  const sectionView = (section: FormView["sections"][number], index: number): ReactNode => {
+  const sectionView = (section: FormSection, index: number): ReactNode => {
     const titleId = `${base}-title-${section.id}`;
     const title = titles[section.id] ?? section.title ?? "";
+    const sectionToolbar = (extra?: ReactNode) => (
+      <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+        <ReorderGrip
+          label={`Drag the section ${section.title ?? section.id}`}
+          dragging={sectionDrag.active === section.id}
+          onPointerDown={(e) => sectionDrag.start(e, section.id)}
+          onPointerMove={sectionDrag.move}
+          onPointerUp={sectionDrag.drop}
+          onPointerCancel={sectionDrag.cancel}
+          onKeyDown={(e) => {
+            const step = arrowStep(e);
+            if (step === 0) return;
+            e.preventDefault();
+            keyMoveSection(section.id, step);
+          }}
+        />
+        {/* Enter in the title input commits the rename like the button; the input itself is the registry's, so the commit rides the bubbling keydown. */}
+        <span
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            if (title !== (section.title ?? "")) run(setSectionTitle(current, section.id, title));
+          }}
+        >
+          {propertyInput(registry, titleId, { id: "title", type: "text", label: "Section title" }, title, (v) => setTitles((t) => ({ ...t, [section.id]: asText(v) })))}
+        </span>
+        <Button label="Rename section" type="button" variant="secondary" disabled={title === (section.title ?? "")} onPress={() => run(setSectionTitle(current, section.id, title))} />
+        <Button label="Move section up" type="button" variant="secondary" disabled={index === 0} onPress={() => run(moveSection(current, section.id, -1))} />
+        <Button label="Move section down" type="button" variant="secondary" disabled={index === current.sections.length - 1} onPress={() => run(moveSection(current, section.id, 1))} />
+        <Button label="Remove section" type="button" variant="secondary" disabled={false} onPress={() => run(removeSection(current, section.id))} />
+        {extra}
+      </div>
+    );
+
+    // The checklist builder (RFC 0009 item 3), shared by a section that already is a checklist and
+    // by a field section that is being turned into one.
+    const subBuilder = (draft: SubRecordDraft): ReactNode => {
+      const child = childOf(draft.entity);
+      const viaFields = (child?.fields ?? []).filter((f) => f.type === "reference" && f.entity === entity.id);
+      const textFields = (child?.fields ?? []).filter((f) => f.type === "text");
+      const boolFields = (child?.fields ?? []).filter((f) => f.type === "boolean");
+      const numFields = [{ id: "", label: "(no order field)" } as const, ...(child?.fields ?? []).filter((f) => f.type === "number")];
+      const patchDraft = (patch: Partial<SubRecordDraft>) => setSubEdit({ sectionId: section.id, draft: { ...draft, ...patch } });
+      const ready = draft.entity !== "" && draft.via !== "" && draft.titleField !== "" && draft.doneField !== "";
+      return (
+        <div data-yadad-subrecord-builder={section.id} style={{ marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+              <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+                {propertyInput(registry, `${base}-sub-via-${section.id}`, choiceField("sub_via", "Linked by", viaFields.map((f) => f.label)), childLabel(draft.entity, draft.via), (v) =>
+                  patchDraft({ via: viaFields.find((f) => f.label === v)?.id ?? draft.via }),
+                )}
+                {propertyInput(registry, `${base}-sub-title-${section.id}`, choiceField("sub_title", "Row title from", textFields.map((f) => f.label)), childLabel(draft.entity, draft.titleField), (v) =>
+                  patchDraft({ titleField: textFields.find((f) => f.label === v)?.id ?? draft.titleField }),
+                )}
+                {propertyInput(registry, `${base}-sub-done-${section.id}`, choiceField("sub_done", "Tick from", boolFields.map((f) => f.label)), childLabel(draft.entity, draft.doneField), (v) =>
+                  patchDraft({ doneField: boolFields.find((f) => f.label === v)?.id ?? draft.doneField }),
+                )}
+                {propertyInput(registry, `${base}-sub-order-${section.id}`, choiceField("sub_order", "Order by", numFields.map((f) => f.label)), numFields.find((f) => f.id === (draft.orderField ?? ""))?.label ?? "(no order field)", (v) => {
+                  const picked = numFields.find((f) => f.label === v)?.id ?? "";
+                  patchDraft({ orderField: picked === "" ? undefined : picked });
+                })}
+                {propertyInput(registry, `${base}-sub-add-${section.id}`, { id: "sub_add", type: "text", label: "Add button label (optional)" }, draft.addLabel ?? "", (v) => patchDraft({ addLabel: asText(v) }))}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+                <Button
+                  label="Apply checklist"
+                  type="button"
+                  variant="primary"
+                  disabled={!ready}
+                  onPress={() => run(setSectionSubRecords(current, section.id, draft), () => { setSubEdit(undefined); announce(`Section "${section.title ?? section.id}" is a checklist over ${draft.entity}.`); })}
+                />
+                <Button label="Cancel checklist" type="button" variant="secondary" disabled={false} onPress={() => setSubEdit(undefined)} />
+              </div>
+        </div>
+      );
+    };
+
+    // A sub-record checklist section (RFC 0009 item 3): rows are ordinary records of the child entity;
+    // the editor shows what the checklist points at and lets you retarget it.
+    if (section.subRecords !== undefined) {
+      const sub = section.subRecords;
+      const editingHere = subEdit?.sectionId === section.id;
+      return (
+        <Section key={section.id} id={`${base}-section-${section.id}`} title={`Section: ${section.title ?? section.id}`}>
+          {sectionToolbar()}
+          <p data-yadad-subrecord-section={section.id}>
+            Checklist over <strong>{sub.entity}</strong>: rows titled by {childLabel(sub.entity, sub.titleField)}, ticked by {childLabel(sub.entity, sub.doneField)}, linked by {childLabel(sub.entity, sub.via)}
+            {sub.orderField !== undefined ? `, ordered by ${childLabel(sub.entity, sub.orderField)}` : ""}. Adding a row creates a {sub.entity}; the rows save through the normal record path.
+          </p>
+          {editingHere ? (
+            subBuilder(subEdit.draft)
+          ) : (
+            <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+              <Button label="Edit checklist" type="button" variant="secondary" disabled={false} onPress={() => setSubEdit({ sectionId: section.id, draft: { entity: sub.entity, via: sub.via, titleField: sub.titleField, doneField: sub.doneField, orderField: sub.orderField, addLabel: sub.addLabel } })} />
+              <Button label="Remove checklist" type="button" variant="secondary" disabled={false} onPress={() => run(removeSectionSubRecords(current, section.id), () => announce(`Section "${section.title ?? section.id}" is an empty field section again.`))} />
+            </div>
+          )}
+        </Section>
+      );
+    }
+
     const rows = sectionItems(section).map((item) => ({ // // RFC 0008/9: card 47b
       id: item.field,
       cells: [
-        <span key="field" data-yadad-row={item.field} style={{ display: "flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>
+        <span key="field" data-yadad-row={item.field} style={{ display: "flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)", flexWrap: "wrap" }}>
           {fieldIndicator(section, item) && <DropIndicator />}
           {fieldGrip(item.field)}
           {label(item.field)}
+          {/* RFC 0008 item 25: this form may show the field under a label of its own; blank means the field's own label. */}
+          {propertyInput(
+            registry,
+            `${base}-label-${section.id}-${item.field}`,
+            { id: "item_label", type: "text", label: `Label for ${label(item.field)} on this form (optional)` },
+            labels[`${section.id}:${item.field}`] ?? item.label ?? "",
+            (v) => setLabels((l) => ({ ...l, [`${section.id}:${item.field}`]: asText(v) })),
+          )}
+          <Button
+            label={`Set label for ${label(item.field)}`}
+            type="button"
+            variant="secondary"
+            disabled={(labels[`${section.id}:${item.field}`] ?? item.label ?? "") === (item.label ?? "")}
+            onPress={() =>
+              run(setFormItemLabel(current, item.field, labels[`${section.id}:${item.field}`] ?? item.label), () => {
+                const nextLabel = labels[`${section.id}:${item.field}`]?.trim() ?? "";
+                announce(nextLabel === "" ? `${label(item.field)} shows under the field's own label again on this form.` : `The label of ${label(item.field)} on this form is "${nextLabel}".`);
+              })
+            }
+          />
         </span>,
         <span key="rules">
           {conditionText(item) || "None"}
@@ -338,37 +482,22 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
     }));
     return (
       <Section key={section.id} id={`${base}-section-${section.id}`} title={`Section: ${section.title ?? section.id}`}>
-        <div data-yadad-editor-toolbar="" style={toolbarStyle}>
-          <ReorderGrip
-            label={`Drag the section ${section.title ?? section.id}`}
-            dragging={sectionDrag.active === section.id}
-            onPointerDown={(e) => sectionDrag.start(e, section.id)}
-            onPointerMove={sectionDrag.move}
-            onPointerUp={sectionDrag.drop}
-            onPointerCancel={sectionDrag.cancel}
-            onKeyDown={(e) => {
-              const step = arrowStep(e);
-              if (step === 0) return;
-              e.preventDefault();
-              keyMoveSection(section.id, step);
-            }}
-          />
-          {/* Enter in the title input commits the rename like the button; the input itself is the registry's, so the commit rides the bubbling keydown. */}
-          <span
-            onKeyDown={(e) => {
-              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-              e.preventDefault();
-              if (title !== (section.title ?? "")) run(setSectionTitle(current, section.id, title));
-            }}
-          >
-            {propertyInput(registry, titleId, { id: "title", type: "text", label: "Section title" }, title, (v) => setTitles((t) => ({ ...t, [section.id]: asText(v) })))}
-          </span>
-          <Button label="Rename section" type="button" variant="secondary" disabled={title === (section.title ?? "")} onPress={() => run(setSectionTitle(current, section.id, title))} />
-          <Button label="Move section up" type="button" variant="secondary" disabled={index === 0} onPress={() => run(moveSection(current, section.id, -1))} />
-          <Button label="Move section down" type="button" variant="secondary" disabled={index === current.sections.length - 1} onPress={() => run(moveSection(current, section.id, 1))} />
-          <Button label="Remove section" type="button" variant="secondary" disabled={false} onPress={() => run(removeSection(current, section.id))} />
-        </div>
+        {sectionToolbar(
+          checklistTargets.length > 0 ? (
+            <Button
+              label="Make checklist"
+              type="button"
+              variant="secondary"
+              disabled={false}
+              onPress={() => {
+                const t = checklistTargets[0]!;
+                setSubEdit({ sectionId: section.id, draft: draftForChild(t) });
+              }}
+            />
+          ) : null,
+        )}
         <Table caption={`Fields in ${section.title ?? section.id}`} columns={columns} rows={rows} onSort={() => {}} empty="No fields in this section yet." />
+        {subEdit?.sectionId === section.id ? subBuilder(subEdit.draft) : null}
         {fieldIndicatorAfterTable(section) && <DropIndicator />}
       </Section>
     );
@@ -387,6 +516,21 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}
       {warningList(current)}
+      {/* RFC 0009 item 4: the form can be offered as a batch composer — the host repeats the field set and creates the rows atomically. */}
+      <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+        <span>
+          {current.repeat === "batch"
+            ? "This form is a batch composer: the host repeats the field set and creates the rows in one atomic batch."
+            : "This form creates one record per submit."}
+        </span>
+        <Button
+          label={`${current.repeat === "batch" ? "Turn off" : "Turn on"} batch composer`}
+          type="button"
+          variant="secondary"
+          disabled={false}
+          onPress={() => run(setFormRepeat(current, current.repeat !== "batch"), () => announce(current.repeat === "batch" ? "Batch composer off: one record per submit." : "Batch composer on: the host can offer this form as a batch."))}
+        />
+      </div>
       <Section id={`${base}-add`} title="Add to the form">
         {missing.length === 0 ? (
           <p>Every field of {entity.id} is on this form.</p>

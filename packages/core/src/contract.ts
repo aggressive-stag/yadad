@@ -17,6 +17,9 @@ export const ID_HINT = 'Use lowercase letters, digits and underscores, starting 
 /** A whole number from 1 to 1000 is a valid `pageSize`. */
 export const PAGE_SIZE_MAX = 1000;
 
+/** A `maxLength` on a text field is a whole number of characters from 1 to this (RFC 0008 item 13c, card 47g). */
+export const TEXT_MAX_LENGTH_CEILING = 100000;
+
 /** Dashboard grid: a tab has 1 to MAX_GRID_COLUMNS columns (12 by default). */
 export const GRID_COLUMNS_DEFAULT = 12;
 export const MAX_GRID_COLUMNS = 24;
@@ -332,7 +335,14 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
 ];
 
 const FIELD_SPECS: Record<FieldType, FieldSpec> = {
-  text: { type: "text", description: "A short or long text value.", properties: [] },
+  text: {
+    type: "text",
+    description: "A short or long text value.",
+    properties: [
+      { key: "multiline", required: false, description: "Render the form input as a textarea and keep line breaks in display (RFC 0008 item 13a). Storage is unchanged — the record still stores a plain string." },
+      { key: "maxLength", required: false, description: `Maximum stored length in characters: a whole number from 1 to ${TEXT_MAX_LENGTH_CEILING} (RFC 0008 item 13c). The client can refuse too-long input before the round trip.` },
+    ],
+  },
   number: {
     type: "number",
     description: "A number.",

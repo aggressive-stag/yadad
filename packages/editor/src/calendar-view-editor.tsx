@@ -1,5 +1,5 @@
 import type { CalendarMode, CalendarView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
-import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
+import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -16,6 +16,7 @@ import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import {
   addCalendarDetailField,
+  calendarDoneFieldsOf,
   calendarRowActionTargets,
   dateFieldsOf,
   fieldsNotInCalendarDetails,
@@ -24,8 +25,10 @@ import {
   setCalendarColorField,
   setCalendarDateField,
   setCalendarDefaultMode,
+  setCalendarDoneField,
   setCalendarEditable,
   setCalendarFilter,
+  setCalendarMaxEntriesPerDay,
   setCalendarRowAction,
   setCalendarEditableWhen,
   setRowActionVisibleWhen,
@@ -62,6 +65,7 @@ export interface CalendarViewEditorProps {
 const NO_SORT = "(none)";
 const NO_FIELD = "(default)";
 const NO_COLOR = "(none)";
+const NO_DONE = "(none)";
 const DIRECTIONS = { Ascending: "asc", Descending: "desc" } as const;
 type DirectionLabel = keyof typeof DIRECTIONS;
 
@@ -71,6 +75,8 @@ interface Settings {
   readonly titleField: string | undefined;
   readonly colorField: string | undefined;
   readonly weekStartsOn: number | undefined;
+  readonly doneField: string | undefined;
+  readonly maxEntriesPerDay: number | undefined;
   readonly editable: boolean;
   readonly sortField: string | undefined;
   readonly sortDir: "asc" | "desc";
@@ -82,6 +88,8 @@ const settingsOf = (view: CalendarView): Settings => ({
   titleField: view.titleField,
   colorField: view.colorField,
   weekStartsOn: view.weekStartsOn,
+  doneField: view.doneField,
+  maxEntriesPerDay: view.maxEntriesPerDay,
   editable: view.editable === true,
   sortField: view.sort?.[0]?.field,
   sortDir: view.sort?.[0]?.dir ?? "asc",
@@ -161,6 +169,7 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
   const dateIds = dateFieldsOf(entity);
   const titleIds = entity.fields.filter((f) => CALENDAR_TITLE_FIELD_TYPES.includes(f.type)).map((f) => f.id);
   const colorIds = entity.fields.filter((f) => CALENDAR_COLOR_FIELD_TYPES.includes(f.type)).map((f) => f.id);
+  const doneIds = calendarDoneFieldsOf(entity); // RFC 0008 item 20: the tick that clears a day's entries
   // A reference holds a record id, which says nothing about order, so it is not offered as a sort key.
   const entityIds = entity.fields.filter((f) => f.type !== "reference").map((f) => f.id);
   const applySettings = () =>
@@ -170,6 +179,8 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
       ...setCalendarTitleField(current, settings.titleField),
       ...setCalendarColorField(current, settings.colorField),
       ...setCalendarWeekStartsOn(current, settings.weekStartsOn),
+      ...setCalendarDoneField(current, settings.doneField),
+      ...setCalendarMaxEntriesPerDay(current, settings.maxEntriesPerDay),
       ...setCalendarEditable(current, settings.editable),
       ...setCalendarSort(current, settings.sortField ? { field: settings.sortField, dir: settings.sortDir } : undefined),
     ]);
@@ -301,6 +312,12 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
           )}
           {propertyInput(registry, `${base}-week`, { id: "week_starts_on", type: "number", label: "Week starts on (0 Sunday – 6 Saturday)", min: 0, max: 6, step: 1 }, settings.weekStartsOn, (v) =>
             setSettings((s) => ({ ...s, weekStartsOn: typeof v === "number" ? v : undefined })),
+          )}
+          {propertyInput(registry, `${base}-donefield`, choiceField("done_field", "Done field", [NO_DONE, ...doneIds.map(label)]), settings.doneField ? label(settings.doneField) : NO_DONE, (v) =>
+            setSettings((s) => ({ ...s, doneField: byLabel(doneIds, v) })), // RFC 0008 item 20: the tick that clears a day's entries
+          )}
+          {propertyInput(registry, `${base}-maxentries`, { id: "max_entries_per_day", type: "number", label: "Entries per day before \"+N more\"", min: 1, max: CALENDAR_MAX_ENTRIES_PER_DAY_MAX, step: 1 }, settings.maxEntriesPerDay, (v) =>
+            setSettings((s) => ({ ...s, maxEntriesPerDay: typeof v === "number" ? v : undefined })),
           )}
           {propertyInput(registry, `${base}-editable`, { id: "editable", type: "boolean", label: "Dragging an entry to another day moves it" }, settings.editable, (v) =>
             setSettings((s) => ({ ...s, editable: v === true })),

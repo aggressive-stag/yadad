@@ -7,7 +7,7 @@
 
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, TEXT_MAX_LENGTH_CEILING, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
 import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, FORM_ITEM_LABEL_MAX, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField, optionValue } from "./document.js";
 import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, SeriesWidget, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
@@ -215,6 +215,12 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
   checkBoolean(errors, field, path, "required");
 
   switch (type) {
+    case "text": // RFC 0008 item 13 (a+c): card 47g — display hints; storage stays a plain string
+      checkBoolean(errors, field, path, "multiline");
+      if (field["maxLength"] !== undefined && !isWhole(field["maxLength"], 1, TEXT_MAX_LENGTH_CEILING)) {
+        errors.add([...path, "maxLength"], "invalid-value", `"maxLength" must be a whole number of characters from 1 to ${TEXT_MAX_LENGTH_CEILING}.`, "Use a positive whole number, e.g. 4000.");
+      }
+      return;
     case "number":
       checkFiniteNumber(errors, field, path, "min");
       checkFiniteNumber(errors, field, path, "max");
@@ -259,7 +265,7 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
 
 /** Properties each field type allows beyond id, type, label and required. */
 const FIELD_KEYS: { readonly [K in FieldType]: { readonly required: readonly string[]; readonly optional: readonly string[] } } = {
-  text: { required: [], optional: [] },
+  text: { required: [], optional: ["multiline", "maxLength"] }, // RFC 0008 item 13 (a+c): card 47g
   number: { required: [], optional: ["min", "max", "step", "unit"] },
   boolean: { required: [], optional: [] },
   select: { required: ["options"], optional: [] },

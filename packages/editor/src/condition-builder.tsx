@@ -16,6 +16,8 @@ interface DraftComparison {
   readonly not: boolean;
   readonly op: Comparison["op"];
   readonly field: string;
+  /** Only for "fieldEqFact": the viewer fact id the record field is compared with (RFC 0009 item 1). */
+  readonly fact?: string | undefined;
   readonly value?: FieldValue | RelativeDate | DraftRelativeDate | undefined;
   readonly values?: readonly FieldValue[] | undefined;
 }
@@ -109,7 +111,7 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
   const showValue = (v: FieldValue | undefined): string => (typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
   const SOURCES = { field: "A field of the record", viewer: "The viewer" } as const;
 
-  const setComparison = (i: number, patch: { not?: boolean; op?: DraftComparison["op"]; field?: string; value?: DraftComparison["value"]; values?: readonly FieldValue[] | undefined }) =>
+  const setComparison = (i: number, patch: { not?: boolean; op?: DraftComparison["op"]; field?: string; fact?: string | undefined; value?: DraftComparison["value"]; values?: readonly FieldValue[] | undefined }) =>
     onChange({
       combine: draft?.combine ?? "all",
       comparisons: (draft?.comparisons ?? []).map((c, j) => (j === i ? { ...c, ...patch } : c)),
@@ -132,7 +134,8 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
     // A date comparison keeps "today plus N" when only the operator changes between comparing ops.
     const c = draft?.comparisons[i];
     const keep = c !== undefined && isRelative(c.value) && takesRelativeDate("date", op);
-    setComparison(i, { op, value: keep ? c.value : undefined, values: undefined });
+    // fieldEqFact needs a fact to compare against: default it to the first declared one (RFC 0009 item 1).
+    setComparison(i, { op, fact: op === "fieldEqFact" ? facts[0]?.id : undefined, value: keep ? c.value : undefined, values: undefined });
   };
 
   const onSource = (i: number, source: keyof typeof SOURCES) => {
@@ -146,6 +149,7 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
   const compareWords = draft
     ? draft.comparisons.map((c) => {
         if (isViewerComparison(c)) return `${c.not ? "not " : ""}the viewer's ${factLabelOf(c.field)} is one of ${(c.values ?? []).map(showValue).join(", ")}`;
+        if (c.op === "fieldEqFact") return `${c.not ? "not " : ""}${labelOf(c.field)} equals the viewer's ${factLabelOf(c.fact ?? facts[0]?.id ?? "")}`; // RFC 0009 item 1
         const words = OPERATOR_WORDS[c.op];
         const value = c.op === "in" ? (c.values ?? []).join(", ") : takesValue(c.op) ? describeComparisonValue(c.value as Comparison["value"]) : "";
         return `${labelOf(c.field)} ${words}${value ? ` ${value}` : ""}`;
@@ -193,7 +197,7 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
             const f = fieldOf(c);
             const fieldId = `${id}-field-${i}`;
             const opId = `${id}-op-${i}`;
-            const ops = operatorsFor(f.type);
+            const ops = facts.length > 0 ? [...operatorsFor(f.type), "fieldEqFact" as const] : operatorsFor(f.type); // RFC 0009 item 1: with a viewer, a field can equal a fact
             const opField = choiceField("op", "Operator", ops.map((o) => OPERATOR_WORDS[o]));
             return (
               <div key={i} data-yadad-condition-comparison={`${id}-${i}`} style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", alignItems: "center", marginBlockStart: "var(--yadad-toolbar-gap, 0.5rem)" }}>
@@ -214,7 +218,18 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
                       </span>
                     ))}
                   </span>
-                ) : takesValue(c.op) ? (
+                ) : null}
+                {c.op === "fieldEqFact" && facts.length > 0 && (
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "var(--yadad-control-font-size, 0.85rem)" }}>
+                    <span>the viewer's</span>
+                    <select data-yadad-condition-fact={id} value={c.fact ?? facts[0]?.id ?? ""} onChange={(e) => setComparison(i, { fact: e.target.value })}>
+                      {facts.map((f) => (
+                        <option key={f.id} value={f.id}>{f.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {takesValue(c.op) && !(c.op === "in" && f.type === "select") && (
                   <>
                     {takesRelativeDate(f.type, c.op)
                       ? renderInput(registry, choiceField("date_mode", "Compare with", Object.values(DATE_MODES)), isRelative(c.value) ? DATE_MODES.relative : DATE_MODES.fixed, { inputId: `${id}-mode-${i}`, invalid: false }, (v) =>
@@ -227,7 +242,7 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
                         )
                       : renderInput(registry, f, c.value as FieldValue | undefined, { inputId: `${id}-value-${i}`, invalid: false }, (v) => setComparison(i, { value: v }))}
                   </>
-                ) : null}
+                )}
                 {renderInput(registry, { id: `${c.field}_not`, type: "boolean", label: "Not" }, c.not, { inputId: `${id}-not-${i}`, invalid: false }, (on) => setComparison(i, { not: on === true }))}
                 <Button label={`Remove comparison ${i + 1}`} type="button" variant="secondary" disabled={false} onPress={() => removeComparison(i)} />
               </div>

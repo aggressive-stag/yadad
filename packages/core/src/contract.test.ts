@@ -300,7 +300,7 @@ function valueForLevelProperty(level: string, key: string): unknown {
 // ---- field types: every type-specific property validates --------------------
 
 const fieldExamples: Record<string, Record<string, unknown>> = {
-  text: {},
+  text: { multiline: true, maxLength: 4000 }, // RFC 0008 item 13 (a+c): card 47g
   number: { min: 0, max: 10, step: 0.5, unit: "kg" },
   boolean: {},
   select: { options: { source: "static", values: ["Squat", "Bench"] } },

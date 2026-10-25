@@ -1,5 +1,5 @@
-import { isIsoDate, isIsoDatetime, optionValue } from "@yadad/core";
-import type { Field, FieldType, FieldValue, RecordValues } from "@yadad/core";
+import { isIsoDate, isIsoDatetime, optionColor, optionLabel, optionValue } from "@yadad/core";
+import type { Field, FieldType, FieldValue, RecordValues, StaticOptionValue } from "@yadad/core";
 
 /**
  * The property panel for each field type, described as fields: the editor
@@ -7,7 +7,11 @@ import type { Field, FieldType, FieldValue, RecordValues } from "@yadad/core";
  * a new field type cannot ship without its panel.
  */
 export const FIELD_PROPERTIES: { readonly [K in FieldType]: readonly Field[] } = {
-  text: [],
+  // RFC 0008 item 13: a text field can hold paragraphs and cap its own length.
+  text: [
+    { id: "multiline", type: "boolean", label: "Multiline (a paragraph box)" },
+    { id: "maxLength", type: "number", label: "Maximum length (characters)" },
+  ],
   boolean: [],
   number: [
     { id: "min", type: "number", label: "Minimum" },
@@ -15,6 +19,7 @@ export const FIELD_PROPERTIES: { readonly [K in FieldType]: readonly Field[] } =
     { id: "step", type: "number", label: "Step (e.g. 2.5)", min: 0 },
     { id: "unit", type: "text", label: "Unit (e.g. kg)" },
   ],
+  // Option rows (value + optional label + optional colour) are rendered by the entity editor itself; the comma list stays as the quick path.
   select: [{ id: "choices", type: "text", label: "Choices, separated by commas", required: true }],
   date: [
     { id: "min", type: "date", label: "Earliest date" },
@@ -30,6 +35,7 @@ export const FIELD_PROPERTIES: { readonly [K in FieldType]: readonly Field[] } =
   reference: [
     { id: "entity", type: "text", label: "Target entity id", required: true },
     { id: "display", type: "text", label: "Display field id (default: the target's first text field)" },
+    { id: "colorFrom", type: "text", label: "Colour source field on the target (optional)" },
   ],
   // RFC 0008 items 14-15 (card 47k): no property panel for either type; min/max/step on a time are document-only for now.
   time: [],
@@ -86,12 +92,12 @@ export function panelFromInstant(instant: string | undefined): string | null {
 }
 
 /** Builds a field definition from property panel values; validation of the result happens in the edit session. */
-export function fieldFromProperties(type: FieldType, v: RecordValues): Field {
+export function fieldFromProperties(type: FieldType, v: RecordValues, options?: readonly (string | StaticOptionValue)[]): Field {
   const base = { id: str(v["id"]) ?? "", label: str(v["label"]) ?? "", ...(v["required"] === true ? { required: true } : {}) };
   const opt = <K extends string, T>(key: K, value: T | undefined) => (value === undefined ? {} : ({ [key]: value } as { [P in K]: T }));
   switch (type) {
     case "text":
-      return { ...base, type };
+      return { ...base, type, ...(v["multiline"] === true ? { multiline: true } : {}), ...opt("maxLength", num(v["maxLength"])) };
     case "boolean":
       return { ...base, type };
     case "number":
@@ -101,18 +107,48 @@ export function fieldFromProperties(type: FieldType, v: RecordValues): Field {
     case "datetime":
       return { ...base, type, ...opt("min", instantFromPanel(v["min"])), ...opt("max", instantFromPanel(v["max"])) };
     case "reference":
-      return { ...base, type, entity: str(v["entity"]) ?? "", ...opt("display", str(v["display"])) };
+      return { ...base, type, entity: str(v["entity"]) ?? "", ...opt("display", str(v["display"])), ...opt("colorFrom", str(v["colorFrom"])) };
     case "select": {
-      const values = (str(v["choices"]) ?? "")
-        .split(",")
-        .map((c) => c.trim())
-        .filter((c) => c !== "");
+      // Option rows win when the editor built them; the comma list is the quick path.
+      const values =
+        options !== undefined && options.length > 0
+          ? options
+          : (str(v["choices"]) ?? "")
+              .split(",")
+              .map((c) => c.trim())
+              .filter((c) => c !== "");
       return { ...base, type, options: { source: "static", values } };
     }
     case "time":
     case "tags":
       return { ...base, type };
   }
+}
+
+/** An option row as the entity editor edits it: value plus optional label and colour. */
+export interface OptionRowDraft {
+  readonly value: string;
+  readonly label?: string | undefined;
+  readonly color?: string | undefined;
+}
+
+/** The stored option values as editable rows. */
+export function optionRowsFromValues(values: readonly (string | StaticOptionValue)[]): readonly OptionRowDraft[] {
+  return values.map((o) => ({ value: optionValue(o), ...(optionLabel(o) !== optionValue(o) ? { label: optionLabel(o) } : {}), ...(optionColor(o) !== undefined ? { color: optionColor(o) } : {}) }));
+}
+
+/** Rows as stored option values: a plain string unless it earned a label or colour. */
+export function optionValuesFromRows(rows: readonly OptionRowDraft[]): readonly (string | StaticOptionValue)[] {
+  const out: (string | StaticOptionValue)[] = [];
+  for (const row of rows) {
+    const value = row.value.trim();
+    if (value === "") continue;
+    const label = row.label?.trim();
+    const color = row.color?.trim();
+    if ((label === undefined || label === "" || label === value) && (color === undefined || color === "")) out.push(value);
+    else out.push({ value, ...(label !== undefined && label !== "" && label !== value ? { label } : {}), ...(color !== undefined && color !== "" ? { color } : {}) });
+  }
+  return out;
 }
 
 /** Property panel values for an existing field. */
@@ -126,7 +162,9 @@ export function propertiesFromField(field: Field): RecordValues {
     case "datetime":
       return { ...base, min: panelFromInstant(field.min), max: panelFromInstant(field.max) };
     case "reference":
-      return { ...base, entity: field.entity, display: field.display ?? null };
+      return { ...base, entity: field.entity, display: field.display ?? null, colorFrom: field.colorFrom ?? null };
+    case "text":
+      return { ...base, multiline: field.multiline === true, maxLength: field.maxLength ?? null };
     case "select":
       return { ...base, choices: field.options.values.map(optionValue).join(", ") }; // RFC 0008: card 47a
     default:
