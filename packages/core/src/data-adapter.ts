@@ -3,7 +3,7 @@
 // `version`; writes send it back as `baseVersion` and a stale one is a conflict.
 
 /** A single field value: text, select and date are strings, then numbers and booleans. null is empty. */
-export type FieldValue = string | number | boolean | null;
+export type FieldValue = string | number | boolean | readonly string[] | null;
 
 /**
  * Field values keyed by field id. Records are user data, not documents, so

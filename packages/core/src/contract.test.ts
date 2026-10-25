@@ -63,7 +63,7 @@ describe("contract lists", () => {
     expect(keys("entity")).toContain("actions");
     for (const kind of ["table", "calendar", "board"]) expect(keys(kind)).toContain("recordActions");
     expect(contract.documentKinds.find((k) => k.kind === "table")?.properties.find((p) => p.key === "columns")?.description).toContain("compare");
-    expect(contract.actions).toEqual({ recordActionsMax: 6, max: 12, inputMax: 5, inputFieldTypes: ["text", "number", "boolean", "select", "date", "datetime"], confirmTones: ["neutral", "danger"] });
+    expect(contract.actions).toEqual({ recordActionsMax: 6, max: 12, inputMax: 5, inputFieldTypes: ["text", "number", "boolean", "select", "date", "datetime", "time"], confirmTones: ["neutral", "danger"] });
     expect(contract.conditionPlaces).toContainEqual(expect.objectContaining({ path: "/actions/*/visibleWhen", kinds: ["entity"], accepts: "record+viewer" }));
     expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(expect.arrayContaining(["fields.datetime", "layout.Dialog"]));
   });
@@ -307,6 +307,9 @@ const fieldExamples: Record<string, Record<string, unknown>> = {
   date: { min: "2026-01-01", max: "2026-12-31" },
   datetime: { min: "2026-01-01T00:00:00.000Z", max: "2026-12-31T23:59:59.999Z" },
   reference: { entity: "exercise", display: "name" },
+  // RFC 0008: card 47k
+  time: { min: "09:00", max: "17:00", step: 15 },
+  tags: {},
 };
 
 type FieldDoc = { kind: string; specVersion: number; id: string; revision: number; fields: Array<Record<string, unknown>> };

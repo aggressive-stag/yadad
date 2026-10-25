@@ -15,6 +15,7 @@ export interface CommonInputProps {
 const asString = (v: FieldValue | undefined): string | undefined => (typeof v === "string" ? v : undefined);
 const asNumber = (v: FieldValue | undefined): number | undefined => (typeof v === "number" ? v : undefined);
 const asBoolean = (v: FieldValue | undefined): boolean | undefined => (typeof v === "boolean" ? v : undefined);
+const asStrings = (v: FieldValue | undefined): readonly string[] | undefined => (Array.isArray(v) ? v : undefined);
 
 /**
  * Renders the field's Input from the registry. The switch narrows the field
@@ -62,6 +63,16 @@ export function renderInput(
       const { Input } = registry.fields.text;
       return <Input {...common} field={{ id: field.id, type: "text", label: field.label }} value={asString(value)} onChange={onChange} />;
     }
+    case "time": {
+      // RFC 0008: card 47k
+      const { Input } = registry.fields.time;
+      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+    }
+    case "tags": {
+      // RFC 0008: card 47k
+      const { Input } = registry.fields.tags;
+      return <Input {...common} field={field} value={asStrings(value)} onChange={onChange} />;
+    }
   }
 }
 
@@ -101,6 +112,16 @@ export function renderDisplay(registry: Registry<ReactNode>, field: Field, value
       const { Display } = registry.fields.reference;
       const id = asString(value);
       return <Display field={field} value={id} label={id ?? ""} status="found" />;
+    }
+    case "time": // RFC 0008: card 47k
+    {
+      const { Display } = registry.fields.time;
+      return <Display field={field} value={asString(value)} />;
+    }
+    case "tags": {
+      // RFC 0008: card 47k
+      const { Display } = registry.fields.tags;
+      return <Display field={field} value={asStrings(value)} />;
     }
   }
 }

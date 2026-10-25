@@ -366,6 +366,8 @@ export const QUICK_FILTER_KINDS: { readonly [K in FieldType]: "match" | "contain
   date: "range",
   datetime: "range", // RFC 0007: a from/to range; the viewer types it in its zone, the renderer converts (35c)
   reference: undefined,
+  time: undefined, // RFC 0008 item 14 (card 47k): the time from/to pair is 47d's quick-filter work.
+  tags: undefined, // RFC 0008 item 15 (card 47k): any-element matching is 47d's; no quick filter until then.
 };
 
 /** Said where a field cannot be a quick filter. */

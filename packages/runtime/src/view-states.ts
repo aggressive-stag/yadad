@@ -1,4 +1,4 @@
-import { isIsoDate, isRelativeDate, jsonPointer, optionValue, sectionItems } from "@yadad/core"; // RFC 0008: card 47a (optionValue keeps compiling; 47d reviews)
+import { isHhMm, isIsoDate, isRelativeDate, jsonPointer, optionValue, sectionItems } from "@yadad/core"; // RFC 0008: card 47a (optionValue keeps compiling; 47d reviews)
 import type {
   BoardView,
   CalendarMode,
@@ -270,6 +270,10 @@ function typicalValue(field: Field, today: string, datetime?: string): FieldValu
       return firstValid(field, [datetime, `${today}T09:30:00.000Z`, field.min, field.max].filter((v): v is string => v !== undefined));
     case "reference":
       return SAMPLE_REFERENCE;
+    case "time": // RFC 0008: card 47k
+      return firstValid(field, [field.min, "09:30", field.max].filter((v): v is string => v !== undefined));
+    case "tags": // RFC 0008: card 47k
+      return firstValid(field, [["alpha"], ["beta", "gamma"]]);
   }
 }
 
@@ -285,6 +289,8 @@ function variedValue(field: Field, index: number, today: string, datetime?: stri
       { const vs = field.options.values; const pick = vs[index % Math.max(1, vs.length)]; return pick === undefined ? base : optionValue(pick); } // RFC 0008: card 47a
     case "reference":
       return `ref-${(index % 3) + 1}`;
+    case "tags": // RFC 0008: card 47k — both the filled and the varied list appear
+      return index % 2 === 0 ? base : ["beta"];
     default:
       return base;
   }
@@ -449,6 +455,18 @@ function fieldCandidates(field: Field, probes: Probes, ctx: CandidateContext): F
     case "reference": {
       const compared = unique([...strings(probes.thresholds), ...strings(probes.members)].filter((v) => v.trim() !== "" && v !== SAMPLE_REFERENCE));
       all.push(emptyCandidate, { id: "set", label: `${name} set`, value: SAMPLE_REFERENCE }, ...compared.map((v) => valued(v)));
+      break;
+    }
+    case "time": {
+      // RFC 0008: card 47k — a few clocks plus whatever a condition compares against.
+      const values = unique([...strings(probes.thresholds).filter(isHhMm), ...strings(probes.members).filter(isHhMm), "09:30", "17:00"]);
+      all.push(emptyCandidate, ...values.map((v) => valued(v)));
+      break;
+    }
+    case "tags": {
+      // RFC 0008: card 47k — empty, one tag, many; condition values become single-tag lists (evaluation is 47d's).
+      const tags = unique([...strings(probes.members), ...strings(probes.contains)].filter((v) => v !== ""));
+      all.push(emptyCandidate, valued(["alpha"], `${name} = alpha`), ...tags.map((v) => valued([v], `${name} = ${v}`)), valued(["alpha", "beta"], `${name} = alpha, beta`));
       break;
     }
   }

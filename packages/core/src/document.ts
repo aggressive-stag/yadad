@@ -26,7 +26,7 @@ export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */
-export const FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime", "reference"] as const;
+export const FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime", "reference", "time", "tags"] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 
 interface FieldBase {
@@ -104,6 +104,32 @@ export interface DatetimeField extends FieldBase {
 }
 
 /**
+ * A time of day (RFC 0008 item 14), stored as "HH:MM" — 24-hour, zero-padded,
+ * no day and no zone. Separate from `date` by design: `due_date` + `due_time`
+ * stay two fields, a calendar entry is never placed by a `time`, and a
+ * `datetime` remains the one-field answer when the instant itself is the fact.
+ */
+export interface TimeField extends FieldBase {
+  readonly type: "time";
+  /** Earliest allowed time, "HH:MM". */
+  readonly min?: string;
+  /** Latest allowed time, "HH:MM". */
+  readonly max?: string;
+  /** Allowed increment in minutes, e.g. 15. Defaults to any minute. */
+  readonly step?: number;
+}
+
+/**
+ * A list of free-text tags (RFC 0008 item 15), stored as an array of non-empty
+ * strings in the order entered. The only field type whose value is an array.
+ * Conditions: contains and in match ANY element (negate with not); empty and
+ * notEmpty work as usual. Never a sort key, a board groupBy or a series groupBy.
+ */
+export interface TagsField extends FieldBase {
+  readonly type: "tags";
+}
+
+/**
  * A link to a record of another entity (RFC 0002). The stored value is the
  * target record's id, a string. The server owns referential integrity; the
  * engine only offers existing records in the picker.
@@ -123,7 +149,7 @@ export interface ReferenceField extends FieldBase {
 }
 
 /** Discriminated on `type`. */
-export type Field = TextField | NumberField | BooleanField | SelectField | DateField | DatetimeField | ReferenceField;
+export type Field = TextField | NumberField | BooleanField | SelectField | DateField | DatetimeField | ReferenceField | TimeField | TagsField;
 
 /** An entity declares at most this many record actions, and an action at most this many input fields (RFC 0007). */
 export const ACTIONS_MAX = 12;
@@ -136,13 +162,13 @@ export const CALENDAR_MAX_ENTRIES_PER_DAY_MAX = 31;
 /** Upper bound for a view-level label override (RFC 0008 item 6). */
 export const FORM_ITEM_LABEL_MAX = 120;
 /** Field types an action's input fields may have: those with a plain input, not `reference` (a picker needs a target query). */
-export const ACTION_INPUT_FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime"] as const;
+export const ACTION_INPUT_FIELD_TYPES = ["text", "number", "boolean", "select", "date", "datetime", "time"] as const;
 export type ActionInputFieldType = (typeof ACTION_INPUT_FIELD_TYPES)[number];
 export const ACTION_CONFIRM_TONES = ["neutral", "danger"] as const;
 export type ActionConfirmTone = (typeof ACTION_CONFIRM_TONES)[number];
 
 /** A field definition of an action's input: the same properties as the entity field of that type. */
-export type ActionInputField = TextField | NumberField | BooleanField | SelectField | DateField | DatetimeField;
+export type ActionInputField = TextField | NumberField | BooleanField | SelectField | DateField | DatetimeField | TimeField;
 
 /** What the dialog says before an action runs. */
 export interface ActionConfirm {

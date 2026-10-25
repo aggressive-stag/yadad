@@ -243,6 +243,17 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
       if (field["display"] !== undefined) checkId(errors, field, path, "display");
       if (field["colorFrom"] !== undefined) checkId(errors, field, path, "colorFrom");
       return;
+    case "time": // RFC 0008: card 47k
+      checkHhMm(errors, field, path, "min");
+      checkHhMm(errors, field, path, "max");
+      checkFiniteNumber(errors, field, path, "step");
+      if (typeof field["step"] === "number" && (!Number.isInteger(field["step"]) || field["step"] <= 0)) {
+        errors.add([...path, "step"], "invalid-value", '"step" must be a whole number of minutes greater than 0.', "Use e.g. 5, 15 or 30.");
+      }
+      checkRange(errors, field, path, (v): v is string => typeof v === "string" && isHhMm(v));
+      return;
+    case "tags": // RFC 0008: card 47k — a free-text list; nothing else to declare
+      return;
   }
 }
 
@@ -255,6 +266,8 @@ const FIELD_KEYS: { readonly [K in FieldType]: { readonly required: readonly str
   date: { required: [], optional: ["min", "max"] },
   datetime: { required: [], optional: ["min", "max"] },
   reference: { required: ["entity"], optional: ["display", "colorFrom"] },
+  time: { required: [], optional: ["min", "max", "step"] }, // RFC 0008: card 47k
+  tags: { required: [], optional: [] }, // RFC 0008: card 47k
 };
 
 function validateForm(errors: Errors, doc: JsonObject): void {
@@ -1162,6 +1175,19 @@ export function isIsoDate(value: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(value);
 }
 
+/** "HH:MM" — 24-hour, zero-padded, one minute of precision (RFC 0008 item 14). */
+export function isHhMm(value: string): boolean {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return false;
+  return true;
+}
+
+function checkHhMm(errors: Errors, obj: JsonObject, path: Path, key: string): void {
+  const v = obj[key];
+  if (v !== undefined && (typeof v !== "string" || !isHhMm(v))) {
+    errors.add([...path, key], "invalid-value", `"${key}" must be a time like "09:30".`, "Use HH:MM (24-hour, zero-padded).");
+  }
+}
+
 function checkIsoDate(errors: Errors, obj: JsonObject, path: Path, key: string): void {
   const v = obj[key];
   if (v !== undefined && (typeof v !== "string" || !isIsoDate(v))) {
@@ -1398,6 +1424,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     checkRelativeDateFields(errors, view.id, entity, condition, base);
     checkReferenceOps(errors, view.id, entity, condition, base);
     checkDatetimeConditions(errors, view.id, entity, condition, base);
+checkTimeTagsConditions(errors, view.id, entity, condition, base);
   };
   if (view.kind === "form") {
     view.sections.forEach((section, i) => {
@@ -1421,6 +1448,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   view.sort?.forEach((key, i) => {
     checkField(key.field, ["sort", i, "field"]);
     checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
+    checkNotTags(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
   });
   if (view.kind === "table" && view.addForm !== undefined) checkAddFormTarget(errors, view, entity, idx);
   view.quickFilters?.forEach((filter, i) => {
@@ -1748,9 +1776,10 @@ function checkViewFilterSortTail(
   checkRelativeDateFields(errors, view.id, entity, view.filter, ["filter"]);
   checkReferenceOps(errors, view.id, entity, view.filter, ["filter"]);
   checkDatetimeConditions(errors, view.id, entity, view.filter, ["filter"]);
+  checkTimeTagsConditions(errors, view.id, entity, view.filter, ["filter"]);
   view.sort?.forEach((key, i) => {
     if (!checker.find(key.field)) checker.unknown(key.field, ["sort", i, "field"]);
-    else checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
+    else { checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key"); checkNotTags(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key"); }
   });
   checkRecordActionRefs(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
@@ -1814,11 +1843,15 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
         code: "invalid-value",
         message: required
           ? `"${g.field}" is a required boolean field, so it can only be true and cannot group a board.`
-          : `"${g.field}" is a ${field.type} field, but a board's groupBy must be a select, boolean or reference field.`,
+          : field.type === "tags"
+            ? `"${g.field}" is a tags field, so it cannot group a board: a card carries many tags and a column needs one value per card.`
+            : `"${g.field}" is a ${field.type} field, but a board's groupBy must be a select, boolean or reference field.`,
         hint: required
           ? "Use a different field, or make it optional so it has two values."
-          : field.type === "datetime"
-            ? "Use a select, boolean or reference field; grouping by instants is not supported yet."
+          : field.type === "tags"
+            ? "Group by a select, boolean or reference field; filter by tags instead (contains/in match any element)."
+            : field.type === "datetime"
+              ? "Use a select, boolean or reference field; grouping by instants is not supported yet."
             : groupableIds.length > 0
             ? `Use one of: ${groupableIds.join(", ")}.`
             : `Entity "${entity.id}" has no groupable field; add a select, boolean or reference field.`,
@@ -1875,6 +1908,7 @@ function checkActionConditions(errors: DocumentError[], entity: EntityDocument):
     checkRelativeDateFields(errors, entity.id, entity, action.visibleWhen, base);
     checkReferenceOps(errors, entity.id, entity, action.visibleWhen, base);
     checkDatetimeConditions(errors, entity.id, entity, action.visibleWhen, base);
+checkTimeTagsConditions(errors, entity.id, entity, action.visibleWhen, base);
   });
 }
 
@@ -1937,6 +1971,19 @@ function checkNotReference(errors: DocumentError[], document: string, entity: En
   });
 }
 
+/** A tags field holds a list (RFC 0008 item 15): no order, no partition. */
+function checkNotTags(errors: DocumentError[], document: string, entity: EntityDocument, fieldId: string, path: Path, what: string): void {
+  const field = entity.fields.find((f) => f.id === fieldId);
+  if (field?.type !== "tags") return;
+  errors.push({
+    path: jsonPointer(path),
+    code: "invalid-value",
+    message: `Tags field "${fieldId}" cannot be a ${what}.`,
+    hint: "A tags field holds a list, so it has no order and no partition. Use a tags-valued filter (contains/in match any element) instead.",
+    document,
+  });
+}
+
 const REFERENCE_OPS: readonly ConditionOp[] = ["eq", "neq", "in", "empty", "notEmpty"];
 
 /** Reports a comparison other than eq, neq, in, empty and notEmpty on a reference field. */
@@ -1981,6 +2028,70 @@ function checkSubRecordSection(errors: Errors, value: unknown, path: Path): void
   checkId(errors, value, path, "doneField");
   checkId(errors, value, path, "orderField");
   checkBoundedLabel(errors, value, path, "addLabel");
+}
+
+/**
+ * Reports a condition that does not fit a `time` or `tags` field (RFC 0008 items 14–15, card 47k).
+ * A time compares like a date but never takes a relative date (that rule is checkRelativeDateFields,
+ * which only accepts `date` fields) and has no substring; a tags list matches ANY element through
+ * contains/in and has no ordering, so gt/gte/lt/lte are refused.
+ */
+function checkTimeTagsConditions(errors: DocumentError[], document: string, entity: EntityDocument, condition: Condition | undefined, base: Path): void {
+  if (!condition) return;
+  switch (condition.op) {
+    case "and":
+    case "or":
+      condition.conditions.forEach((c, i) => checkTimeTagsConditions(errors, document, entity, c, [...base, "conditions", i]));
+      return;
+    case "not":
+      checkTimeTagsConditions(errors, document, entity, condition.condition, [...base, "condition"]);
+      return;
+    case "viewerIn":
+    case "fieldEqFact": // the viewer's own value: no record field to fit
+    case "empty":
+    case "notEmpty":
+      return;
+    default: {
+      const field = entity.fields.find((f) => f.id === condition.field);
+      if (!field) return;
+      if (field.type === "time") {
+        if (condition.op === "contains") {
+          errors.push({
+            path: jsonPointer([...base, "op"]),
+            code: "invalid-value",
+            message: `"contains" cannot be used on time field "${field.id}": it holds a time of day, not free text.`,
+            hint: "Use one of: eq, neq, gt, gte, lt, lte, in, empty, notEmpty with a time like \"09:30\".",
+            document,
+          });
+          return;
+        }
+        const bad = (path: Path, value: unknown): void => {
+          if (typeof value === "string" && isHhMm(value)) return;
+          errors.push({ path: jsonPointer(path), code: "invalid-value", message: `${JSON.stringify(value)} is not a time like "09:30" for time field "${field.id}".`, hint: "Use HH:MM (24-hour, zero-padded).", document });
+        };
+        if (condition.op === "in") condition.values.forEach((v, i) => bad([...base, "values", i], v));
+        else bad([...base, "value"], condition.value);
+        return;
+      }
+      if (field.type !== "tags") return;
+      if (condition.op === "gt" || condition.op === "gte" || condition.op === "lt" || condition.op === "lte") {
+        errors.push({
+          path: jsonPointer([...base, "op"]),
+          code: "invalid-value",
+          message: `"${condition.op}" cannot be used on tags field "${field.id}": a list has no total order.`,
+          hint: "Use contains or in (either matches ANY element), or wrap them in not.",
+          document,
+        });
+        return;
+      }
+      const bad = (path: Path, value: unknown): void => {
+        if (typeof value === "string" && value !== "") return;
+        errors.push({ path: jsonPointer(path), code: "invalid-value", message: `${JSON.stringify(value)} is not a tag for tags field "${field.id}".`, hint: "A tags condition compares with a non-empty text tag.", document });
+      };
+      if (condition.op === "in") condition.values.forEach((v, i) => bad([...base, "values", i], v));
+      else if (condition.op === "contains") bad([...base, "value"], condition.value);
+    }
+  }
 }
 
 /** Reports, on a datetime field, a `contains` or a value that is not an instant in the one stored form (RFC 0007). */
@@ -2202,6 +2313,7 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
       checkRelativeDateFields(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkReferenceOps(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkDatetimeConditions(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
+checkTimeTagsConditions(errors, doc.id, entity, item.filter, [...itemPath, "filter"]);
       checkConditionFields(item.filter, [...itemPath, "filter"], (fieldId, path) => {
         if (!fieldIds.includes(fieldId)) {
           errors.push(refError(doc.id, path, `Field "${fieldId}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));

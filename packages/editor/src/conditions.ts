@@ -40,6 +40,10 @@ export function operatorsFor(type: FieldType): readonly Comparison["op"][] {
     case "boolean":
     case "reference":
       return ["eq", "neq", "empty", "notEmpty"];
+    case "time": // RFC 0008 item 14: HH:MM compares lexicographically, order-correct at fixed width
+      return ["eq", "neq", "gt", "gte", "lt", "lte", "empty", "notEmpty"];
+    case "tags": // RFC 0008 item 15: contains/in match ANY element (negate with not)
+      return ["contains", "in", "empty", "notEmpty"];
   }
 }
 
@@ -217,6 +221,8 @@ export function valueFits(type: FieldType, value: ComparisonValue | readonly Sca
       return list.every((v) => typeof v === "number");
     case "date":
       return list.every((v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
+    case "time": // RFC 0008 item 14 (card 47k)
+      return list.every((v) => typeof v === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(v));
     case "boolean":
       return list.every((v) => typeof v === "boolean");
     default:

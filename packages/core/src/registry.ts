@@ -2,7 +2,7 @@
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
 // CellEditor and optionsSchema come later.
 
-import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, Measure, NumberField, ReferenceField, SelectField, SeriesDisplay, TextField } from "./document.js";
+import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, Measure, NumberField, ReferenceField, SelectField, SeriesDisplay, TagsField, TextField, TimeField } from "./document.js";
 import type { DocumentError } from "./errors.js";
 
 /**
@@ -24,6 +24,10 @@ export interface FieldValueTypes {
   readonly datetime: string;
   /** The target record's id. */
   readonly reference: string;
+  /** "HH:MM" (RFC 0008 item 14). */
+  readonly time: string;
+  /** An array of non-empty strings, in the order entered (RFC 0008 item 15). */
+  readonly tags: readonly string[];
 }
 
 /** The field definition type for each field type. */
@@ -35,6 +39,8 @@ export interface FieldDefinitions {
   readonly date: DateField;
   readonly datetime: DatetimeField;
   readonly reference: ReferenceField;
+  readonly time: TimeField;
+  readonly tags: TagsField;
 }
 
 export interface InputProps<F extends Field, V> {
@@ -102,6 +108,8 @@ export interface FieldInputExtras {
   readonly date: Record<never, never>;
   readonly datetime: Record<never, never>;
   readonly reference: ReferenceInputExtras;
+  readonly time: Record<never, never>;
+  readonly tags: Record<never, never>;
 }
 
 /** One run of a word diff (RFC 0007): text that is the same in both versions, only in the new one, or only in the old one. */
@@ -135,6 +143,8 @@ export interface FieldDisplayExtras {
   readonly date: Record<never, never>;
   readonly datetime: DatetimeDisplayExtras;
   readonly reference: ReferenceDisplayExtras;
+  readonly time: Record<never, never>;
+  readonly tags: Record<never, never>;
 }
 
 export type FieldInputProps<K extends FieldType> = InputProps<FieldDefinitions[K], FieldValueTypes[K]> & FieldInputExtras[K];

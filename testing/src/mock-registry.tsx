@@ -21,6 +21,8 @@ import type {
   SectionProps,
   SelectField,
   SeriesWidgetProps,
+  TagsField,
+  TimeField,
   TableProps,
   TabsProps,
   TextField,
@@ -43,6 +45,8 @@ export const mockRegistry: Registry<ReactNode> = {
     date: { type: "date", Input: MockDateInput, Display: MockDisplay },
     datetime: { type: "datetime", Input: MockDatetimeInput, Display: MockDatetimeDisplay },
     reference: { type: "reference", Input: MockReferenceInput, Display: MockReferenceDisplay },
+    time: { type: "time", Input: MockTimeInput, Display: MockDisplay }, // RFC 0008: card 47k
+    tags: { type: "tags", Input: MockTagsInput, Display: MockTagsDisplay }, // RFC 0008: card 47k
   },
   layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard, Dialog: MockDialog },
   widgets: { count: MockCount, series: MockSeries },
@@ -104,6 +108,20 @@ function MockDateInput(props: InputProps<DateField, string>): ReactNode {
   return (
     <input {...controlProps(props)} type="date" min={field.min} max={field.max} value={value ?? ""} onChange={(e) => onChange(orUndefined(e.target.value))} />
   );
+}
+
+function MockTimeInput(props: InputProps<TimeField, string>): ReactNode {
+  const { field, value, onChange } = props;
+  return <input {...controlProps(props)} type="time" min={field.min} max={field.max} step={field.step !== undefined ? field.step * 60 : undefined} value={value ?? ""} onChange={(e) => onChange(orUndefined(e.target.value))} />;
+}
+
+function MockTagsInput(props: InputProps<TagsField, readonly string[]>): ReactNode {
+  const { value, onChange } = props;
+  return <input {...controlProps(props)} type="text" value={(value ?? []).join(", ")} onChange={(e) => onChange(e.target.value.split(",").map((t) => t.trim()).filter((t) => t !== ""))} />;
+}
+
+function MockTagsDisplay(props: DisplayProps<TagsField, readonly string[]>): ReactNode {
+  return <span data-testid={`display-${props.field.id}`}>{(props.value ?? []).join(", ")}</span>;
 }
 
 /** RFC 0007: the stored instant in the input the browser provides for a date and time; a real component converts to and from the viewer's zone. */

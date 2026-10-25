@@ -10,7 +10,7 @@ It is in flux like the documents (no freeze is planned): a change here is a chan
 - **Same origin.** The adapter calls `fetch` with `credentials: "same-origin"` by default, so session cookies just work. No CORS is assumed.
 - **JSON** request and response bodies, `Content-Type: application/json`.
 - **Ids are opaque strings.** The server picks them; the client never parses or builds one. An id is never reused for a different record, even after a delete. A server whose ids follow position (and so can shift when a record is removed) must instead require `baseVersion` on every update and delete, so a stale id conflicts rather than hitting another record.
-- **Field values** are `string | number | boolean | null`. Dates are `"YYYY-MM-DD"` strings. `null` means empty.
+- **Field values** are `string | number | boolean | readonly string[] | null`. Dates are `"YYYY-MM-DD"` strings, times are `"HH:MM"` strings (RFC 0008 item 14), and a `tags` field (RFC 0008 item 15) is the one type whose value is an array: a list of non-empty strings in the order entered. `null` means empty — for tags, so does an empty array.
 
 ## Record
 
@@ -57,6 +57,8 @@ What the schema says: one property per field; `additionalProperties: false` (unk
 - **Blank strings.** `validateRecord` treats `""` and whitespace-only strings as empty for every field type. The protocol says empty is `null`, so the schema rejects `""` for number, boolean, select and date fields (text and reference fields are strings, so an optional one accepts it). A server should reject them too.
 - **Step.** JSON Schema `multipleOf` counts from zero and divides in floating point. The schema emits it only when that is exact (the step is a binary fraction such as 1, 0.5 or 0.25, and `min` is a multiple of it). Otherwise (a step like 0.1, or a `min` that is not a multiple of the step) the rule is only described in the field's `description` and the server must check it itself, counting steps from `min`. Even when emitted, `validateRecord` forgives a float error of 1e-9 that `multipleOf` does not.
 - **Calendar dates.** The schema checks the `YYYY-MM-DD` shape and the `min`/`max` range exactly (as patterns), but `2026-02-30` is rejected only by a validator that asserts the `date` format (most do, when format checking is enabled).
+- **Time step.** A `time` field's `step` (whole minutes, RFC 0008 item 14) has no JSON Schema keyword, so the schema checks the `HH:MM` shape and the `min`/`max` range only and `validateRecord` is the step gate. A server must check it itself.
+- **Tag duplicates.** The schema says `uniqueItems`; `validateRecord` leaves repeats to the input (the chips widget prevents them), so `["a", "a"]` passes the browser check and a server should reject it.
 
 ## Endpoints
 

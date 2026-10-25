@@ -13,7 +13,10 @@ const isEmpty = (v: FieldValue | undefined): boolean => v === undefined || v ===
 export function bindFilter(row: RecordValues, bindings: readonly RowBinding[], targetFilter?: Condition): Condition | undefined {
   const bound: Condition[] = bindings.map((b): Condition => {
     const value = row[b.field];
-    return isEmpty(value) || value === undefined || value === null ? { op: "empty", field: b.to } : { op: "eq", field: b.to, value };
+    if (isEmpty(value) || value === undefined || value === null) return { op: "empty", field: b.to };
+    // RFC 0008 item 15 (card 47k): a tags row value is a list, so it binds with `in` — the target matches when it holds ANY of the row's tags.
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return { op: "eq", field: b.to, value };
+    return { op: "in", field: b.to, values: value };
   });
   const all = targetFilter ? [targetFilter, ...bound] : bound;
   if (all.length === 0) return undefined;

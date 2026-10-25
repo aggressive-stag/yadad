@@ -31,6 +31,9 @@ export const FIELD_PROPERTIES: { readonly [K in FieldType]: readonly Field[] } =
     { id: "entity", type: "text", label: "Target entity id", required: true },
     { id: "display", type: "text", label: "Display field id (default: the target's first text field)" },
   ],
+  // RFC 0008 items 14-15 (card 47k): no property panel for either type; min/max/step on a time are document-only for now.
+  time: [],
+  tags: [],
 };
 
 /** Properties every field has, shown above the type-specific ones. */
@@ -48,6 +51,8 @@ export const FIELD_TYPE_LABELS: { readonly [K in FieldType]: string } = {
   date: "Date",
   datetime: "Date and time",
   reference: "Link to another record",
+  time: "Time",
+  tags: "Tags",
 };
 
 const str = (v: FieldValue | undefined): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined);
@@ -104,6 +109,9 @@ export function fieldFromProperties(type: FieldType, v: RecordValues): Field {
         .filter((c) => c !== "");
       return { ...base, type, options: { source: "static", values } };
     }
+    case "time":
+    case "tags":
+      return { ...base, type };
   }
 }
 

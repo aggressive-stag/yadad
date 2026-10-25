@@ -429,6 +429,56 @@ describe("RFC 0008 item 10 — board columnsFrom", () => {
   });
 });
 
+describe("RFC 0008 items 14-15 — time and tags", () => {
+  const thing = {
+    kind: "entity", specVersion: 0, id: "thing", revision: 1,
+    fields: [
+      { id: "name", type: "text", label: "Name" },
+      { id: "start", type: "time", label: "Start" },
+      { id: "labels", type: "tags", label: "Labels" },
+    ],
+  };
+
+  test("a time compares like a date: gt/lt/in pass, contains is refused with a time hint", () => {
+    expect(validateDocuments([thing, table("t", "thing", { filter: { op: "gt", field: "start", value: "09:00" } })]).ok).toBe(true);
+    expect(validateDocuments([thing, table("t", "thing", { filter: { op: "in", field: "start", values: ["09:00", "17:00"] } })]).ok).toBe(true);
+    const bad = problems([thing, table("t", "thing", { filter: { op: "contains", field: "start", value: "morning" } })]);
+    expect(bad).toEqual([{ path: "/filter/op", code: "invalid-value", document: "t" }]);
+    const shape = problems([thing, table("t", "thing", { filter: { op: "eq", field: "start", value: "9am" } })]);
+    expect(shape).toEqual([{ path: "/filter/value", code: "invalid-value", document: "t" }]);
+  });
+
+  test("a tags leaf matches any element: contains/in pass, gt is refused with the list hint", () => {
+    expect(validateDocuments([thing, table("t", "thing", { filter: { op: "contains", field: "labels", value: "urgent" } })]).ok).toBe(true);
+    expect(validateDocuments([thing, table("t", "thing", { filter: { op: "in", field: "labels", values: ["a", "b"] } })]).ok).toBe(true);
+    expect(validateDocuments([thing, table("t", "thing", { filter: { op: "not", condition: { op: "contains", field: "labels", value: "urgent" } } })]).ok).toBe(true);
+    const bad = problems([thing, table("t", "thing", { filter: { op: "gt", field: "labels", value: "a" } })]);
+    expect(bad).toEqual([{ path: "/filter/op", code: "invalid-value", document: "t" }]);
+    const shape = problems([thing, table("t", "thing", { filter: { op: "in", field: "labels", values: ["a", ""] } })]);
+    expect(shape).toEqual([{ path: "/filter/values/1", code: "invalid-value", document: "t" }]);
+  });
+
+  test("a tags field cannot group a board, with the many-values reason", () => {
+    const board = {
+      kind: "board", specVersion: 0, id: "b", entity: "thing", revision: 1, dataSource: "default",
+      groupBy: [{ field: "labels" }], title: "Thing",
+    };
+    const result = validateDocuments([thing, board]);
+    if (result.ok) throw new Error("expected the set to be invalid");
+    const e = result.errors.find((x) => x.document === "b");
+    expect(e?.path).toBe("/groupBy/0/field");
+    expect(e?.message).toContain("a card carries many tags");
+  });
+
+  test("a required time or tags field may still be a form item; empty/notEmpty pass", () => {
+    expect(validateDocuments([thing, {
+      kind: "form", specVersion: 0, id: "f", entity: "thing", revision: 1, dataSource: "default",
+      sections: [{ id: "main", items: [{ field: "start" }, { field: "labels" }] }],
+    }]).ok).toBe(true);
+    expect(validateDocuments([thing, table("t", "thing", { filter: { op: "notEmpty", field: "labels" } })]).ok).toBe(true);
+  });
+});
+
 describe("RFC 0009 — set-level refs (fieldEqFact, subRecords)", () => {
   const tasks = {
     kind: "entity", specVersion: 0, id: "task", revision: 1,

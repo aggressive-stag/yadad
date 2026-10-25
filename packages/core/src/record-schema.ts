@@ -9,7 +9,11 @@ import { optionValue } from "./document.js";
  * Only the keywords this module emits are typed here.
  */
 export interface RecordFieldSchema {
-  readonly type: "string" | "number" | "boolean" | readonly ["string" | "number" | "boolean", "null"];
+  readonly type: "string" | "number" | "boolean" | "array" | readonly ["string" | "number" | "boolean" | "array", "null"];
+  /** Element schema, only for an "array" (a tags field, RFC 0008 item 15). `pattern: "\\S"` rejects an element that is blank after trimming. */
+  readonly items?: { readonly type: "string"; readonly pattern?: string };
+  readonly minItems?: number;
+  readonly uniqueItems?: boolean;
   readonly description?: string;
   readonly enum?: readonly (string | null)[];
   readonly const?: true;
@@ -64,7 +68,7 @@ export function recordJsonSchema(entity: EntityDocument): RecordSchema {
 
 type Base = RecordFieldSchema["type"];
 
-function nullable(type: "string" | "number" | "boolean", field: Field): Base {
+function nullable(type: "string" | "number" | "boolean" | "array", field: Field): Base {
   return field.required === true ? type : [type, "null"];
 }
 
@@ -117,6 +121,22 @@ function fieldSchema(field: Field): RecordFieldSchema {
       };
     }
 
+    case "time":
+      // RFC 0008 item 14: HH:MM only (a zone-less time has no JSON Schema "time" format that fits),
+      // min/max as ordered-text alternatives like the date bounds above.
+      return {
+        type: nullable("string", field),
+        pattern: "^([01]\\d|2[0-3]):[0-5]\\d$",
+        ...hhMmBounds(field),
+      };
+
+    case "tags": {
+      // RFC 0008 item 15: an array of non-empty strings in the order entered, unique. An element
+      // must hold a non-space character (validateRecord trims before the emptiness test), and a
+      // required field rejects the empty array the same way a required text rejects "".
+      return { type: nullable("array", field), items: { type: "string", pattern: "\\S" }, minItems: field.required === true ? 1 : 0, uniqueItems: true };
+    }
+
     case "datetime": {
       const bounds: { pattern: string }[] = [];
       if (field.min !== undefined) bounds.push({ pattern: isoDateAtLeast(field.min) });
@@ -155,6 +175,14 @@ function isoDateAtLeast(min: string): string {
 
 function isoDateAtMost(max: string): string {
   return isoDateBound(max, (d) => (d > 0 ? `[0-${d - 1}]` : undefined));
+}
+
+/** min/max for a "HH:MM" field, as ordered-text alternatives like the date bounds. */
+function hhMmBounds(field: { readonly min?: string; readonly max?: string }): { readonly allOf?: readonly { readonly pattern: string }[] } {
+  const bounds: { pattern: string }[] = [];
+  if (field.min !== undefined) bounds.push({ pattern: isoDateBound(field.min, (d) => (d < 9 ? `[${d + 1}-9]` : undefined)) });
+  if (field.max !== undefined) bounds.push({ pattern: isoDateBound(field.max, (d) => (d > 0 ? `[0-${d - 1}]` : undefined)) });
+  return bounds.length > 0 ? { allOf: bounds } : {};
 }
 
 function isoDateBound(bound: string, beyond: (digit: number) => string | undefined): string {

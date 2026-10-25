@@ -51,8 +51,10 @@ function inputProps<K extends FieldType>(base: InputProps<FieldDefinitions[K], F
 
 // RFC 0007: later card (testing). `datetime` is an optional registry key and has no
 // contract checks yet, so the kit leaves it out until the reference components ship it.
-type CheckedFieldType = Exclude<FieldType, "datetime">;
-const CHECKED_FIELD_TYPES: readonly CheckedFieldType[] = FIELD_TYPES.filter((t): t is CheckedFieldType => t !== "datetime");
+// RFC 0008 card 47k: `tags` is out for the same reason — its value is a list and the
+// generic driver compares scalars. It joins with the chips-widget card's own checks.
+type CheckedFieldType = Exclude<FieldType, "datetime" | "tags">;
+const CHECKED_FIELD_TYPES: readonly CheckedFieldType[] = FIELD_TYPES.filter((t): t is CheckedFieldType => t !== "datetime" && t !== "tags");
 
 export type FieldSamples = { readonly [K in CheckedFieldType]: FieldSample<K> };
 
@@ -67,6 +69,8 @@ export const defaultSamples: FieldSamples = {
     displayExtras: NONE,
   },
   date: { field: { id: "day", type: "date", label: "Day" }, value: "2026-10-04", inputExtras: NONE, displayExtras: NONE },
+  // RFC 0008 item 14 (card 47k): a time of day, stored as "HH:MM".
+  time: { field: { id: "start", type: "time", label: "Start", min: "09:00", max: "17:00", step: 15 }, value: "09:30", inputExtras: NONE, displayExtras: NONE },
   reference: {
     field: { id: "lift", type: "reference", label: "Lift", entity: "exercise" },
     value: "e2",
@@ -117,6 +121,7 @@ const drivers: { readonly [K in CheckedFieldType]: Driver<FieldValueTypes[K]> } 
   text: stringDriver,
   select: stringDriver,
   date: stringDriver,
+  time: stringDriver, // RFC 0008 item 14 (card 47k)
   reference: stringDriver,
   number: {
     jsonType: "number",

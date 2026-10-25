@@ -361,6 +361,22 @@ const FIELD_SPECS: Record<FieldType, FieldSpec> = {
       { key: "max", required: false, description: 'Latest allowed instant, "YYYY-MM-DDTHH:MM:SS.sssZ".' },
     ],
   },
+  time: {
+    type: "time",
+    description:
+      'A time of day (RFC 0008 item 14), stored as "HH:MM" — 24-hour, zero-padded, no day and no zone. A time-only comparison compares minutes from midnight and is legal wherever eq, neq, gt, gte, lt, lte, in, empty and notEmpty are. Separate from date by design: due_date plus due_time stay two fields, and a calendar entry is never placed by a time.',
+    properties: [
+      { key: "min", required: false, description: 'Earliest allowed time, "HH:MM".' },
+      { key: "max", required: false, description: 'Latest allowed time, "HH:MM".' },
+      { key: "step", required: false, description: "Allowed increment in whole minutes greater than 0, e.g. 15. Defaults to any minute." },
+    ],
+  },
+  tags: {
+    type: "tags",
+    description:
+      'A list of free-text tags (RFC 0008 item 15), stored as an array of non-empty strings in the order entered — the only field type whose value is an array. Conditions: contains and in match ANY element (negate with not); empty and notEmpty treat an empty array as empty. It cannot be a sort key or a board groupBy.',
+    properties: [],
+  },
   reference: {
     type: "reference",
     description:

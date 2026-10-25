@@ -146,6 +146,47 @@ describe("field types", () => {
     ]);
   });
 
+  // RFC 0008 items 14-15 (card 47k)
+  test("time bounds and step", () => {
+    expect(problems(withFields({ id: "t", type: "time", label: "T" }))).toEqual([]);
+    expect(problems(withFields({ id: "t", type: "time", label: "T", min: "09:00", max: "17:00", step: 15 }))).toEqual([]);
+    expect(problems(withFields({ id: "t", type: "time", label: "T", min: "9:00", max: "24:00" }))).toEqual([
+      ["/fields/0/min", "invalid-value"],
+      ["/fields/0/max", "invalid-value"],
+    ]);
+    expect(problems(withFields({ id: "t", type: "time", label: "T", min: "17:00", max: "09:00" }))).toEqual([["/fields/0/min", "invalid-value"]]);
+    // The contract allows any whole minutes > 0 — no divisor rule, matching `date`'s minimalism.
+    expect(problems(withFields({ id: "t", type: "time", label: "T", step: 0 }))).toEqual([["/fields/0/step", "invalid-value"]]);
+    expect(problems(withFields({ id: "t", type: "time", label: "T", step: 0.5 }))).toEqual([["/fields/0/step", "invalid-value"]]);
+    expect(problems(withFields({ id: "t", type: "time", label: "T", step: 7 }))).toEqual([]);
+  });
+
+  test("time rejects non-time bounds with a time-shaped hint", () => {
+    const errs = validateDocument(withFields({ id: "t", type: "time", label: "T", min: "09:00:00" }));
+    if (errs.ok) throw new Error("expected an invalid document");
+    const e = errs.errors.find((x) => x.path === "/fields/0/min");
+    expect(e?.code).toBe("invalid-value");
+    expect(e?.message).toBe('"min" must be a time like "09:30".');
+    // The refusal must not read like a datetime one: no instant, zone or day language.
+    expect(e?.message).not.toMatch(/datetime|UTC|instant|zone|day/i);
+  });
+
+  test("tags accepts no properties beyond label and required", () => {
+    expect(problems(withFields({ id: "g", type: "tags", label: "G", required: true }))).toEqual([]);
+    expect(problems(withFields({ id: "g", type: "tags", label: "G", min: 1, max: 5, step: 1, unit: "x", options: { source: "static", values: ["a"] } }))).toEqual([
+      ["/fields/0/min", "unknown-property"],
+      ["/fields/0/max", "unknown-property"],
+      ["/fields/0/step", "unknown-property"],
+      ["/fields/0/unit", "unknown-property"],
+      ["/fields/0/options", "unknown-property"],
+    ]);
+  });
+
+  test("tags accepts no options, static or from an entity", () => {
+    expect(problems(withFields({ id: "g", type: "tags", label: "G", options: { source: "static", values: ["a"] } }))).toEqual([["/fields/0/options", "unknown-property"]]);
+    expect(problems(withFields({ id: "g", type: "tags", label: "G", options: { source: "entity", entity: "hello", field: "name" } }))).toEqual([["/fields/0/options", "unknown-property"]]);
+  });
+
   test("date bounds must be real YYYY-MM-DD days, min before max", () => {
     expect(problems(withFields({ id: "d", type: "date", label: "D", min: "2026-02-30", max: "10/04/2026" }))).toEqual([
       ["/fields/0/min", "invalid-value"],

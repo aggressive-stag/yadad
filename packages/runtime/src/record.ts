@@ -1,4 +1,4 @@
-import { isIsoDate, isIsoDatetime, jsonPointer } from "@yadad/core";
+import { isHhMm, isIsoDate, isIsoDatetime, jsonPointer } from "@yadad/core";
 import type { DocumentError, EntityDocument, Field, FieldValue, RecordValues } from "@yadad/core";
 
 /**
@@ -35,7 +35,8 @@ export function validateRecord(entity: EntityDocument, values: RecordValues): re
 type Problem = Omit<DocumentError, "path">;
 
 function isEmpty(value: FieldValue): boolean {
-  return value === null || (typeof value === "string" && value.trim() === "");
+  // An empty tags list is empty (RFC 0008 item 15).
+  return value === null || (typeof value === "string" && value.trim() === "") || (Array.isArray(value) && value.length === 0);
 }
 
 function checkValue(field: Field, value: FieldValue): Problem | undefined {
@@ -88,6 +89,25 @@ function checkValue(field: Field, value: FieldValue): Problem | undefined {
       if (field.min !== undefined && value < field.min) return outOfRange(name, `at or after ${field.min}`);
       if (field.max !== undefined && value > field.max) return outOfRange(name, `at or before ${field.max}`);
       return undefined;
+
+    case "time": {
+      // RFC 0008: card 47k — "HH:MM", compared as ordered text (lexicographic = chronological at fixed width).
+      if (typeof value !== "string" || !isHhMm(value)) return wrongType(name, 'a time (HH:MM, 24-hour)');
+      if (field.min !== undefined && value < field.min) return outOfRange(name, `at or after ${field.min}`);
+      if (field.max !== undefined && value > field.max) return outOfRange(name, `at or before ${field.max}`);
+      if (field.step !== undefined) {
+        const minutes = Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+        if (minutes % field.step !== 0) return outOfRange(name, `a whole multiple of ${field.step} minutes from midnight`);
+      }
+      return undefined;
+    }
+
+    case "tags": {
+      // RFC 0008: card 47k — an array of non-empty strings; an empty array is empty.
+      if (!Array.isArray(value)) return wrongType(name, "a list of tags");
+      if (value.some((t) => typeof t !== "string" || t.trim() === "")) return wrongType(name, "a list of non-empty tags");
+      return undefined;
+    }
   }
 }
 

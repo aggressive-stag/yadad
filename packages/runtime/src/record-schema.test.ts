@@ -39,6 +39,9 @@ const sel = (required?: boolean): Field => ({ id: "f", type: "select", label: "F
 const ref = (required?: boolean): Field => ({ id: "f", type: "reference", label: "F", entity: "other", ...(required ? { required } : {}) }) as Field;
 const date = (extra: object = {}): Field => ({ id: "f", type: "date", label: "F", ...extra }) as Field;
 const dt = (extra: object = {}): Field => ({ id: "f", type: "datetime", label: "F", ...extra }) as Field;
+// RFC 0008: card 47k
+const time = (extra: object = {}): Field => ({ id: "f", type: "time", label: "F", ...extra }) as Field;
+const tags = (extra: object = {}): Field => ({ id: "f", type: "tags", label: "F", ...extra }) as Field;
 
 const CASES: Case[] = [
   // text
@@ -184,6 +187,34 @@ const CASES: Case[] = [
   c("record: empty entity, empty record", [], {}, true),
   c("record: two fields, both valid", [text(true), { id: "g", type: "number", label: "G" }], { f: "x", g: 1 }, true),
   c("record: two fields, one invalid", [text(true), { id: "g", type: "number", label: "G" }], { f: "x", g: "1" }, false),
+
+  // time (RFC 0008 item 14; card 47k)
+  c("time: string", [time()], { f: "09:30" }, true),
+  c("time: midnight", [time()], { f: "00:00" }, true),
+  c("time: last minute", [time()], { f: "23:59" }, true),
+  c("time: null, optional", [time()], { f: null }, true),
+  c("time: absent, optional", [time()], {}, true),
+  c("time: 24:00 is refused", [time()], { f: "24:00" }, false),
+  c("time: unpadded hour", [time()], { f: "9:30" }, false),
+  c("time: seconds", [time()], { f: "09:30:00" }, false),
+  c("time: number", [time()], { f: 570 }, false),
+  c("time: required, absent", [time({ required: true })], {}, false),
+  c("time: at min", [time({ min: "09:00" })], { f: "09:00" }, true),
+  c("time: below min", [time({ min: "09:00" })], { f: "08:59" }, false),
+  c("time: above max", [time({ max: "17:00" })], { f: "17:01" }, false),
+  c("time: on step", [time({ step: 15 })], { f: "09:45" }, true),
+
+  // tags (RFC 0008 item 15; card 47k)
+  c("tags: list", [tags()], { f: ["a", "b"] }, true),
+  c("tags: empty list is empty", [tags()], { f: [] }, true),
+  c("tags: null", [tags()], { f: null }, true),
+  c("tags: absent", [tags()], {}, true),
+  c("tags: string instead of list", [tags()], { f: "a,b" }, false),
+  c("tags: non-string element", [tags()], { f: ["a", 1] }, false),
+  c("tags: empty-string element", [tags()], { f: ["a", ""] }, false),
+  c("tags: blank element", [tags()], { f: ["a", "  "] }, false),
+  c("tags: required, empty list", [tags({ required: true })], { f: [] }, false),
+  c("tags: required, list", [tags({ required: true })], { f: ["a"] }, true),
 ];
 
 /**
@@ -204,6 +235,10 @@ const KNOWN_DIFFERENCES: { readonly name: string; readonly fields: Field[]; read
   { name: "number: step 0.1 float error", fields: [num({ step: 0.1 })], values: { f: 0.1 + 0.2 }, validateRecord: true, schema: true },
   // validateRecord forgives 1e-9 of float error on a step; multipleOf does not.
   { name: "number: step tolerance of 1e-9", fields: [num({ step: 0.5 })], values: { f: 1.0000000001 }, validateRecord: true, schema: false },
+  // RFC 0008 card 47k: the time schema says HH:MM; a step has no JSON Schema keyword, so validateRecord is the step gate.
+  { name: "time: off step", fields: [time({ step: 15 })], values: { f: "09:47" }, validateRecord: false, schema: true },
+  // RFC 0008 card 47k: the protocol schema says uniqueItems; validateRecord leaves repeats to the input, so they pass the engine.
+  { name: "tags: duplicate element", fields: [tags()], values: { f: ["a", "a"] }, validateRecord: true, schema: false },
 ];
 
 function schemaAccepts(fields: Field[], values: unknown): boolean {
