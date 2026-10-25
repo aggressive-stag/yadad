@@ -1,6 +1,6 @@
 import { AdapterError, RecordValidationError, conditionFields, optionValue } from "@yadad/core";
 import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { bindFilter, calendarToday, canUpdate, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
+import { bindFilter, calendarToday, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -333,7 +333,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       ),
       label: [title, ...details.map((f) => plain(f, record)), ...(color ? [color.label] : [])].join(", "),
       ...(color ? { color } : {}),
-      movable: editable && canUpdate(record) && !isPending,
+      movable: editable && canMoveColumn(record, view.dateField) && !isPending, // RFC 0008 item 9: can.fields narrows the drag
       pending: isPending,
       actions: recordActions.items(record),
     };
@@ -356,7 +356,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
 
   const move = (recordId: string, day: string): void => {
     const record = loadedRecords?.find((r) => r.id === recordId);
-    if (!record || !adapter || !editable || !canUpdate(record) || inFlight.current.has(recordId)) return;
+    if (!record || !adapter || !editable || !canMoveColumn(record, view.dateField) || inFlight.current.has(recordId)) return;
     const title = recordTitle(record);
     let plan;
     try {

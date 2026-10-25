@@ -25,6 +25,14 @@ export interface RecordPermissions {
    * the action is offered and the server decides.
    */
   readonly actions?: Readonly<Record<string, boolean>>;
+  /**
+   * Field id to allowed (RFC 0008 item 9); only `false` restricts, and a
+   * field absent from the map means `update` stands. The third deliberate
+   * map, for the same reason: its keys are field ids chosen by users. It
+   * narrows what the view offers (drag, inline edit, the completion tick);
+   * the server still enforces every write.
+   */
+  readonly fields?: Readonly<Record<string, boolean>>;
 }
 
 export interface DataRecord {

@@ -46,7 +46,7 @@ export function assertQueryHasNoViewer(query: Query): void {
 }
 
 
-const PERMISSION_KEYS: readonly string[] = ["update", "delete", "actions"];
+const PERMISSION_KEYS: readonly string[] = ["update", "delete", "actions", "fields"];
 
 /**
  * `can.actions` (RFC 0007): an object from action id to boolean, where only
@@ -69,14 +69,17 @@ function validActions(value: unknown): Readonly<Record<string, boolean>> | false
 export function validCan(value: unknown): RecordPermissions | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const entries = Object.entries(value);
-  if (entries.some(([key, v]) => !PERMISSION_KEYS.includes(key) || (key !== "actions" && typeof v !== "boolean"))) return undefined;
+  if (entries.some(([key, v]) => !PERMISSION_KEYS.includes(key) || (key !== "actions" && key !== "fields" && typeof v !== "boolean"))) return undefined;
   const can = value as Record<string, unknown>;
   const actions = can["actions"] === undefined ? undefined : validActions(can["actions"]);
   if (actions === false) return undefined; // malformed actions drops the whole can
+  const fields = can["fields"] === undefined ? undefined : validActions(can["fields"]);
+  if (fields === false) return undefined; // malformed fields drops the whole can (RFC 0008 item 9)
   return {
     ...(typeof can["update"] === "boolean" ? { update: can["update"] } : {}),
     ...(typeof can["delete"] === "boolean" ? { delete: can["delete"] } : {}),
     ...(actions !== undefined ? { actions } : {}),
+    ...(fields !== undefined ? { fields } : {}),
   };
 }
 

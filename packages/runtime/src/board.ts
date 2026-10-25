@@ -220,12 +220,34 @@ function dedupeById(records: readonly DataRecord[], maxRecords: number): DataRec
 }
 
 /**
- * The columns of a reference grouping: the target entity's records sorted
- * by its display field (ascending), capped at `BOARD_MAX_COLUMNS`. A wrapper
- * over `loadReferenceOptions` with the board's own cap.
+ * The columns of a reference grouping in `columnsFrom: "options"` mode
+ * (RFC 0008 item 10): the target entity's records sorted by its display field
+ * (ascending), capped at `BOARD_MAX_COLUMNS`. A wrapper over
+ * `loadReferenceOptions` with the board's own cap.
  */
 export async function loadBoardTargets(adapter: DataAdapter, target: EntityDocument, field: ReferenceField): Promise<ReferenceOptionsResult> {
   return loadReferenceOptions(adapter, target, field, BOARD_MAX_COLUMNS);
+}
+
+/**
+ * The columns of a reference grouping in the default `columnsFrom: "records"`
+ * mode (RFC 0008 item 10): one column per value present in the loaded cards,
+ * in first-appearance order (the card query's sort), capped at
+ * `BOARD_MAX_COLUMNS` — a value past the cap is not dropped, its cards fall
+ * to "other" through `groupByColumn`, the same honesty as a series gap fill.
+ * `label` resolves each id the way the cards label it. A target with no
+ * cards has no column and no drop target: that is what `columnsFrom:
+ * "options"` buys.
+ */
+export function boardRecordColumns(field: ReferenceField, records: readonly DataRecord[], label: (id: string) => string): BoardColumnDef[] {
+  const seen: string[] = [];
+  for (const record of records) {
+    const value = record.values[field.id];
+    if (typeof value === "string" && value !== "" && !seen.includes(value)) seen.push(value);
+    if (seen.length >= BOARD_MAX_COLUMNS) break;
+  }
+  const columns = seen.map((id): BoardColumnDef => ({ id: `v:${id}`, kind: "value", label: label(id), value: id }));
+  return field.required === true ? columns : [emptyColumn(field), ...columns];
 }
 
 // --- moving a card ---

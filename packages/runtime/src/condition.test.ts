@@ -196,6 +196,55 @@ describe("relative dates", () => {
   });
 });
 
+describe("time comparisons (RFC 0008 item 14, card 47d)", () => {
+  const at = evaluateCondition;
+  // "HH:MM" zero-padded 24h sorts lexicographically the way it sorts
+  // chronologically. The ordering path takes the string branch of `order`,
+  // and THIS test is the pin: if a future change makes time values compare
+  // numerically, parses Date objects, or trims the padding, it breaks here.
+  test("lexicographic comparison is chronological for zero-padded 24h times", () => {
+    expect(at({ op: "gt", field: "start", value: "09:00" }, { start: "09:30" })).toBe(true);
+    expect(at({ op: "lt", field: "start", value: "09:00" }, { start: "08:59" })).toBe(true);
+    expect(at({ op: "lte", field: "start", value: "09:00" }, { start: "09:00" })).toBe(true);
+    expect(at({ op: "gte", field: "start", value: "9:00" }, { start: "09:00" })).toBe(false); // a missing leading zero is a different string — core's isHhMm refuses to store it
+    expect(at({ op: "lt", field: "start", value: "24:00" }, { start: "00:01" })).toBe(true); // midnight is the start of the day, not after 23:59
+    expect(at({ op: "gt", field: "start", value: "09:00" }, { start: "" })).toBe(false); // an empty record value orders against nothing
+    expect(at({ op: "lte", field: "start", value: "09:00" }, {})).toBe(false);
+  });
+});
+
+describe("tags conditions (RFC 0008 item 15, card 47d)", () => {
+  const at = evaluateCondition; // the module `is` helper closes over fixed values
+  test("contains is element membership, never a substring of one tag", () => {
+    expect(at({ op: "contains", field: "tags", value: "urgent" }, { tags: ["urgent", "home"] })).toBe(true);
+    expect(at({ op: "contains", field: "tags", value: "ur" }, { tags: ["urgent"] })).toBe(false);
+    expect(at({ op: "contains", field: "tags", value: "urgent" }, { tags: [] })).toBe(false);
+    expect(at({ op: "contains", field: "tags", value: "urgent" }, { tags: null })).toBe(false);
+    expect(at({ op: "contains", field: "tags", value: "urgent" }, {})).toBe(false);
+    // notContains is the same membership negated, so an absent value is not "contained"
+    expect(at({ op: "not", condition: { op: "contains", field: "tags", value: "urgent" } }, {})).toBe(true);
+  });
+  test("in matches when ANY element is listed", () => {
+    expect(at({ op: "in", field: "tags", values: ["urgent", "someday"] }, { tags: ["home", "urgent"] })).toBe(true);
+    expect(at({ op: "in", field: "tags", values: ["someday"] }, { tags: ["home"] })).toBe(false);
+    expect(at({ op: "in", field: "tags", values: [] }, { tags: ["home"] })).toBe(false);
+    expect(at({ op: "in", field: "tags", values: ["home"] }, { tags: null })).toBe(false);
+  });
+  test("a string value keeps the substring semantics contains had before tags existed", () => {
+    expect(at({ op: "contains", field: "note", value: "UR" }, { note: "the urgent thing" })).toBe(true);
+  });
+  test("the memory adapter filters tags through the same evaluation", async () => {
+    const adapter = createMemoryAdapter();
+    await adapter.create("e", { tags: ["urgent", "home"] }, { entityRevision: 1 });
+    await adapter.create("e", { tags: ["home"] }, { entityRevision: 1 });
+    await adapter.create("e", {}, { entityRevision: 1 });
+    const page = await adapter.find("e", {
+      filter: { op: "or", conditions: [{ op: "contains", field: "tags", value: "urgent" }, { op: "contains", field: "tags", value: "someday" }] },
+    });
+    expect(page.items.map((r) => r.values["tags"])).toEqual([["urgent", "home"]]);
+  });
+});
+
 describe("ordering comparisons and empty values", () => {
   test("a blank string matches none of gt, gte, lt, lte", () => {
     for (const op of ["gt", "gte", "lt", "lte"] as const) {

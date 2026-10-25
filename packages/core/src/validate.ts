@@ -1425,7 +1425,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     checkRelativeDateFields(errors, view.id, entity, condition, base);
     checkReferenceOps(errors, view.id, entity, condition, base);
     checkDatetimeConditions(errors, view.id, entity, condition, base);
-checkTimeTagsConditions(errors, view.id, entity, condition, base);
+    checkTimeTagsConditions(errors, view.id, entity, condition, base);
   };
   if (view.kind === "form") {
     view.sections.forEach((section, i) => {

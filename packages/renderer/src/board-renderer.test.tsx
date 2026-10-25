@@ -58,10 +58,11 @@ const documents: DocumentSet = {
   ]),
 };
 
-async function seed() {
+async function seed(extraPeople: readonly string[] = []) {
   const db = createMemoryAdapter();
   const ada = await db.create("person", { name: "Ada" }, { entityRevision: 1 });
   const bo = await db.create("person", { name: "Bo" }, { entityRevision: 1 });
+  for (const name of extraPeople) await db.create("person", { name }, { entityRevision: 1 });
   const ids: Record<string, string> = { Ada: ada.id, Bo: bo.id };
   for (const values of [
     { title: "Pay rent", list: "Home", done: false, assignee: ada.id, notes: "Due soon" },
@@ -84,10 +85,11 @@ interface Options {
   readonly onGroupByChange?: (field: string) => void;
   readonly docs?: DocumentSet;
   readonly reloadKey?: unknown;
+  readonly extraPeople?: readonly string[];
 }
 
 async function open(options: Options = {}) {
-  const seeded = await seed();
+  const seeded = await seed(options.extraPeople ?? []);
   const adapter = options.adapter ?? seeded.db;
   const props = {
     entity,
@@ -145,13 +147,29 @@ describe("groupings", () => {
   });
 
   test("a reference field gives one column per target record, in the order of their names", async () => {
-    const { ids } = await open();
+    // columnsFrom: "options" (RFC 0008 item 10, opt-in): columns come from the
+    // target records, so a person with no cards is still a column and drop target.
+    const { ids } = await open({ view: { ...board, columnsFrom: "options" }, extraPeople: ["Cy"] });
     groupBy("assignee");
     await waitFor(() => expect(titles(`v:${ids["Ada"]}`)).toEqual(["Pay rent"]));
     expect(titles(`v:${ids["Bo"]}`)).toEqual(["Book flights"]);
     expect(titles("empty").sort()).toEqual(["Call Ada", "Unsorted"]);
     const headings = screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
-    expect(headings).toEqual(["No Assignee (2)", "Ada (1)", "Bo (1)"]);
+    expect(headings).toEqual(["No Assignee (2)", "Ada (1)", "Bo (1)", "Cy (0)"]);
+  });
+
+  test("the default records grouping has no column for a person with no cards, and pays no target fetch", async () => {
+    const db = createMemoryAdapter();
+    const ada = await db.create("person", { name: "Ada" }, { entityRevision: 1 });
+    await db.create("person", { name: "Cy" }, { entityRevision: 1 }); // no cards point at Cy
+    await db.create("task", { title: "Pay rent", assignee: ada.id }, { entityRevision: 1 });
+    const find = vi.spyOn(db, "find");
+    render(<BoardRenderer entity={entity} view={{ ...board, groupBy: [{ field: "assignee" }] }} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} />);
+    await screen.findByText("Pay rent");
+    const headings = await screen.findAllByRole("heading", { level: 4 });
+    expect(headings.map((h) => h.textContent)).toEqual(["No Assignee (0)", "Ada (1)"]);
+    // only the card find ran — no query against the target entity (the cap and the latency both stand down)
+    expect(find.mock.calls.filter(([e]) => e === "person")).toHaveLength(0);
   });
 
   test("a value that matches no column goes to a non-droppable Other column", async () => {
@@ -436,6 +454,25 @@ describe("moving a card", () => {
     release();
     await waitFor(() => expect(status()).toBe("Moved Call Ada to Home"));
     expect(document.querySelector("[data-pending='true']")).toBeNull();
+  });
+
+  test("a card whose grouping field is locked by can.fields is not movable, its neighbours are (RFC 0008 item 9)", async () => {
+    const { db, ids } = await seed();
+    const update = vi.fn(db.update);
+    const withCan: DataAdapter = {
+      ...db,
+      update,
+      async find(entity, query) {
+        const page = await db.find(entity, query);
+        return { ...page, items: page.items.map((r) => (r.id === ids["Pay rent"] ? { ...r, can: { ...r.can, fields: { list: false } } } : r)) };
+      },
+    };
+    await open({ adapter: withCan });
+    expect(within(screen.getByTestId(`card-${ids["Pay rent"]}`)).queryByRole("button", { name: /^Move to…/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Move to… Call Ada/ })).toBeTruthy(); // can.fields narrows per record, not per board
+    moveTo("Call Ada", "v:Home");
+    await waitFor(() => expect(status()).toBe("Moved Call Ada to Home"));
+    expect(update).toHaveBeenCalledTimes(1);
   });
 
   test("when the view is not editable nothing is movable", async () => {

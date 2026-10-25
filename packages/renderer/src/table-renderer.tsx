@@ -1,6 +1,6 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
 import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { bindFilter, canUpdate, columnEditable, compareCells, emptyFormState, neighbourQuery, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
+import { bindFilter, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, neighbourQuery, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -410,7 +410,9 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const isEditing = (record: DataRecord): boolean => editing?.record.id === record.id && canUpdate(record);
 
   const renderCell = (record: DataRecord, field: Field, editable: boolean, diff?: CompareCell): ReactNode => {
-    if (!editable || !editing || !isEditing(record)) return renderDisplay(registry, field, record.values[field.id], references, formatting, diff);
+    // RFC 0008 item 9: can.fields narrows inline edit per field — a locked field
+    // stays read-only inside an open edit; the server remains the authority.
+    if (!editable || !editing || !isEditing(record) || !canEditField(record, field.id)) return renderDisplay(registry, field, record.values[field.id], references, formatting, diff);
     const state = editing.state;
     const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
     const value = field.id in state.values ? state.values[field.id] : record.values[field.id];
@@ -443,7 +445,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       </>
     ) : (
       <>
-        {columns.some((c) => c.editable) && canUpdate(record) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => openEdit(record)} />}
+        {columns.some((c) => c.editable && canEditField(record, c.field.id)) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => openEdit(record)} />}
         {rowAction && (
           <span data-yadad-row-open={record.id}>
             <Button label={rowAction.label(record)} type="button" variant="secondary" disabled={saving} onPress={() => rowAction.open(record)} />
@@ -605,6 +607,14 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
     }
     const value = quick[id];
     if (!field || value === undefined || value === null || value === "") continue;
+    // RFC 0008 item 15: a tags quick filter is multi-chip — the viewer types
+    // tags and a record matches when it carries ANY of them; no chips, no filter.
+    if (field.type === "tags") {
+      const tags = Array.isArray(value) ? value.filter((t) => typeof t === "string" && t !== "") : [];
+      if (tags.length === 1) parts.push({ op: "contains", field: id, value: tags[0]! });
+      else if (tags.length > 1) parts.push({ op: "or", conditions: tags.map((t) => ({ op: "contains" as const, field: id, value: t })) });
+      continue;
+    }
     // An untouched checkbox is never saved, so "No" also matches a missing value.
     if (field.type === "boolean")
       parts.push(value === "Yes" ? { op: "eq", field: id, value: true } : { op: "or", conditions: [{ op: "eq", field: id, value: false }, { op: "empty", field: id }] });

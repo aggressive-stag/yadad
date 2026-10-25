@@ -28,6 +28,7 @@ const environmentTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions(
 const asString = (v: FieldValue | undefined): string | undefined => (typeof v === "string" ? v : undefined);
 const asNumber = (v: FieldValue | undefined): number | undefined => (typeof v === "number" ? v : undefined);
 const asBoolean = (v: FieldValue | undefined): boolean | undefined => (typeof v === "boolean" ? v : undefined);
+const asTags = (v: FieldValue | undefined): readonly string[] | undefined => (Array.isArray(v) ? (v as readonly string[]) : undefined);
 
 /** RFC 0007: card 35b. A registry without the optional fields.datetime shows an ErrorSummary naming the key. */
 function missingDatetime(registry: Registry<ReactNode>, field: Field): ReactNode {
@@ -79,6 +80,16 @@ export function renderInput(
     case "date": {
       const { Input } = registry.fields.date;
       return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+    }
+    case "time": {
+      // RFC 0008 item 14 (card 47d): a stored "HH:MM" is the input's value verbatim.
+      const { Input } = registry.fields.time;
+      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+    }
+    case "tags": {
+      // RFC 0008 item 15 (card 47d): a stored tag list is the input's value verbatim.
+      const { Input } = registry.fields.tags;
+      return <Input {...common} field={field} value={asTags(value)} onChange={onChange} />;
     }
     case "datetime": {
       if (!registry.fields.datetime) return missingDatetime(registry, field);
@@ -153,6 +164,14 @@ export function renderDisplay(
       const id = asString(value);
       // An empty reference has no record to look up: show nothing.
       return <Display {...(id === undefined || id === "" ? { label: "", status: "found" as const } : references.display(field, id))} field={field} value={id} />;
+    }
+    case "time": {
+      const { Display } = registry.fields.time;
+      return <Display field={field} value={asString(value)} />;
+    }
+    case "tags": {
+      const { Display } = registry.fields.tags;
+      return <Display field={field} value={asTags(value) ?? []} />;
     }
   }
 }

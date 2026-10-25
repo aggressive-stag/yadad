@@ -1,6 +1,6 @@
 import { AdapterError, RecordValidationError, conditionFields } from "@yadad/core";
-import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, canUpdate, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
+import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
+import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, boardRecordColumns, canMoveColumn, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
 import type { BoardColumnDef, BoardLoad } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -229,8 +229,8 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   const [targets, setTargets] = useState<ReadonlyMap<string, TargetState>>(new Map());
   const [reloads, setReloads] = useState(0);
   const [targetReloads, setTargetReloads] = useState(0);
-  /** Records whose move is in flight, with the column id they were moved to. */
-  const [pending, setPending] = useState<ReadonlyMap<string, string>>(new Map());
+  /** Records whose move is in flight, with the value the move writes. */
+  const [pending, setPending] = useState<ReadonlyMap<string, FieldValue>>(new Map());
   const inFlight = useRef(new Set<string>());
   const [errors, setErrors] = useState<readonly DocumentError[]>([]);
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
@@ -257,12 +257,16 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
 
   const isReference = groupField.type === "reference";
   const targetEntity = isReference ? entities?.get(groupField.entity) : undefined;
+  // RFC 0008 item 10: columnsFrom "options" builds the columns from the target
+  // entity's records; the default "records" derives them from the loaded page
+  // and never fetches targets (a huge or slow target pays nothing).
+  const fromOptions = isReference && view.columnsFrom === "options" && groupField.type === "reference";
 
-  // A reference grouping's columns come from the target entity's records: one
-  // find, sorted by the display field, capped at the column cap. Loaded once
-  // per target entity and data source, not on every switch.
+  // A reference grouping in options mode: one find, sorted by the display
+  // field, capped at the column cap. Loaded once per target entity and data
+  // source, not on every switch.
   useEffect(() => {
-    if (!isReference || !targetEntity || !adapter) return;
+    if (!fromOptions || !targetEntity || !adapter) return;
     const key = targetEntity.id;
     let current = true;
     setTargets((prev) => {
@@ -289,14 +293,9 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     return () => {
       current = false;
     };
-  }, [adapter, groupField, isReference, targetEntity, reloadKey, reloads, targetReloads]);
+  }, [adapter, groupField, fromOptions, targetEntity, reloadKey, reloads, targetReloads]);
 
-  const targetState = targetEntity ? targets.get(targetEntity.id) : undefined;
-  const referenceColumns: BoardColumnDef[] = useMemo(
-    () => (isReference && targetState?.status === "loaded" ? boardColumns(groupField, targetState.options) : []),
-    [isReference, groupField, targetState],
-  );
-  const columnDefs = isReference ? referenceColumns : boardColumns(groupField);
+  const targetState = fromOptions && targetEntity ? targets.get(targetEntity.id) : undefined;
 
   const loadedRecords = cards?.status === "loaded" ? cards.records : undefined;
 
@@ -306,25 +305,35 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   const records = useMemo(
     () =>
       (loadedRecords ?? []).map((r) => {
-        const columnId = pending.get(r.id);
-        if (columnId === undefined) return r;
-        const def = columnDefs.find((c) => c.id === columnId);
-        if (!def || def.kind === "other") return r;
-        return { ...r, values: { ...r.values, [groupField.id]: def.value } };
+        if (!pending.has(r.id)) return r;
+        return { ...r, values: { ...r.values, [groupField.id]: pending.get(r.id) ?? null } };
       }),
-    [loadedRecords, pending, columnDefs, groupField],
+    [loadedRecords, pending, groupField],
   );
 
   const titleField = view.titleField ?? entity.fields.find((f) => f.type === "text")?.id;
   const detailFields = (view.cardFields ?? []).flatMap((id) => entity.fields.filter((f) => f.id === id));
   const referenceFields = detailFields.filter((f): f is ReferenceField => f.type === "reference");
   const wants = records.flatMap((r) =>
-    referenceFields.flatMap((field) => {
+    [...referenceFields, ...(isReference && !fromOptions && groupField.type === "reference" ? [groupField] : [])].flatMap((field) => {
       const value = r.values[field.id];
       return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
     }),
   );
   const references = useReferences(adapter, entities, [], wants, reloadKey);
+
+  // The columns shown (RFC 0008 item 10): options mode uses the target records
+  // loaded above; the default records mode derives one column per value present
+  // in the loaded page, labelled the way the card labels the same reference.
+  // Records-derived columns are only built once cards are loaded, so the empty
+  // board shows the empty column alone (and no phantom drop targets).
+  const columnDefs: BoardColumnDef[] = useMemo(() => {
+    if (!isReference) return boardColumns(groupField);
+    if (groupField.type !== "reference") return [];
+    if (fromOptions) return targetState?.status === "loaded" ? boardColumns(groupField, targetState.options) : [];
+    if (loadedRecords === undefined) return [];
+    return boardRecordColumns(groupField, records, (id) => references.display(groupField, id).label);
+  }, [isReference, fromOptions, groupField, targetState, loadedRecords, records, references]);
 
   const refs = [
     ...view.groupBy.map((g, i) => ({ field: g.field, path: ["groupBy", i, "field"] as const })),
@@ -387,7 +396,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
           </>
         ),
         label: [title, ...details.map((f) => `${f.label}: ${plain(f, record)}`)].join(", "),
-        movable: editable && canUpdate(record) && !isPending,
+        movable: editable && canMoveColumn(record, groupField.id) && !isPending, // RFC 0008 item 9: can.fields narrows the drag
         pending: isPending,
         actions: recordActions.items(record),
       };
@@ -417,7 +426,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
 
   const move = (recordId: string, columnId: string): void => {
     const record = loadedRecords?.find((r) => r.id === recordId);
-    if (!record || !adapter || !editable || !canUpdate(record) || inFlight.current.has(recordId)) return;
+    if (!record || !adapter || !editable || !canMoveColumn(record, groupField.id) || inFlight.current.has(recordId)) return;
     const title = recordTitle(record);
     const def = columnId === OTHER_COLUMN_DEF.id ? OTHER_COLUMN_DEF : columnDefs.find((c) => c.id === columnId);
     if (!def) return; // a stale column id (the grouping changed mid-gesture): ignore
@@ -435,7 +444,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     }
     inFlight.current.add(recordId);
     setErrors([]);
-    setPending((p) => new Map(p).set(recordId, columnId));
+    setPending((p) => new Map(p).set(recordId, def.value));
     const settle = (): void => {
       inFlight.current.delete(recordId);
       setPending((p) => {

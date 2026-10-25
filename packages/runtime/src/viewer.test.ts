@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import type { DashboardView, Document, FormView, ResolvedViewer, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
 import {
+  canEditField,
+  canMoveColumn,
   canUpdate,
   columnEditable,
   findViewerDocument,
@@ -159,6 +161,26 @@ describe("view predicates", () => {
     expect(canUpdate({ ...record, can: { update: true } })).toBe(true);
     expect(canUpdate({ ...record, can: { delete: false } })).toBe(true);
     expect(canUpdate({ ...record, can: { update: false } })).toBe(false);
+  });
+
+  test("canEditField: can.fields narrows update per field, fail-open without it (RFC 0008 item 9)", () => {
+    const record = { id: "1", entityId: "e", entityRevision: 1, version: "1", values: {} };
+    // absent can / absent fields behaves exactly as canUpdate
+    expect(canEditField(record, "status")).toBe(true);
+    expect(canEditField({ ...record, can: {} }, "status")).toBe(true);
+    expect(canEditField({ ...record, can: { fields: {} } }, "status")).toBe(true);
+    expect(canEditField({ ...record, can: { fields: { status: true } } }, "status")).toBe(true);
+    expect(canEditField({ ...record, can: { fields: { status: false } } }, "status")).toBe(false);
+    // a field absent from the map stands with can.update
+    expect(canEditField({ ...record, can: { fields: { title: false } } }, "status")).toBe(true);
+    // can.update rules first
+    expect(canEditField({ ...record, can: { update: false, fields: { status: true } } }, "status")).toBe(false);
+  });
+
+  test("canMoveColumn is canEditField on the grouping field", () => {
+    const record = { id: "1", entityId: "e", entityRevision: 1, version: "1", values: {} };
+    expect(canMoveColumn({ ...record, can: { fields: { status: false } } }, "status")).toBe(false);
+    expect(canMoveColumn({ ...record, can: { fields: { status: false } } }, "assignee")).toBe(true);
   });
 });
 

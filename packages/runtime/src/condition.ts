@@ -77,17 +77,25 @@ export function evaluateCondition(condition: Condition, values: RecordValues, no
       return isEmpty(values[condition.field]);
     case "notEmpty":
       return !isEmpty(values[condition.field]);
-    case "in":
-      return condition.values.some((v) => v === values[condition.field]);
+    case "in": {
+      const v = values[condition.field];
+      // RFC 0008 item 15: a tags record matches when ANY element is listed.
+      if (Array.isArray(v)) return v.some((tag) => condition.values.includes(tag));
+      return condition.values.some((x) => x === v);
+    }
     case "contains": {
       const v = values[condition.field];
+      // RFC 0008 item 15: on a tags field `contains` is element membership, not substring.
+      if (Array.isArray(v)) return v.includes(condition.value);
       return typeof v === "string" && v.toLowerCase().includes(condition.value.toLowerCase());
     }
     case "viewerIn":
       return viewerIn(condition, viewer);
     case "fieldEqFact": {
-      // // RFC 0008/9: card 47b — full evaluation + state-grid axes land in 47d; this mirrors
-      // viewerIn's rule: no viewer / no such fact -> false, else eq's strict compare.
+      // RFC 0009 item 1 (card 47d): true when the record's field equals the viewer's
+      // value of the fact. A missing viewer or an undeclared fact is false — exactly
+      // viewerIn's rule, mirrored: unknown facts are a validator concern (47b), and
+      // at runtime an absent fact behaves like a viewer who never set one.
       const entry = viewer?.facts.find((f) => f.fact === condition.fact);
       return entry !== undefined && values[condition.field] === resolveValue(entry.value, now);
     }

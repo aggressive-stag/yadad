@@ -103,6 +103,49 @@ describe("TableRenderer", () => {
     expect((screen.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  test("can.fields locks an inline-editable cell while its row stays editable (RFC 0008 item 9)", async () => {
+    const db = createMemoryAdapter();
+    await db.create("workout_set", { day: "2026-10-01", exercise: "Squat", weight: 100, done: true }, { entityRevision: 1 });
+    const locked: DataAdapter = {
+      ...db,
+      async find(entity, query) {
+        const page = await db.find(entity, query);
+        return { ...page, items: page.items.map((r) => ({ ...r, can: { ...r.can, fields: { weight: false } } })) };
+      },
+    };
+    render(<TableRenderer entity={entity} view={view} registry={mockRegistry} dataSources={new Map([["default", locked]])} />);
+    await screen.findAllByRole("row");
+    const firstRow = screen.getAllByRole("row")[1]!;
+    fireEvent.click(within(firstRow).getByRole("button", { name: "Edit" })); // the row has an editable field left: done
+    const row = screen.getAllByRole("row")[1]!;
+    expect(within(row).queryByRole("spinbutton", { name: "Weight" })).toBeNull(); // locked: renders as display
+    expect(within(row).getByText("100")).toBeTruthy();
+    expect(within(row).getByRole("checkbox", { name: "Done" })).toBeTruthy(); // can.fields narrows, it does not forbid
+  });
+
+  test("a tags quick filter matches any typed tag and chips combine with or", async () => {
+    const tagEntity: EntityDocument = {
+      kind: "entity", specVersion: 8, id: "note", revision: 1,
+      fields: [{ id: "body", type: "text", label: "Body" }, { id: "tags", type: "tags", label: "Tags" }],
+    };
+    const tagView: TableView = { kind: "table", specVersion: 8, id: "notes", title: "Notes", entity: "note", revision: 1, dataSource: "default", columns: [{ field: "body" }], quickFilters: [{ field: "tags" }] };
+    const db = createMemoryAdapter();
+    await db.create("note", { body: "urgent one", tags: ["urgent", "home"] }, { entityRevision: 1 });
+    await db.create("note", { body: "home only", tags: ["home"] }, { entityRevision: 1 });
+    await db.create("note", { body: "no tags" }, { entityRevision: 1 });
+    render(<TableRenderer entity={tagEntity} view={tagView} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await screen.findAllByRole("row");
+    const bodies = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0]?.textContent);
+    expect(bodies().sort()).toEqual(["home only", "no tags", "urgent one"]);
+    const chipInput = () => screen.getByTestId("input-tags") as HTMLInputElement;
+    fireEvent.change(chipInput(), { target: { value: "urgent" } });
+    await waitFor(() => expect(bodies()).toEqual(["urgent one"]));
+    fireEvent.change(chipInput(), { target: { value: "urgent, home" } });
+    await waitFor(() => expect(bodies().sort()).toEqual(["home only", "urgent one"])); // ANY tag matches
+    fireEvent.change(chipInput(), { target: { value: "" } });
+    await waitFor(() => expect(bodies().sort()).toEqual(["home only", "no tags", "urgent one"])); // no chips, no filter
+  });
+
   test("entering edit mode focuses the row's first editable input", async () => {
     await setup();
     const firstRow = screen.getAllByRole("row")[1]!;

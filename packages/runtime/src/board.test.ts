@@ -11,6 +11,7 @@ import {
   boardGroupChoices,
   boardGroupField,
   boardQuery,
+  boardRecordColumns,
   groupByColumn,
   loadBoardCards,
   loadBoardTargets,
@@ -85,6 +86,41 @@ describe("boardGroupChoices", () => {
       { field: "assignee", label: "Assignee" },
       { field: "flag", label: "Flag" },
     ]);
+  });
+});
+
+describe("boardRecordColumns (columnsFrom: records, RFC 0008 item 10)", () => {
+  const cards: DataRecord[] = [
+    { id: "c1", entityId: "task", entityRevision: 1, version: "1", values: { assignee: "p2" } },
+    { id: "c2", entityId: "task", entityRevision: 1, version: "1", values: { assignee: "p1" } },
+    { id: "c3", entityId: "task", entityRevision: 1, version: "1", values: { assignee: "p2" } },
+    { id: "c4", entityId: "task", entityRevision: 1, version: "1", values: {} },
+  ];
+  test("one column per present value in first-appearance order, plus the empty column when not required", () => {
+    const cols = boardRecordColumns(assigneeField, cards, (id) => `label:${id}`);
+    expect(cols.map((c) => [c.id, c.kind, c.label, c.value])).toEqual([
+      ["empty", "empty", "No Assignee", null],
+      ["v:p2", "value", "label:p2", "p2"],
+      ["v:p1", "value", "label:p1", "p1"],
+    ]);
+  });
+  test("a required reference field has no empty column; a card missing the value lands in other", () => {
+    const required: ReferenceField = { ...assigneeField, required: true };
+    const cols = boardRecordColumns(required, cards, (id) => id);
+    expect(cols.map((c) => c.id)).toEqual(["v:p2", "v:p1"]);
+    const grouped = groupByColumn(required, cols, cards);
+    expect([...grouped.values()].map((list) => list.length)).toEqual([2, 1, 1]); // p2, p1, other
+  });
+  test("no cards means no value columns (the empty board shows the empty column alone)", () => {
+    expect(boardRecordColumns(assigneeField, [], (id) => id).map((c) => c.id)).toEqual(["empty"]);
+  });
+  test("values past the column cap are not dropped into existence: they group to other", () => {
+    const many: DataRecord[] = Array.from({ length: BOARD_MAX_COLUMNS + 3 }, (_, i) => ({
+      id: `c${i}`, entityId: "task", entityRevision: 1, version: "1", values: { assignee: `p${i}` },
+    }));
+    const cols = boardRecordColumns(assigneeField, many, (id) => id);
+    expect(cols).toHaveLength(BOARD_MAX_COLUMNS + 1); // empty + capped
+    expect(cols.at(-1)?.value).toBe(`p${BOARD_MAX_COLUMNS - 1}`);
   });
 });
 

@@ -138,6 +138,24 @@ export function canUpdate(record: DataRecord): boolean {
   return record.can?.update !== false;
 }
 
+/**
+ * Whether the server allows this viewer to write one field of the record
+ * (RFC 0008 item 9): `can.update` still rules, then `can.fields[fieldId]`
+ * narrows it. A record without `can.fields` behaves exactly as before —
+ * fail-open, the server decides. The view calls this for the fields its
+ * controls write: a calendar's `dateField` (drag), a board's grouping field
+ * and `doneField` (drag, the completion tick), and every column inline edit
+ * offers.
+ */
+export function canEditField(record: DataRecord, fieldId: string): boolean {
+  return canUpdate(record) && record.can?.fields?.[fieldId] !== false;
+}
+
+/** Whether a card may be dragged to the column the grouping field names (RFC 0008 item 9). */
+export function canMoveColumn(record: DataRecord, groupFieldId: string): boolean {
+  return canEditField(record, groupFieldId);
+}
+
 /** One `viewerIn` leaf found in a view: the fact and the values it names. */
 export interface ViewerLeaf {
   readonly fact: string;
