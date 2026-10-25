@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { DataAdapter, EntityDocument, TableView } from "@yadad/core";
+import type { DataAdapter, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { DocumentSet } from "./document-set.js";
 import { createDraftStore, createMemoryAdapter } from "@yadad/runtime";
 import type { DraftStorage, DraftStore } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { TableRenderer } from "./table-renderer.js";
 
 afterEach(cleanup);
@@ -350,5 +351,70 @@ describe("table drafts", () => {
     // The second row's own weight, not the first row's typed draft, and no notice.
     expect((within(secondRow()).getByRole("spinbutton", { name: "Weight" }) as HTMLInputElement).value).toBe("105");
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+describe("RFC 0008 surfaces (card 47e)", () => {
+  const formView: FormView = {
+    kind: "form",
+    specVersion: 8,
+    id: "set-new",
+    entity: "workout_set",
+    revision: 1,
+    dataSource: "default",
+    sections: [{ id: "main", title: "New set", items: [{ field: "day" }] }],
+  };
+
+  async function seedSets(): Promise<DataAdapter> {
+    const db = createMemoryAdapter();
+    for (const values of [
+      { day: "2026-10-01", exercise: "Squat", weight: 100, done: true },
+      { day: "2026-10-03", exercise: "Bench", weight: 80, done: false },
+      { day: "2026-10-02", exercise: "Squat", weight: 105, done: true },
+    ]) {
+      await db.create("workout_set", values, { entityRevision: 1 });
+    }
+    return db;
+  }
+
+  test("view.addForm puts an Add control under the table that opens the form and creates on save (item 10)", async () => {
+    const db = await seedSets();
+    const create = vi.fn(db.create);
+    const docs: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map([[formView.id, formView]]) };
+    render(
+      <TableRenderer entity={entity} view={{ ...view, addForm: formView.id }} registry={mockRegistry} dataSources={new Map([["default", { ...db, create }]])} documents={docs} />,
+    );
+    await screen.findByText("2026-10-03");
+    fireEvent.click(screen.getByRole("button", { name: "Add workout_set" }));
+    const panel = (await screen.findByText("New set")).closest("form")!;
+    fireEvent.input(within(panel).getByTestId("input-day"), { target: { value: "2026-10-05" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect((create.mock.calls[0] as unknown as [string, Record<string, unknown>])[1]).toEqual({ day: "2026-10-05" });
+    // The panel closes and the rows reload without the host touching reloadKey.
+    await screen.findByText("2026-10-05");
+    expect(screen.queryByText("New set")).toBeNull(); // the panel closes on save
+  });
+
+  test("a missing add form names the broken reference instead of dropping the control silently (item 10)", async () => {
+    const db = await seedSets();
+    const docs: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map() };
+    render(
+      <TableRenderer entity={entity} view={{ ...view, addForm: "ghost" }} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={docs} />,
+    );
+    await screen.findByText("2026-10-03");
+    expect((await screen.findByRole("alert")).textContent).toContain('not a form view');
+  });
+
+  test("the registry's Pager slot drives paging (item 6)", async () => {
+    const db = await seedSets();
+    render(<TableRenderer entity={entity} view={{ ...view, pageSize: 1 }} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={{ entities: new Map([[entity.id, entity]]), views: new Map() }} />);
+    await screen.findByText("2026-10-03");
+    const pager = await screen.findByTestId("mock-pager");
+    expect(pager.getAttribute("aria-label")).toBe("Sets pages");
+    expect(pager.querySelector("span")?.textContent).toBe("Page 1 of 3");
+    fireEvent.click(within(pager).getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(pager.querySelector("span")?.textContent).toBe("Page 2 of 3"));
+    expect(days()).toEqual(["2026-10-02"]);
   });
 });

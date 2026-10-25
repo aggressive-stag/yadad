@@ -1,4 +1,4 @@
-import { defaultTitleField, optionValue } from "@yadad/core";
+import { defaultTitleField, optionColor, optionLabel, optionValue } from "@yadad/core";
 import type { BoardView, DataAdapter, DataRecord, EntityDocument, Field, FieldValue, Query, ReferenceField, ReferenceOption } from "@yadad/core";
 import { resolveRelativeDates } from "./condition.js";
 import { walkWithNext } from "./memory-adapter.js";
@@ -27,6 +27,8 @@ export interface BoardColumnDef {
   readonly kind: "value" | "empty" | "other";
   readonly label: string;
   readonly value: FieldValue;
+  /** The option's `#RRGGBB` swatch hint (RFC 0008 item 5), when the select option carries one. */
+  readonly color?: string;
 }
 
 const OTHER_COLUMN: BoardColumnDef = { id: "other", kind: "other", label: BOARD_OTHER_LABEL, value: null };
@@ -81,7 +83,8 @@ export function boardGroupChoices(view: BoardView, entity: EntityDocument): { re
  */
 export function boardColumns(field: Field, targets?: readonly ReferenceOption[]): BoardColumnDef[] {
   if (field.type === "select") {
-    const columns = field.options.values.map((o): BoardColumnDef => { const value = optionValue(o); return { id: `v:${value}`, kind: "value", label: value, value }; }); // RFC 0008: card 47a
+    // RFC 0008 item 5: columns carry the option's label (defaulting to its value) and its swatch colour.
+    const columns = field.options.values.map((o): BoardColumnDef => { const value = optionValue(o); const color = optionColor(o); return { id: `v:${value}`, kind: "value", label: optionLabel(o), value, ...(color === undefined ? {} : { color }) }; });
     return field.required === true ? columns : [emptyColumn(field), ...columns];
   }
   if (field.type === "boolean") {

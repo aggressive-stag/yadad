@@ -79,6 +79,16 @@ export function optionValue(option: string | StaticOptionValue): string {
   return isStaticOptionValue(option) ? option.value : option;
 }
 
+/** The text that labels a static option: its label when it has one, else its value (RFC 0008 item 5). */
+export function optionLabel(option: string | StaticOptionValue): string {
+  return isStaticOptionValue(option) ? option.label ?? option.value : option;
+}
+
+/** The option's `#RRGGBB` swatch hint, when it carries one (RFC 0008 item 5). Display-only; never stored. */
+export function optionColor(option: string | StaticOptionValue): string | undefined {
+  return isStaticOptionValue(option) ? option.color : undefined;
+}
+
 export interface SelectField extends FieldBase {
   readonly type: "select";
   readonly options: StaticOptions;

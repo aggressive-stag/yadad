@@ -1,4 +1,5 @@
-import type { DataAdapter, DataRecord, EntityDocument, Field, ReferenceField, ReferenceOption } from "@yadad/core";
+import { optionColor, optionValue } from "@yadad/core";
+import type { DataAdapter, DataRecord, EntityDocument, Field, FieldValue, ReferenceField, ReferenceOption } from "@yadad/core";
 
 /** The most options a reference picker loads; a longer list is cut and flagged with `more`. */
 export const REFERENCE_OPTION_LIMIT = 200;
@@ -50,6 +51,52 @@ export async function loadReferenceOptions(
     more: page.total !== undefined ? page.total > page.items.length : (page.next ?? null) !== null,
     total: page.total ?? page.items.length, // RFC 0007: card 34h
   };
+}
+
+/** The `#RRGGBB` shape the colour surfaces accept (RFC 0008 items 5 and 8). */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * The colour-shaped field `colorFrom` names on the target (RFC 0008 item 8):
+ * a text field or a select on the referenced entity. Undefined when the field
+ * declares no `colorFrom` or the named field is not colour-shaped — a bad
+ * document, which the validator refuses; at run time it means "no colour".
+ */
+export function referenceColorField(target: EntityDocument, field: ReferenceField): Field | undefined {
+  if (field.colorFrom === undefined) return undefined;
+  const colour = target.fields.find((f) => f.id === field.colorFrom);
+  return colour !== undefined && (colour.type === "text" || colour.type === "select") ? colour : undefined;
+}
+
+/**
+ * The colour a colour-shaped field's value paints (RFC 0008 item 8): a text
+ * value that is already `#RRGGBB`, or the chosen select option's colour.
+ * Anything else — free text, an option without a colour — paints none.
+ */
+export function referenceColorOf(value: FieldValue | undefined, colour: Field): string | undefined {
+  if (typeof value !== "string" || value === "") return undefined;
+  if (colour.type === "text") return HEX_COLOR.test(value) ? value : undefined;
+  if (colour.type !== "select") return undefined;
+  const hit = colour.options.values.find((o) => optionValue(o) === value);
+  return hit === undefined ? undefined : optionColor(hit);
+}
+
+/**
+ * Resolves the `colorFrom` colour for a set of record ids: the target record's
+ * colour-shaped value, kept only when it paints a `#RRGGBB` (RFC 0008 item 8).
+ * Same fetch shape as `resolveReferenceLabels` (one `findOne` per id, capped,
+ * in parallel); ids whose record is missing or paints no colour are absent.
+ */
+export async function resolveReferenceColors(adapter: DataAdapter, target: EntityDocument, colour: Field, ids: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  const unique = [...new Set(ids.filter((id) => id !== ""))].slice(0, REFERENCE_RESOLVE_LIMIT);
+  const records = await Promise.all(unique.map((id) => adapter.findOne(target.id, id)));
+  const colors = new Map<string, string>();
+  for (const record of records) {
+    if (!record) continue;
+    const color = referenceColorOf(record.values[colour.id], colour);
+    if (color !== undefined) colors.set(record.id, color);
+  }
+  return colors;
 }
 
 /**

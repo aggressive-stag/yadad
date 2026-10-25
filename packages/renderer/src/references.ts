@@ -1,5 +1,5 @@
 import type { DataAdapter, EntityDocument, ReferenceDisplayExtras, ReferenceField, ReferenceInputExtras, ReferenceOptions } from "@yadad/core";
-import { loadReferenceOptions, resolveReferenceLabels } from "@yadad/runtime";
+import { loadReferenceOptions, referenceColorField, resolveReferenceColors, resolveReferenceLabels } from "@yadad/runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** The label of a record that no longer exists. */
@@ -47,10 +47,13 @@ function useUnwiredTargetWarning(): (entity: string, fieldId: string) => void {
 export function useReferences(adapter: DataAdapter | undefined, targets: Targets | undefined, pickers: readonly ReferenceField[], wants: readonly ReferenceWant[], reloadKey?: unknown): ReferenceSupport {
   const [options, setOptions] = useState<ReadonlyMap<string, ReferenceOptions>>(new Map());
   const [labels, setLabels] = useState<ReadonlyMap<string, LabelEntry>>(new Map());
+  // The colorFrom colours of resolved records, by field+id (RFC 0008 item 8).
+  const [colors, setColors] = useState<ReadonlyMap<string, string>>(new Map());
   const warnUnwired = useUnwiredTargetWarning();
 
   const pickerKey = JSON.stringify(pickers.map((f) => [f.id, f.entity, f.display ?? null]));
   const wantKey = JSON.stringify([...new Set(wants.map((w) => labelKey(w.field, w.id)))].sort());
+  const colorKey = JSON.stringify([...new Set(wants.filter((w) => w.field.colorFrom !== undefined).map((w) => [w.field.id, w.field.entity, w.field.colorFrom ?? null]))].sort());
 
   useEffect(() => {
     if (!adapter) return;
@@ -106,6 +109,39 @@ export function useReferences(adapter: DataAdapter | undefined, targets: Targets
     // wantKey stands for `wants`.
   }, [adapter, targets, wantKey, reloadKey, warnUnwired]);
 
+  // The colorFrom pass (RFC 0008 item 8): records already wanted for their labels are re-read
+  // for their colour-shaped field. No colorFrom, no fetch; a failure simply paints no swatch.
+  useEffect(() => {
+    if (!adapter || colorKey === "[]") return;
+    let current = true;
+    const wanted = new Map<string, { field: ReferenceField; ids: string[] }>();
+    for (const { field, id } of wants) {
+      if (field.colorFrom === undefined) continue;
+      const group = wanted.get(field.id) ?? { field, ids: [] };
+      if (!group.ids.includes(id)) group.ids.push(id);
+      wanted.set(field.id, group);
+    }
+    for (const { field, ids } of wanted.values()) {
+      const target = targets?.get(field.entity);
+      const colour = target ? referenceColorField(target, field) : undefined;
+      if (!target || !colour) continue;
+      resolveReferenceColors(adapter, target, colour, ids).then(
+        (found) =>
+          current &&
+          setColors((m) => {
+            const next = new Map(m);
+            for (const [id, color] of found) next.set(labelKey(field, id), color);
+            return next;
+          }),
+        () => undefined,
+      );
+    }
+    return () => {
+      current = false;
+    };
+    // colorKey stands for the colorFrom wants.
+  }, [adapter, targets, colorKey, reloadKey]);
+
   return useMemo<ReferenceSupport>(
     () => ({
       input(field, id) {
@@ -115,12 +151,13 @@ export function useReferences(adapter: DataAdapter | undefined, targets: Targets
       },
       display(field, id) {
         const entry = labels.get(labelKey(field, id));
+        const color = colors.get(labelKey(field, id));
         if (!entry) return { label: id, status: "loading" };
-        if (entry.status === "found") return { label: entry.label, status: "found" };
+        if (entry.status === "found") return { label: entry.label, status: "found", ...(color === undefined ? {} : { color }) };
         if (entry.status === "missing") return { label: UNKNOWN_REFERENCE_LABEL, status: "missing" };
         return { label: id, status: "error" };
       },
     }),
-    [options, labels],
+    [options, labels, colors],
   );
 }

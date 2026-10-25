@@ -1,6 +1,6 @@
-import { AdapterError, RecordValidationError, conditionFields, optionValue } from "@yadad/core";
+import { AdapterError, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
 import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { bindFilter, calendarToday, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
+import { bindFilter, calendarToday, canEditField, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -218,6 +218,8 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
   const [reloads, setReloads] = useState(0);
   /** Records whose move is in flight, with the day they were moved to. */
   const [pending, setPending] = useState<ReadonlyMap<string, string>>(new Map());
+  /** Records whose completion toggle is in flight, with the value being written (RFC 0008 item 3). */
+  const [toggling, setToggling] = useState<ReadonlyMap<string, boolean>>(new Map());
   const inFlight = useRef(new Set<string>());
   const [errors, setErrors] = useState<readonly DocumentError[]>([]);
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
@@ -248,9 +250,14 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     () =>
       (loadedRecords ?? []).map((r) => {
         const day = pending.get(r.id);
-        return day === undefined ? r : { ...r, values: { ...r.values, [view.dateField]: day } };
+        const done = view.doneField === undefined ? undefined : toggling.get(r.id);
+        if (day === undefined && done === undefined) return r;
+        const values = { ...r.values };
+        if (day !== undefined) values[view.dateField] = day;
+        if (done !== undefined && view.doneField !== undefined) values[view.doneField] = done;
+        return { ...r, values };
       }),
-    [loadedRecords, pending, view.dateField],
+    [loadedRecords, pending, toggling, view.dateField, view.doneField],
   );
 
   const titleField = view.titleField ?? entity.fields.find((f) => f.type === "text")?.id;
@@ -269,6 +276,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     { field: view.dateField, path: ["dateField"] },
     ...(view.titleField ? [{ field: view.titleField, path: ["titleField"] }] : []),
     ...(view.colorField ? [{ field: view.colorField, path: ["colorField"] }] : []),
+    ...(view.doneField ? [{ field: view.doneField, path: ["doneField"] }] : []),
     ...(view.detailFields ?? []).map((field, i) => ({ field, path: ["detailFields", i] })),
     ...(view.sort ?? []).map((s, i) => ({ field: s.field, path: ["sort", i, "field"] })),
     ...(view.filter ? conditionFields(view.filter).map((field) => ({ field, path: ["filter"] })) : []),
@@ -307,11 +315,56 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
   const byDay = groupByDay(records, view.dateField);
   const today = calendarToday(clock());
   const colorOptions = colorField?.type === "select" ? colorField.options.values.map(optionValue) : []; // RFC 0008: card 47a
-  const colorOf = (record: DataRecord): { slot: number; label: string } | undefined => {
+  const colorOf = (record: DataRecord): { slot: number; label: string; color?: string } | undefined => {
     if (!colorField || (colorField.type !== "select" && colorField.type !== "reference")) return undefined;
     const value = record.values[colorField.id];
+    const label = plainText(colorField, value, references);
+    // RFC 0008 item 8: a reference colour field with `colorFrom` paints the target's own colour;
+    // the stable hash stays the fallback when colorFrom is absent or the record did not load.
+    if (colorField.type === "reference" && typeof value === "string" && colorField.colorFrom !== undefined) {
+      const resolved = references.display(colorField, value).color;
+      if (resolved !== undefined) {
+        const slot = colorSlot(value, "reference");
+        return slot === undefined ? undefined : { slot, label, color: resolved };
+      }
+    }
     const slot = colorSlot(value, colorField.type, { options: colorOptions });
-    return slot === undefined ? undefined : { slot, label: plainText(colorField, value, references) };
+    return slot === undefined ? undefined : { slot, label };
+  };
+
+  const doneDef = view.doneField === undefined ? undefined : entity.fields.find((f) => f.id === view.doneField && f.type === "boolean");
+  const toggleDone = (record: DataRecord): void => {
+    if (!doneDef || !adapter || !editable || inFlight.current.has(record.id)) return;
+    const title = recordTitle(record);
+    const next = record.values[doneDef.id] !== true;
+    if (!canEditField(record, doneDef.id)) return; // the server withheld this field (can.fields)
+    inFlight.current.add(record.id);
+    setErrors([]);
+    setToggling((t) => new Map(t).set(record.id, next));
+    const settle = (): void => {
+      inFlight.current.delete(record.id);
+      setToggling((t) => {
+        const m = new Map(t);
+        m.delete(record.id);
+        return m;
+      });
+    };
+    adapter
+      .update(view.entity, record.id, { [doneDef.id]: next }, { entityRevision: entity.revision, baseVersion: record.version })
+      .then(
+        (saved) => {
+          setState((s) => (s?.status === "loaded" ? { ...s, records: replaceSavedRecord(s.records, record.id, saved) } : s));
+          settle();
+          announce(`${title} marked ${next ? "done" : "not done"}`);
+          onChanged?.();
+        },
+        (error: unknown) => {
+          settle();
+          setErrors(moveErrors(error));
+          announce(`Could not update ${title}: ${failureMessage(error)}`);
+          setReloads((n) => n + 1);
+        },
+      );
   };
 
   const entry = (record: DataRecord): CalendarEntry<ReactNode> => {
@@ -325,32 +378,48 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
         <>
           <span data-yadad-calendar-title="">{title}</span>
           {details.map((field) => (
+            // RFC 0008 item 7: detail lines are labelled by default ("Assignee: Dana").
             <small key={field.id} data-yadad-calendar-detail={field.id}>
+              <span data-yadad-calendar-detail-label="">{`${field.label}: `}</span>
               {renderDisplay(registry, field, record.values[field.id], references, formatting)}
             </small>
           ))}
         </>
       ),
-      label: [title, ...details.map((f) => plain(f, record)), ...(color ? [color.label] : [])].join(", "),
+      label: [title, ...details.map((f) => `${f.label}: ${plain(f, record)}`), ...(color ? [color.label] : [])].join(", "),
       ...(color ? { color } : {}),
       movable: editable && canMoveColumn(record, view.dateField) && !isPending, // RFC 0008 item 9: can.fields narrows the drag
       pending: isPending,
+      ...(doneDef === undefined
+        ? {}
+        : { done: { checked: record.values[doneDef.id] === true, disabled: !editable || !canEditField(record, doneDef.id) || toggling.has(record.id), toggle: () => toggleDone(record) } }),
       actions: recordActions.items(record),
     };
   };
 
-  const days = visibleDays(anchor, mode, weekStartsOn, today).map((day) => ({
-    ...day,
-    label: dayLabel(day.date),
-    entries: (byDay.get(day.date) ?? []).map(entry),
-  }));
+  // RFC 0008 item 7: the renderer resolves maxEntriesPerDay (default 3) into the day's overflow
+  // policy; the entries stay all there — slicing and the "+N more" disclosure are the component's.
+  const maxEntries = view.maxEntriesPerDay ?? CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT;
+  const days = visibleDays(anchor, mode, weekStartsOn, today).map((day) => {
+    const entries = (byDay.get(day.date) ?? []).map(entry);
+    const hidden = Math.max(0, entries.length - maxEntries);
+    return {
+      ...day,
+      label: dayLabel(day.date),
+      entries,
+      ...(hidden > 0 ? { overflow: { shown: maxEntries, hidden } } : {}),
+    };
+  });
 
   // The legend lists what is on screen: select values in option order, references by label.
   const legend = (() => {
     if (!colorField) return [];
     const shown = days.flatMap((d) => d.entries).flatMap((e) => (e.color ? [e.color] : []));
     const unique = [...new Map(shown.map((c) => [c.label, c])).values()];
-    if (colorField.type === "select") return unique.sort((a, b) => colorOptions.indexOf(a.label) - colorOptions.indexOf(b.label));
+    if (colorField.type === "select") {
+      const labels = colorField.options.values.map(optionLabel);
+      return unique.sort((a, b) => labels.indexOf(a.label) - labels.indexOf(b.label));
+    }
     return unique.sort((a, b) => a.label.localeCompare(b.label));
   })();
 
@@ -452,5 +521,9 @@ function plainText(field: Field, value: unknown, references: ReferenceSupport): 
   if (value === undefined || value === null || value === "") return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (field.type === "reference" && typeof value === "string") return references.display(field, value).label;
+  if (field.type === "select" && typeof value === "string") {
+    const option = field.options.values.find((o) => optionValue(o) === value);
+    if (option !== undefined) return optionLabel(option); // RFC 0008 item 5
+  }
   return String(value);
 }

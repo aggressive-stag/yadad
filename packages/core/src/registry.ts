@@ -97,6 +97,12 @@ export interface ReferenceInputExtras {
 export interface ReferenceDisplayExtras {
   readonly label: string;
   readonly status: "loading" | "found" | "missing" | "error";
+  /**
+   * The referenced record's own colour as `#RRGGBB`, when the reference field
+   * declares `colorFrom` and the colour resolved (RFC 0008 item 8). A swatch
+   * hint only: the component paints it, the renderer only passes it.
+   */
+  readonly color?: string;
 }
 
 /** Extra Input props per field type; only reference has any. */
@@ -343,12 +349,25 @@ export interface CalendarEntry<N> {
   readonly content: N;
   /** Plain-text accessible name: title, details and the colour text. */
   readonly label: string;
-  /** A colour slot from 0 to 7 and its text; the component maps slots to its own colours. Colour is never the only signal. */
-  readonly color?: { readonly slot: number; readonly label: string };
+  /**
+   * A colour slot from 0 to 7 and its text; the component maps slots to its own
+   * colours. Colour is never the only signal. `color` (RFC 0008 item 8) is the
+   * `#RRGGBB` a reference `colorFrom` resolved — a hint beside the slot, which
+   * stays the fallback.
+   */
+  readonly color?: { readonly slot: number; readonly label: string; readonly color?: string };
   /** The calendar is editable and no move of this entry is in flight. */
   readonly movable: boolean;
   /** A move of this entry is in flight. */
   readonly pending: boolean;
+  /**
+   * The entry's completion toggle (RFC 0008 item 3): present only when the view
+   * declares `doneField`. `checked` is the stored boolean, `disabled` folds in
+   * editability, `can.fields` and an in-flight toggle, and `toggle` writes the
+   * new value through the view's normal write path. The component renders the
+   * checkbox; the renderer owns the write and the announcement.
+   */
+  readonly done?: { readonly checked: boolean; readonly disabled: boolean; readonly toggle: () => void };
   /** The actions available on this entry, in order (RFC 0007); in the entry's menu where the component has one. */
   readonly actions?: readonly RecordActionItem[];
 }
@@ -364,8 +383,17 @@ export interface CalendarDayProps<N> {
   /** Always true in week mode. */
   readonly inMonth: boolean;
   readonly isToday: boolean;
-  /** All of the day's entries, in sort order. */
+  /** All of the day's entries, in sort order (uncapped — the disclosure below is presentation). */
   readonly entries: readonly CalendarEntry<N>[];
+  /**
+   * The day's overflow policy (RFC 0008 item 7): the renderer resolves the
+   * view's `maxEntriesPerDay` (default 3) into `shown` (how many to show
+   * before a "+N more" affordance) and `hidden` (how many sit behind it). Set
+   * only when `hidden > 0`. The renderer owns the number; the component owns
+   * the disclosure — slicing and the expand affordance are its own, so the
+   * entries all stay available.
+   */
+  readonly overflow?: { readonly shown: number; readonly hidden: number };
 }
 
 /**
@@ -416,6 +444,8 @@ export interface BoardCard<N> {
   readonly movable: boolean;
   /** A move of this card is in flight. */
   readonly pending: boolean;
+  /** The card's completion toggle (RFC 0008 item 3), as on a calendar entry: only when the view declares `doneField`. */
+  readonly done?: { readonly checked: boolean; readonly disabled: boolean; readonly toggle: () => void };
   /** The actions available on this card, in order (RFC 0007), next to the "Move to..." path. */
   readonly actions?: readonly RecordActionItem[];
 }
@@ -426,6 +456,8 @@ export interface BoardColumn<N> {
   readonly id: string;
   /** Accessible heading for the column. */
   readonly label: string;
+  /** The column's `#RRGGBB` swatch hint (RFC 0008 item 5), when the grouping option carries one. */
+  readonly color?: string;
   /** Cards in `cards` (the loaded cards). */
   readonly count: number;
   /** False for "other"; always true otherwise. */
@@ -470,6 +502,24 @@ export interface BoardProps<N> {
 }
 
 /**
+ * Paging controls (RFC 0008 item 11): optional so a pre-RFC registry keeps
+ * today's markup. The renderer owns page state and disables the buttons; the
+ * component owns the styling and layout.
+ */
+export interface PagerProps {
+  /** Accessible name of the paging region, e.g. "Tasks pages". */
+  readonly label: string;
+  readonly hasPrevious: boolean;
+  readonly hasNext: boolean;
+  /** 1-based page number, for the cursor-mode "Page N" text. */
+  readonly page: number;
+  /** Total pages; undefined in cursor mode, where the total is unknown. */
+  readonly pageCount?: number;
+  readonly onPrevious: () => void;
+  readonly onNext: () => void;
+}
+
+/**
  * One entry per field type. `datetime` is optional until the reference
  * component set ships it (RFC 0007), like `layout.Calendar`: a document that
  * uses a datetime field with a registry that lacks it shows an error.
@@ -500,6 +550,8 @@ export interface Registry<N> {
     readonly Board?: Component<BoardProps<N>, N>;
     /** Optional (RFC 0007): a view with an action that needs a dialog (a confirmation or input) shows an error summary without it. Shared with RFC 0003's dialog mode. */
     readonly Dialog?: Component<DialogProps<N>, N>;
+    /** Optional until the reference component set ships a styled pager (RFC 0008 item 11); without it the table keeps its plain nav markup. */
+    readonly Pager?: Component<PagerProps, N>;
   };
   readonly widgets: WidgetComponents<N>;
 }

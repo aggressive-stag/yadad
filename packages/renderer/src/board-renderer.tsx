@@ -1,6 +1,6 @@
-import { AdapterError, RecordValidationError, conditionFields } from "@yadad/core";
+import { AdapterError, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
 import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, boardRecordColumns, canMoveColumn, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
+import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, boardRecordColumns, canEditField, canMoveColumn, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
 import type { BoardColumnDef, BoardLoad } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -231,6 +231,8 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   const [targetReloads, setTargetReloads] = useState(0);
   /** Records whose move is in flight, with the value the move writes. */
   const [pending, setPending] = useState<ReadonlyMap<string, FieldValue>>(new Map());
+  /** Records whose completion toggle is in flight, with the value being written (RFC 0008 item 3). */
+  const [toggling, setToggling] = useState<ReadonlyMap<string, boolean>>(new Map());
   const inFlight = useRef(new Set<string>());
   const [errors, setErrors] = useState<readonly DocumentError[]>([]);
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
@@ -305,10 +307,14 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   const records = useMemo(
     () =>
       (loadedRecords ?? []).map((r) => {
-        if (!pending.has(r.id)) return r;
-        return { ...r, values: { ...r.values, [groupField.id]: pending.get(r.id) ?? null } };
+        const done = view.doneField === undefined ? undefined : toggling.get(r.id);
+        if (!pending.has(r.id) && done === undefined) return r;
+        const values = { ...r.values };
+        if (pending.has(r.id)) values[groupField.id] = pending.get(r.id) ?? null;
+        if (done !== undefined && view.doneField !== undefined) values[view.doneField] = done;
+        return { ...r, values };
       }),
-    [loadedRecords, pending, groupField],
+    [loadedRecords, pending, toggling, groupField, view.doneField],
   );
 
   const titleField = view.titleField ?? entity.fields.find((f) => f.type === "text")?.id;
@@ -376,6 +382,41 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
 
   const plain = (field: Field, record: DataRecord): string => plainText(field, record.values[field.id], references);
 
+  const doneDef = view.doneField === undefined ? undefined : entity.fields.find((f) => f.id === view.doneField && f.type === "boolean");
+  const toggleDone = (record: DataRecord): void => {
+    if (!doneDef || !adapter || !editable || inFlight.current.has(record.id)) return;
+    const title = recordTitle(record);
+    const next = record.values[doneDef.id] !== true;
+    if (!canEditField(record, doneDef.id)) return; // the server withheld this field (can.fields)
+    inFlight.current.add(record.id);
+    setErrors([]);
+    setToggling((t) => new Map(t).set(record.id, next));
+    const settle = (): void => {
+      inFlight.current.delete(record.id);
+      setToggling((t) => {
+        const m = new Map(t);
+        m.delete(record.id);
+        return m;
+      });
+    };
+    adapter
+      .update(view.entity, record.id, { [doneDef.id]: next }, { entityRevision: entity.revision, baseVersion: record.version })
+      .then(
+        (saved) => {
+          setCards((s) => (s?.status === "loaded" ? { ...s, records: replaceSavedRecord(s.records, record.id, saved) } : s));
+          settle();
+          announce(`${title} marked ${next ? "done" : "not done"}`);
+          onChanged?.();
+        },
+        (error: unknown) => {
+          settle();
+          setErrors(moveErrors(error));
+          announce(`Could not update ${title}: ${failureMessage(error)}`);
+          setReloads((n) => n + 1);
+        },
+      );
+  };
+
   const grouped = groupByColumn(groupField, columnDefs, records);
   const hasOther = grouped.has(OTHER_COLUMN_DEF.id);
   const cardsOf = (columnId: string): BoardCard<ReactNode>[] =>
@@ -398,11 +439,14 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         label: [title, ...details.map((f) => `${f.label}: ${plain(f, record)}`)].join(", "),
         movable: editable && canMoveColumn(record, groupField.id) && !isPending, // RFC 0008 item 9: can.fields narrows the drag
         pending: isPending,
+        ...(doneDef === undefined
+          ? {}
+          : { done: { checked: record.values[doneDef.id] === true, disabled: !editable || !canEditField(record, doneDef.id) || toggling.has(record.id), toggle: () => toggleDone(record) } }),
         actions: recordActions.items(record),
       };
     });
   const columns: BoardColumn<ReactNode>[] = [
-    ...columnDefs.map((def): BoardColumn<ReactNode> => ({ id: def.id, label: def.label, count: grouped.get(def.id)?.length ?? 0, droppable: true, cards: cardsOf(def.id) })),
+    ...columnDefs.map((def): BoardColumn<ReactNode> => ({ id: def.id, label: def.label, ...(def.color === undefined ? {} : { color: def.color }), count: grouped.get(def.id)?.length ?? 0, droppable: true, cards: cardsOf(def.id) })),
     ...(hasOther
       ? [{ id: OTHER_COLUMN_DEF.id, label: OTHER_COLUMN_DEF.label, count: grouped.get(OTHER_COLUMN_DEF.id)?.length ?? 0, droppable: false, cards: cardsOf(OTHER_COLUMN_DEF.id) }]
       : []),
@@ -526,5 +570,9 @@ function plainText(field: Field, value: unknown, references: ReferenceSupport): 
   if (value === undefined || value === null || value === "") return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (field.type === "reference" && typeof value === "string") return references.display(field, value).label;
+  if (field.type === "select" && typeof value === "string") {
+    const option = field.options.values.find((o) => optionValue(o) === value);
+    if (option !== undefined) return optionLabel(option); // RFC 0008 item 5
+  }
   return String(value);
 }

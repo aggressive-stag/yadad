@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ForbiddenError, RecordValidationError } from "@yadad/core";
-import type { BoardView, DashboardView, DataAdapter, EntityDocument, Registry, TableView } from "@yadad/core";
+import type { BoardView, DashboardView, DataAdapter, EntityDocument, Field, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import type { ReactNode } from "react";
@@ -733,5 +733,53 @@ describe("in a dashboard", () => {
     const bad: DashboardView = { ...dashboard, tabs: [{ id: "plan", title: "Plan", items: [{ id: "n", x: 0, y: 0, w: 4, h: 1, widget: "count", label: "Tasks", view: "tasks_board" }] }] };
     render(<DashboardRenderer dashboard={bad} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
     expect((await screen.findByRole("alert")).textContent).toContain("needs a table view");
+  });
+});
+
+describe("RFC 0008 surfaces (card 47e)", () => {
+  test("a doneField view gives every card a checkbox that writes the boolean (item 3)", async () => {
+    const { db, ids } = await seed();
+    const update = vi.fn(db.update);
+    await open({ view: { ...board, doneField: "done" }, adapter: { ...db, update } });
+    const box = within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Mark done Book flights" });
+    fireEvent.click(box);
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const [entityName, id, patchValues, meta] = update.mock.calls[0] as [string, string, Record<string, unknown>, { baseVersion?: string }];
+    expect([entityName, id, patchValues, typeof meta.baseVersion]).toEqual(["task", ids["Book flights"], { done: true }, "string"]);
+    await waitFor(() => expect((within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Mark not done Book flights" }) as HTMLInputElement).checked).toBe(true));
+    expect(status()).toBe("Book flights marked done");
+  });
+
+  test("a card whose done field is locked by can.fields has a disabled checkbox (item 9)", async () => {
+    const { db, ids } = await seed();
+    const withCan: DataAdapter = {
+      ...db,
+      async find(findEntity, query) {
+        const page = await db.find(findEntity, query);
+        return { ...page, items: page.items.map((r) => (r.id === ids["Pay rent"] ? { ...r, can: { ...r.can, fields: { done: false } } } : r)) };
+      },
+    };
+    await open({ view: { ...board, doneField: "done" }, adapter: withCan });
+    expect((within(screen.getByTestId(`card-${ids["Pay rent"]}`)).getByRole("checkbox", { name: "Mark done Pay rent, Notes: Due soon" }) as HTMLInputElement).disabled).toBe(true);
+    expect((within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Mark done Book flights" }) as HTMLInputElement).disabled).toBe(false);
+  });
+
+  test("a select option's label and colour reach the column header (item 5)", async () => {
+    const lists: EntityDocument = {
+      ...entity,
+      fields: entity.fields.map((field): Field =>
+        field.id === "list" && field.type === "select"
+          ? { ...field, options: { source: "static", values: [{ value: "Home", label: "Household", color: "#D13438" }, { value: "Work" }] } }
+          : field,
+      ),
+    };
+    const listsBoard: BoardView = { ...board };
+    const docs: DocumentSet = { entities: new Map([[lists.id, lists], [person.id, person]]), views: documents.views };
+    const { db } = await seed();
+    render(<BoardRenderer entity={lists} view={listsBoard} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={docs.entities} documents={docs} />);
+    await screen.findByText("Pay rent");
+    expect(screen.getByTestId("column-v:Home").getAttribute("data-color")).toBe("#D13438");
+    expect(screen.getByTestId("column-v:Home").getAttribute("aria-label")).toContain("Household");
+    expect(screen.getByTestId("column-v:Work").hasAttribute("data-color")).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
-import type { EntityDocument, ReferenceField } from "@yadad/core";
+import type { EntityDocument, Field, ReferenceField } from "@yadad/core";
 import { describe, expect, test } from "vitest";
 import { createMemoryAdapter } from "./memory-adapter.js";
-import { loadReferenceOptions, referenceDisplayField, resolveReferenceLabels } from "./reference.js";
+import { loadReferenceOptions, referenceDisplayField, resolveReferenceColors, resolveReferenceLabels } from "./reference.js";
 import { validateRecord } from "./record.js";
 
 const exercise: EntityDocument = {
@@ -74,5 +74,32 @@ describe("resolveReferenceLabels", () => {
       ["1", "Squat"],
       ["3", "Deadlift"],
     ]);
+  });
+});
+
+describe("resolveReferenceColors (RFC 0008 item 8)", () => {
+  const colours: EntityDocument = {
+    kind: "entity",
+    specVersion: 3,
+    id: "colour",
+    revision: 1,
+    fields: [
+      { id: "name", type: "text", label: "Name" },
+      { id: "hex", type: "text", label: "Hex" },
+      { id: "tone", type: "select", label: "Tone", options: { source: "static", values: [{ value: "warm", color: "#D13438" }, "cool"] } },
+    ],
+  };
+
+  test("keeps only colour-shaped values, from text and from a select option", async () => {
+    const db = createMemoryAdapter();
+    const red = await db.create("colour", { name: "Red", hex: "#D13438", tone: "warm" }, { entityRevision: 1 });
+    const free = await db.create("colour", { name: "Free", hex: "firebrick", tone: "cool" }, { entityRevision: 1 });
+    const bare = await db.create("colour", { name: "Bare" }, { entityRevision: 1 });
+    const hexField = (colours.fields as Field[])[1]!;
+    const toneField = (colours.fields as Field[])[2]!;
+    const byHex = await resolveReferenceColors(db, colours, hexField, [red.id, free.id, bare.id, "missing"]);
+    expect([...byHex]).toEqual([[red.id, "#D13438"]]); // free text, no value, and a missing record are all absent
+    const byTone = await resolveReferenceColors(db, colours, toneField, [red.id, free.id]);
+    expect([...byTone]).toEqual([[red.id, "#D13438"]]); // the chosen option's colour; an option without one paints none
   });
 });

@@ -94,7 +94,7 @@ describe("calendar rendering", () => {
     expect(screen.getAllByRole("gridcell")).toHaveLength(42);
     const today = screen.getByRole("gridcell", { name: "Thursday 15 October 2026" });
     expect(today.getAttribute("aria-current")).toBe("date");
-    expect(within(today).getByRole("group", { name: "Pay rent, Ada, Home" })).toBeTruthy();
+    expect(within(today).getByRole("group", { name: "Pay rent, Assignee: Ada, Home" })).toBeTruthy();
     expect(within(today).getByRole("group", { name: "Call Ada, Work" })).toBeTruthy();
     expect(within(cell("2026-10-20")).getByText("Book flights")).toBeTruthy();
     // Entries sort by title within a day; the leading day of September is a real day with its entries.
@@ -106,7 +106,7 @@ describe("calendar rendering", () => {
 
   test("detail fields use the field's Display; the colour has a legend and a text in the label", async () => {
     await open();
-    const rent = screen.getByRole("group", { name: "Pay rent, Ada, Home" });
+    const rent = screen.getByRole("group", { name: "Pay rent, Assignee: Ada, Home" });
     expect(within(rent).getByTestId("display-assignee").textContent).toBe("Ada");
     const legend = screen.getByTestId("calendar-legend");
     expect([...legend.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Home", "Work"]);
@@ -390,7 +390,7 @@ describe("row action", () => {
     await screen.findByRole("heading", { name: "November 2026" });
     fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
     await screen.findByText("Pay rent");
-    fireEvent.click(screen.getByRole("button", { name: "Pay rent, Ada, Home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pay rent, Assignee: Ada, Home" }));
     const heading = await screen.findByRole("heading", { name: "Task history: List = Home" });
     await waitFor(() => expect(document.activeElement).toBe(heading));
     const table = await screen.findByRole("table", { name: "Task history" });
@@ -407,7 +407,7 @@ describe("row action", () => {
 
   test("entries are not buttons without a rowAction", async () => {
     await open();
-    expect(screen.queryByRole("button", { name: "Pay rent, Ada, Home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pay rent, Assignee: Ada, Home" })).toBeNull();
   });
 
   test("a row action whose target cannot be found is reported", async () => {
@@ -579,5 +579,88 @@ describe("record actions on entries (RFC 0007)", () => {
     fireEvent.change(document.querySelector("[data-testid='input-reason']")!, { target: { value: "done" } });
     fireEvent.click(confirmButton());
     await waitFor(() => expect(screen.getByText("archived:done")).toBeTruthy());
+  });
+});
+
+describe("RFC 0008 surfaces (card 47e)", () => {
+  const doneEntity: EntityDocument = { ...entity, fields: [...entity.fields, { id: "done", type: "boolean", label: "Done" }] };
+
+  async function openDone(view: CalendarView, adapter: DataAdapter, docEntities: ReadonlyMap<string, EntityDocument>): Promise<void> {
+    render(
+      <CalendarRenderer entity={doneEntity} view={view} registry={mockRegistry} dataSources={new Map([["default", adapter]])} entities={docEntities} documents={{ entities: docEntities, views: documents.views }} now={NOW} />,
+    );
+    await screen.findByText("Pay rent");
+  }
+
+  test("a doneField view gives every entry a checkbox that writes the boolean (item 3)", async () => {
+    const { db } = await seed();
+    const update = vi.fn(db.update);
+    await openDone({ ...calendar, doneField: "done" }, { ...db, update }, new Map([[doneEntity.id, doneEntity]]));
+    const box = screen.getByRole("checkbox", { name: "Mark done Pay rent, Assignee: Ada, Home" });
+    fireEvent.click(box);
+    await waitFor(() => expect(status()).toBe("Pay rent marked done"));
+    expect(update).toHaveBeenCalledTimes(1);
+    const [entityName, , patchValues, meta] = update.mock.calls[0] as [string, string, Record<string, unknown>, { baseVersion?: string }];
+    expect([entityName, patchValues, typeof meta.baseVersion]).toEqual(["task", { done: true }, "string"]);
+    await waitFor(() => expect((screen.getByRole("checkbox", { name: "Mark not done Pay rent, Assignee: Ada, Home" }) as HTMLInputElement).checked).toBe(true));
+  });
+
+  test("a record whose done field is locked by can.fields has a disabled checkbox (item 9)", async () => {
+    const { db, ids } = await seed();
+    const withCan: DataAdapter = {
+      ...db,
+      async find(findEntity, query) {
+        const page = await db.find(findEntity, query);
+        return { ...page, items: page.items.map((r) => (r.id === ids["Pay rent"] ? { ...r, can: { ...r.can, fields: { done: false } } } : r)) };
+      },
+    };
+    await openDone({ ...calendar, doneField: "done" }, withCan, new Map([[doneEntity.id, doneEntity]]));
+    expect((screen.getByRole("checkbox", { name: "Mark done Pay rent, Assignee: Ada, Home" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Mark done Call Ada, Work" }) as HTMLInputElement).disabled).toBe(false);
+  });
+
+  test("a day past maxEntriesPerDay caps the list behind +N more, which reveals it (item 7)", async () => {
+    const { db } = await seed([
+      { title: "Deep six", due: "2026-10-15", list: "Home" },
+      { title: "Deep seven", due: "2026-10-15", list: "Home" },
+    ]);
+    render(
+      <CalendarRenderer entity={entity} view={{ ...calendar, maxEntriesPerDay: 2 }} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={documents} now={NOW} />,
+    );
+    await screen.findByText("Call Ada");
+    const today = cell("2026-10-15");
+    // Four entries that day, cap 2: two sort first, two wait behind the disclosure.
+    const shown = [...today.querySelectorAll("[data-testid^='entry-']")];
+    expect(shown).toHaveLength(2);
+    fireEvent.click(within(today).getByRole("button", { name: "+2 more" }));
+    expect([...today.querySelectorAll("[data-testid^='entry-']")]).toHaveLength(4);
+  });
+
+  test("a reference colorField with colorFrom passes the target's colour beside the hash slot (item 8)", async () => {
+    const team: EntityDocument = {
+      kind: "entity",
+      specVersion: 3,
+      id: "team",
+      revision: 1,
+      fields: [
+        { id: "name", type: "text", label: "Name" },
+        { id: "color", type: "text", label: "Color" },
+      ],
+    };
+    const withTeam: EntityDocument = { ...entity, fields: [...entity.fields, { id: "team", type: "reference", label: "Team", entity: "team", display: "name", colorFrom: "color" }] };
+    const db = createMemoryAdapter();
+    const red = await db.create("team", { name: "Red", color: "#D13438" }, { entityRevision: 1 });
+    const blue = await db.create("team", { name: "Blue", color: "cerulean" }, { entityRevision: 1 });
+    await db.create("task", { title: "Pay rent", due: "2026-10-15", list: "Home", assignee: "Ada", team: red.id }, { entityRevision: 1 });
+    await db.create("task", { title: "Call Ada", due: "2026-10-15", list: "Work", team: blue.id }, { entityRevision: 1 });
+    const docs: DocumentSet = { entities: new Map([[withTeam.id, withTeam], [team.id, team]]), views: documents.views };
+    render(
+      <CalendarRenderer entity={withTeam} view={{ ...calendar, colorField: "team" }} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={docs.entities} documents={docs} now={NOW} />,
+    );
+    await screen.findByText("Pay rent");
+    const entryOf = (title: string): Element | undefined => [...cell("2026-10-15").querySelectorAll("[data-testid^='entry-']")].find((e) => e.textContent?.includes(title));
+    await waitFor(() => expect(entryOf("Pay rent")?.getAttribute("data-color")).toBe("#D13438"));
+    expect(entryOf("Pay rent")?.getAttribute("data-slot")).not.toBeNull(); // the hash slot stays beside it
+    expect(entryOf("Call Ada")?.hasAttribute("data-color")).toBe(false); // a non-hex target paints none
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { BoardView, DataRecord, EntityDocument, ReferenceField } from "@yadad/core";
+import type { BoardView, DataRecord, EntityDocument, Field, ReferenceField } from "@yadad/core";
 import { SPEC_VERSION } from "@yadad/core";
 import { createMemoryAdapter } from "./memory-adapter.js";
 import {
@@ -131,6 +131,19 @@ describe("boardColumns: select", () => {
       { id: "v:Todo", kind: "value", label: "Todo", value: "Todo" },
       { id: "v:In progress", kind: "value", label: "In progress", value: "In progress" },
       { id: "v:Done", kind: "value", label: "Done", value: "Done" },
+    ]);
+  });
+  test("an option's colour and label ride the column (RFC 0008 item 5)", () => {
+    const painted: Field = {
+      id: "status",
+      type: "select",
+      label: "Status",
+      required: true,
+      options: { source: "static", values: [{ value: "Todo", label: "To do", color: "#D13438" }, { value: "Done" }] },
+    };
+    expect(boardColumns(painted)).toEqual([
+      { id: "v:Todo", kind: "value", label: "To do", value: "Todo", color: "#D13438" },
+      { id: "v:Done", kind: "value", label: "Done", value: "Done" }, // label defaults to the value; no colour key
     ]);
   });
   test("a required select field gets no empty column", () => {

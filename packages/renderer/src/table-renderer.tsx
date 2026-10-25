@@ -4,6 +4,7 @@ import { bindFilter, canEditField, canUpdate, columnEditable, compareCells, empt
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { FormRenderer } from "./form-renderer.js";
 import { loadFailure } from "./load-state.js";
 import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
@@ -66,6 +67,12 @@ interface RowActionHandle {
 }
 
 interface TableBodyProps extends Omit<TableRendererProps, "documents" | "viewer"> {
+  /** RFC 0008 item 4: the "Add" control for the view's `addForm` (top level only); the panel opens under the table. */
+  readonly add?: ReactNode;
+  /** The add form's panel, when open. */
+  readonly addPanel?: ReactNode;
+  /** Bumped when the add form saves: reloads rows beside the host's reloadKey. */
+  readonly reloadSignal?: number;
   readonly viewer: ResolvedViewer;
   /** Replaces the view's own fixed filter: the target's filter with the row bindings applied. */
   readonly baseFilter?: Condition | undefined;
@@ -185,7 +192,51 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     setStack((s) => s.slice(0, -1));
   };
 
+  // RFC 0008 item 4 (addForm): "Add" under the top-level table opens the named form view inline;
+  // a save closes the panel and reloads the rows. It is rowAction.open in the create direction.
+  const [adding, setAdding] = useState(false);
+  const [addSaves, setAddSaves] = useState(0);
   if (viewerError) return <ErrorSummary errors={[viewerError]} />;
+
+  const addControl = (): { add: ReactNode; addPanel?: ReactNode } | undefined => {
+    if (view.addForm === undefined) return undefined;
+    const fail = (message: string, hint: string): { add: ReactNode } => ({ add: <ErrorSummary errors={[{ path: "/addForm", code: "invalid-value", message, hint }]} /> });
+    const formView = documents?.views.get(view.addForm);
+    if (!documents) return fail(`View "${view.id}" offers an add form, but no documents were passed to look up "${view.addForm}".`, "Pass the document set as the documents prop.");
+    if (!formView || formView.kind !== "form") return fail(`Add form opens "${view.addForm}", which is not a form view in the document set.`, "Point addForm at a form view, or drop it.");
+    if (formView.entity !== entity.id) return fail(`Add form "${formView.id}" is for entity "${formView.entity}", not "${entity.id}".`, "The add form must be over the table's own entity.");
+    if (!dataSources.has(formView.dataSource)) return fail(`Add form "${formView.id}" uses data source "${formView.dataSource}", which was not provided.`, "Provide that data source in dataSources.");
+    return {
+      add: (
+        // The card's `view.addForm.button` premise rotted (addForm is the form view's id, a string);
+        // the RFC body's own affordance is "Add {entity}".
+        <Button label={`Add ${entity.id}`} type="button" variant="secondary" disabled={false} aria-expanded={adding} onPress={() => setAdding((a) => !a)} />
+      ),
+      ...(adding
+        ? {
+            addPanel: (
+              <div data-yadad-add-form={formView.id}>
+                <FormRenderer
+                  entity={entity}
+                  view={formView}
+                  registry={registry}
+                  dataSources={dataSources}
+                  {...(refEntities ? { entities: refEntities } : {})}
+                  documents={documents}
+                  {...(formatting ? { formatting } : {})}
+                  onSaved={() => {
+                    setAdding(false);
+                    setAddSaves((n) => n + 1);
+                    onChanged?.();
+                  }}
+                />
+              </div>
+            ),
+          }
+        : {}),
+    };
+  };
+  const addParts = levels.length === 1 ? addControl() : undefined;
 
   return (
     <div ref={containerRef} data-yadad-drill={view.id}>
@@ -207,6 +258,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
             viewer={viewer}
             {...(refEntities ? { entities: refEntities } : {})}
             reloadKey={reloadKey}
+            {...(i === 0 && addParts ? { ...addParts, reloadSignal: addSaves } : {})}
             baseFilter={level.baseFilter}
             lockedFields={level.lockedFields}
             {...(formatting ? { formatting } : {})}
@@ -220,7 +272,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   );
 }
 
-function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged, drafts }: TableBodyProps): ReactNode {
+function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, reloadSignal, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged, drafts, add, addPanel }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -293,7 +345,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     return () => {
       current = false;
     };
-  }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloads, shownColumns]);
+  }, [adapter, entity.id, sort, page, pageSize, filter, reloadKey, reloadSignal, reloads, shownColumns]);
 
   // Labels for the references on the loaded page; picker options only while a row is being edited.
   const referenceColumns = shownColumns.flatMap((c) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === c.field));
@@ -332,8 +384,27 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     ...(view.quickFilters ?? []).map((f, i) => ({ field: f.field, path: ["quickFilters", i, "field"] })),
   ];
   const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...extraErrors, ...recordActionSetupErrors(entity, view, adapter, registry)];
-  const { Table, Button, ErrorSummary, Section, FieldFrame } = registry.layout;
+  const { Table, Button, ErrorSummary, Section, FieldFrame, Pager } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
+  // RFC 0008 item 11: the registry's styled pager when it has one, today's nav otherwise.
+  const pager = (label: string, hasPrevious: boolean, hasNext: boolean, pageCount: number | undefined): ReactNode =>
+    Pager ? (
+      <Pager
+        label={label}
+        hasPrevious={hasPrevious}
+        hasNext={hasNext}
+        page={page + 1}
+        {...(pageCount === undefined ? {} : { pageCount })}
+        onPrevious={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
+    ) : (
+      <nav aria-label={label} data-yadad-pager="">
+        <Button label="Previous" type="button" variant="secondary" disabled={!hasPrevious} onPress={() => setPage((p) => p - 1)} />
+        <span>{pageCount === undefined ? `Page ${page + 1}` : `Page ${page + 1} of ${pageCount}`}</span>
+        <Button label="Next" type="button" variant="secondary" disabled={!hasNext} onPress={() => setPage((p) => p + 1)} />
+      </nav>
+    );
 
   const columns = shownColumns.flatMap((c) => {
     const field = entity.fields.find((f) => f.id === c.field);
@@ -538,22 +609,12 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       {recordActions.dialog}
       {editErrors.length > 0 && <ErrorSummary id={editErrorsId} errors={editErrors} />}
       {cursorMode ? (
-        <nav aria-label={`${view.title ?? entity.id} pages`} data-yadad-pager="">
-          <Button label="Previous" type="button" variant="secondary" disabled={page === 0} onPress={() => setPage((p) => p - 1)} />
-          <span>Page {page + 1}</span>
-          <Button label="Next" type="button" variant="secondary" disabled={rows.status !== "loaded" || rows.next == null} onPress={() => setPage((p) => p + 1)} />
-        </nav>
+        pager(`${view.title ?? entity.id} pages`, page > 0, rows.status === "loaded" && rows.next != null, undefined)
       ) : (
-        pages > 1 && (
-          <nav aria-label={`${view.title ?? entity.id} pages`} data-yadad-pager="">
-            <Button label="Previous" type="button" variant="secondary" disabled={page === 0} onPress={() => setPage((p) => p - 1)} />
-            <span>
-              Page {page + 1} of {pages}
-            </span>
-            <Button label="Next" type="button" variant="secondary" disabled={page >= pages - 1} onPress={() => setPage((p) => p + 1)} />
-          </nav>
-        )
+        pages > 1 && pager(`${view.title ?? entity.id} pages`, page > 0, page < pages - 1, pages)
       )}
+      {add}
+      {addPanel}
     </div>
   );
 }

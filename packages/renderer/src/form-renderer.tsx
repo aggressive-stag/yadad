@@ -147,7 +147,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
       setState((s) => setFieldValue(s, field.id, value));
     };
     return (
-      <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={field.label} required={field.required === true || rules.required.has(field.id)} errors={errors}>
+      <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={item.label ?? field.label} required={field.required === true || rules.required.has(field.id)} errors={errors}>
         {renderInput(registry, field, state.values[field.id], common, onChange, references, formatting)}
       </FieldFrame>
     );

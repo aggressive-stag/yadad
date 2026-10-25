@@ -15,6 +15,7 @@ import type {
   FieldFrameProps,
   InputProps,
   NumberField,
+  PagerProps,
   PanelProps,
   RecordActionItem,
   Registry,
@@ -27,7 +28,7 @@ import type {
   TabsProps,
   TextField,
 } from "@yadad/core";
-import { optionValue } from "@yadad/core"; // RFC 0008: card 47a
+import { optionColor, optionLabel, optionValue } from "@yadad/core"; // RFC 0008: card 47a
 import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -48,7 +49,7 @@ export const mockRegistry: Registry<ReactNode> = {
     time: { type: "time", Input: MockTimeInput, Display: MockDisplay }, // RFC 0008: card 47k
     tags: { type: "tags", Input: MockTagsInput, Display: MockTagsDisplay }, // RFC 0008: card 47k
   },
-  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard, Dialog: MockDialog },
+  layout: { FieldFrame: MockFieldFrame, Section: MockSection, Button: MockButton, Table: MockTable, ErrorSummary: MockErrorSummary, Tabs: MockTabs, Panel: MockPanel, Calendar: MockCalendar, Board: MockBoard, Dialog: MockDialog, Pager: MockPager },
   widgets: { count: MockCount, series: MockSeries },
 };
 
@@ -95,10 +96,10 @@ function MockSelectInput(props: InputProps<SelectField, string>): ReactNode {
     <select {...controlProps(props)} value={props.value ?? ""} onChange={(e) => props.onChange(orUndefined(e.target.value))}>
       <option value="">Choose…</option>
       {props.field.options.values.map((o) => (
-        <option key={optionValue(o)} value={optionValue(o)}>
-          {optionValue(o)}
+        <option key={optionValue(o)} value={optionValue(o)} {...(optionColor(o) === undefined ? {} : { "data-color": optionColor(o) })}>
+          {optionLabel(o)}
         </option>
-      ))} /* RFC 0008: card 47a */
+      ))} /* RFC 0008: cards 47a/47e */
     </select>
   );
 }
@@ -152,9 +153,9 @@ function MockReferenceInput(props: FieldInputProps<"reference">): ReactNode {
   );
 }
 
-function MockReferenceDisplay({ field, label, status }: FieldDisplayProps<"reference">): ReactNode {
+function MockReferenceDisplay({ field, label, status, color }: FieldDisplayProps<"reference">): ReactNode {
   return (
-    <span data-testid={`display-${field.id}`} data-status={status}>
+    <span data-testid={`display-${field.id}`} data-status={status} {...(color === undefined ? {} : { "data-color": color })}>
       {label}
     </span>
   );
@@ -273,6 +274,32 @@ function MockSection({ id, title, children }: SectionProps<ReactNode>): ReactNod
       {title !== undefined && <legend>{title}</legend>}
       {children}
     </fieldset>
+  );
+}
+
+function MockDoneCheck({ done, label }: { readonly done: { readonly checked: boolean; readonly disabled: boolean; readonly toggle: () => void }; readonly label: string }): ReactNode {
+  return (
+    <input
+      type="checkbox"
+      aria-label={`${done.checked ? "Mark not done" : "Mark done"} ${label}`}
+      checked={done.checked}
+      disabled={done.disabled}
+      onChange={() => done.toggle()}
+    />
+  );
+}
+
+function MockPager({ label, hasPrevious, hasNext, page, pageCount, onPrevious, onNext }: PagerProps): ReactNode {
+  return (
+    <nav aria-label={label} data-testid="mock-pager" data-yadad-pager="">
+      <button type="button" disabled={!hasPrevious} onClick={onPrevious}>
+        Previous
+      </button>
+      <span>{pageCount === undefined ? `Page ${page}` : `Page ${page} of ${pageCount}`}</span>
+      <button type="button" disabled={!hasNext} onClick={onNext}>
+        Next
+      </button>
+    </nav>
   );
 }
 
@@ -491,6 +518,8 @@ function MockCalendar({
   const base = useId();
   const [moving, setMoving] = useState<string | undefined>(undefined);
   const [target, setTarget] = useState("");
+  // RFC 0008 item 7: days whose "+N more" was pressed show all their entries.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const returnFocus = useRef<HTMLElement | null>(null);
   const noun = mode === "month" ? "month" : "week";
   const rows = Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => days.slice(i * 7, i * 7 + 7));
@@ -549,8 +578,8 @@ function MockCalendar({
                   <span aria-hidden="true">{day.dayOfMonth}</span>
                   {day.isToday && <small> Today</small>}
                   <ul>
-                    {day.entries.map((entry) => (
-                      <li key={entry.id} data-testid={`entry-${entry.id}`} data-pending={entry.pending} data-slot={entry.color?.slot}>
+                    {(day.overflow === undefined || expanded.has(day.date) ? day.entries : day.entries.slice(0, day.overflow.shown)).map((entry) => (
+                      <li key={entry.id} data-testid={`entry-${entry.id}`} data-pending={entry.pending} data-slot={entry.color?.slot} {...(entry.color?.color === undefined ? {} : { "data-color": entry.color.color })}>
                         {onOpenEntry ? (
                           <button type="button" aria-label={entry.label} onClick={() => onOpenEntry(entry.id)}>
                             {entry.content}
@@ -574,6 +603,7 @@ function MockCalendar({
                             Move to day…
                           </button>
                         )}
+                        {entry.done !== undefined && <MockDoneCheck done={entry.done} label={entry.label} />}
                         {entry.actions !== undefined && entry.actions.length > 0 && <MockActionButtons actions={entry.actions} />}
                         {onMove && moving === entry.id && (
                           <form
@@ -598,6 +628,13 @@ function MockCalendar({
                         )}
                       </li>
                     ))}
+                    {day.overflow !== undefined && !expanded.has(day.date) && (
+                      <li>
+                        <button type="button" onClick={() => setExpanded((s) => new Set(s).add(day.date))}>
+                          {`+${day.overflow.hidden} more`}
+                        </button>
+                      </li>
+                    )}
                   </ul>
                 </td>
               ))}
@@ -671,7 +708,7 @@ function MockBoard({
       </div>
       <div data-testid="board-columns">
         {columns.map((column) => (
-          <div key={column.id} role="group" aria-label={`${column.label}, ${column.count} cards`} data-testid={`column-${column.id}`} data-droppable={column.droppable} data-count={column.count}>
+          <div key={column.id} role="group" aria-label={`${column.label}, ${column.count} cards`} data-testid={`column-${column.id}`} data-droppable={column.droppable} data-count={column.count} {...(column.color === undefined ? {} : { "data-color": column.color })}>
             <h4>
               {column.label} ({column.count})
             </h4>
@@ -701,6 +738,7 @@ function MockBoard({
                       Move to…
                     </button>
                   )}
+                  {card.done !== undefined && <MockDoneCheck done={card.done} label={card.label} />}
                   {card.actions !== undefined && card.actions.length > 0 && <MockActionButtons actions={card.actions} />}
                   {onMove && moving === card.id && (
                     <form
