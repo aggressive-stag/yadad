@@ -258,10 +258,13 @@ const FIELD_KEYS: { readonly [K in FieldType]: { readonly required: readonly str
 };
 
 function validateForm(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "sections"], []);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "sections"], ["repeat"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
+  if (doc["repeat"] !== undefined && doc["repeat"] !== "batch") {
+    errors.add(["repeat"], "invalid-value", `${JSON.stringify(doc["repeat"])} is not a valid repeat mode.`, 'The only legal value is "batch" (RFC 0009 item 4), or omit the key.', ["batch"]);
+  }
   checkRevision(errors, doc);
   checkNonEmptyString(errors, doc, [], "dataSource");
 
@@ -275,10 +278,24 @@ function validateForm(errors: Errors, doc: JsonObject): void {
       errors.add(path, "type", "A section must be a JSON object.", 'Use { "id", "items" }.');
       return;
     }
-    checkKeys(errors, section, path, ["id", "items"], ["title"]);
+    checkKeys(errors, section, path, ["id"], ["title", "items", "subRecords"]);
     checkId(errors, section, path, "id");
     checkNonEmptyString(errors, section, path, "title");
     if (typeof section["id"] === "string") sectionIds.push({ id: section["id"], path: [...path, "id"] });
+    const hasItems = section["items"] !== undefined;
+    const hasSub = section["subRecords"] !== undefined;
+    if (!hasItems && !hasSub) {
+      errors.add(path, "required", 'A section needs "items" or "subRecords".', 'Fields: { "id", "items": [ { "field": ... } ] }. Checklist: { "id", "subRecords": { "entity", "via", "titleField", "doneField" } } (RFC 0009 item 3).');
+      return;
+    }
+    if (hasItems && hasSub) {
+      errors.add(path, "invalid-value", 'A section has both "items" and "subRecords".', "A section holds fields or a sub-record checklist, never both. Split it in two.");
+      return;
+    }
+    if (hasSub) {
+      checkSubRecordSection(errors, section["subRecords"], [...path, "subRecords"]);
+      return;
+    }
 
     const items = checkArray(errors, section, path, "items");
     items?.forEach((item, j) => {
@@ -312,10 +329,27 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "quickFilters", "rowAction", "recordActions", "addForm"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm"]);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkRecordActions(errors, doc["recordActions"]);
+  const saved = checkArray(errors, doc, [], "filters");
+  const savedIds: { id: string; path: Path }[] = [];
+  saved?.forEach((entry, i) => {
+    const path = ["filters", i];
+    if (!isObject(entry)) {
+      errors.add(path, "type", "A saved filter must be a JSON object.", 'Use { "id", "name", "condition": <condition> } (RFC 0009 item 5).');
+      return;
+    }
+    checkKeys(errors, entry, path, ["id", "name", "condition"], []);
+    checkId(errors, entry, path, "id");
+    checkNonEmptyString(errors, entry, path, "name");
+    if (typeof entry["id"] === "string") savedIds.push({ id: entry["id"], path: [...path, "id"] });
+    // The same checkCondition the view's own `filter` uses — nothing new in the language.
+    checkCondition(errors, entry["condition"], [...path, "condition"], "filter");
+  });
+  reportDuplicates(errors, savedIds, "saved filter", "a table (each saved filter id once)");
+
   const filters = checkArray(errors, doc, [], "quickFilters");
   const filtered: { id: string; path: Path }[] = [];
   filters?.forEach((f, i) => {
@@ -740,6 +774,7 @@ const CONDITION_SHAPES: { readonly [K in ConditionOp]: string } = {
   or: '{ "op": "or", "conditions": [ <condition>, ... ] } (a list under "conditions")',
   not: '{ "op": "not", "condition": <condition> } (one condition under "condition")',
   viewerIn: '{ "op": "viewerIn", "fact": "<viewer fact id>", "values": ["editor", "owner"] } (a list under "values")',
+  fieldEqFact: '{ "op": "fieldEqFact", "field": "<field id>", "fact": "<viewer fact id>" } (the record\'s value of "field" equals the viewer\'s value of the fact)',
 };
 
 /** Keys authors swap by one letter; an unknown one suggests its twin when that is what the op takes. */
@@ -840,6 +875,17 @@ function checkCondition(errors: Errors, value: unknown, path: Path, place: Condi
       });
       return;
     }
+    case "fieldEqFact": {
+      // RFC 0009 item 1: names a field AND a fact; reuses eq's type rules (set pass).
+      if (place === "filter") {
+        errors.add(path, "invalid-value", "A filter cannot depend on the viewer.", "Filters are sent to the server. Scope records on the server, or hide this view with a viewer condition.");
+        return;
+      }
+      checkConditionKeys(errors, value, path, op, ["field", "fact"]);
+      checkId(errors, value, path, "field");
+      checkId(errors, value, path, "fact");
+      return;
+    }
     case "empty":
     case "notEmpty":
       checkConditionKeys(errors, value, path, op, ["field"]);
@@ -888,7 +934,7 @@ function checkRelativeDate(errors: Errors, value: object, path: Path): void {
 /** True when a raw condition contains a `viewerIn` leaf anywhere (shape not required to be valid). */
 function containsViewerLeaf(value: unknown, depth = 0): boolean {
   if (!isObject(value) || depth > MAX_CONDITION_DEPTH) return false;
-  if (value["op"] === "viewerIn") return true;
+  if (value["op"] === "viewerIn" || value["op"] === "fieldEqFact") return true;
   if (Array.isArray(value["conditions"])) return value["conditions"].some((c: unknown) => containsViewerLeaf(c, depth + 1));
   return containsViewerLeaf(value["condition"], depth + 1);
 }
@@ -1355,7 +1401,12 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   };
   if (view.kind === "form") {
     view.sections.forEach((section, i) => {
-      section.items.forEach((item, j) => {
+      const sub = section.subRecords;
+      if (sub) {
+        checkSubRecordRefs(errors, view, sub, idx, ["sections", i, "subRecords"]);
+        return;
+      }
+      (section.items ?? []).forEach((item, j) => {
         const itemPath: Path = ["sections", i, "items", j];
         checkField(item.field, [...itemPath, "field"]);
         checkConditionFields(item.visibleWhen, [...itemPath, "visibleWhen"], checkField);
@@ -1378,6 +1429,11 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   });
   checkConditionFields(view.filter, ["filter"], checkField);
   checkDates(view.filter, ["filter"]);
+  if (view.kind === "table")
+    view.filters?.forEach((entry, i) => {
+      checkConditionFields(entry.condition, ["filters", i, "condition"], checkField);
+      checkDates(entry.condition, ["filters", i, "condition"]);
+    });
   checkRecordActionRefs(errors, view, entity);
   checkCompareFields(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
@@ -1896,6 +1952,7 @@ function checkReferenceOps(errors: DocumentError[], document: string, entity: En
       checkDatetimeConditions(errors, document, entity, condition.condition, [...base, "condition"]);
       return;
     case "viewerIn":
+    case "fieldEqFact": // comparing a reference with the viewer's own fact value is the point (RFC 0009 item 1)
       return;
     default: {
       const field = entity.fields.find((f) => f.id === condition.field);
@@ -1911,6 +1968,21 @@ function checkReferenceOps(errors: DocumentError[], document: string, entity: En
   }
 }
 
+/** Checks the SHAPE of a declared sub-record section (RFC 0009 item 3); its entity/field refs are checked in the set pass. */
+function checkSubRecordSection(errors: Errors, value: unknown, path: Path): void {
+  if (!isObject(value)) {
+    errors.add(path, "type", '"subRecords" must be a JSON object.', 'Use { "entity", "via", "titleField", "doneField", "orderField?", "addLabel?" } (RFC 0009 item 3).');
+    return;
+  }
+  checkKeys(errors, value, path, ["entity", "via", "titleField", "doneField"], ["orderField", "addLabel"]);
+  checkId(errors, value, path, "entity");
+  checkId(errors, value, path, "via");
+  checkId(errors, value, path, "titleField");
+  checkId(errors, value, path, "doneField");
+  checkId(errors, value, path, "orderField");
+  checkBoundedLabel(errors, value, path, "addLabel");
+}
+
 /** Reports, on a datetime field, a `contains` or a value that is not an instant in the one stored form (RFC 0007). */
 function checkDatetimeConditions(errors: DocumentError[], document: string, entity: EntityDocument, condition: Condition | undefined, base: Path): void {
   if (!condition) return;
@@ -1923,6 +1995,7 @@ function checkDatetimeConditions(errors: DocumentError[], document: string, enti
       checkDatetimeConditions(errors, document, entity, condition.condition, [...base, "condition"]);
       return;
     case "viewerIn":
+    case "fieldEqFact": // no literal to check the instant form of
     case "empty":
     case "notEmpty":
       return;
@@ -1989,6 +2062,35 @@ function checkRelativeDateFields(errors: DocumentError[], document: string, enti
 function exampleFor(op: ConditionOp, type: FieldType): string {
   const sample = type === "number" ? "5" : type === "boolean" ? "true" : type === "datetime" ? '"2026-10-17T09:30:00.000Z"' : '"text"';
   return `{ "op": "${op}", "field": "<${type} field>", "value": ${sample} }`;
+}
+
+/** Checks a declared sub-record section's refs (RFC 0009 item 3): child entity exists, `via` is a reference back to the form's entity, the named fields exist with the right types. */
+function checkSubRecordRefs(errors: DocumentError[], view: FormView, sub: NonNullable<FormView["sections"][number]["subRecords"]>, idx: SetIndex, base: Path): void {
+  const child = idx.entities.get(sub.entity);
+  if (!child) {
+    errors.push(refError(view.id, [...base, "entity"], `Sub-record entity "${sub.entity}" is not in the set.`, "Name an entity that exists in the set.", [...idx.entities.keys()]));
+    return;
+  }
+  const via = child.fields.find((f) => f.id === sub.via);
+  if (!via || via.type !== "reference") {
+    errors.push(refError(view.id, [...base, "via"], `Field "${sub.via}" on "${child.id}" is not a reference field.`, "Name a reference field on the child entity that points back at this form's entity.", child.fields.filter((f) => f.type === "reference").map((f) => f.id)));
+  } else if (via.entity !== view.entity) {
+    errors.push({ path: jsonPointer([...base, "via"]), code: "invalid-value", message: `Reference "${sub.via}" on "${child.id}" points at "${via.entity}", not at this form's entity "${view.entity}".`, hint: "The via reference must point back at the form's entity — that link is what scopes the checklist.", document: view.id });
+  }
+  const title = child.fields.find((f) => f.id === sub.titleField);
+  if (!title || title.type !== "text") {
+    errors.push(refError(view.id, [...base, "titleField"], `Field "${sub.titleField}" on "${child.id}" is not a text field.`, "The row's input edits a text field.", child.fields.filter((f) => f.type === "text").map((f) => f.id)));
+  }
+  const done = child.fields.find((f) => f.id === sub.doneField);
+  if (!done || done.type !== "boolean") {
+    errors.push(refError(view.id, [...base, "doneField"], `Field "${sub.doneField}" on "${child.id}" is not a boolean field.`, "The row's checkbox needs a boolean field.", child.fields.filter((f) => f.type === "boolean").map((f) => f.id)));
+  }
+  if (sub.orderField !== undefined) {
+    const order = child.fields.find((f) => f.id === sub.orderField);
+    if (!order || order.type !== "number") {
+      errors.push(refError(view.id, [...base, "orderField"], `Field "${sub.orderField}" on "${child.id}" is not a number field.`, "Ordering needs a number field, or omit orderField.", child.fields.filter((f) => f.type === "number").map((f) => f.id)));
+    }
+  }
 }
 
 /** Calls `check` for every field a condition references, with its JSON Pointer. */
@@ -2115,10 +2217,11 @@ function checkDashboard(errors: DocumentError[], doc: DashboardView, idx: SetInd
 // ---- viewer references (RFC 0006) -------------------------------------------
 
 /** Calls `visit` for every `viewerIn` leaf in a condition, with its JSON Pointer path. */
-function eachViewerLeaf(condition: Condition | ViewerCondition | undefined, base: Path, visit: (leaf: Extract<Condition, { readonly op: "viewerIn" }>, path: Path) => void): void {
+function eachViewerLeaf(condition: Condition | ViewerCondition | undefined, base: Path, visit: (leaf: Extract<Condition, { readonly op: "viewerIn" | "fieldEqFact" }>, path: Path) => void): void {
   if (!condition) return;
   switch (condition.op) {
     case "viewerIn":
+    case "fieldEqFact": // RFC 0009 item 1: it reads a fact like viewerIn does, and a field
       visit(condition, base);
       return;
     case "and":
@@ -2161,6 +2264,7 @@ function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[
           );
           return;
         }
+        if (leaf.op === "fieldEqFact") return; // RFC 0009 item 1: no literal values to type-check; it reuses eq's runtime rules
         leaf.values.forEach((value, j) => {
           const vpath = [...path, "values", j];
           if (fact.type === "boolean") {
@@ -2183,7 +2287,7 @@ function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[
         break;
       case "form":
         doc.sections.forEach((section, i) =>
-          section.items.forEach((item, j) => {
+          (section.items ?? []).forEach((item, j) => {
             check(item.visibleWhen, ["sections", i, "items", j, "visibleWhen"]);
             check(item.requiredWhen, ["sections", i, "items", j, "requiredWhen"]);
           }),
@@ -2214,7 +2318,7 @@ function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[
 
   viewer?.facts.forEach((fact, i) => {
     if (!read.has(fact.id)) {
-      warnings.push({ path: jsonPointer(["facts", i]), code: "empty", message: `Nothing reads the fact "${fact.id}".`, hint: "Use it in a viewerIn condition or remove it.", document: viewer.id });
+      warnings.push({ path: jsonPointer(["facts", i]), code: "empty", message: `Nothing reads the fact "${fact.id}".`, hint: "Use it in a viewerIn or fieldEqFact condition or remove it.", document: viewer.id });
     }
   });
 }

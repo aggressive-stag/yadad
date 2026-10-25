@@ -193,10 +193,36 @@ export interface FormItem {
   readonly clearWhenHidden?: boolean;
 }
 
+/**
+ * A declared sub-record checklist section (RFC 0009 item 3, ratified (b)): a
+ * second entity whose records carry a `reference` back to the form's entity.
+ * Each child stays an ordinary record — its own `can`, its own version; the
+ * form only hosts the editing affordance, and writes go through the adapter
+ * as ordinary writes to `entity`.
+ */
+export interface SubRecordSection {
+  /** Id of the child entity; it must exist and carry `via` as a reference to the form's entity. */
+  readonly entity: string;
+  /** Id of a `reference` field on `entity` whose target is the form's entity. */
+  readonly via: string;
+  /** Id of a text field on `entity`: what the row's input edits. */
+  readonly titleField: string;
+  /** Id of a boolean field on `entity`: the row's checkbox. */
+  readonly doneField: string;
+  /** Id of a number field on `entity`: ascending order of the rows. Optional. */
+  readonly orderField?: string;
+  /** Label for the add-row control. Defaults to the renderer's "Add <entity title>". */
+  readonly addLabel?: string;
+}
+
+/** A section holds fields OR a sub-record checklist — discriminated by which key is present. */
 export interface FormSection {
   readonly id: string;
   readonly title?: string;
-  readonly items: readonly FormItem[];
+  /** Field layout. Absent exactly when `subRecords` is present. */
+  readonly items?: readonly FormItem[];
+  /** Inline checklist over a child entity (RFC 0009 item 3). Absent exactly when `items` is present. */
+  readonly subRecords?: SubRecordSection;
 }
 
 /** Layout only: references entity fields by id. */
@@ -209,6 +235,11 @@ export interface FormView {
   /** Key the host maps to a DataAdapter. Never a URL. */
   readonly dataSource: string;
   readonly sections: readonly FormSection[];
+  /**
+   * The host renders the field set N times and the write path creates N
+   * records atomically via `batch create` (RFC 0009 item 4). The one legal value.
+   */
+  readonly repeat?: "batch";
 }
 
 /** Which neighbour a `compare` column diffs against: the row before or after it in the table's own order. */
@@ -260,6 +291,8 @@ export interface TableView {
   readonly pageSize?: number;
   /** Rows must always match this. */
   readonly filter?: Condition;
+  /** Named saved filters the host offers as chips (RFC 0009 item 5); which one is selected stays the host's. */
+  readonly filters?: readonly NamedFilter[];
   /**
    * Id of a form view over the SAME entity (RFC 0008 item 4): the table offers "Add {entity}" and
    * opens that form; a save reloads the table. It is `rowAction.open` in the create direction.
@@ -397,6 +430,17 @@ export interface BoardView {
 
 export interface QuickFilter {
   readonly field: string;
+}
+
+/**
+ * A document-level named saved filter (RFC 0009 item 5): query *shape*, not
+ * query state — which one is selected stays the host's. The condition is over
+ * the view's entity, checked by the same validator a view `filter` passes.
+ */
+export interface NamedFilter {
+  readonly id: string;
+  readonly name: string;
+  readonly condition: Condition;
 }
 
 /** Widget types a dashboard grid item can hold, discriminated on `widget`. */
@@ -582,4 +626,13 @@ export type DocumentKind = Document["kind"];
  */
 export function defaultTitleField(entity: EntityDocument): string | undefined {
   return entity.fields.find((f) => f.type === "text")?.id;
+}
+
+/**
+ * The items of a form section: [] for a sub-record checklist section (RFC 0009
+ * item 3), which has none. One owner — every consumer walks sections through
+ * this instead of touching `items` directly, so the discriminator stays in core.
+ */
+export function sectionItems(section: FormSection): readonly FormItem[] {
+  return section.items ?? [];
 }

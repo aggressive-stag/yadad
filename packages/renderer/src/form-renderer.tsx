@@ -1,4 +1,4 @@
-import { conditionFields, jsonPointer } from "@yadad/core";
+import { conditionFields, jsonPointer, sectionItems } from "@yadad/core";
 import type { DataAdapter, DataRecord, EntityDocument, FieldValue, FormItem, FormView, ReferenceField, Registry, ResolvedViewer } from "@yadad/core";
 import { applyFormRules, emptyFormState, evaluateFormRules, restoreDraft, setFieldValue, submitForm } from "@yadad/runtime";
 import type { DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
@@ -77,14 +77,14 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
   }, [store, debounceMs, entity, view, state.values, viewer]);
 
   const adapter = dataSources.get(view.dataSource);
-  const shownRefs = view.sections.flatMap((s) => s.items.flatMap((i) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === i.field)));
+  const shownRefs = view.sections.flatMap((s) => sectionItems(s).flatMap((i) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === i.field)));
   const wants = shownRefs.flatMap((field) => {
     const value = state.values[field.id];
     return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
   });
   const references = useReferences(adapter, entities, shownRefs, wants);
   const refs = view.sections.flatMap((section, i) =>
-    section.items.flatMap((item, j) => {
+    sectionItems(section).flatMap((item, j) => {
       const path = ["sections", i, "items", j];
       return [
         { field: item.field, path: [...path, "field"] },
@@ -99,7 +99,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
 
   const rules = evaluateFormRules(view, state.values, viewer);
   // Errors for fields not on screen (hidden or not in this view) go in the summary.
-  const shown = new Set(view.sections.flatMap((s) => s.items.map((i) => i.field)).filter((id) => !rules.hidden.has(id)));
+  const shown = new Set(view.sections.flatMap((s) => sectionItems(s).map((i) => i.field)).filter((id) => !rules.hidden.has(id)));
   const formErrors = state.errors.filter((e) => !entity.fields.some((f) => shown.has(f.id) && e.path === jsonPointer([f.id])));
 
   async function save(): Promise<void> {
@@ -168,7 +168,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
       )}
       {view.sections.map((section) => (
         <Section key={section.id} id={section.id} {...(section.title !== undefined ? { title: section.title } : {})}>
-          {section.items.map(renderItem)}
+          {sectionItems(section).map(renderItem)}
         </Section>
       ))}
       {formErrors.length > 0 && <ErrorSummary errors={formErrors} />}

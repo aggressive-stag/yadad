@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { sectionItems } from "@yadad/core"; // RFC 0008/9: card 47b
 import type { BoardProps, BoardView, CalendarProps, CalendarView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewerDocument } from "@yadad/core";
 import { evaluateFormRules, viewEditable } from "@yadad/runtime";
 import type { ReactNode } from "react";
@@ -51,7 +52,7 @@ function FakeForm({ values, options }: { values: Record<string, unknown>; option
   const rules = evaluateFormRules(form, values as never);
   return (
     <form data-yadad-form="task_form">
-      {form.sections[0]!.items.map((item) => {
+      {sectionItems(form.sections[0]!).map((item) => {
         const hidden = options.ignoreHiding ? false : options.hideAlways ? item.field === "title" || rules.hidden.has(item.field) : rules.hidden.has(item.field);
         if (hidden) return null;
         const required = options.markRequired === "always" ? true : options.markRequired === "never" ? false : item.field === "title" || rules.required.has(item.field);

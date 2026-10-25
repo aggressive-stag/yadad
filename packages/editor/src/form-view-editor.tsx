@@ -1,4 +1,4 @@
-import { conditionViewerFacts } from "@yadad/core";
+import { conditionViewerFacts, sectionItems } from "@yadad/core";
 import type { DocumentError, EntityDocument, FieldValue, FormItem, FormView, Registry, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { Fragment, useId, useState } from "react";
@@ -75,7 +75,7 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
   /** The 1-based position of a field within the section it is in. */
   const positionOf = (doc: FormView, fieldId: string): { readonly section: string; readonly at: number } => {
     for (const section of doc.sections) {
-      const at = section.items.findIndex((item) => item.field === fieldId);
+      const at = sectionItems(section).findIndex((item) => item.field === fieldId); // RFC 0008/9: card 47b
       if (at >= 0) return { section: section.title ?? section.id, at: at + 1 };
     }
     return { section: "", at: 0 };
@@ -144,7 +144,7 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
   const fieldRows = (): readonly ReorderableRow[] => {
     const rows: ReorderableRow[] = [];
     for (const section of current.sections)
-      for (const item of section.items) {
+      for (const item of sectionItems(section)) { // RFC 0008/9: card 47b
         const el = rowEl(item.field);
         if (el) rows.push({ id: item.field, sectionId: section.id, el });
       }
@@ -181,7 +181,7 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
   // "Required while" may: a field can require itself while a value holds.
   type RuleKey = "visibleWhen" | "requiredWhen" | "clearWhenHidden";
   const [builder, setBuilder] = useState<{ readonly field: string; readonly rule: RuleKey; readonly draft: ConditionDraft | undefined } | undefined>(undefined);
-  const itemOf = (fieldId: string) => current.sections.flatMap((s) => s.items).find((i) => i.field === fieldId);
+  const itemOf = (fieldId: string) => current.sections.flatMap(sectionItems).find((i) => i.field === fieldId);
   const ruleCondition = (item: FormItem | undefined, rule: RuleKey) => (rule === "visibleWhen" ? item?.visibleWhen : rule === "requiredWhen" ? item?.requiredWhen : undefined);
   const ruleText = (item: FormItem | undefined, rule: RuleKey) => {
     const c = ruleCondition(item, rule);
@@ -271,7 +271,7 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
 
   // Where the field drag's indicator sits in a section: inside the cell of
   // the row the field will precede, or after the table at the end.
-  const fieldOthers = (section: FormView["sections"][number]) => section.items.filter((item) => item.field !== fieldDrag.active);
+  const fieldOthers = (section: FormView["sections"][number]) => sectionItems(section).filter((item) => item.field !== fieldDrag.active); // // RFC 0008/9: card 47b
   const fieldIndicator = (section: FormView["sections"][number], item: FormItem): boolean => {
     const t = fieldDrag.target;
     if (!t || t.sectionId !== section.id) return false;
@@ -308,7 +308,7 @@ export function FormViewEditor({ view, entity, registry, viewer, onSave, onChang
   const sectionView = (section: FormView["sections"][number], index: number): ReactNode => {
     const titleId = `${base}-title-${section.id}`;
     const title = titles[section.id] ?? section.title ?? "";
-    const rows = section.items.map((item) => ({
+    const rows = sectionItems(section).map((item) => ({ // // RFC 0008/9: card 47b
       id: item.field,
       cells: [
         <span key="field" data-yadad-row={item.field} style={{ display: "flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>

@@ -1,4 +1,4 @@
-import { isRelativeDate } from "@yadad/core";
+import { isRelativeDate, sectionItems } from "@yadad/core";
 import type { ComparisonValue, Condition, EntityDocument, FieldValue, FormView, RecordValues, ResolvedViewer, Scalar, ViewerCondition } from "@yadad/core";
 
 const isEmpty = (v: FieldValue | undefined): boolean => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
@@ -85,6 +85,12 @@ export function evaluateCondition(condition: Condition, values: RecordValues, no
     }
     case "viewerIn":
       return viewerIn(condition, viewer);
+    case "fieldEqFact": {
+      // // RFC 0008/9: card 47b — full evaluation + state-grid axes land in 47d; this mirrors
+      // viewerIn's rule: no viewer / no such fact -> false, else eq's strict compare.
+      const entry = viewer?.facts.find((f) => f.fact === condition.fact);
+      return entry !== undefined && values[condition.field] === resolveValue(entry.value, now);
+    }
     case "eq":
       return values[condition.field] === resolveValue(condition.value, now);
     case "neq":
@@ -128,7 +134,7 @@ export interface FormRules {
 export function evaluateFormRules(view: FormView, values: RecordValues, viewer?: ResolvedViewer): FormRules {
   const hidden = new Set<string>();
   const required = new Set<string>();
-  for (const item of view.sections.flatMap((s) => s.items)) {
+  for (const item of view.sections.flatMap(sectionItems)) { // RFC 0008/9: card 47b
     if (item.visibleWhen && !evaluateCondition(item.visibleWhen, values, undefined, viewer)) hidden.add(item.field);
     else if (item.requiredWhen && evaluateCondition(item.requiredWhen, values, undefined, viewer)) required.add(item.field);
   }
@@ -142,7 +148,7 @@ export function evaluateFormRules(view: FormView, values: RecordValues, viewer?:
  */
 export function applyFormRules(entity: EntityDocument, view: FormView, values: RecordValues, viewer?: ResolvedViewer): { entity: EntityDocument; values: RecordValues } {
   const { hidden, required } = evaluateFormRules(view, values, viewer);
-  const cleared = new Set(view.sections.flatMap((s) => s.items).filter((i) => i.clearWhenHidden === true && hidden.has(i.field)).map((i) => i.field));
+  const cleared = new Set(view.sections.flatMap(sectionItems).filter((i) => i.clearWhenHidden === true && hidden.has(i.field)).map((i) => i.field)); // RFC 0008/9: card 47b
   return {
     entity: { ...entity, fields: entity.fields.map((f) => (required.has(f.id) ? { ...f, required: true } : f)) },
     values: Object.fromEntries(Object.entries(values).filter(([k]) => !cleared.has(k))),

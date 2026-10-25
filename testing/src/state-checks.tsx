@@ -4,6 +4,7 @@
 // `render` function that wires its own.
 
 import { act, render as mount } from "@testing-library/react";
+import { sectionItems } from "@yadad/core"; // RFC 0008/9: card 47b
 import type { BoardProps, CalendarProps, DataAdapter, DataRecord, DiffSegment, Document, EntityDocument, FieldDisplayProps, FormView, Registry, ResolvedViewer, TableProps, TabsProps, ViewDocument } from "@yadad/core";
 import { availableActions, canUpdate, columnEditable, compareCells, createDraftStore, evaluateFormRules, rowActionVisible, viewEditable, viewStates, visibleColumns, visibleTabs } from "@yadad/runtime";
 import type { DraftStore, ViewStatesOptions } from "@yadad/runtime";
@@ -336,7 +337,7 @@ function markedRequired(container: HTMLElement, control: HTMLElement): boolean {
 function formChecks(container: HTMLElement, view: FormView, entity: EntityDocument, state: SourceViewState): StateProblem[] {
   const out: StateProblem[] = [];
   if (state.render.kind !== "form") return out;
-  const items = view.sections.flatMap((s) => s.items);
+  const items = view.sections.flatMap(sectionItems); // RFC 0008/9: card 47b
   const rules = evaluateFormRules(view, state.render.values, state.viewer);
   const shown = shownFields(container, entity, items.map((i) => i.field));
   for (const item of items) {

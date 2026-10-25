@@ -1,4 +1,4 @@
-import { jsonPointer, optionValue } from "@yadad/core";
+import { jsonPointer, optionValue, sectionItems } from "@yadad/core";
 import type {
   BoardView,
   CalendarView,
@@ -180,7 +180,7 @@ export function viewerLeavesRead(view: ViewDocument, documents: Iterable<Documen
     };
     switch (v.kind) {
       case "form":
-        for (const item of v.sections.flatMap((s) => s.items)) {
+        for (const item of v.sections.flatMap(sectionItems)) { // RFC 0008/9: card 47b
           leavesOf(item.visibleWhen, leaves);
           leavesOf(item.requiredWhen, leaves);
         }

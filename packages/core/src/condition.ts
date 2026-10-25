@@ -36,7 +36,15 @@ export type Condition =
   | { readonly op: "and" | "or"; readonly conditions: readonly Condition[] }
   | { readonly op: "not"; readonly condition: Condition }
   /** The viewer's value for this fact is one of these (RFC 0006). Reads the viewer, not the record. */
-  | { readonly op: "viewerIn"; readonly fact: string; readonly values: readonly (string | boolean)[] };
+  | { readonly op: "viewerIn"; readonly fact: string; readonly values: readonly (string | boolean)[] }
+  /**
+   * A record field compared with the viewer's value of a declared fact
+   * (RFC 0009 item 1) — `values[field] === viewer[fact]`. A RECORD condition:
+   * legal in a filter, illegal among viewer-only conditions. The fact must be
+   * declared on the context's viewer document; a reference field compares
+   * against fact values that are record ids.
+   */
+  | { readonly op: "fieldEqFact"; readonly field: string; readonly fact: string };
 
 /** The subset of conditions for places that have no record: `viewerIn`, `and`, `or`, `not`. */
 export type ViewerCondition =
@@ -51,7 +59,7 @@ export function isRelativeDate(value: unknown): value is RelativeDate {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "daysFromToday" in value;
 }
 
-export const CONDITION_OPS: readonly ConditionOp[] = ["eq", "neq", "gt", "gte", "lt", "lte", "in", "contains", "empty", "notEmpty", "and", "or", "not", "viewerIn"];
+export const CONDITION_OPS: readonly ConditionOp[] = ["eq", "neq", "gt", "gte", "lt", "lte", "in", "contains", "empty", "notEmpty", "and", "or", "not", "viewerIn", "fieldEqFact"];
 
 /** Every record field id a condition refers to, for checking them against the entity. A `viewerIn` leaf names no field. */
 export function conditionFields(condition: Condition): string[] {
@@ -77,6 +85,7 @@ export function conditionViewerFacts(condition: Condition): string[] {
     case "not":
       return conditionViewerFacts(condition.condition);
     case "viewerIn":
+    case "fieldEqFact": // RFC 0009: reads one fact AND one field
       return [condition.fact];
     default:
       return [];

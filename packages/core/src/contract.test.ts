@@ -368,6 +368,8 @@ function conditionExample(op: string): Record<string, unknown> {
       return { op, condition: { op: "eq", field: "name", value: "a" } };
     case "viewer":
       return { op, fact: "role", values: ["editor", "owner"] };
+    case "fieldEqFact":
+      return { op, field: "name", fact: "role" };
     default:
       throw new Error(`unknown shape`);
   }
@@ -379,9 +381,11 @@ describe("conditions", () => {
       const doc = { ...formBase, sections: [{ id: "main", title: "Hello", items: [{ field: "name", visibleWhen: conditionExample(opSpec.op) }] }] };
       expect(problems(doc)).toEqual([]);
     });
-    test(`op "${opSpec.op}" in its listed shape ${opSpec.shape.kind === "viewer" ? "is rejected" : "validates"} (table filter)`, () => {
+    // A filter is a server query: any leaf that reads the viewer is rejected in the filter place (RFC 0006; RFC 0009 item 1).
+    const readsViewer = opSpec.shape.kind === "viewer" || opSpec.shape.kind === "fieldEqFact";
+    test(`op "${opSpec.op}" in its listed shape ${readsViewer ? "is rejected" : "validates"} (table filter)`, () => {
       const doc = { ...tableBase, filter: conditionExample(opSpec.op) };
-      expect(problems(doc)).toEqual(opSpec.shape.kind === "viewer" ? [["/filter", "invalid-value"]] : []);
+      expect(problems(doc)).toEqual(readsViewer ? [["/filter", "invalid-value"]] : []);
     });
     test(`op "${opSpec.op}" rejects an unlisted property at its path`, () => {
       const doc = { ...formBase, sections: [{ id: "main", title: "Hello", items: [{ field: "name", visibleWhen: { ...conditionExample(opSpec.op), bogus: 1 } }] }] };

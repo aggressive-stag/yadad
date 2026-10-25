@@ -87,7 +87,9 @@ type ConditionShape =
   | { readonly kind: "none"; readonly keys: [] }
   | { readonly kind: "nested"; readonly keys: ["conditions"] }
   | { readonly kind: "single"; readonly keys: ["condition"] }
-  | { readonly kind: "viewer"; readonly keys: ["fact", "values"] };
+  | { readonly kind: "viewer"; readonly keys: ["fact", "values"] }
+  /** RFC 0009 item 1: names a record field AND a viewer fact; a record leaf, so a filter place rejects it. */
+  | { readonly kind: "fieldEqFact"; readonly keys: ["field", "fact"] };
 
 interface ConditionOpSpec {
   readonly op: ConditionOp;
@@ -223,7 +225,8 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "entity", required: true, description: "The id of the entity this form edits." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
       { key: "dataSource", required: true, description: "Key the host maps to a DataAdapter. Never a URL." },
-      { key: "sections", required: true, description: "An array of sections: { id, title?, items: [{ field, visibleWhen?, requiredWhen?, clearWhenHidden? }] }. The conditions may mix record leaves and viewerIn leaves; clearWhenHidden cannot be true while visibleWhen reads the viewer." },
+      { key: "sections", required: true, description: 'An array of sections: { id, title?, items: [{ field, visibleWhen?, requiredWhen?, clearWhenHidden? }] } OR { id, title?, subRecords: { entity, via, titleField, doneField, orderField?, addLabel? } } — never both keys in one section. The items conditions may mix record leaves and viewerIn leaves; clearWhenHidden cannot be true while visibleWhen reads the viewer. A subRecords section (RFC 0009 item 3) hosts an inline checklist over another entity whose records carry a `via` reference back to this form\'s entity; each row is an ordinary record with its own can and version.' },
+      { key: "repeat", required: false, description: 'The one legal value is "batch" (RFC 0009 item 4): the host renders the field set N times and the write path creates N records atomically.' },
     ],
   },
   {
@@ -241,6 +244,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "sort", required: false, description: "Initial sort: an array of { field, dir: \"asc\" | \"desc\" }." },
       { key: "pageSize", required: false, description: "Rows per page, a whole number from 1 to 1000." },
       { key: "filter", required: false, description: "A condition every row must always match." },
+      { key: "filters", required: false, description: 'Named saved filters the host offers as chips (RFC 0009 item 5): an array of { id, name, condition }; the condition is a condition over this entity, checked exactly like the view\'s own filter. Which filter is selected is the host\'s business, not the document\'s.' },
       { key: "quickFilters", required: false, description: "An array of { field }; the viewer can set them. Select and boolean fields match exactly, text by substring, number, date and datetime fields as a from/to range (either end may stay empty)." },
       { key: "rowAction", required: false, description: `Opens another table view from a row: { open: <table view id>, bind: [{ field, to }], mode?: "replace" }. Each binding adds eq(to, row value of field) to the target's own filter; field is on this table's entity, to on the target's, both of the same field type. At least one binding; chains run at most ${MAX_ROW_ACTION_DEPTH} hops with no revisits. Table targets and "replace" mode only. visibleWhen (a viewer condition) hides the action from viewers it does not hold for.` },
       { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each row, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a row only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
@@ -383,6 +387,7 @@ const CONDITION_EXAMPLES: { readonly [K in ConditionOp]: string } = {
   or: '{ "op": "or", "conditions": [ <condition>, ... ] } (a list under "conditions")',
   not: '{ "op": "not", "condition": <condition> } (one condition under "condition")',
   viewerIn: '{ "op": "viewerIn", "fact": "role", "values": ["editor", "owner"] } (the viewer\'s value of a fact declared in the viewer document is one of "values"; a list under "values")',
+  fieldEqFact: '{ "op": "fieldEqFact", "field": "list", "fact": "home" } (the record\'s value of "field" equals the viewer\'s value of a fact declared in the viewer document)',
 };
 
 const CONDITION_SHAPES: { readonly [K in ConditionOp]: ConditionShape } = {
@@ -400,6 +405,7 @@ const CONDITION_SHAPES: { readonly [K in ConditionOp]: ConditionShape } = {
   or: { kind: "nested", keys: ["conditions"] },
   not: { kind: "single", keys: ["condition"] },
   viewerIn: { kind: "viewer", keys: ["fact", "values"] },
+  fieldEqFact: { kind: "fieldEqFact", keys: ["field", "fact"] },
 };
 
 /** Field types each measure op accepts (empty for count, which takes no field). */
@@ -479,6 +485,7 @@ const CONDITION_PLACE_SPECS: readonly ConditionPlaceSpec[] = [
   { path: "/tabs/*/visibleWhen", kinds: ["dashboard"], accepts: "viewer", description: "The tab is not listed while this is false." },
   { path: "/tabs/*/items/*/visibleWhen", kinds: ["dashboard"], accepts: "viewer", description: "The widget is not rendered while this is false; its cell stays empty." },
   { path: "/filter", kinds: ["table", "calendar", "board"], accepts: "record", description: "A filter is sent to the server as a query, so it cannot depend on the viewer." },
+  { path: "/filters/*/condition", kinds: ["table"], accepts: "record", description: "RFC 0009 item 5: a saved filter is a query shape, checked by the same rule as /filter — viewer leaves are banned." },
   { path: "/tabs/*/items/*/filter", kinds: ["dashboard"], accepts: "record", description: "The filter of a count or stat widget; it cannot depend on the viewer." },
 ];
 

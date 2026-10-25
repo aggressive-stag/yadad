@@ -72,6 +72,7 @@ describe("viewer document", () => {
       "/tabs/*/visibleWhen:viewer",
       "/tabs/*/items/*/visibleWhen:viewer",
       "/filter:record",
+      "/filters/*/condition:record", // RFC 0009 item 5
       "/tabs/*/items/*/filter:record",
     ]);
   });

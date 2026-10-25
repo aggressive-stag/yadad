@@ -532,3 +532,70 @@ describe("RFC 0008 item 8 — a reference may borrow the target's colour", () =>
     expect(problems(withRef({ colorFrom: "Bad Id" }))).toEqual([["/fields/0/colorFrom", "invalid-value"]]);
   });
 });
+
+describe("RFC 0009 item 1 — fieldEqFact", () => {
+  const leaf = { op: "fieldEqFact", field: "name", fact: "me" };
+
+  test("the well-formed leaf validates in a record place", () => {
+    expect(problems({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: leaf }] }] })).toEqual([]);
+  });
+
+  test("it is legal nested under and/not like any record leaf", () => {
+    expect(problems({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: { op: "not", condition: leaf } }] }] })).toEqual([]);
+  });
+
+  test("unknown keys, missing sides and a bad id are reported", () => {
+    expect(problems({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: { ...leaf, values: ["me"] } }] }] })).toEqual([["/sections/0/items/0/visibleWhen/values", "unknown-property"]]);
+    expect(problems({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: { op: "fieldEqFact", field: "name" } }] }] })).toEqual([["/sections/0/items/0/visibleWhen/fact", "required"]]);
+    expect(problems({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: { op: "fieldEqFact", fact: "me" } }] }] })).toEqual([["/sections/0/items/0/visibleWhen/field", "required"]]);
+    expect(problems({ ...form, sections: [{ id: "main", items: [{ field: "name", visibleWhen: { op: "fieldEqFact", field: "Bad Id", fact: "me" } }] }] })).toEqual([["/sections/0/items/0/visibleWhen/field", "invalid-value"]]);
+  });
+
+  test("a viewer-only place rejects it, and a filter place rejects it like viewerIn", () => {
+    const tab = { kind: "dashboard", specVersion: 0, id: "d", revision: 1, tabs: [{ id: "t", title: "T", visibleWhen: leaf, items: [] }] };
+    expect(problems(tab)).toEqual([["/tabs/0/visibleWhen", "invalid-value"]]);
+    const tbl = { kind: "table", specVersion: 0, id: "t", entity: "hello", revision: 1, dataSource: "default", columns: [{ field: "name" }], filter: leaf };
+    expect(problems(tbl)).toEqual([["/filter", "invalid-value"]]);
+  });
+});
+
+describe("RFC 0009 items 3 and 4 — sub-record sections and batch repeat", () => {
+  const sub = { entity: "step", via: "task", titleField: "title", doneField: "done" };
+
+  test("a section with subRecords and no items validates; repeat: batch is legal on the view", () => {
+    const v = { ...form, repeat: "batch", sections: [{ id: "steps", subRecords: sub }] };
+    expect(problems(v)).toEqual([]);
+  });
+
+  test("both items and subRecords, neither, a non-object, unknown keys and a bad repeat are reported", () => {
+    expect(problems({ ...form, sections: [{ id: "main", items: [{ field: "name" }], subRecords: sub }] })).toEqual([["/sections/0", "invalid-value"]]);
+    expect(problems({ ...form, sections: [{ id: "main" }] })).toEqual([["/sections/0", "required"]]);
+    expect(problems({ ...form, sections: [{ id: "main", subRecords: "steps" }] })).toEqual([["/sections/0/subRecords", "type"]]);
+    expect(problems({ ...form, sections: [{ id: "main", subRecords: { ...sub, addLabel2: "x" } }] })).toEqual([["/sections/0/subRecords/addLabel2", "unknown-property"]]);
+    expect(problems({ ...form, sections: [{ id: "main", subRecords: { via: "task", titleField: "title", doneField: "done" } }] })).toEqual([["/sections/0/subRecords/entity", "required"]]);
+    expect(problems({ ...form, repeat: "queue" })).toEqual([["/repeat", "invalid-value"]]);
+  });
+});
+
+describe("RFC 0009 item 5 — saved filters", () => {
+  const tbl = (filters: unknown): unknown => ({
+    kind: "table", specVersion: 0, id: "t", entity: "hello", revision: 1, dataSource: "default",
+    columns: [{ field: "name" }], filters,
+  });
+
+  test("a named filter holding an ordinary condition validates", () => {
+    expect(problems(tbl([{ id: "open", name: "Open", condition: { op: "notEmpty", field: "name" } }]))).toEqual([]);
+  });
+
+  test("missing name/condition, a viewer leaf and a duplicate id are reported", () => {
+    expect(problems(tbl([{ id: "open", condition: { op: "notEmpty", field: "name" } }]))).toEqual([["/filters/0/name", "required"]]);
+    expect(problems(tbl([{ id: "open", name: "Open" }]))).toEqual([["/filters/0/condition", "required"]]);
+    // RFC 0009 items 1 and 5 share the boundary: a filter is a server query, so no viewer leaves ride.
+    expect(problems(tbl([{ id: "mine", name: "Mine", condition: { op: "fieldEqFact", field: "name", fact: "me" } }]))).toEqual([["/filters/0/condition", "invalid-value"]]);
+    expect(problems(tbl([{ id: "mine", name: "Mine", condition: { op: "viewerIn", fact: "me", values: ["x"] } }]))).toEqual([["/filters/0/condition", "invalid-value"]]);
+    expect(problems(tbl([
+      { id: "a", name: "A", condition: { op: "notEmpty", field: "name" } },
+      { id: "a", name: "A again", condition: { op: "notEmpty", field: "name" } },
+    ]))).toEqual([["/filters/1/id", "duplicate-id"]]);
+  });
+});

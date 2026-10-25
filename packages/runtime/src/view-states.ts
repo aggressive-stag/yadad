@@ -1,4 +1,4 @@
-import { isIsoDate, isRelativeDate, jsonPointer, optionValue } from "@yadad/core"; // RFC 0008: card 47a (optionValue keeps compiling; 47d reviews)
+import { isIsoDate, isRelativeDate, jsonPointer, optionValue, sectionItems } from "@yadad/core"; // RFC 0008: card 47a (optionValue keeps compiling; 47d reviews)
 import type {
   BoardView,
   CalendarMode,
@@ -363,6 +363,9 @@ function collectProbes(conditions: readonly Condition[], now: Date, into: Map<st
       case "viewerIn":
         // A viewer leaf compares no record field, so it adds no probes; its fact becomes a viewer axis (buildViewerPlan).
         return;
+      case "fieldEqFact":
+        // RFC 0008/9: card 47b — the comparison value is the viewer's, not a literal; 47d adds the fact-axis probes.
+        return;
       default:
         probesOf(condition.field).thresholds.push(isRelativeDate(condition.value) ? dateFromToday(condition.value.daysFromToday, now) : condition.value);
     }
@@ -527,7 +530,7 @@ function selectedValues(byAxis: ReadonlyMap<string, readonly Candidate[]>, selec
 }
 
 function formItems(view: FormView) {
-  return view.sections.flatMap((s) => s.items);
+  return view.sections.flatMap(sectionItems); // RFC 0008/9: card 47b
 }
 
 function planForm(view: FormView, ctx: Context): Plan {

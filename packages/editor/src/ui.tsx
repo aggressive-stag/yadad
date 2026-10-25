@@ -57,6 +57,8 @@ export function describeCondition(condition: Condition, label: (fieldId: string)
       return `${label(condition.field)} is filled in`;
     case "viewerIn":
       return `the viewer's ${factLabel(condition.fact)} is one of ${condition.values.map(show).join(", ")}`;
+    case "fieldEqFact": // // RFC 0008/9: card 47b — full builder UI in 47g
+      return `${label(condition.field)} equals the viewer's ${factLabel(condition.fact)}`;
     default:
       return `${label(condition.field)} ${OP_WORDS[condition.op]} ${describeComparisonValue(condition.value)}`;
   }

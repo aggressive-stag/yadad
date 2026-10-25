@@ -428,3 +428,79 @@ describe("RFC 0008 item 10 — board columnsFrom", () => {
     expect(err?.hint).toContain("reference");
   });
 });
+
+describe("RFC 0009 — set-level refs (fieldEqFact, subRecords)", () => {
+  const tasks = {
+    kind: "entity", specVersion: 0, id: "task", revision: 1,
+    fields: [
+      { id: "title", type: "text", label: "Title" },
+      { id: "done", type: "boolean", label: "Done" },
+      { id: "pos", type: "number", label: "Pos" },
+      { id: "list", type: "reference", label: "List", entity: "list" },
+    ],
+  };
+  const step = {
+    kind: "entity", specVersion: 0, id: "step", revision: 1,
+    fields: [
+      { id: "title", type: "text", label: "Title" },
+      { id: "done", type: "boolean", label: "Done" },
+      { id: "pos", type: "number", label: "Pos" },
+      { id: "task", type: "reference", label: "Task", entity: "task" },
+    ],
+  };
+  const lists = entity("list", [{ id: "name", type: "text" }]);
+  const factViewer = {
+    kind: "viewer", specVersion: 5, id: "viewer", revision: 1,
+    facts: [{ id: "mylist", label: "My list", type: "select", options: { source: "static", values: ["home", "work"] }, default: "home" }],
+  };
+  const formOf = (sections: unknown[], extra: Record<string, unknown> = {}): unknown => ({
+    kind: "form", specVersion: 0, id: "task_form", entity: "task", revision: 1, dataSource: "default", sections, ...extra,
+  });
+  const checklistSection = (sub: Record<string, unknown> = {}): unknown => ({
+    id: "steps", subRecords: { entity: "step", via: "task", titleField: "title", doneField: "done", ...sub },
+  });
+
+  test("a checklist section, a reference-to-fact leaf and batch repeat all pass the set pass", () => {
+    const set = [
+      tasks, step, lists, factViewer,
+      formOf([{ id: "main", items: [{ field: "title" }, { field: "list", visibleWhen: { op: "fieldEqFact", field: "list", fact: "mylist" } }] }], { repeat: "batch" }),
+    ];
+    expect(validateDocuments(set).ok).toBe(true);
+  });
+
+  test("the checklist section is the same shape with items: [] absent", () => {
+    expect(validateDocuments([tasks, step, lists, formOf([checklistSection()])]).ok).toBe(true);
+  });
+
+  test("an unknown fact, an unknown field, a bad via, a bad titleField/doneField and an unknown sub-entity are all reported on the form", () => {
+    expect(problems([tasks, step, lists, formOf([{ id: "main", items: [{ field: "title", visibleWhen: { op: "fieldEqFact", field: "title", fact: "ghost" } }] }])])).toEqual([
+      { path: "/sections/0/items/0/visibleWhen/fact", code: "unknown-reference", document: "task_form", allowed: [] },
+    ]);
+    expect(problems([tasks, step, lists, formOf([checklistSection({ entity: "ghost" })])])).toEqual([
+      { path: "/sections/0/subRecords/entity", code: "unknown-reference", document: "task_form", allowed: ["task", "step", "list"] },
+    ]);
+    expect(problems([tasks, step, lists, formOf([checklistSection({ via: "title" })])])).toEqual([
+      { path: "/sections/0/subRecords/via", code: "unknown-reference", document: "task_form", allowed: ["task"] },
+    ]);
+    expect(problems([tasks, step, lists, formOf([checklistSection({ via: "pos" })])])).toEqual([
+      { path: "/sections/0/subRecords/via", code: "unknown-reference", document: "task_form", allowed: ["task"] },
+    ]);
+    expect(problems([tasks, step, lists, formOf([checklistSection({ doneField: "pos" })])])).toEqual([
+      { path: "/sections/0/subRecords/doneField", code: "unknown-reference", document: "task_form", allowed: ["done"] },
+    ]);
+  });
+
+  test("a via that points at the wrong entity is reported with the wrong-target wording", () => {
+    const wrongVia = { ...step, fields: step.fields.map((f) => (f.id === "task" ? { ...f, entity: "list" } : f)) };
+    const errs = problems([tasks, wrongVia, lists, formOf([checklistSection()])]);
+    expect(errs).toEqual([{ path: "/sections/0/subRecords/via", code: "invalid-value", document: "task_form", allowed: undefined }]);
+  });
+
+  test("an unread fact still warns even when a fieldEqFact reads a different fact", () => {
+    const two = { ...factViewer, facts: [...factViewer.facts, { id: "unused", label: "U", type: "select", options: { source: "static", values: ["x", "y"] }, default: "x" }] };
+    const result = validateDocuments([tasks, step, lists, two, formOf([{ id: "main", items: [{ field: "list", visibleWhen: { op: "fieldEqFact", field: "list", fact: "mylist" } }] }])]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.warnings.map((w) => [w.path, w.code])).toEqual([["/facts/1", "empty"]]);
+  });
+});

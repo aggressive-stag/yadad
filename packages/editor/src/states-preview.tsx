@@ -1,5 +1,5 @@
 import type { Document, FormView, ViewDocument } from "@yadad/core";
-import { validateDocuments } from "@yadad/core";
+import { sectionItems, validateDocuments } from "@yadad/core";
 import { evaluateCondition, viewStates } from "@yadad/runtime";
 import type { ViewState, ViewStatesResult } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -71,7 +71,7 @@ function withView(documents: readonly Document[], ...views: readonly ViewDocumen
 function formFields(view: FormView, state: ViewState): string {
   if (state.render.kind !== "form") return "";
   const { values, now } = state.render;
-  const items = view.sections.flatMap((s) => s.items);
+  const items = view.sections.flatMap(sectionItems); // RFC 0008/9: card 47b
   const shown = items.filter((i) => i.visibleWhen === undefined || evaluateCondition(i.visibleWhen, values, now, state.viewer));
   const required = shown.filter((i) => i.requiredWhen !== undefined && evaluateCondition(i.requiredWhen, values, now, state.viewer));
   return JSON.stringify({ shown: shown.map((i) => i.field), required: required.map((i) => i.field) });

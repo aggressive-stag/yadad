@@ -235,7 +235,7 @@ const expected: Record<string, Picked[]> = {
     { path: "/sections/0/items/0/visibleWhen/conditions/2/fact", code: "invalid-value", document: "f" },
   ],
   "viewer-leaf-bad-op.json": [
-    { path: "/sections/0/items/0/visibleWhen/op", code: "invalid-value", document: "f", allowed: ["eq","neq","gt","gte","lt","lte","in","contains","empty","notEmpty","and","or","not","viewerIn"] },
+    { path: "/sections/0/items/0/visibleWhen/op", code: "invalid-value", document: "f", allowed: ["eq","neq","gt","gte","lt","lte","in","contains","empty","notEmpty","and","or","not","viewerIn","fieldEqFact"] },
   ],
   "viewer-leaf-bad-value-entries.json": [
     { path: "/sections/0/items/0/visibleWhen/conditions/0/values/0", code: "type", document: "f" },

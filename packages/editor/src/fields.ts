@@ -1,5 +1,5 @@
 import type { DocumentError, EntityDocument, Field, ViewDocument } from "@yadad/core";
-import { conditionFields, jsonPointer } from "@yadad/core";
+import { sectionItems, conditionFields, jsonPointer } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 /** Patch appending a field to an entity. Adding is always safe for existing records. */
@@ -45,7 +45,7 @@ export function fieldReferences(views: Iterable<ViewDocument>, entityId: string,
     const at = (...path: (string | number)[]) => found.push(`${view.id}${jsonPointer(path)}`);
     if (view.kind === "form") {
       view.sections.forEach((s, si) =>
-        s.items.forEach((item, ii) => {
+        sectionItems(s).forEach((item, ii) => { // // RFC 0008/9: card 47b
           if (item.field === fieldId) at("sections", si, "items", ii);
           for (const key of ["visibleWhen", "requiredWhen"] as const) {
             const c = item[key];

@@ -1,4 +1,4 @@
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, validateDocuments } from "@yadad/core";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MODES, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
 import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
@@ -13,7 +13,7 @@ const fail = (path: (string | number)[], message: string, hint: string): Result 
 
 /** Fields of the entity that the form does not place yet, in entity order. */
 export function fieldsNotOnForm(entity: EntityDocument, view: FormView): string[] {
-  const placed = new Set(view.sections.flatMap((s) => s.items.map((i) => i.field)));
+  const placed = new Set(view.sections.flatMap((s) => sectionItems(s).map((i) => i.field))); // RFC 0008/9: card 47b (sub-record sections edited by 47g)
   return entity.fields.map((f) => f.id).filter((id) => !placed.has(id));
 }
 
@@ -76,7 +76,7 @@ export function addFormItem(view: FormView, sectionId: string, fieldId: string):
 
 function findItem(view: FormView, fieldId: string): { s: number; i: number } | undefined {
   for (const [s, section] of view.sections.entries()) {
-    const i = section.items.findIndex((item) => item.field === fieldId);
+    const i = sectionItems(section).findIndex((item) => item.field === fieldId); // // RFC 0008/9: card 47b (sub-record sections edited by 47g)
     if (i >= 0) return { s, i };
   }
   return undefined;
@@ -101,7 +101,7 @@ export function moveFormItem(view: FormView, fieldId: string, by: -1 | 1): Resul
   if (!at) return fail(["sections"], `"${fieldId}" is not on this form.`, "Add it first.");
   const from = `/sections/${at.s}/items/${at.i}`;
   const guard: PatchOperation = { op: "test", path: `${from}/field`, value: fieldId };
-  const count = view.sections[at.s]?.items.length ?? 0;
+  const count = sectionItems(view.sections[at.s]!).length; // // RFC 0008/9: card 47b (sub-record sections edited by 47g)
   const inside = at.i + by;
   if (inside >= 0 && inside < count) return ok([guard, { op: "move", from, path: `/sections/${at.s}/items/${inside}` }]);
   const next = at.s + by;
@@ -123,7 +123,7 @@ export function moveFieldTo(view: FormView, fieldId: string, sectionId: string, 
   const from = `/sections/${at.s}/items/${at.i}`;
   const s = sectionIndex(view, sectionId);
   if (s < 0) return fail(["sections"], `No section "${sectionId}".`, "Pick an existing section.");
-  const count = view.sections[s]?.items.length ?? 0;
+  const count = sectionItems(view.sections[s]!).length; // // RFC 0008/9: card 47b (sub-record sections edited by 47g)
   const slots = s === at.s ? count - 1 : count; // positions the field can take after the move
   if (toIndex < 0 || toIndex > slots) return fail(["sections", s], `No position ${toIndex + 1} in this section.`, "Drop it where a row would fit.");
   const guard: PatchOperation = { op: "test", path: `${from}/field`, value: fieldId };
@@ -396,7 +396,7 @@ export function setFormItemCondition(view: FormView, fieldId: string, key: "visi
   const at = findItem(view, fieldId);
   if (!at) return fail(["sections"], `No field "${fieldId}" on this form.`, "Add it first.");
   const guard: PatchOperation = { op: "test", path: `/sections/${at.s}/items/${at.i}/field`, value: fieldId };
-  const ops = setOptional(view.sections[at.s]?.items[at.i]?.[key] !== undefined, `/sections/${at.s}/items/${at.i}/${key}`, condition as unknown as Json | undefined);
+  const ops = setOptional(sectionItems(view.sections[at.s]!)[at.i]?.[key] !== undefined, `/sections/${at.s}/items/${at.i}/${key}`, condition as unknown as Json | undefined); // RFC 0008/9: card 47b
   return ok(ops.length === 0 ? [] : [guard, ...ops]);
 }
 
@@ -405,7 +405,7 @@ export function setClearWhenHidden(view: FormView, fieldId: string, on: boolean)
   const at = findItem(view, fieldId);
   if (!at) return fail(["sections"], `No field "${fieldId}" on this form.`, "Add it first.");
   const path = `/sections/${at.s}/items/${at.i}/clearWhenHidden`;
-  const has = view.sections[at.s]?.items[at.i]?.clearWhenHidden !== undefined;
+  const has = sectionItems(view.sections[at.s]!)[at.i]?.clearWhenHidden !== undefined; // // RFC 0008/9: card 47b (sub-record sections edited by 47g)
   const ops = on
     ? (has ? [{ op: "replace" as const, path, value: true }] : [{ op: "add" as const, path, value: true }])
     : has

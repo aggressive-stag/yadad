@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { sectionItems } from "@yadad/core"; // RFC 0008/9: card 47b
 import type { DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 import { mockRegistry } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
@@ -48,7 +49,7 @@ describe("FormViewEditor", () => {
     expect(screen.getByText("Every field of task is on this form.")).toBeTruthy();
     press("Save form");
     expect(saved[0]?.revision).toBe(4);
-    expect(saved[0]?.sections[0]?.items.map((i) => i.field)).toEqual(["title", "done", "due"]);
+    expect(sectionItems(saved[0]!.sections[0]!).map((i) => i.field)).toEqual(["title", "done", "due"]); // RFC 0008/9: card 47b
   });
 
   test("shows a field's rules in words, reorders and removes fields, with undo", () => {
@@ -181,7 +182,7 @@ describe("FormViewEditor", () => {
     // The save is the moved document, with a new revision.
     press("Save form");
     expect(saved[0]?.revision).toBe(4);
-    expect(saved[0]?.sections[0]?.items.map((i) => i.field)).toEqual(["done", "title"]);
+    expect(sectionItems(saved[0]!.sections[0]!).map((i) => i.field)).toEqual(["done", "title"]); // RFC 0008/9: card 47b
     // One undo reverts the whole move, and the form is clean again: the
     // save goes back to being disabled.
     press("Undo");

@@ -1,4 +1,4 @@
-import { validateDocument, validateDocuments } from "@yadad/core";
+import { sectionItems, validateDocument, validateDocuments } from "@yadad/core";
 import type { BoardView, CalendarView, ColumnCompare, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { describe, expect, test } from "vitest";
@@ -73,7 +73,7 @@ function apply<T extends FormView | TableView | DashboardView>(s: EditSession<T>
   return next;
 }
 
-const fieldsOf = (v: FormView) => v.sections.map((s) => `${s.id}:${s.items.map((i) => i.field).join(",")}`);
+const fieldsOf = (v: FormView) => v.sections.map((s) => `${s.id}:${sectionItems(s).map((i) => i.field).join(",")}`); // // RFC 0008/9: card 47b
 
 describe("form view edits", () => {
   test("lists the entity fields the form does not place yet", () => {
@@ -232,7 +232,7 @@ describe("form item condition edits", () => {
     s = apply(s, setFormItemCondition(s.current, "done", "visibleWhen", { op: "eq", field: "title", value: "" }));
     s = apply(s, setFormItemCondition(s.current, "done", "requiredWhen", { op: "empty", field: "due" }));
     s = apply(s, setClearWhenHidden(s.current, "done", true));
-    expect(s.current.sections[0]?.items.find((i) => i.field === "done")).toEqual({
+    expect(sectionItems(s.current.sections[0]!).find((i) => i.field === "done")).toEqual({ // // RFC 0008/9: card 47b
       field: "done",
       visibleWhen: { op: "eq", field: "title", value: "" },
       requiredWhen: { op: "empty", field: "due" },
@@ -317,7 +317,7 @@ describe("blank documents", () => {
     expect(validateDocument(blankForm(empty, "note_form", "default")).ok).toBe(true);
     expect(blankTable(empty, "notes", "default")).toBeNull();
     expect(validateDocument(blankTable(entity, "all_tasks", "default")).ok).toBe(true);
-    expect(blankForm(entity, "f", "default").sections[0]?.items.map((i) => i.field)).toEqual(["title", "done", "due"]);
+    expect(sectionItems(blankForm(entity, "f", "default").sections[0]!).map((i) => i.field)).toEqual(["title", "done", "due"]); // RFC 0008/9: card 47b
     expect(validateDocument(blankDashboard("home")).ok).toBe(true);
   });
 });

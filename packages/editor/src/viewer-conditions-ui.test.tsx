@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { SPEC_VERSION } from "@yadad/core";
+import { sectionItems, SPEC_VERSION } from "@yadad/core";
 import type { BoardView, CalendarView, DashboardView, EntityDocument, FormView, TableView, ViewerDocument } from "@yadad/core";
 import { mockRegistry } from "@yadad/testing";
 import { useState } from "react";
@@ -128,7 +128,7 @@ describe("editors with a viewer", () => {
     expect(screen.getByText(/Shown when the viewer's Role is one of owner/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Clear Status while hidden" }).hasAttribute("disabled")).toBe(true);
     press("Save form");
-    expect((onSave.mock.calls[0]?.[0] as FormView).sections[0]?.items[1]?.visibleWhen).toEqual(owner);
+    expect(sectionItems((onSave.mock.calls[0]?.[0] as FormView).sections[0]!)[1]?.visibleWhen).toEqual(owner); // RFC 0008/9: card 47b
   });
 
   test("calendar and board: editableWhen only while editable", () => {
