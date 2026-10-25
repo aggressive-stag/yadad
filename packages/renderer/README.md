@@ -88,3 +88,46 @@ The same rule covers a table's in-place edits. Pass `drafts` to `TableRenderer` 
 - A row's draft belongs to that record, so two rows being edited never share text.
 - Saving or cancelling clears the draft; a refused save (validation, a conflict) keeps it — the text is there to fix and retry.
 - Discarding starts the edit from the saved record again and clears the stored draft.
+
+
+## Sub-record checklists (RFC 0009)
+
+A form section that declares `subRecords` renders an inline checklist over a child entity — the rows are ordinary records of that entity, scoped by the back-reference the section names:
+
+```tsx
+// view section: { id: "steps", subRecords: { entity: "step", via: "task", titleField: "title", doneField: "done", orderField: "ord" } }
+<FormRenderer entity={task} view={form} registry={registry} dataSources={dataSources} parent={taskRecord} documents={documents} />;
+```
+
+- Every row write goes through the standard adapter verbs (`create`, `update`, `delete`) under `baseVersion`, like any other record — the checklist is not a field value. Pass the child entity in `entities` or the set in `documents`.
+- Add is an input plus a button (Enter works); the new row lands focused, in edit mode, the way the table starts an inline edit. Titles click to edit; the `doneField` checkbox and Remove are one tap each.
+- `can.update` and `can.fields` decide what is operable: a locked title shows as text with no edit control.
+- A form for a record that does not exist yet renders "Save the task first" instead of writing orphans; a misdeclared section (`doneField` that is not a boolean, `via` that is not a reference) states the problem in place.
+- `SubRecordChecklist` is exported for hosts that want the control outside a form.
+
+## The batch composer (RFC 0009)
+
+A create form whose view declares `repeat: "batch"` becomes a queued composer:
+
+```tsx
+const view: FormView = { kind: "form", …, repeat: "batch", sections: […] };
+<FormRenderer entity={step} view={view} registry={registry} dataSources={dataSources} onSaved={refresh} />;
+```
+
+- "+ another" adds an unsaved row; each extra row gets a Remove control. Nothing persists while rows are queued, and drafts never apply to a batch composer — rows live in component state only.
+- The single Add flushes every row through `submitBatchCreate` (exported from `@yadad/runtime`): all rows are validated first, then written in ONE adapter `batch` call — all of them land or none do. A row's validation error stays on that row (`/rows/<i>/…`); the other rows keep what was typed.
+- A section that declares `subRecords` renders once per composer, not once per queued row.
+
+## Saved filters as chips (RFC 0009)
+
+A table view's `filters` entries render as a chip row beside the quick filters. The renderer holds no chip state — the host owns which chip is lit and persists that choice:
+
+```tsx
+<TableRenderer
+  entity={entity} view={table} registry={registry} dataSources={dataSources}
+  savedFilter={lit} onSavedFilterChange={setLit}
+/>;
+```
+
+- The lit chip's condition is ANDed into the base filter before the quick filters combine, so it rides the adapter query rather than post-filtering rows.
+- Chips are registry `Button`s with the optional `pressed` prop (core): the component draws the pressed look and sets `aria-pressed`. Pressing the lit chip reports `undefined`. An unknown `savedFilter` id filters nothing and lights no chip.

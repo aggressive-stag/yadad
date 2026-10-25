@@ -58,6 +58,15 @@ export interface TableRendererProps {
    * cancelled. A refused save keeps the draft.
    */
   readonly drafts?: { readonly store: DraftStore; readonly debounceMs?: number };
+  /**
+   * Which named saved filter (RFC 0009 item 5) is lit: one of the view's
+   * `filters` ids. The renderer never stores it — the host owns which chip is
+   * pressed and persists that choice; this is query shape joined to the query.
+   * Its condition is ANDed with the view's fixed filter and the quick filters.
+   */
+  readonly savedFilter?: string;
+  /** Called with the chip's id, or undefined when the lit chip is pressed again. */
+  readonly onSavedFilterChange?: (id: string | undefined) => void;
 }
 
 /** What the table shows for a row's action: its accessible name and what happens on activation. */
@@ -117,7 +126,7 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * and a Back button. Earlier tables stay mounted (hidden), so Back restores
  * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged, drafts }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged, drafts, savedFilter, onSavedFilterChange }: TableRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [stack, setStack] = useState<readonly Level[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -264,6 +273,8 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
             {...(formatting ? { formatting } : {})}
             {...(onChanged ? { onChanged } : {})}
             {...(drafts !== undefined ? { drafts } : {})}
+            {...(savedFilter !== undefined ? { savedFilter } : {})}
+            {...(onSavedFilterChange !== undefined ? { onSavedFilterChange } : {})}
             {...resolveAction(i)}
           />
         </div>
@@ -272,7 +283,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   );
 }
 
-function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, reloadSignal, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged, drafts, add, addPanel }: TableBodyProps): ReactNode {
+function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, reloadSignal, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged, drafts, add, addPanel, savedFilter, onSavedFilterChange }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -301,7 +312,13 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   // Record actions (RFC 0007): buttons the component draws from TableRow.actions.
   const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(onChanged ? { onChanged } : {}) });
   const zone = viewerZone(formatting);
-  const filter = useMemo(() => combineFilters(view, entity, quick, baseFilter, zone), [view, entity, quick, baseFilter, zone]);
+  // RFC 0009 item 5: the lit named filter joins the base before the quick filters do —
+  // one `and` over the view's fixed filter and the saved condition, then combineFilters as-is.
+  const savedCondition = savedFilter === undefined ? undefined : view.filters?.find((x) => x.id === savedFilter)?.condition;
+  const joinedBase: Condition | undefined = savedCondition === undefined ? baseFilter
+    : baseFilter === undefined ? savedCondition
+      : { op: "and", conditions: [baseFilter, savedCondition] };
+  const filter = useMemo(() => combineFilters(view, entity, quick, joinedBase, zone), [view, entity, quick, joinedBase, zone]);
   // The query signature: sort, filter and page size. A change is a new question — the cursor stack is cleared (RFC 0007).
   const sig = JSON.stringify([sort, filter, pageSize]);
 
@@ -549,8 +566,27 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     return field && field.type !== "reference" ? [field] : []; // a reference cannot be a quick filter (the validator rejects it)
   });
 
+  // RFC 0009 item 5: named saved filters as chips beside the quick filters. The renderer
+  // draws them; which one is lit is the host's (the savedFilter prop), never renderer state.
+  const savedChips = view.filters ?? [];
+
   return (
     <div data-yadad-table-view={view.id}>
+      {savedChips.length > 0 && (
+        <nav aria-label="Saved filters" data-yadad-saved-filters="">
+          {savedChips.map((x) => (
+            <Button
+              key={x.id}
+              label={x.name}
+              type="button"
+              variant="secondary"
+              disabled={false}
+              pressed={savedFilter === x.id}
+              onPress={() => onSavedFilterChange?.(savedFilter === x.id ? undefined : x.id)}
+            />
+          ))}
+        </nav>
+      )}
       {editing && restored && (
         <div role="status">
           <Section id={`${view.id}-draft`} title={`Restored unsaved changes from ${new Date(restored.savedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`}>

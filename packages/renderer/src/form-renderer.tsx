@@ -1,6 +1,6 @@
 import { conditionFields, jsonPointer, sectionItems } from "@yadad/core";
-import type { DataAdapter, DataRecord, EntityDocument, FieldValue, FormItem, FormView, ReferenceField, Registry, ResolvedViewer } from "@yadad/core";
-import { applyFormRules, emptyFormState, evaluateFormRules, restoreDraft, setFieldValue, submitForm } from "@yadad/runtime";
+import type { DataAdapter, DataRecord, DocumentError, EntityDocument, FieldValue, FormItem, FormSection, FormView, ReferenceField, Registry, ResolvedViewer } from "@yadad/core";
+import { applyFormRules, emptyFormState, evaluateFormRules, restoreDraft, setFieldValue, submitBatchCreate, submitForm } from "@yadad/runtime";
 import type { DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -9,6 +9,7 @@ import { checkViewSetup } from "./setup.js";
 import { renderInput } from "./fields.js";
 import type { CommonInputProps, FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
+import { SubRecordChecklist } from "./sub-records.js";
 import { useViewerSetup } from "./viewer.js";
 
 export interface FormRendererProps {
@@ -43,6 +44,14 @@ export interface FormRendererProps {
   readonly documents?: DocumentSet;
   /** The viewer's locale and zone for datetime fields (RFC 0007); absent, the environment's. */
   readonly formatting?: FieldFormatting;
+  /**
+   * The record the sub-record sections hang off (RFC 0009 item 3): the rows are
+   * the child records whose `via` names it. A create form has no parent until
+   * the record exists, and its sections say so.
+   */
+  readonly parent?: DataRecord;
+  /** Change this to reload the sub-record rows, alongside the renderer's own reloads. */
+  readonly reloadKey?: unknown;
 }
 
 /**
@@ -50,7 +59,7 @@ export interface FormRendererProps {
  * the Save button) comes from the injected registry; saving goes through
  * runtime and the data adapter.
  */
-export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents, formatting }: FormRendererProps): ReactNode {
+export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents, formatting, parent, reloadKey }: FormRendererProps): ReactNode {
   const formId = useId();
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const store = drafts?.store;
@@ -64,9 +73,18 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
   // Only input typed in this session is written back, so restoring alone never touches the stored draft.
   const typed = useRef(false);
 
+  // The batch composer (RFC 0009 item 4): `repeat: "batch"` renders the field
+  // set once per queued row and the submit writes all rows through one atomic
+  // `batch create`. Drafts do not apply — the DraftStore bag holds one
+  // record's values, and a composer is quick-add, not an edit in progress.
+  const isBatch = view.repeat === "batch";
+  const [rows, setRows] = useState<readonly FormState[]>([emptyFormState]);
+  const [batchNotice, setBatchNotice] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
+  const [batchErrors, setBatchErrors] = useState<readonly DocumentError[]>([]);
+
   const debounceMs = drafts?.debounceMs ?? 400;
   useEffect(() => {
-    if (!store || !typed.current) return;
+    if (!store || !typed.current || isBatch) return;
     const timer = setTimeout(() => {
       // Store what the form would save, so hidden clearWhenHidden values are not kept.
       const values = applyFormRules(entity, view, state.values, viewer).values;
@@ -74,14 +92,17 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
       else store.save(view.id, undefined, { values, entityRevision: entity.revision, savedAt: Date.now() });
     }, debounceMs);
     return () => clearTimeout(timer);
-  }, [store, debounceMs, entity, view, state.values, viewer]);
+  }, [store, debounceMs, entity, view, state.values, viewer, isBatch]);
 
   const adapter = dataSources.get(view.dataSource);
+  const refEntities = entities ?? documents?.entities;
   const shownRefs = view.sections.flatMap((s) => sectionItems(s).flatMap((i) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === i.field)));
-  const wants = shownRefs.flatMap((field) => {
-    const value = state.values[field.id];
-    return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
-  });
+  const wants = (isBatch ? rows.map((r) => r.values) : [state.values]).flatMap((values) =>
+    shownRefs.flatMap((field) => {
+      const value = values[field.id];
+      return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
+    }),
+  );
   const references = useReferences(adapter, entities, shownRefs, wants);
   const refs = view.sections.flatMap((section, i) =>
     sectionItems(section).flatMap((item, j) => {
@@ -119,6 +140,24 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
     }
   }
 
+  /** One atomic flush of the composer (RFC 0009 item 4): N validated rows, one `batch create`. */
+  async function saveBatch(): Promise<void> {
+    if (!adapter || saving) return;
+    setSaving(true);
+    const effective = rows.map((row) => applyFormRules(entity, view, row.values, viewer).values);
+    const result = await submitBatchCreate(entity, effective, adapter);
+    setSaving(false);
+    if (result.ok) {
+      const count = result.records.length;
+      setRows([emptyFormState]);
+      setBatchErrors([]);
+      setBatchNotice((n) => ({ seq: (n?.seq ?? 0) + 1, text: `Added ${count} ${count === 1 ? entity.id : `${entity.id}s`}.` }));
+      for (const record of result.records) onSaved?.(record);
+    } else {
+      setBatchErrors(result.errors);
+    }
+  }
+
   const discard = (): void => {
     typed.current = false;
     store?.clear(view.id);
@@ -128,15 +167,25 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    void save();
+    if (isBatch) void saveBatch();
+    else void save();
   };
 
-  const renderItem = (item: FormItem): ReactNode => {
+  const addRow = (): void => setRows((rs) => [...rs, emptyFormState]);
+
+  /** One field of one row: the row supplies values, errors and the write-back. */
+  const renderItem = (item: FormItem, rowIndex: number): ReactNode => {
+    const rowValues = isBatch ? rows[rowIndex]?.values ?? {} : state.values;
+    const rowRules = isBatch ? evaluateFormRules(view, rowValues, viewer) : rules;
     const field = entity.fields.find((f) => f.id === item.field);
-    if (!field || rules.hidden.has(field.id)) return null; // unknown fields are reported by checkViewSetup
-    const inputId = `${formId}-${field.id}`;
+    if (!field || rowRules.hidden.has(field.id)) return null; // unknown fields are reported by checkViewSetup
+    const inputId = isBatch ? `${formId}-row${rowIndex}-${field.id}` : `${formId}-${field.id}`;
     const errorId = `${inputId}-errors`;
-    const errors = state.errors.filter((e) => e.path === jsonPointer([field.id]));
+    const rowErrorPrefix = isBatch ? `/rows/${rowIndex}` : "";
+    const errors = (isBatch ? batchErrors : state.errors)
+      .filter((e) => e.path.startsWith(rowErrorPrefix))
+      .map((e) => ({ ...e, path: e.path.slice(rowErrorPrefix.length) }))
+      .filter((e) => e.path === jsonPointer([field.id]));
     const common: CommonInputProps = {
       inputId,
       invalid: errors.length > 0,
@@ -144,17 +193,44 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
     };
     const onChange = (value: FieldValue | undefined) => {
       typed.current = true;
-      setState((s) => setFieldValue(s, field.id, value));
+      if (isBatch) {
+        setRows((rs) => rs.map((r, i) => (i === rowIndex ? setFieldValue(r, field.id, value) : r)));
+        setBatchErrors((es) => es.filter((e) => !e.path.startsWith(`${rowErrorPrefix}${jsonPointer([field.id])}`)));
+      } else {
+        setState((s) => setFieldValue(s, field.id, value));
+      }
     };
     return (
-      <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={item.label ?? field.label} required={field.required === true || rules.required.has(field.id)} errors={errors}>
-        {renderInput(registry, field, state.values[field.id], common, onChange, references, formatting)}
+      <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={item.label ?? field.label} required={field.required === true || rowRules.required.has(field.id)} errors={errors}>
+        {renderInput(registry, field, rowValues[field.id], common, onChange, references, formatting)}
       </FieldFrame>
     );
   };
 
+  const renderSection = (section: FormSection, rowIndex: number, rowKey: string): ReactNode =>
+    section.subRecords !== undefined && isBatch && rowIndex > 0 ? null // the checklist is one control, not one per queued row
+      : section.subRecords !== undefined && adapter !== undefined ? (
+      <SubRecordChecklist
+        key={`${rowKey}:${section.id}`}
+        entity={entity}
+        sub={section.subRecords}
+        registry={registry}
+        adapter={adapter}
+        {...(refEntities !== undefined ? { entities: refEntities } : {})}
+        {...(documents !== undefined ? { documents } : {})}
+        {...(reloadKey !== undefined ? { reloadKey } : {})}
+        {...(parent !== undefined ? { parent } : {})}
+      />
+    ) : (
+      <Section key={`${rowKey}:${section.id}`} id={isBatch ? `${rowKey}:${section.id}` : section.id} {...(section.title !== undefined ? { title: section.title } : {})}>
+        {sectionItems(section).map((item) => renderItem(item, rowIndex))}
+      </Section>
+    );
+
+  const formLevelBatchErrors = batchErrors.filter((e) => !/^\/rows\/\d+\//.test(e.path));
+
   return (
-    <form onSubmit={onSubmit} noValidate data-yadad-form={view.id}>
+    <form onSubmit={onSubmit} noValidate data-yadad-form={view.id} data-yadad-repeat={isBatch ? "batch" : undefined}>
       {restored && (
         <div role="status">
           <Section id={`${view.id}-draft`} title={`Restored unsaved changes from ${new Date(restored.savedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`}>
@@ -166,13 +242,24 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
           </Section>
         </div>
       )}
-      {view.sections.map((section) => (
-        <Section key={section.id} id={section.id} {...(section.title !== undefined ? { title: section.title } : {})}>
-          {sectionItems(section).map(renderItem)}
-        </Section>
+      {batchNotice !== undefined && <p role="status" data-yadad-batch-status="">{batchNotice.text}</p>}
+      {rows.map((row, i) => (
+        <div key={i} data-yadad-batch-row={isBatch ? i : undefined}>
+          {view.sections.map((section) => renderSection(section, i, String(i)))}
+          {isBatch && i > 0 && (
+            <Button label="Remove row" type="button" variant="secondary" disabled={saving} onPress={() => { setRows((rs) => rs.filter((_, j) => j !== i)); setBatchErrors([]); }} />
+          )}
+        </div>
       ))}
+      {isBatch && (
+        <div data-yadad-batch-controls="">
+          <Button label="+ another" type="button" variant="secondary" disabled={saving} onPress={addRow} />
+          <span data-yadad-batch-count="" role="status">{rows.length} {rows.length === 1 ? "row" : "rows"}</span>
+        </div>
+      )}
       {formErrors.length > 0 && <ErrorSummary errors={formErrors} />}
-      <Button label="Save" type="submit" variant="primary" disabled={saving} />
+      {formLevelBatchErrors.length > 0 && <ErrorSummary errors={formLevelBatchErrors} />}
+      <Button label={isBatch ? "Add" : "Save"} type="submit" variant="primary" disabled={saving} />
     </form>
   );
 }

@@ -303,9 +303,9 @@ function MockPager({ label, hasPrevious, hasNext, page, pageCount, onPrevious, o
   );
 }
 
-function MockButton({ label, type, variant, disabled, tone, onPress }: ButtonProps): ReactNode {
+function MockButton({ label, type, variant, disabled, tone, pressed, onPress }: ButtonProps): ReactNode {
   return (
-    <button type={type} data-variant={variant} {...(tone !== undefined ? { "data-tone": tone } : {})} disabled={disabled} onClick={onPress}>
+    <button type={type} data-variant={variant} {...(tone !== undefined ? { "data-tone": tone } : {})} {...(pressed !== undefined ? { "aria-pressed": pressed } : {})} disabled={disabled} onClick={onPress}>
       {label}
     </button>
   );

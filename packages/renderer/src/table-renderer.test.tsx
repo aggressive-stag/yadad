@@ -36,7 +36,7 @@ const view: TableView = {
   pageSize: 2,
 };
 
-async function setup(props: { view?: TableView; drafts?: { readonly store: DraftStore; readonly debounceMs?: number } } = {}): Promise<{ db: DataAdapter; rerender: (key: number) => void; remount: () => Promise<void> }> {
+async function setup(props: { view?: TableView; drafts?: { readonly store: DraftStore; readonly debounceMs?: number }; savedFilter?: string; onSavedFilterChange?: (id: string | undefined) => void; dataSources?: ReadonlyMap<string, DataAdapter> } = {}): Promise<{ db: DataAdapter; rerender: (key: number) => void; remount: () => Promise<void> }> {
   const db = createMemoryAdapter();
   for (const values of [
     { day: "2026-10-01", exercise: "Squat", weight: 100, done: true },
@@ -45,9 +45,18 @@ async function setup(props: { view?: TableView; drafts?: { readonly store: Draft
   ]) {
     await db.create("workout_set", values, { entityRevision: 1 });
   }
-  const dataSources = new Map([["default", db]]);
+  const dataSources = props.dataSources ?? new Map([["default", db]]);
   const ui = (key: number) => (
-    <TableRenderer entity={entity} view={props.view ?? view} registry={mockRegistry} dataSources={dataSources} reloadKey={key} {...(props.drafts !== undefined ? { drafts: props.drafts } : {})} />
+    <TableRenderer
+      entity={entity}
+      view={props.view ?? view}
+      registry={mockRegistry}
+      dataSources={dataSources}
+      reloadKey={key}
+      {...(props.drafts !== undefined ? { drafts: props.drafts } : {})}
+      {...(props.savedFilter !== undefined ? { savedFilter: props.savedFilter } : {})}
+      {...(props.onSavedFilterChange !== undefined ? { onSavedFilterChange: props.onSavedFilterChange } : {})}
+    />
   );
   const { rerender, unmount } = render(ui(0));
   await screen.findAllByRole("row");
@@ -417,4 +426,74 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     await waitFor(() => expect(pager.querySelector("span")?.textContent).toBe("Page 2 of 3"));
     expect(days()).toEqual(["2026-10-02"]);
   });
+
+  // RFC 0009 item 5: named saved filters as chips. The renderer draws them and
+  // joins the lit one's condition into the query; which chip is lit is host state.
+  const filteredView: TableView = {
+    ...view,
+    pageSize: 10,
+    filters: [
+      { id: "heavy", name: "Heavy", condition: { op: "gte", field: "weight", value: 100 } },
+      { id: "bench", name: "Bench day", condition: { op: "eq", field: "exercise", value: "Bench" } },
+    ],
+  };
+
+  test("a view's named filters render as a chip row", async () => {
+    await setup({ view: filteredView });
+    const nav = screen.getByRole("navigation", { name: "Saved filters" });
+    const chips = within(nav).getAllByRole("button");
+    expect(chips.map((c) => c.textContent)).toEqual(["Heavy", "Bench day"]);
+    expect(chips.every((c) => c.getAttribute("aria-pressed") === "false")).toBe(true);
+  });
+
+  test("pressing a chip reports its id; the host lights it, pressing the lit chip clears it", async () => {
+    const onSavedFilterChange = vi.fn();
+    await setup({ view: filteredView, onSavedFilterChange });
+    const nav = () => screen.getByRole("navigation", { name: "Saved filters" });
+    fireEvent.click(within(nav()).getByRole("button", { name: "Heavy" }));
+    expect(onSavedFilterChange).toHaveBeenLastCalledWith("heavy");
+    // The renderer keeps no chip state: until the host re-renders with savedFilter,
+    // the chip stays unlit and pressing it reports the id again.
+    fireEvent.click(within(nav()).getByRole("button", { name: "Heavy" }));
+    expect(onSavedFilterChange).toHaveBeenLastCalledWith("heavy");
+    // Host accepts the choice: now it is lit, and a press means "clear".
+    cleanup();
+    await setup({ view: filteredView, savedFilter: "heavy", onSavedFilterChange });
+    expect(within(nav()).getByRole("button", { name: "Heavy" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(nav()).getByRole("button", { name: "Heavy" }));
+    expect(onSavedFilterChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  test("the lit chip's condition narrows the rows and its filter rides the adapter query", async () => {
+    // seeded days: 10-01 (100), 10-03 (80), 10-02 (105); Heavy = weight >= 100.
+    let seen: unknown = "never";
+    const inner = createMemoryAdapter();
+    for (const values of [
+      { day: "2026-10-01", exercise: "Squat", weight: 100, done: true },
+      { day: "2026-10-03", exercise: "Bench", weight: 80, done: false },
+      { day: "2026-10-02", exercise: "Squat", weight: 105, done: true },
+    ]) {
+      await inner.create("workout_set", values, { entityRevision: 1 });
+    }
+    const spy: DataAdapter = {
+      ...inner,
+      async find(e, q) {
+        seen = q.filter;
+        return inner.find(e, q);
+      },
+    };
+    await setup({ view: filteredView, savedFilter: "heavy", dataSources: new Map([["default", spy]]) });
+    await waitFor(() => expect(days()).toEqual(["2026-10-02", "2026-10-01"])); // 80 is out
+    expect(seen).toMatchObject({ op: "gte", field: "weight", value: 100 }); // the saved condition, not post-filtering
+    const nav = screen.getByRole("navigation", { name: "Saved filters" });
+    expect(within(nav).getByRole("button", { name: "Heavy" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("an unknown savedFilter id filters nothing and lights no chip", async () => {
+    await setup({ view: filteredView, savedFilter: "ghost" });
+    expect(days()).toEqual(["2026-10-03", "2026-10-02", "2026-10-01"]);
+    const nav = screen.getByRole("navigation", { name: "Saved filters" });
+    expect(within(nav).getAllByRole("button").every((c) => c.getAttribute("aria-pressed") === "false")).toBe(true);
+  });
+
 });

@@ -186,6 +186,12 @@ export interface ButtonProps {
   readonly type: "submit" | "button";
   readonly variant: "primary" | "secondary";
   readonly disabled: boolean;
+  /**
+   * A toggle control's state (RFC 0009 item 5: the named-filter chip row): the
+   * component draws the pressed look and sets `aria-pressed`. Absent, a plain
+   * push button.
+   */
+  readonly pressed?: boolean;
   /** "danger" marks a destructive action (an action confirm's tone, RFC 0007); absent is neutral. */
   readonly tone?: "neutral" | "danger";
   readonly onPress?: () => void;

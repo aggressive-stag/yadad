@@ -96,7 +96,7 @@ export function serverValidationIssues(error: unknown): readonly DocumentError[]
  * through with their own message, hint and located field; a conflict and the
  * other failures become a single summary line.
  */
-function adapterFailure(error: unknown): readonly DocumentError[] {
+export function adapterFailure(error: unknown): readonly DocumentError[] {
   const located = serverValidationIssues(error);
   if (located !== undefined) return located;
   if (error instanceof RecordConflictError) {
