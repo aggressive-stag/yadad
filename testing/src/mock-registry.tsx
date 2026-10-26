@@ -69,7 +69,7 @@ function controlProps<F extends Field, V>({ inputId, field, invalid, describedBy
 const orUndefined = (s: string): string | undefined => (s === "" ? undefined : s);
 
 function MockTextInput(props: InputProps<TextField, string>): ReactNode {
-  return <input {...controlProps(props)} type="text" value={props.value ?? ""} onChange={(e) => props.onChange(orUndefined(e.target.value))} />;
+  return <input {...controlProps(props)} type="text" maxLength={props.field.maxLength} value={props.value ?? ""} onChange={(e) => props.onChange(orUndefined(e.target.value))} />;
 }
 
 function MockNumberInput(props: InputProps<NumberField, number>): ReactNode {

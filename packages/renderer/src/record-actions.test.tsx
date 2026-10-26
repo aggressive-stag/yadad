@@ -207,6 +207,28 @@ describe("the action dialog (RFC 0007)", () => {
     await waitFor(() => expect(acts).toBe(1));
   });
 
+  test("a text input's maxLength reaches the dialog input, and an over-long Confirm keeps the dialog open with the field error", async () => {
+    let acts = 0;
+    const limited: EntityDocument = {
+      ...entity,
+      actions: [{ id: "note", label: "Note", confirm: { message: "Add a note?", confirmLabel: "Save note" }, input: [{ id: "reason", type: "text", label: "Reason", maxLength: 10 }] }],
+    };
+    const db = await seeded({ actions: { "doc.note": () => { acts++; return { values: { tag: "noted" } }; } } });
+    render(<TableRenderer entity={limited} view={{ ...view, recordActions: ["note"] }} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-note']")).not.toBeNull());
+    press("note");
+    expect(reasonInput().maxLength).toBe(10); // the field reaches the control, as on a record form
+    typeReason("a".repeat(11)); // jsdom does not clip typed text, so this is the paste/programmatic case
+    fireEvent.click(button("Save note"));
+    expect(acts).toBe(0);
+    expect(dialog()).not.toBeNull();
+    expect(reasonInput().getAttribute("aria-invalid")).toBe("true");
+    expect(dialog()?.textContent).toContain("at most 10 characters");
+    typeReason("a".repeat(10));
+    fireEvent.click(button("Save note"));
+    await waitFor(() => expect(acts).toBe(1));
+  });
+
   test("a 400 keeps the dialog open and puts the /input/<id> issue on its field", async () => {
     const db = await seeded({
       actions: {
