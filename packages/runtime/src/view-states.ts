@@ -39,7 +39,7 @@ export const VIEW_STATES_DEFAULT_EMBEDDED_LIMIT = 3;
 export const TABLE_DEFAULT_PAGE_SIZE = 25;
 
 /** What an axis varies. New kinds are added to this union as new axes appear. */
-export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission" | "action" | "paging";
+export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission" | "action" | "paging" | "filter";
 
 export interface StateAxisValue {
   /** Stable within its axis. */
@@ -90,6 +90,12 @@ export interface TableStateRender extends CollectionRenderBase {
    */
   readonly total?: number;
   readonly next?: string | null;
+  /**
+   * The id of the named saved filter the `savedFilter` axis lit (RFC 0009
+   * item 5); absent when none is. Pass it to the renderer's `savedFilter`
+   * prop. `matching` already counts the saved condition.
+   */
+  readonly savedFilter?: string;
 }
 
 export interface CalendarStateRender extends CollectionRenderBase {
@@ -637,7 +643,8 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
   const entity = findEntity(ctx, view.entity);
   if (!entity) return missing(`entity "${view.entity}" is not among the documents`);
 
-  const probes = collectProbes(view.filter ? [view.filter] : [], ctx.now, undefined, factValuesByField(view, ctx));
+  const savedFilters = view.kind === "table" ? (view.filters ?? []) : [];
+  const probes = collectProbes([...(view.filter ? [view.filter] : []), ...savedFilters.map((f) => f.condition)], ctx.now, undefined, factValuesByField(view, ctx));
   // A row action copies a field of the clicked row into the target's filter: both an empty and a set value matter.
   for (const binding of view.rowAction?.bind ?? []) if (!probes.has(binding.field)) probes.set(binding.field, { thresholds: [], members: [], contains: [] });
   const found = buildFieldAxes(entity, probes, { today: ctx.today, datetime: ctx.datetime, draft: false });
@@ -715,6 +722,16 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
     });
   }
 
+  // RFC 0009 item 5: a table with named saved filters varies which chip is lit — none, then each in document order.
+  if (savedFilters.length > 0) {
+    axes.push({
+      id: SAVED_FILTER_AXIS,
+      label: "Saved filter",
+      kind: "filter",
+      values: [{ id: "none", label: "no saved filter" }, ...savedFilters.map((f) => ({ id: `filter:${f.id}`, label: `saved filter "${f.name}"` }))],
+    });
+  }
+
   return {
     axes,
     skipped: found.skipped,
@@ -769,7 +786,9 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         const problem = validateRecord(entity, record.values)[0];
         if (problem) return { ok: false, reason: `generated record ${record.id} is not valid: ${problem.message}` };
       }
-      const filter = view.filter;
+      const litFilter = savedFilters.find((f) => `filter:${f.id}` === selection[SAVED_FILTER_AXIS]);
+      const filter: Condition | undefined =
+        litFilter === undefined ? view.filter : view.filter === undefined ? litFilter.condition : { op: "and", conditions: [view.filter, litFilter.condition] };
       // Card 45c: the grid's shapes come from runQuery — the same filter/sort/
       // page semantics every in-process adapter has — never from a hand-rolled
       // copy. A filter a real adapter would reject (viewerIn) skips the state
@@ -792,7 +811,8 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         // The page shape the axis names, produced the way an adapter produces
         // it. `many` is pageSize+1 records by construction (recordsAxis), so a
         // cursor page over the matched set answers "more" honestly.
-        if (paging === "total") return { ok: true, render: { kind: "table", ...base, pageSize, total: matching.length } };
+        const lit = litFilter === undefined ? {} : { savedFilter: litFilter.id };
+        if (paging === "total") return { ok: true, render: { kind: "table", ...base, ...lit, pageSize, total: matching.length } };
         // `cursor-more` is the first page of pageSize — its `next` is whatever
         // the matched set says (token when a page follows, null when not).
         // `cursor-end` is the last page: it holds the whole matched set, so
@@ -802,7 +822,7 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         const cursorPage = runQuery(marked, { ...queryBase, page: { offset: 0, limit } }, "cursor", ctx.now);
         // runQuery's cursor branch always answers with `next` (token or null);
         // the `?? null` only satisfies the optional field on Page<T>.
-        return { ok: true, render: { kind: "table", ...base, pageSize, next: cursorPage.next ?? null } };
+        return { ok: true, render: { kind: "table", ...base, ...lit, pageSize, next: cursorPage.next ?? null } };
       }
       if (view.kind === "calendar") return { ok: true, render: { kind: "calendar", ...base, mode, anchor: ctx.today, range } };
       const groupBy = groupFields.find((f) => f === selection["group"]) ?? groupFields[0] ?? "";
@@ -835,6 +855,7 @@ const WITHHELD = "withheld";
 const DONE_AXIS = "done"; // RFC 0008 item 12 (card 47h): the doneField toggle axis.
 const COLUMNS_AXIS = "columns"; // RFC 0008 item 10 (card 47h): the columnsFrom "options" empty-column axis.
 const PAGING_AXIS = "paging";
+const SAVED_FILTER_AXIS = "filter"; // RFC 0009 item 5: which named saved filter is lit.
 /** Id of the extra state that renders with the viewer omitted. */
 export const VIEWER_NOT_PROVIDED_STATE = "viewer-not-provided";
 
@@ -856,7 +877,8 @@ function hasEditSurface(view: ViewDocument, ctx: Context): boolean {
       return view.columns.some((c) => c.editable === true);
     case "calendar":
     case "board":
-      return view.editable === true;
+      // A doneField toggle is a write too: it needs a record the viewer may not update to show the disabled state.
+      return view.editable === true || view.doneField !== undefined;
     case "dashboard":
       return view.tabs.some((tab) =>
         tab.items.some((item) => {

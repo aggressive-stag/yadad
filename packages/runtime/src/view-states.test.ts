@@ -822,3 +822,47 @@ describe("series widgets (RFC 0001 slice 2, card 43g)", () => {
     expect(byGroup).toEqual(new Set(["none", "one", "many", "partial"]));
   });
 });
+
+describe("saved filter and doneField axes (RFC 0008/0009)", () => {
+  const saved: TableView = {
+    ...table(),
+    filters: [
+      { id: "open", name: "Open", condition: eq("urgent", false) },
+      { id: "urgent", name: "Urgent", condition: eq("urgent", true) },
+    ],
+  };
+
+  it("a table with saved filters gets a filter axis: none, then one value per filter", () => {
+    const r = viewStates(saved, [entity, saved], { now: NOW, limit: 500 });
+    const a = r.axes.find((x) => x.id === "filter");
+    expect(a?.kind).toBe("filter");
+    expect(a?.values.map((v) => v.id)).toEqual(["none", "filter:open", "filter:urgent"]);
+    expect(r.states.some((s) => s.values["filter"] === "none")).toBe(true);
+  });
+
+  it("a lit filter is on the render and narrows matching; none leaves it off", () => {
+    const r = viewStates(saved, [entity, saved], { now: NOW, limit: 500 });
+    const lit = r.states.filter((s) => s.render.kind === "table" && s.render.savedFilter === "urgent");
+    expect(lit.length).toBeGreaterThan(0);
+    for (const s of lit) {
+      if (s.render.kind !== "table") continue;
+      const urgent = s.render.records.filter((rec) => rec.values["urgent"] === true).map((rec) => rec.id);
+      expect([...s.render.matching]).toEqual(urgent);
+    }
+    const none = r.states.filter((s) => s.values["filter"] === "none");
+    expect(none.every((s) => s.render.kind === "table" && s.render.savedFilter === undefined)).toBe(true);
+  });
+
+  it("a table without saved filters has no filter axis", () => {
+    expect(viewStates(table(), docs, { now: NOW }).axes.some((a) => a.id === "filter")).toBe(false);
+  });
+
+  it("a board with a doneField varies done both ways and gains the permission axis that disables the toggle", () => {
+    const b: BoardView = { ...board, doneField: "urgent" };
+    const r = viewStates(b, [entity, b], { now: NOW, limit: 500 });
+    expect(r.axes.find((a) => a.id === "done")?.values.map((v) => v.id)).toEqual(["done-true", "done-false"]);
+    expect(r.axes.some((a) => a.id === "permission")).toBe(true);
+    const locked = r.states.find((s) => s.values["permission"] === "record-locked");
+    expect(locked?.render.kind === "board" && locked.render.records[0]?.can?.update).toBe(false);
+  });
+});
