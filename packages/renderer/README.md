@@ -118,6 +118,13 @@ const view: FormView = { kind: "form", …, repeat: "batch", sections: […] };
 - The single Add flushes every row through `submitBatchCreate` (exported from `@yadad/runtime`): all rows are validated first, then written in ONE adapter `batch` call — all of them land or none do. A row's validation error stays on that row (`/rows/<i>/…`); the other rows keep what was typed.
 - A section that declares `subRecords` renders once per composer, not once per queued row.
 
+## DOM hooks for tests and drivers
+
+The renderer owns these attributes; scope a selector with them instead of walking ancestors.
+
+- `data-yadad-table-view="<view id>"` wraps a table view. Inside it, every quick-filter control (every kind, including the two ends of a date or number range) sits in a wrapper with `data-yadad-filter-field="<field id>"`, so `[data-yadad-table-view="sessions"] [data-yadad-filter-field="tags"] input` picks one table's tags filter even when a dashboard renders another.
+- `data-yadad-form="<view id>"` is on a form's `<form>`. A batch composer also stamps its view id as the value of `data-yadad-batch-controls`, `data-yadad-batch-count` and `data-yadad-batch-status` (the attribute names are unchanged, so bare `[data-yadad-batch-count]` selectors still match). When the same form renders twice, scope by the host wrapper, for example `[data-yadad-add-form="add_task"] [data-yadad-batch-controls]`.
+
 ## Saved filters as chips (RFC 0009)
 
 A table view's `filters` entries render as a chip row beside the quick filters. The renderer holds no chip state — the host owns which chip is lit and persists that choice:

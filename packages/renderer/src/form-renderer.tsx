@@ -242,7 +242,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
           </Section>
         </div>
       )}
-      {batchNotice !== undefined && <p role="status" data-yadad-batch-status="">{batchNotice.text}</p>}
+      {batchNotice !== undefined && <p role="status" data-yadad-batch-status={view.id}>{batchNotice.text}</p>}
       {rows.map((row, i) => (
         <div key={i} data-yadad-batch-row={isBatch ? i : undefined}>
           {view.sections.map((section) => renderSection(section, i, String(i)))}
@@ -252,9 +252,9 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
         </div>
       ))}
       {isBatch && (
-        <div data-yadad-batch-controls="">
+        <div data-yadad-batch-controls={view.id}>
           <Button label="+ another" type="button" variant="secondary" disabled={saving} onPress={addRow} />
-          <span data-yadad-batch-count="" role="status">{rows.length} {rows.length === 1 ? "row" : "rows"}</span>
+          <span data-yadad-batch-count={view.id} role="status">{rows.length} {rows.length === 1 ? "row" : "rows"}</span>
         </div>
       )}
       {formErrors.length > 0 && <ErrorSummary errors={formErrors} />}

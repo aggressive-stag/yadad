@@ -603,7 +603,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
         <Section id={`${view.id}-filters`} title="Filter">
           {quickFields.map((field) =>
             isRangeFilter(field) ? (
-              RANGE_ENDS.map(({ end, word }) => {
+              <div key={field.id} data-yadad-filter-field={field.id}>
+              {RANGE_ENDS.map(({ end, word }) => {
                 const control = field.type === "datetime" && formatting?.timeZone !== undefined
                   ? { ...filterControl(field), label: `${field.label} ${word} (${formatting.timeZone})` }
                   : { ...filterControl(field), label: `${field.label} ${word}` };
@@ -617,14 +618,17 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
                     }, references)}
                   </FieldFrame>
                 );
-              })
+              })}
+              </div>
             ) : (
-              <FieldFrame key={field.id} inputId={`${tableId}-filter-${field.id}`} errorId={`${tableId}-filter-${field.id}-errors`} label={field.label} required={false} errors={[]}>
+              <div key={field.id} data-yadad-filter-field={field.id}>
+              <FieldFrame inputId={`${tableId}-filter-${field.id}`} errorId={`${tableId}-filter-${field.id}-errors`} label={field.label} required={false} errors={[]}>
                 {renderInput(registry, filterControl(field), quick[field.id], { inputId: `${tableId}-filter-${field.id}`, invalid: false }, (v) => {
                   setQuick((q) => ({ ...q, [field.id]: v ?? null }));
                   setPage(0);
                 }, references)}
               </FieldFrame>
+              </div>
             ),
           )}
         </Section>
