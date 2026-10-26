@@ -596,13 +596,13 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     const { db } = await seed();
     const update = vi.fn(db.update);
     await openDone({ ...calendar, doneField: "done" }, { ...db, update }, new Map([[doneEntity.id, doneEntity]]));
-    const box = screen.getByRole("checkbox", { name: "Mark done Pay rent, Assignee: Ada, Home" });
+    const box = screen.getByRole("checkbox", { name: "Done: Pay rent, Assignee: Ada, Home" });
     fireEvent.click(box);
     await waitFor(() => expect(status()).toBe("Pay rent marked done"));
     expect(update).toHaveBeenCalledTimes(1);
     const [entityName, , patchValues, meta] = update.mock.calls[0] as [string, string, Record<string, unknown>, { baseVersion?: string }];
     expect([entityName, patchValues, typeof meta.baseVersion]).toEqual(["task", { done: true }, "string"]);
-    await waitFor(() => expect((screen.getByRole("checkbox", { name: "Mark not done Pay rent, Assignee: Ada, Home" }) as HTMLInputElement).checked).toBe(true));
+    await waitFor(() => expect((screen.getByRole("checkbox", { name: "Done: Pay rent, Assignee: Ada, Home" }) as HTMLInputElement).checked).toBe(true));
   });
 
   test("a record whose done field is locked by can.fields has a disabled checkbox (item 9)", async () => {
@@ -615,8 +615,8 @@ describe("RFC 0008 surfaces (card 47e)", () => {
       },
     };
     await openDone({ ...calendar, doneField: "done" }, withCan, new Map([[doneEntity.id, doneEntity]]));
-    expect((screen.getByRole("checkbox", { name: "Mark done Pay rent, Assignee: Ada, Home" }) as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByRole("checkbox", { name: "Mark done Call Ada, Work" }) as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByRole("checkbox", { name: "Done: Pay rent, Assignee: Ada, Home" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Done: Call Ada, Work" }) as HTMLInputElement).disabled).toBe(false);
   });
 
   test("a day past maxEntriesPerDay caps the list behind +N more, which reveals it (item 7)", async () => {

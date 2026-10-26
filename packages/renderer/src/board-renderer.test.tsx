@@ -741,12 +741,12 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     const { db, ids } = await seed();
     const update = vi.fn(db.update);
     await open({ view: { ...board, doneField: "done" }, adapter: { ...db, update } });
-    const box = within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Mark done Book flights" });
+    const box = within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Done: Book flights" });
     fireEvent.click(box);
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const [entityName, id, patchValues, meta] = update.mock.calls[0] as [string, string, Record<string, unknown>, { baseVersion?: string }];
     expect([entityName, id, patchValues, typeof meta.baseVersion]).toEqual(["task", ids["Book flights"], { done: true }, "string"]);
-    await waitFor(() => expect((within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Mark not done Book flights" }) as HTMLInputElement).checked).toBe(true));
+    await waitFor(() => expect((within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Done: Book flights" }) as HTMLInputElement).checked).toBe(true));
     expect(status()).toBe("Book flights marked done");
   });
 
@@ -760,8 +760,8 @@ describe("RFC 0008 surfaces (card 47e)", () => {
       },
     };
     await open({ view: { ...board, doneField: "done" }, adapter: withCan });
-    expect((within(screen.getByTestId(`card-${ids["Pay rent"]}`)).getByRole("checkbox", { name: "Mark done Pay rent, Notes: Due soon" }) as HTMLInputElement).disabled).toBe(true);
-    expect((within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Mark done Book flights" }) as HTMLInputElement).disabled).toBe(false);
+    expect((within(screen.getByTestId(`card-${ids["Pay rent"]}`)).getByRole("checkbox", { name: "Done: Pay rent, Notes: Due soon" }) as HTMLInputElement).disabled).toBe(true);
+    expect((within(screen.getByTestId(`card-${ids["Book flights"]}`)).getByRole("checkbox", { name: "Done: Book flights" }) as HTMLInputElement).disabled).toBe(false);
   });
 
   test("a select option's label and colour reach the column header (item 5)", async () => {

@@ -43,7 +43,7 @@ const renderFor = (entityMap: Map<string, EntityDocument>, documentSet: Document
       case "form":
         return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entityMap} documents={documentSet} {...(drafts ? { drafts } : {})} {...v} />;
       case "table":
-        return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entityMap} documents={documentSet} {...v} />;
+        return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entityMap} documents={documentSet} {...(state.render.kind === "table" && state.render.savedFilter !== undefined ? { savedFilter: state.render.savedFilter } : {})} {...v} />;
       case "calendar":
         return <CalendarRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={entityMap} documents={documentSet} now={now} {...(state.render.kind === "calendar" ? { initialMode: state.render.mode, initialAnchor: state.render.anchor } : {})} {...v} />;
       case "board":

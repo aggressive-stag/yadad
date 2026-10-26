@@ -23,6 +23,23 @@ const withInput = (Input: (props: InputProps<TextField, string>) => ReactNode): 
 });
 
 describe("the kit catches broken components", () => {
+  test("a board and a calendar that drop the done checkbox", async () => {
+    const MockBoard = mockRegistry.layout.Board!;
+    const MockCalendar = mockRegistry.layout.Calendar!;
+    const registry: Registry<ReactNode> = {
+      ...mockRegistry,
+      layout: {
+        ...mockRegistry.layout,
+        Board: (props) => <MockBoard {...props} columns={props.columns.map((c) => ({ ...c, cards: c.cards.map(({ done: _done, ...card }) => card) }))} />,
+        Calendar: (props) => <MockCalendar {...props} days={props.days.map((d) => ({ ...d, entries: d.entries.map(({ done: _done, ...entry }) => entry) }))} />,
+      },
+    };
+    expect(await failing(registry)).toEqual([
+      "layout: Calendar renders a labelled checkbox per entry that has a done toggle and calls toggle once",
+      "layout: Board renders a labelled checkbox per card that has a done toggle and calls toggle once",
+    ]);
+  });
+
   test("tabs that only work with a mouse", async () => {
     const registry: Registry<ReactNode> = {
       ...mockRegistry,

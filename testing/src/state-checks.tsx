@@ -36,6 +36,9 @@ export type StateCheck =
   | "anchor-ignored"
   | "action-offered"
   | "action-missing"
+  | "done-missing"
+  | "done-offered"
+  | "saved-filter"
   | "diff-missing"
   | "diff-offered"
   | "axis-missing";
@@ -100,7 +103,7 @@ export interface CheckViewStatesOptions {
   /**
    * Axis ids the grid must contain (`field:<id>`, `records`, `mode`, `group`,
    * `tab`, `widget`, a viewer fact's id, `permission`, `action:<id>`,
-   * `paging`). Each listed id missing from the view's grid adds one
+   * `paging`, `filter`, `done`). Each listed id missing from the view's grid adds one
    * `axis-missing` problem to the first result — a view that silently lost
    * its permission axis (say, its last editable column in a refactor) would
    * otherwise stay green with fewer states and nothing to say so.
@@ -559,6 +562,15 @@ function viewerChecks(container: HTMLElement, view: ViewDocument, state: SourceV
       out.push({ check: "viewer-visibility", message: `columns shown are [${headers.join(", ")}] but this viewer may see [${shown.map((c) => c.field).join(", ")}]` });
     }
     if (table && shown.length === 0) out.push({ check: "viewer-visibility", message: "a table is rendered although this viewer may see none of its columns" });
+    if (state.render.kind === "table" && (view.filters?.length ?? 0) > 0) {
+      const chips = [...container.querySelectorAll('nav[aria-label="Saved filters"] button')];
+      const lit = state.render.savedFilter;
+      for (const filter of view.filters ?? []) {
+        const chip = chips.find((c) => c.textContent?.trim() === filter.name);
+        if (chip === undefined) out.push({ check: "saved-filter", message: `saved filter "${filter.name}" has no chip` });
+        else if ((chip.getAttribute("aria-pressed") === "true") !== (lit === filter.id)) out.push({ check: "saved-filter", message: `saved filter "${filter.name}" is ${lit === filter.id ? "lit in the state but not pressed" : "pressed but not lit in the state"}` });
+      }
+    }
     if (table) {
       const anyColumn = shown.some((c) => columnEditable(c, viewer));
       // RFC 0008 item 9 (card 47h): can.fields narrows the edit affordance per record — a row
@@ -588,7 +600,7 @@ function viewerChecks(container: HTMLElement, view: ViewDocument, state: SourceV
     const editable = viewEditable(view, viewer);
     const calendar = seen.calendars.at(-1);
     const board = seen.boards.at(-1);
-    const items: readonly { readonly id: string; readonly movable: boolean }[] = calendar ? calendar.days.flatMap((d) => d.entries) : board ? board.columns.flatMap((c) => c.cards) : [];
+    const items: readonly { readonly id: string; readonly movable: boolean; readonly done?: { readonly checked: boolean; readonly disabled: boolean } }[] = calendar ? calendar.days.flatMap((d) => d.entries) : board ? board.columns.flatMap((c) => c.cards) : [];
     // RFC 0008 item 9 (card 47h): can.fields narrows the drag — a record whose move field the
     // server withheld is not movable, and one it left open is movable whenever the view is.
     const collection = state.render.kind === "calendar" || state.render.kind === "board" ? state.render : undefined;
@@ -601,6 +613,29 @@ function viewerChecks(container: HTMLElement, view: ViewDocument, state: SourceV
         if (item.movable && !expected) out.push({ check: "can-fields-offered", message: `"${record.id}" is movable but can.fields withholds "${moveFieldId}" (or the record is locked)` });
         if (!item.movable && expected) out.push({ check: "can-fields-missing", message: `"${record.id}" is not movable although can.fields leaves "${moveFieldId}" open` });
       }
+    }
+    // RFC 0008 item 3: a doneField view hands every entry a done toggle whose state mirrors the record, and the component draws it as a checkbox.
+    if (collection !== undefined && (calendar || board)) {
+      const boxes = [...container.querySelectorAll('input[type="checkbox"]')];
+      let wanted = 0;
+      for (const item of items) {
+        const record = collection.records.find((r) => r.id === item.id);
+        if (view.doneField === undefined) {
+          if (item.done !== undefined) out.push({ check: "done-offered", message: `"${item.id}" got a done toggle but the view has no doneField` });
+          continue;
+        }
+        if (item.done === undefined) {
+          out.push({ check: "done-missing", message: `"${item.id}" got no done toggle although the view declares doneField "${view.doneField}"` });
+          continue;
+        }
+        wanted++;
+        if (record === undefined) continue;
+        const expectedDisabled = editable !== true || !canEditField(record, view.doneField);
+        if (item.done.checked !== (record.values[view.doneField] === true)) out.push({ check: "done-offered", message: `"${item.id}" done.checked is ${String(item.done.checked)} but the stored ${view.doneField} differs` });
+        if (item.done.disabled && !expectedDisabled) out.push({ check: "done-missing", message: `"${item.id}" done toggle is disabled although the viewer may write ${view.doneField}` });
+        if (!item.done.disabled && expectedDisabled) out.push({ check: "done-offered", message: `"${item.id}" done toggle is enabled but the viewer or the record forbids writing ${view.doneField}` });
+      }
+      if (view.doneField !== undefined && boxes.length < wanted) out.push({ check: "done-missing", message: `${boxes.length} checkboxes are drawn for ${wanted} done toggles: the component set drops the completion checkbox` });
     }
     const onMove = calendar ? calendar.onMove : board?.onMove;
     const onOpen = calendar ? calendar.onOpenEntry : board?.onOpenCard;

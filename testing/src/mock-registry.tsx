@@ -278,14 +278,12 @@ function MockSection({ id, title, children }: SectionProps<ReactNode>): ReactNod
 }
 
 function MockDoneCheck({ done, label }: { readonly done: { readonly checked: boolean; readonly disabled: boolean; readonly toggle: () => void }; readonly label: string }): ReactNode {
+  // The shape the real component set draws: a label wrapping a native checkbox, named "Done: <entry label>".
   return (
-    <input
-      type="checkbox"
-      aria-label={`${done.checked ? "Mark not done" : "Mark done"} ${label}`}
-      checked={done.checked}
-      disabled={done.disabled}
-      onChange={() => done.toggle()}
-    />
+    <label>
+      <input type="checkbox" aria-label={`Done: ${label}`} checked={done.checked} disabled={done.disabled} onChange={() => done.toggle()} />
+      <span aria-hidden="true">Done</span>
+    </label>
   );
 }
 

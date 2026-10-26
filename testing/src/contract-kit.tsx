@@ -1019,6 +1019,34 @@ const kitEntry = (id: string, title: string, over: Partial<CalendarDayProps<Reac
 });
 
 /**
+ * The shared half of the done-toggle checks (RFC 0008 item 3): two native
+ * checkboxes, the first unchecked and enabled, the second checked and
+ * disabled. Each needs an accessible name, mirrors `checked`/`disabled`, and
+ * an enabled one calls `toggle` once on click.
+ */
+function doneBoxProblems(boxes: readonly HTMLElement[], noun: string, toggled: string[]): string[] {
+  const out: string[] = [];
+  const [open, locked] = boxes as [HTMLInputElement, HTMLInputElement];
+  for (const [i, name] of ["Pay rent", "Call Ada"].entries()) {
+    if (screen.queryByRole("checkbox", { name: `Done: ${name}` }) !== boxes[i]) out.push(`The done checkbox on the ${noun} "${name}" must be named "Done: ${name}".`);
+  }
+  for (const box of boxes) {
+    if (!(box instanceof HTMLInputElement) || box.type !== "checkbox") {
+      out.push(`The done toggle must be a native checkbox (<input type="checkbox">) on each ${noun}.`);
+      continue;
+    }
+    if ((box.getAttribute("aria-label") ?? "").trim() === "" && (box.labels?.length ?? 0) === 0 && box.getAttribute("aria-labelledby") === null) out.push(`The done checkbox on each ${noun} must have an accessible name.`);
+  }
+  if (open.checked) out.push("done.checked false must render an unchecked checkbox.");
+  if (!locked.checked) out.push("done.checked true must render a checked checkbox.");
+  if (open.disabled) out.push("done.disabled false must leave the checkbox enabled.");
+  if (!locked.disabled) out.push("done.disabled true must disable the checkbox.");
+  fireEvent.click(open);
+  if (toggled.join() !== "a") out.push(`Clicking an enabled done checkbox must call toggle once, got [${toggled.join(", ")}].`);
+  return out;
+}
+
+/**
  * Checks for `layout.Calendar` (RFC 0004). The key is optional, so a registry
  * without a calendar has no calendar checks; one with a calendar must pass all.
  */
@@ -1114,6 +1142,21 @@ function calendarChecks(registry: Registry<ReactNode>): ContractCheck[] {
       cleanup();
       render(<Calendar {...base} days={withEntries} />);
       if (button("Pay rent")) problems.push("Without onOpenEntry, entries must not be buttons.");
+    }),
+
+    layoutCheck("Calendar renders a labelled checkbox per entry that has a done toggle and calls toggle once", async (problems) => {
+      const toggled: string[] = [];
+      const done = (id: string, checked: boolean, disabled: boolean) => ({ checked, disabled, toggle: () => void toggled.push(id) });
+      const days = kitDays(21, { "2026-10-15": [kitEntry("a", "Pay rent", { done: done("a", false, false) }), kitEntry("b", "Call Ada", { done: done("b", true, true) })] });
+      render(<Calendar {...base} days={days} />);
+      const boxes = screen.queryAllByRole("checkbox");
+      if (boxes.length !== 2) problems.push(`Each entry with a done toggle must render a checkbox; got ${boxes.length} for 2 entries.`);
+      else {
+        problems.push(...doneBoxProblems(boxes, "entry", toggled));
+      }
+      cleanup();
+      render(<Calendar {...base} days={withEntries} />);
+      if (screen.queryAllByRole("checkbox").length > 0) problems.push("An entry without a done toggle must not render a checkbox.");
     }),
 
     layoutCheck("Calendar offers Move to day… for every movable entry and calls onMove once", async (problems) => {
@@ -1232,6 +1275,27 @@ function boardChecks(registry: Registry<ReactNode>): ContractCheck[] {
   };
 
   return [
+    layoutCheck("Board renders a labelled checkbox per card that has a done toggle and calls toggle once", async (problems) => {
+      const toggled: string[] = [];
+      const done = (id: string, checked: boolean, disabled: boolean) => ({ checked, disabled, toggle: () => void toggled.push(id) });
+      const [h, w, ...rest] = base.columns;
+      const withDone: BoardProps<ReactNode> = {
+        ...base,
+        columns: [
+          ...(h ? [{ ...h, cards: h.cards.map((c) => ({ ...c, done: done(c.id, false, false) })) }] : []),
+          ...(w ? [{ ...w, cards: w.cards.map((c) => ({ ...c, done: done(c.id, true, true) })) }] : []),
+          ...rest,
+        ],
+      };
+      render(<Board {...withDone} />);
+      const boxes = screen.queryAllByRole("checkbox");
+      if (boxes.length !== 2) problems.push(`Each card with a done toggle must render a checkbox; got ${boxes.length} for 2 cards.`);
+      else problems.push(...doneBoxProblems(boxes, "card", toggled));
+      cleanup();
+      render(<Board {...base} />);
+      if (screen.queryAllByRole("checkbox").length > 0) problems.push("A card without a done toggle must not render a checkbox.");
+    }),
+
     layoutCheck("Board is a group named by its label and names its columns by label and count", async (problems) => {
       const { container } = render(<Board {...base} />);
       // RFC 0005 "Semantics": the board is a group named by its label; each column is
