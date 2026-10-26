@@ -1,5 +1,13 @@
 # @yadad/testing
 
+## 0.12.1
+
+### Patch Changes
+
+- 0ff673e: `validateRecord` now enforces a text field's `maxLength` (RFC 0008 item 13c), counting code points, so record forms and action input (`validateActionInput`) refuse an over-long value before the round trip. The mock registry's text input carries `maxLength`. `recordJsonSchema` does not emit `maxLength` yet; docs/records-protocol.md lists it as a known difference.
+- Updated dependencies [0ff673e]
+  - @yadad/runtime@0.13.1
+
 ## 0.12.0
 
 ### Minor Changes
