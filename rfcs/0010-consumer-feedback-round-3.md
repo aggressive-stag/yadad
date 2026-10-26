@@ -160,10 +160,24 @@ Nothing here moves authority: the server remains the only one, documents decide 
 
 **Contract impact.** None in `core`/`runtime`. `renderer`: the debounce and the blur hook. `components`: the tags input exposes blur-commit. `testing`: nothing new. `specVersion`: none. (This is an owner decision because it changes what a viewer sees, not because it changes a contract.)
 
+### 11. The record JSON Schema carries a text field's `maxLength`
+
+**Source.** Found while fixing 9C2-Y2 (below): `validateRecord` now enforces `text.maxLength` (`0ff673e`, runtime 0.13.1), but `recordJsonSchema` in `core` does not emit `maxLength` for `text` fields, so a records server that validates with the published schema accepts what the client refuses. `docs/records-protocol.md` now tells servers to check it themselves.
+
+**Problem.** The schema is the server's copy of the rules; a rule the client enforces and the schema omits is a drift the parity test has to list as a known difference.
+
+**Options.**
+- (a) `recordJsonSchema` emits `maxLength` for `text` fields that declare it (JSON Schema counts code points, as the runtime does).
+- (b) Leave it to the protocol doc.
+
+**Recommendation.** (a). One line in the schema builder; it closes a parity gap rather than adding a feature.
+
+**Contract impact.** `core`: `recordJsonSchema` and its parity test. No document change; records stay valid unless they already broke the declared limit. `specVersion`: none (the document vocabulary does not change).
+
 ## Not in this RFC (fixed without a contract change)
 
-- **Components ship no token fallbacks** (the review UI's 9C3-Y1): `dist/yadad-components.css` has ~420 `var(--yadad-*)` uses and no `:root` fallbacks. A components agent is fixing it now.
-- **Action input `maxLength` is not enforced** (9C2-Y2): core accepts `maxLength` on a `text` action input; `validateActionInput` and the dialog ignore it. An engine bug, being fixed now.
+- **Components ship no token fallbacks** (the review UI's 9C3-Y1): fixed in `@yadad/components` (`055dbf1`, a zero-specificity default-token layer in the stylesheet).
+- **Action input `maxLength` is not enforced** (9C2-Y2): `validateRecord` ignored `text.maxLength` everywhere; fixed in `0ff673e` (runtime 0.13.1), which covers action input too. The components text input setting the `maxlength` attribute is a components follow-up.
 - **The task app's `doneField` toggle not drawn by the component set** (F15 finding 1; the workout log's calendar version of it): renderer builds the `done` slot, the components do not render it. Fixed in the components repo.
 - **Batch composer hooks are not instance-scoped** (F15 finding 3): fixed in `f7b93f1 feat(renderer): scope quick-filter and batch composer dom hooks`.
 - **The state grid has no axis for saved filters, the batch composer or `doneField`** (F15 finding 4, the grid half): fixed in `013d887` and `d4ce13b`. Only the composer's row count is left (item 9).
@@ -190,6 +204,7 @@ Nothing here moves authority: the server remains the only one, documents decide 
 6. **Item 8**: `readOnly` as the name, or `serverSet`/`generated`? Should it also be refused as an inline-edit column?
 7. **Item 10**: tags draft committed on blur (b), filtered live (c), or Enter-only (a)?
 8. **`applySystemTheme`**: go, or leave to hosts?
+9. **Item 11**: emit `maxLength` in `recordJsonSchema` (a)?
 
 ## Owner decisions
 
