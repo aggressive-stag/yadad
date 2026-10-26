@@ -1,5 +1,16 @@
 # @yadad/renderer
 
+## 0.15.0
+
+### Minor Changes
+
+- f7b93f1: Quick-filter controls are wrapped in `data-yadad-filter-field="<field id>"`, and the batch composer's `data-yadad-batch-controls`, `-count` and `-status` attributes now carry the form view id as their value, so drivers can scope two instances of the same view.
+
+### Patch Changes
+
+- Updated dependencies [d4ce13b]
+  - @yadad/runtime@0.13.0
+
 ## 0.14.0
 
 ### Minor Changes
