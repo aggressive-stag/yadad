@@ -50,7 +50,12 @@ function checkValue(field: Field, value: FieldValue): Problem | undefined {
 
   switch (field.type) {
     case "text":
-      return typeof value === "string" ? undefined : wrongType(name, "text");
+      if (typeof value !== "string") return wrongType(name, "text");
+      // RFC 0008 item 13c: characters are code points, as in JSON Schema's maxLength.
+      if (field.maxLength !== undefined && [...value].length > field.maxLength) {
+        return outOfRange(name, `at most ${field.maxLength} characters`);
+      }
+      return undefined;
 
     case "number": {
       if (typeof value !== "number" || !Number.isFinite(value)) return wrongType(name, "a number");

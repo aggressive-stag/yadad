@@ -59,6 +59,7 @@ What the schema says: one property per field; `additionalProperties: false` (unk
 - **Step.** JSON Schema `multipleOf` counts from zero and divides in floating point. The schema emits it only when that is exact (the step is a binary fraction such as 1, 0.5 or 0.25, and `min` is a multiple of it). Otherwise (a step like 0.1, or a `min` that is not a multiple of the step) the rule is only described in the field's `description` and the server must check it itself, counting steps from `min`. Even when emitted, `validateRecord` forgives a float error of 1e-9 that `multipleOf` does not.
 - **Calendar dates.** The schema checks the `YYYY-MM-DD` shape and the `min`/`max` range exactly (as patterns), but `2026-02-30` is rejected only by a validator that asserts the `date` format (most do, when format checking is enabled).
 - **Time step.** A `time` field's `step` (whole minutes, RFC 0008 item 14) has no JSON Schema keyword, so the schema checks the `HH:MM` shape and the `min`/`max` range only and `validateRecord` is the step gate. A server must check it itself.
+- **Text length.** A `text` field's `maxLength` (RFC 0008 item 13c) is enforced by `validateRecord` (counting characters as code points), on record forms and on action input alike. `recordJsonSchema` does not emit `maxLength` yet, so a server must check it itself.
 - **Tag duplicates.** The schema says `uniqueItems`; `validateRecord` leaves repeats to the input (the chips widget prevents them), so `["a", "a"]` passes the browser check and a server should reject it.
 
 ## Endpoints

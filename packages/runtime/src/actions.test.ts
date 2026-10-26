@@ -100,6 +100,36 @@ describe("validateActionInput", () => {
     ]);
   });
 
+  describe("text maxLength", () => {
+    const note: RecordAction = {
+      id: "note",
+      label: "Note",
+      input: [
+        { id: "body", type: "text", label: "Body", maxLength: 10 },
+        { id: "n", type: "number", label: "N" },
+      ],
+    };
+
+    test("at the limit passes, one over reports under /input/body", () => {
+      expect(validateActionInput(note, { body: "a".repeat(10) })).toEqual([]);
+      const issues = validateActionInput(note, { body: "a".repeat(11) });
+      expect(issues.map((e) => [e.path, e.code])).toEqual([["/input/body", "invalid-value"]]);
+      expect(issues[0]?.message).toContain("at most 10 characters");
+    });
+
+    test("empty and absent pass; characters count as code points", () => {
+      expect(validateActionInput(note, { body: "" })).toEqual([]);
+      expect(validateActionInput(note, { body: null })).toEqual([]);
+      expect(validateActionInput(note, {})).toEqual([]);
+      expect(validateActionInput(note, { body: "😀".repeat(10) })).toEqual([]);
+    });
+
+    test("a field without maxLength is unaffected", () => {
+      expect(validateActionInput(note, { n: 123456789012 })).toEqual([]);
+      expect(validateActionInput(retitle, { reason: "x".repeat(5000) })).toEqual([]);
+    });
+  });
+
   test("an unknown input id is reported under /input/", () => {
     expect(validateActionInput(retitle, { reason: "ok", extra: 1 }).map((e) => [e.path, e.code])).toEqual([
       ["/input/extra", "unknown-property"],
