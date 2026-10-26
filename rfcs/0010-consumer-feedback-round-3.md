@@ -174,6 +174,22 @@ Nothing here moves authority: the server remains the only one, documents decide 
 
 **Contract impact.** `core`: `recordJsonSchema` and its parity test. No document change; records stay valid unless they already broke the declared limit. `specVersion`: none (the document vocabulary does not change).
 
+### 12. Colour and time limits the component set cannot honour alone
+
+**Source.** A slot-prop audit of `@yadad/components` 0.29.0 against what the renderer passes (2026-10-26). It fixed four dropped props (calendar day overflow, reference `colorFrom`, board column colour, count/series headings) and found three it could not fix without an engine or contract call:
+- (i) **Calendar entry colour.** `calendar-renderer.tsx:328` passes a hex `color.color` beside a hash-based slot, while the legend gets only `{slot, label}`. Painting the hex on entries but not the legend would make them disagree.
+- (ii) **Colour vocabulary.** Every colour dot the base set draws (select display, reference, board column) maps a hex onto the select's 8-colour palette (`PALETTE_SLOTS`); any other hex paints nothing, silently. A document author who writes `#336699` gets no colour and no error.
+- (iii) **`datetime` `min`/`max`.** Stored as UTC instants (RFC 0007), but a `datetime-local` input takes local wall time, so the component passes them through and the browser most likely ignores them.
+
+**Options.**
+- (i) (a) The legend receives the same `color` the entries do; (b) entries keep the slot only, and the hex is dropped from the slot props.
+- (ii) (a) Validate colour hexes against the palette in `core` (an error names the eight allowed values); (b) components paint any hex through an inline custom property and own contrast in light and dark; (c) keep it silent, document the palette.
+- (iii) (a) The renderer passes local-time limits to the input slot alongside the stored instants; (b) the component converts; (c) document that `datetime` limits are enforced by validation only.
+
+**Recommendation.** (i)(a), (ii)(a), (iii)(a). A colour that silently disappears is the same class of bug as the dropped `doneField`; validating it keeps the palette (and its contrast checks) the one source of truth. Time-zone conversion belongs in the renderer, which already owns the instant-to-local display.
+
+**Contract impact.** `core`: (ii)(a) adds a validator check on option and reference colours (documents with off-palette hexes become invalid, so it needs a `migrate()` note or a warning-first release); (i)(a) adds `color` to the calendar legend slot props. `renderer`: (i) legend wiring, (iii) local limits. `components`: legend and datetime input. `specVersion`: next.
+
 ## Not in this RFC (fixed without a contract change)
 
 - **Components ship no token fallbacks** (the review UI's 9C3-Y1): fixed in `@yadad/components` (`055dbf1`, a zero-specificity default-token layer in the stylesheet).
@@ -205,6 +221,7 @@ Nothing here moves authority: the server remains the only one, documents decide 
 7. **Item 10**: tags draft committed on blur (b), filtered live (c), or Enter-only (a)?
 8. **`applySystemTheme`**: go, or leave to hosts?
 9. **Item 11**: emit `maxLength` in `recordJsonSchema` (a)?
+10. **Item 12**: legend gets the entry colour (i)(a); validate colours against the palette (ii)(a) or paint any hex (ii)(b); renderer passes local datetime limits (iii)(a)?
 
 ## Owner decisions
 
