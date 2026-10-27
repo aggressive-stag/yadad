@@ -8,10 +8,11 @@ import { FormRenderer } from "./form-renderer.js";
 import { loadFailure } from "./load-state.js";
 import type { DocumentSet } from "./document-set.js";
 import { checkViewSetup } from "./setup.js";
-import { instantRangeBounds, localToInstant, LOCAL_DATETIME_PATTERN } from "@yadad/runtime";
+import { instantRangeBounds, localToInstant, LOCAL_DATETIME_PATTERN, REFERENCE_OPTION_LIMIT } from "@yadad/runtime";
 import { renderDisplay, renderInput } from "./fields.js";
 import type { FieldFormatting } from "./fields.js";
-import { useReferences } from "./references.js";
+import { useReferenceFilterChoices, useReferences } from "./references.js";
+import type { ReferenceFilterChoicesState } from "./references.js";
 import { useViewerSetup } from "./viewer.js";
 import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { replaceSavedRecord } from "./saved-record.js";
@@ -422,7 +423,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
   // Record actions (RFC 0007): buttons the component draws from TableRow.actions.
-  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(onChanged ? { onChanged } : {}) });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(entities ? { entities } : {}), ...(formatting ? { formatting } : {}), ...(onChanged ? { onChanged } : {}) });
   const zone = viewerZone(formatting);
   // RFC 0009 item 5: the lit named filter joins the base before the quick filters do —
   // one `and` over the view's fixed filter and the saved condition, then combineFilters as-is.
@@ -484,6 +485,9 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   }));
   const editableReferences = editing ? referenceColumns.filter((f) => shownColumns.some((c) => c.field === f.id && f.readOnly !== true && columnEditable(c, viewer))) : [];
   const references = useReferences(adapter, entities, editableReferences, wants, reloadKey);
+  // RFC 0011 item 3: a reference quick filter is a picker over the target's records.
+  const referenceFilters = (view.quickFilters ?? []).flatMap((f) => entity.fields.filter((x): x is ReferenceField => x.type === "reference" && x.id === f.field && !lockedFields.includes(x.id)));
+  const filterChoices = useReferenceFilterChoices(adapter, entities, referenceFilters, reloadKey);
 
   // Entering edit mode moves focus to the row's first editable input.
   const editingId = editing?.record.id;
@@ -672,12 +676,37 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const editErrors = editing?.state.errors ?? [];
 
+  /** A reference quick filter (RFC 0011 item 3): the select input over the target's records; choosing one filters on its id. */
+  const renderReferenceFilter = (field: ReferenceField, label: string, state: ReferenceFilterChoicesState): ReactNode => {
+    const inputId = `${tableId}-filter-${field.id}`;
+    const errorId = `${inputId}-errors`;
+    const value = typeof quick[field.id] === "string" ? (quick[field.id] as string) : undefined;
+    // The picker is a select over the loaded records; the loading state keeps its label and is disabled.
+    const choices = state.status === "ready" ? state.choices : [];
+    const control: Field = { id: field.id, type: "select", label, options: { source: "static", values: choices.map((c) => ({ value: c.value, label: c.label })) } };
+    const input = renderInput(registry, control, value, { inputId, invalid: false, ...(state.status === "error" ? { describedBy: errorId } : {}) }, (v) => {
+      setQuick((q) => ({ ...q, [field.id]: v ?? null }));
+      setPage(0);
+    }, references);
+    return (
+      <FieldFrame inputId={inputId} errorId={errorId} label={label} required={false} errors={[]}>
+        {state.status === "loading" ? (
+          <fieldset disabled aria-busy="true" data-yadad-filter-loading="" style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>{input}</fieldset>
+        ) : (
+          input
+        )}
+        {state.status === "error" && <p id={errorId} role="status" data-yadad-filter-error="">The choices could not be loaded: {state.message}</p>}
+        {state.status === "ready" && state.more && <p data-yadad-filter-more="">Showing the first {REFERENCE_OPTION_LIMIT} choices.</p>}
+      </FieldFrame>
+    );
+  };
+
   const quickFields = (view.quickFilters ?? []).flatMap((f) => {
     if (lockedFields.includes(f.field)) return [];
     // No filter control for a column this viewer cannot see (the filter itself still works).
     if (view.columns.some((c) => c.field === f.field) && !shownColumns.some((c) => c.field === f.field)) return [];
     const field = entity.fields.find((x) => x.id === f.field);
-    return field && field.type !== "reference" ? [{ field, filter: f }] : []; // a reference cannot be a quick filter (the validator rejects it)
+    return field ? [{ field, filter: f }] : [];
   });
 
   // RFC 0009 item 5: named saved filters as chips beside the quick filters. The renderer
@@ -734,6 +763,10 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
                   </FieldFrame>
                 );
               })}
+              </div>
+            ) : field.type === "reference" ? (
+              <div key={field.id} data-yadad-filter-field={field.id}>
+                {renderReferenceFilter(field, filter.label ?? field.label, filterChoices.get(field.id) ?? { status: "loading" })}
               </div>
             ) : (
               <div key={field.id} data-yadad-filter-field={field.id}>

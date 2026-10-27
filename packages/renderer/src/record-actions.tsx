@@ -4,8 +4,10 @@ import { actionNeedsDialog, availableActions, serverValidationIssues, validateAc
 import type { ActionsView } from "@yadad/runtime";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { renderInput } from "./fields.js";
-import type { ReferenceSupport } from "./references.js";
+import { renderDisplay, renderInput } from "./fields.js";
+import type { FieldFormatting } from "./fields.js";
+import { useReferences } from "./references.js";
+import type { ReferenceSupport, ReferenceWant } from "./references.js";
 
 /** How many renders the focus-return effect retries across after a flight ends (todo-app F14 part B). */
 const RESTORE_ATTEMPTS = 50;
@@ -59,8 +61,12 @@ export function useRecordActions(options: {
   readonly onChanged?: () => void;
   /** Where announcements go: a view with its own announcement state (board, calendar) injects it, so one live region carries everything. Without it the hook keeps its own. */
   readonly announce?: (text: string) => void;
+  /** The documents of the entities that reference fields point at: a confirm `subjectField` that is a reference shows its target's label. */
+  readonly entities?: ReadonlyMap<string, EntityDocument>;
+  /** How dates and times in the confirm subject line are formatted, as in a table cell. */
+  readonly formatting?: FieldFormatting;
 }): RecordActions {
-  const { entity, view, viewer, registry, adapter, reload } = options;
+  const { entity, view, viewer, registry, adapter, reload, entities, formatting } = options;
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const [failures, setFailures] = useState<readonly DocumentError[] | undefined>(undefined);
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
@@ -220,12 +226,20 @@ export function useRecordActions(options: {
 
   const { Dialog, FieldFrame, Button, ErrorSummary } = registry.layout;
   const open = dialog;
+  // RFC 0011 item 2: the confirm's subject line is the named field's display, exactly as a table cell draws it.
+  const subjectField = open?.action.confirm?.subjectField === undefined ? undefined : entity.fields.find((f) => f.id === open.action.confirm?.subjectField);
+  const subjectId = subjectField?.type === "reference" ? open?.record.values[subjectField.id] : undefined;
+  const subjectWants: readonly ReferenceWant[] = subjectField?.type === "reference" && typeof subjectId === "string" && subjectId !== "" ? [{ field: subjectField, id: subjectId }] : [];
+  const subjectReferences = useReferences(adapter, entities, [], subjectWants);
   const fieldErrors = (field: Field): readonly DocumentError[] => (open?.errors ?? []).filter((e) => e.path === jsonPointer(["input", field.id]));
   const summaryErrors = (open?.errors ?? []).filter((e) => !open!.action.input?.some((f) => e.path === jsonPointer(["input", f.id])));
   const rendered: ReactNode =
     open === undefined || Dialog === undefined ? null : (
       <Dialog label={open.action.confirm?.title ?? open.action.label} onClose={() => setDialog(undefined)}>
         {open.action.confirm !== undefined && <p>{open.action.confirm.message}</p>}
+        {subjectField !== undefined && (
+          <p data-yadad-confirm-subject="">{renderDisplay(registry, subjectField, open.record.values[subjectField.id], subjectReferences, formatting)}</p>
+        )}
         {(open.action.input ?? []).map((field) => {
           const errors = fieldErrors(field);
           const inputId = `yadad-action-${open.action.id}-${open.record.id}-${field.id}`;

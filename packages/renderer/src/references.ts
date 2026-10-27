@@ -1,5 +1,5 @@
 import type { DataAdapter, EntityDocument, ReferenceDisplayExtras, ReferenceField, ReferenceInputExtras, ReferenceOptions } from "@yadad/core";
-import { loadReferenceOptions, referenceColorField, resolveReferenceColors, resolveReferenceLabels } from "@yadad/runtime";
+import { loadReferenceFilterChoices, loadReferenceOptions, referenceColorField, resolveReferenceColors, resolveReferenceLabels } from "@yadad/runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** The label of a record that no longer exists. */
@@ -160,4 +160,41 @@ export function useReferences(adapter: DataAdapter | undefined, targets: Targets
     }),
     [options, labels, colors],
   );
+}
+
+/** What a reference quick filter's picker has: the choices loading, loaded (cut at the runtime's limit when `more`), or failed. */
+export type ReferenceFilterChoicesState =
+  | { readonly status: "loading" }
+  | { readonly status: "ready"; readonly choices: readonly { readonly value: string; readonly label: string }[]; readonly more: boolean }
+  | { readonly status: "error"; readonly message: string };
+
+/**
+ * Loads the choices of each reference quick filter (RFC 0011 item 3) from the
+ * target entity's records, through the view's own data source. A failure is
+ * reported per field and never blocks the view.
+ */
+export function useReferenceFilterChoices(adapter: DataAdapter | undefined, targets: Targets | undefined, fields: readonly ReferenceField[], reloadKey?: unknown): ReadonlyMap<string, ReferenceFilterChoicesState> {
+  const [states, setStates] = useState<ReadonlyMap<string, ReferenceFilterChoicesState>>(new Map());
+  const key = JSON.stringify(fields.map((f) => [f.id, f.entity, f.display ?? null]));
+  useEffect(() => {
+    if (!adapter) return;
+    let current = true;
+    for (const field of fields) {
+      const target = targets?.get(field.entity);
+      if (!target) {
+        setStates((m) => new Map(m).set(field.id, { status: "error", message: `Entity "${field.entity}" was not provided to the renderer.` }));
+        continue;
+      }
+      setStates((m) => (m.has(field.id) ? m : new Map(m).set(field.id, { status: "loading" })));
+      loadReferenceFilterChoices(adapter, target, field).then(
+        (result) => current && setStates((m) => new Map(m).set(field.id, { status: "ready", choices: result.choices, more: result.more })),
+        (error: unknown) => current && setStates((m) => new Map(m).set(field.id, { status: "error", message: error instanceof Error ? error.message : String(error) })),
+      );
+    }
+    return () => {
+      current = false;
+    };
+    // key stands for `fields`.
+  }, [adapter, targets, key, reloadKey]);
+  return states;
 }

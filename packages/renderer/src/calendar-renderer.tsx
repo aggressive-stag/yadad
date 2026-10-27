@@ -296,7 +296,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     });
   }
   const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
-  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), announce, ...(onChanged ? { onChanged } : {}) });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(entities ? { entities } : {}), ...(formatting ? { formatting } : {}), announce, ...(onChanged ? { onChanged } : {}) });
   if (setupErrors.length > 0 || !Calendar) return <ErrorSummary errors={setupErrors} />;
 
   const navigate = (next: () => void): void => {

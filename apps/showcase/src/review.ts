@@ -84,20 +84,20 @@ const decisionEntity: EntityDocument = {
     {
       id: "apply",
       label: "Apply",
-      confirm: { message: "Apply this decision? It changes the records it names." },
+      confirm: { message: "Apply this decision? It changes the records it names.", subjectField: "summary" },
       visibleWhen: { op: "eq", field: "state", value: "pending" },
     },
     {
       id: "reject",
       label: "Reject",
-      confirm: { title: "Reject decision", message: "Reject this decision?", confirmLabel: "Reject", tone: "danger" },
+      confirm: { title: "Reject decision", message: "Reject this decision?", confirmLabel: "Reject", tone: "danger", subjectField: "summary" },
       input: [{ id: "reason", type: "text", label: "Reason (optional)" }],
       visibleWhen: { op: "eq", field: "state", value: "pending" },
     },
     {
       id: "restore",
       label: "Restore",
-      confirm: { message: "Move this decision back to pending?" },
+      confirm: { message: "Move this decision back to pending?", subjectField: "summary" },
       visibleWhen: { op: "in", field: "state", values: ["applied", "rejected"] },
     },
   ],
@@ -189,6 +189,7 @@ const decisionRecordsView: TableView = {
   dataSource: "review",
   title: "Records named by the decision",
   columns: [{ field: "record" }, { field: "role" }],
+  quickFilters: [{ field: "record", label: "Record" }],
 };
 
 /** The whole set: entities before views, so set validation resolves references. */
