@@ -138,3 +138,19 @@ A table view's `filters` entries render as a chip row beside the quick filters. 
 
 - The lit chip's condition is ANDed into the base filter before the quick filters combine, so it rides the adapter query rather than post-filtering rows.
 - Chips are registry `Button`s with the optional `pressed` prop (core): the component draws the pressed look and sets `aria-pressed`. Pressing the lit chip reports `undefined`. An unknown `savedFilter` id filters nothing and lights no chip.
+
+## Drill-downs that have a URL
+
+A table's `rowAction` opens its target in the same container. By default the renderer keeps that stack to itself. Pass `drill` and `onDrillChange` (the same controlled-optional shape as `savedFilter`) and the host owns it, so a drill can live in a URL:
+
+```tsx
+<TableRenderer
+  entity={entity} view={table} registry={registry} dataSources={dataSources} documents={documents}
+  drill={drill} onDrillChange={setDrill}
+/>;
+```
+
+- `drill` is one `{ viewId, bindings }` per hop from the top-level table. `bindings` holds the clicked row's bound values as text, keyed by the target field id (`rowAction.bind[].to`). Booleans are `Yes`/`No`, a tags value is comma-joined, an empty value is `""`.
+- Opening a row and Back call `onDrillChange` with the whole new drill; the renderer shows what `drill` says, so update it in the callback.
+- A supplied drill is re-validated level by level through the checks a click goes through (the row action exists and is visible to the viewer, the target is a loaded table, every binding is present and parses). At the first level that fails, the renderer stops there, calls `onDrillChange` with the valid prefix and shows a polite `role="status"` notice (`data-yadad-drill-notice`).
+- `DashboardRenderer` takes the same pair and passes it to the first table widget on the selected tab; other table widgets keep their own stacks.

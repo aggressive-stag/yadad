@@ -26,6 +26,7 @@ import { CalendarRenderer } from "./calendar-renderer.js";
 import { FormRenderer } from "./form-renderer.js";
 import type { FormRendererProps } from "./form-renderer.js";
 import { useReferences } from "./references.js";
+import type { DrillStep } from "./table-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
 
@@ -57,6 +58,13 @@ export interface DashboardRendererProps {
    * taking control of the selection.
    */
   readonly initialTab?: string;
+  /**
+   * The drill-down of the dashboard's first table widget on the selected tab
+   * (RFC 0010 item 1): the `drill` / `onDrillChange` pair of `TableRenderer`,
+   * passed to that one widget. Other table widgets keep their own stacks.
+   */
+  readonly drill?: readonly DrillStep[];
+  readonly onDrillChange?: (drill: readonly DrillStep[]) => void;
 }
 
 const DEFAULT_COLUMNS = 12;
@@ -88,7 +96,7 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables, counts and stats.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab, drill, onDrillChange }: DashboardRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, dashboard, documents);
   const tabs = useMemo(() => visibleTabs(dashboard, viewer), [dashboard, viewer]);
   const [rootRef, width] = useWidth();
@@ -109,6 +117,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
   const stacked = width !== undefined && width < stackBelow;
   const columns = stacked ? 1 : (tab.columns ?? DEFAULT_COLUMNS);
 
+  const drillItem = tab.items.find((i) => i.widget === "view" && documents.views.get(i.view)?.kind === "table")?.id;
   const renderWidget = (item: GridItem): ReactNode => {
     const view = documents.views.get(item.view);
     const entity = view && view.kind !== "dashboard" ? documents.entities.get(view.entity) : undefined;
@@ -125,7 +134,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
       return <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} viewer={viewer} entities={documents.entities} onSaved={() => setReloadKey((k) => k + 1)} {...(drafts ? { drafts } : {})} {...(formatting ? { formatting } : {})} />;
     }
     if (view.kind === "table") {
-      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} {...(drafts !== undefined ? { drafts } : {})} />;
+      return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} {...(drafts !== undefined ? { drafts } : {})} {...(item.id === drillItem && drill !== undefined ? { drill } : {})} {...(item.id === drillItem && onDrillChange ? { onDrillChange } : {})} />;
     }
     if (view.kind === "calendar") {
       return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;

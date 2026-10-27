@@ -67,6 +67,25 @@ export interface TableRendererProps {
   readonly savedFilter?: string;
   /** Called with the chip's id, or undefined when the lit chip is pressed again. */
   readonly onSavedFilterChange?: (id: string | undefined) => void;
+  /**
+   * The drill-down the viewer is in (RFC 0010 item 1), one entry per hop from
+   * the top-level table: the target view's id and the clicked row's bound
+   * values by the target field id (`rowAction.bind[].to`), as text. Supplied,
+   * the host owns the drill: the renderer renders it and reports every push
+   * and Back through `onDrillChange`, so a URL can hold it. Each level is
+   * re-validated through the same checks a click goes through; at the first
+   * level that fails the renderer stops there, reports the valid prefix and
+   * shows a polite notice. Unset, the renderer keeps its own stack.
+   */
+  readonly drill?: readonly DrillStep[];
+  /** Called with the whole drill after a push, a Back, or a stale `drill` was cut back to its valid prefix. */
+  readonly onDrillChange?: (drill: readonly DrillStep[]) => void;
+}
+
+/** One hop of a drill: the opened view and the clicked row's bound values, by target field id, as text. */
+export interface DrillStep {
+  readonly viewId: string;
+  readonly bindings: Readonly<Record<string, string>>;
 }
 
 /** What the table shows for a row's action: its accessible name and what happens on activation. */
@@ -103,6 +122,8 @@ interface Level {
   readonly heading?: string;
   /** The record whose action opened this level, to return focus to on Back. */
   readonly originRow?: string;
+  /** The step that leads to this level, as a controlled `drill` holds it. */
+  readonly step?: DrillStep;
 }
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -126,13 +147,39 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * and a Back button. Earlier tables stay mounted (hidden), so Back restores
  * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged, drafts, savedFilter, onSavedFilterChange }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged, drafts, savedFilter, onSavedFilterChange, drill, onDrillChange }: TableRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
-  const [stack, setStack] = useState<readonly Level[]>([]);
+  const [privateStack, setPrivateStack] = useState<readonly Level[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const afterRender = useRef<(() => void) | undefined>(undefined);
   const { Button, ErrorSummary } = registry.layout;
   const refEntities = entities ?? documents?.entities;
+
+  const top0: Level = { view, entity, baseFilter: view.filter, lockedFields: [] };
+  // A supplied drill is re-validated level by level; `valid` is the prefix that resolved.
+  const controlled = drill !== undefined;
+  const derived = useMemo(() => {
+    const levels: Level[] = [];
+    if (!drill) return { levels, failed: false };
+    let parent = top0;
+    for (let i = 0; i < drill.length; i++) {
+      const step = drill[i];
+      const next = step && documents && viewer ? levelFromBindings(parent, i, step, documents, viewer) : undefined;
+      if (!next) return { levels, failed: true };
+      levels.push(next);
+      parent = next;
+    }
+    return { levels, failed: false };
+  }, [drill, documents, viewer, view, entity]);
+  const stack: readonly Level[] = controlled ? derived.levels : privateStack;
+  const [notice, setNotice] = useState(false);
+  const failed = controlled && derived.failed;
+  const validCount = derived.levels.length;
+  useEffect(() => {
+    if (!failed) return;
+    setNotice(true);
+    onDrillChange?.(derived.levels.map((l) => l.step as DrillStep));
+  }, [failed, validCount]);
 
   useEffect(() => {
     const run = afterRender.current;
@@ -140,7 +187,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     run?.();
   }, [stack]);
 
-  const levels: readonly Level[] = [{ view, entity, baseFilter: view.filter, lockedFields: [] }, ...stack];
+  const levels: readonly Level[] = [top0, ...stack];
   const top = levels.length - 1;
 
   /** The row action of the table at `index` in the stack, with problems found while resolving its target. */
@@ -170,20 +217,17 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
           return `Open ${name}${bound ? ` — ${bound}` : ""}${here && here !== bound ? ` (${here})` : ""}`;
         },
         open: (record) => {
-          const chips = action.bind.map((b) => `${targetEntity.fields.find((f) => f.id === b.to)?.label ?? b.to} = ${text(record, b.field) || "(empty)"}`);
-          const next: Level = {
-            view: target,
-            entity: targetEntity,
-            baseFilter: bindFilter(record.values, action.bind, target.filter),
-            lockedFields: action.bind.map((b) => b.to),
-            heading: `${target.title ?? target.id}: ${chips.join(", ")}`,
-            originRow: record.id,
-          };
+          const bindings = Object.fromEntries(action.bind.map((b) => [b.to, text(record, b.field)]));
+          const opened = levelFromBindings(level, index, { viewId: action.open, bindings }, documents, viewer);
+          if (!opened) return;
+          const next: Level = { ...opened, originRow: record.id };
           afterRender.current = () => {
             const headings = containerRef.current?.querySelectorAll<HTMLElement>("[data-yadad-drill-heading]");
             headings?.[headings.length - 1]?.focus();
           };
-          setStack((s) => [...s, next]);
+          setNotice(false);
+          if (!controlled) setPrivateStack((s) => [...s, next]);
+          onDrillChange?.([...stack, next].map((l) => l.step as DrillStep));
         },
       },
     };
@@ -198,7 +242,9 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
       const buttons = containerRef.current?.querySelectorAll<HTMLElement>(`[data-yadad-drill-level="${index}"] [data-yadad-row-open="${rowId}"] button`);
       buttons?.[0]?.focus();
     };
-    setStack((s) => s.slice(0, -1));
+    setNotice(false);
+    if (!controlled) setPrivateStack((s) => s.slice(0, -1));
+    onDrillChange?.(stack.slice(0, -1).map((l) => l.step as DrillStep));
   };
 
   // RFC 0008 item 4 (addForm): "Add" under the top-level table opens the named form view inline;
@@ -249,6 +295,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
 
   return (
     <div ref={containerRef} data-yadad-drill={view.id}>
+      {notice && <div role="status" data-yadad-drill-notice="">That drill-down is no longer available, so you are back where it stopped being valid.</div>}
       {levels.map((level, i) => (
         <div key={`${i}:${level.view.id}`} data-yadad-drill-level={i} {...(i === top ? {} : { hidden: true })}>
           {i > 0 && (
@@ -723,4 +770,49 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
     else if (typeof value === "string") parts.push({ op: "eq", field: id, value });
   }
   return parts.length === 0 ? undefined : parts.length === 1 ? parts[0] : { op: "and", conditions: parts };
+}
+
+/**
+ * The level a row action opens, from the clicked row's bound values as text, or
+ * undefined when the step cannot be taken: no row action at `parentIndex`, it
+ * is hidden from this viewer, past the depth cap, a different or unknown or
+ * non-table target, an unloaded entity, or a binding that is missing or does not
+ * parse as its source field's type. Both a click and a supplied `drill` go through it.
+ */
+function levelFromBindings(parent: Level, parentIndex: number, step: DrillStep, documents: DocumentSet, viewer: ResolvedViewer): Level | undefined {
+  const action = parent.view.rowAction;
+  if (!action || action.open !== step.viewId || parentIndex >= MAX_ROW_ACTION_DEPTH || !rowActionVisible(action, viewer)) return undefined;
+  const target = documents.views.get(action.open);
+  if (!target || target.kind !== "table") return undefined;
+  const targetEntity = documents.entities.get(target.entity);
+  if (!targetEntity) return undefined;
+  const values: Record<string, FieldValue> = {};
+  for (const b of action.bind) {
+    const text = step.bindings[b.to];
+    if (text === undefined) return undefined;
+    const type = parent.entity.fields.find((f) => f.id === b.field)?.type;
+    if (text === "") {
+      values[b.field] = null;
+    } else if (type === "number") {
+      const n = Number(text);
+      if (Number.isNaN(n)) return undefined;
+      values[b.field] = n;
+    } else if (type === "boolean") {
+      if (text !== "Yes" && text !== "No") return undefined;
+      values[b.field] = text === "Yes";
+    } else if (type === "tags") {
+      values[b.field] = text.split(",");
+    } else {
+      values[b.field] = text;
+    }
+  }
+  const chips = action.bind.map((b) => `${targetEntity.fields.find((f) => f.id === b.to)?.label ?? b.to} = ${step.bindings[b.to] || "(empty)"}`);
+  return {
+    view: target,
+    entity: targetEntity,
+    baseFilter: bindFilter(values, action.bind, target.filter),
+    lockedFields: action.bind.map((b) => b.to),
+    heading: `${target.title ?? target.id}: ${chips.join(", ")}`,
+    step: { viewId: step.viewId, bindings: step.bindings },
+  };
 }

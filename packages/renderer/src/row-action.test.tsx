@@ -172,3 +172,48 @@ describe("row action in a dashboard widget", () => {
     await screen.findByRole("button", { name: /— Bench/ });
   });
 });
+
+describe("controlled drill (RFC 0010 item 1)", () => {
+  const chain = (id: string, next?: string): TableView => ({ ...history, id, title: id, quickFilters: [], ...(next ? { rowAction: { open: next, bind: [{ field: "day", to: "day" }] } } : {}) });
+  const views = new Map<string, TableView>([["a", chain("a", "b")], ["b", chain("b", "c")], ["c", chain("c")]]);
+  const docs: DocumentSet = { entities: documents.entities, views };
+  const a = chain("a", "b");
+
+  async function mount(drill: readonly { viewId: string; bindings: Readonly<Record<string, string>> }[], onDrillChange?: (d: readonly { viewId: string; bindings: Readonly<Record<string, string>> }[]) => void) {
+    const dataSources = await seed();
+    const ui = (d: typeof drill) => <TableRenderer entity={entity} view={a} registry={mockRegistry} dataSources={dataSources} documents={docs} drill={d} {...(onDrillChange ? { onDrillChange } : {})} />;
+    const r = render(ui(drill));
+    return { rerender: (d: typeof drill) => r.rerender(ui(d)) };
+  }
+
+  test("a push and Back are reported, and the host's value is what renders", async () => {
+    const seen: unknown[] = [];
+    const { rerender } = await mount([], (d) => seen.push(d));
+    await screen.findAllByText("2026-10-01");
+    fireEvent.click(screen.getAllByRole("button", { name: /^Open / })[0] as HTMLElement);
+    expect(seen).toEqual([[{ viewId: "b", bindings: { day: "2026-10-01" } }]]);
+    expect(screen.queryByRole("heading", { name: /^b:/ })).toBeNull(); // the host has not taken it yet
+    rerender([{ viewId: "b", bindings: { day: "2026-10-01" } }]);
+    await screen.findByRole("heading", { name: "b: Day = 2026-10-01" });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(seen[1]).toEqual([]);
+    rerender([]);
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /^b:/ })).toBeNull());
+  });
+
+  test("a two-hop drill is restored on first render, filtered by its bindings", async () => {
+    await mount([{ viewId: "b", bindings: { day: "2026-10-01" } }, { viewId: "c", bindings: { day: "2026-10-01" } }]);
+    await screen.findByRole("heading", { name: "c: Day = 2026-10-01" });
+    await waitFor(() => expect(bodyRows().map((r) => cellText(r)[0])).toEqual(["2026-10-01"]));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  test("a stale level cuts the drill back to its valid prefix and says so", async () => {
+    const seen: unknown[] = [];
+    await mount([{ viewId: "b", bindings: { day: "2026-10-01" } }, { viewId: "ghost", bindings: { day: "2026-10-01" } }], (d) => seen.push(d));
+    await screen.findByRole("heading", { name: "b: Day = 2026-10-01" });
+    expect(screen.queryByRole("heading", { name: /^c:/ })).toBeNull();
+    await waitFor(() => expect(seen).toEqual([[{ viewId: "b", bindings: { day: "2026-10-01" } }]]));
+    expect(screen.getByRole("status").textContent).toContain("no longer available");
+  });
+});
