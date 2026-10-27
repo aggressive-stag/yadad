@@ -151,7 +151,7 @@ A table's `rowAction` opens its target in the same container. By default the ren
 />;
 ```
 
-- `drill` is one `{ viewId, bindings }` per hop from the top-level table. `bindings` holds the clicked row's bound values as text, keyed by the target field id (`rowAction.bind[].to`). Booleans are `Yes`/`No`, a tags value is comma-joined, an empty value is `""`.
+- `drill` is one `{ viewId, bindings }` per hop from the top-level table. `bindings` holds the clicked row's bound values as text, keyed by the target field id (`rowAction.bind[].to`). Booleans are `Yes`/`No`, a tags value is comma-joined, an empty value is `""`. A binding on the reserved field `id` carries the clicked record's id as text (unless the entity declares its own field named `id`).
 - Opening a row and Back call `onDrillChange` with the whole new drill; the renderer shows what `drill` says, so update it in the callback.
 - A supplied drill is re-validated level by level through the checks a click goes through (the row action exists and is visible to the viewer, the target is a loaded table, every binding is present and parses). At the first level that fails, the renderer stops there, calls `onDrillChange` with the valid prefix and shows a polite `role="status"` notice (`data-yadad-drill-notice`).
 - A list page that carries `notice` (the server's statement about its own answer) shows it above the rows through `layout.Section`, as `<p role="status" data-yadad-page-notice data-tone="info|warning">`. It is replaced on every load and gone when the page has none.

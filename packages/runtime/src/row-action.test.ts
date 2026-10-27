@@ -1,6 +1,6 @@
-import type { Condition, RowBinding } from "@yadad/core";
+import type { Condition, DataRecord, EntityDocument, RowBinding } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { bindFilter } from "./row-action.js";
+import { bindFilter, bindingValues } from "./row-action.js";
 
 const bind: readonly RowBinding[] = [{ field: "exercise", to: "exercise" }];
 
@@ -46,5 +46,18 @@ describe("bindFilter", () => {
     const snapshot = JSON.stringify(own);
     bindFilter(row, bindings, own);
     expect(JSON.stringify(own)).toBe(snapshot);
+  });
+});
+
+describe("bindingValues", () => {
+  const record = { id: "r1", values: { name: "x" } } as unknown as DataRecord;
+  const entity = (ids: string[]) => ({ kind: "entity", specVersion: 9, id: "e", revision: 1, fields: ids.map((id) => ({ id, type: "text", label: id })) }) as EntityDocument;
+
+  test("adds the record id as `id` when the entity declares no such field", () => {
+    expect(bindFilter(bindingValues(record, entity(["name"])), [{ field: "id", to: "parent" }])).toEqual({ op: "eq", field: "parent", value: "r1" });
+  });
+
+  test("a declared `id` field wins over the record id", () => {
+    expect(bindingValues(record, entity(["id", "name"]))).toBe(record.values);
   });
 });

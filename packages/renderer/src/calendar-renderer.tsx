@@ -1,6 +1,6 @@
 import { AdapterError, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
 import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { bindFilter, calendarToday, canEditField, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
+import { bindFilter, bindingValues, calendarToday, canEditField, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -111,14 +111,14 @@ export function CalendarRenderer({ entity, view, registry, dataSources, entities
   const open = (record: DataRecord): void => {
     if (!action || !target || target.kind !== "table" || !targetEntity) return;
     const text = (field: string): string => {
-      const value = record.values[field];
+      const value = bindingValues(record, entity)[field];
       return value === undefined || value === null || value === "" ? "" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
     };
     const locked = action.bind.map((b) => b.to);
     // The bound fields are fixed by the clicked entry, so their quick filters are not offered (as in a table drill-down).
     const quickFilters = target.quickFilters?.filter((q) => !locked.includes(q.field));
     const { quickFilters: _dropped, filter: _filter, ...rest } = target;
-    const filter = bindFilter(record.values, action.bind, target.filter);
+    const filter = bindFilter(bindingValues(record, entity), action.bind, target.filter);
     const chips = action.bind.map((b) => `${targetEntity.fields.find((f) => f.id === b.to)?.label ?? b.to} = ${text(b.field) || "(empty)"}`);
     afterRender.current = () => containerRef.current?.querySelector<HTMLElement>("[data-yadad-drill-heading]")?.focus();
     setOpened({

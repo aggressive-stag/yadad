@@ -1,0 +1,82 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 9,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      }
+    ]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 9,
+    "id": "other",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "ref",
+        "type": "reference",
+        "label": "Ref",
+        "entity": "e",
+        "display": "name"
+      },
+      {
+        "id": "oref",
+        "type": "reference",
+        "label": "Other ref",
+        "entity": "other",
+        "display": "name"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 9,
+    "id": "a",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "rowAction": {
+      "open": "b",
+      "bind": [
+        {
+          "field": "id",
+          "to": "oref"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 9,
+    "id": "b",
+    "entity": "other",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ]
+  }
+]

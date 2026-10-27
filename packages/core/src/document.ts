@@ -358,7 +358,7 @@ export type RowActionMode = (typeof ROW_ACTION_MODES)[number];
 
 /** Copies the clicked row's `field` value into the target view's filter on `to` (an `eq` condition). */
 export interface RowBinding {
-  /** Id of a field on this table's entity. */
+  /** Id of a field on this table's entity, or the reserved "id" for the record's own id (when the entity declares no field named "id"; it binds to a text field or to a reference to this entity). */
   readonly field: string;
   /** Id of a field on the target table's entity, of the same type. */
   readonly to: string;

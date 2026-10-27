@@ -200,6 +200,58 @@
         "field": "title",
         "dir": "asc"
       }
+    ],
+    "rowAction": {
+      "open": "ticket_comments",
+      "bind": [
+        {
+          "field": "id",
+          "to": "ticket_code"
+        },
+        {
+          "field": "id",
+          "to": "ticket"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "entity",
+    "specVersion": 9,
+    "id": "ticket_comment",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "ticket_code",
+        "type": "text",
+        "label": "Ticket code"
+      },
+      {
+        "id": "ticket",
+        "type": "reference",
+        "label": "Ticket",
+        "entity": "ticket",
+        "display": "title"
+      },
+      {
+        "id": "body",
+        "type": "text",
+        "label": "Body"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 9,
+    "id": "ticket_comments",
+    "title": "Comments",
+    "entity": "ticket_comment",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "body"
+      }
     ]
   }
 ]

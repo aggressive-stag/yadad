@@ -152,6 +152,8 @@ const expected: Record<string, Picked[]> = {
     { path: "/rowAction/bind/0/to", code: "unknown-reference", document: "a", allowed: ["name", "qty"] },
   ],
   "row-action-type-mismatch.json": [{ path: "/rowAction/bind/0", code: "invalid-value", document: "a" }],
+  "row-action-id-to-number.json": [{ path: "/rowAction/bind/0", code: "invalid-value", document: "a" }],
+  "row-action-id-to-other-reference.json": [{ path: "/rowAction/bind/0", code: "invalid-value", document: "a" }],
   "row-action-cycle.json": [{ path: "/rowAction/open", code: "invalid-value", document: "b" }],
   "row-action-too-deep.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a" }],
   "row-action-form-target.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a", allowed: ["a"] }],

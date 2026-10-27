@@ -1,6 +1,15 @@
-import type { Condition, FieldValue, RecordValues, RowBinding } from "@yadad/core";
+import type { Condition, DataRecord, EntityDocument, FieldValue, RecordValues, RowBinding } from "@yadad/core";
 
 const isEmpty = (v: FieldValue | undefined): boolean => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+
+/**
+ * The values a row action's bindings read for one record: its values, plus the
+ * record's own id under the reserved key `id` (RFC 0008 item 1) unless the
+ * entity declares a field of that name, which then wins.
+ */
+export function bindingValues(record: DataRecord, entity: EntityDocument): RecordValues {
+  return entity.fields.some((f) => f.id === "id") ? record.values : { ...record.values, id: record.id };
+}
 
 /**
  * The filter a row action's target view shows for one clicked row: the

@@ -263,3 +263,25 @@ describe("dashboard drills keyed by widget (RFC 0010 item 1)", () => {
     await waitFor(() => expect(document.activeElement?.textContent).toBe("Open Exercise history — Bench (2026-10-02)"));
   });
 });
+
+describe("the record id as a binding (RFC 0008 item 1)", () => {
+  test("opening a row whose action binds field id filters the child view by that record's id", async () => {
+    const parent: EntityDocument = { kind: "entity", specVersion: 9, id: "session", revision: 1, fields: [{ id: "name", type: "text", label: "Name" }] };
+    const child: EntityDocument = { kind: "entity", specVersion: 9, id: "log", revision: 1, fields: [{ id: "session_id", type: "text", label: "Session" }, { id: "note", type: "text", label: "Note" }] };
+    const sessions: TableView = { kind: "table", specVersion: 9, id: "sessions", entity: "session", revision: 1, dataSource: "default", columns: [{ field: "name" }], rowAction: { open: "logs", bind: [{ field: "id", to: "session_id" }] } };
+    const logs: TableView = { kind: "table", specVersion: 9, id: "logs", entity: "log", revision: 1, dataSource: "default", columns: [{ field: "note" }] };
+    const docs: DocumentSet = { entities: new Map([[parent.id, parent], [child.id, child]]), views: new Map<string, TableView>([[sessions.id, sessions], [logs.id, logs]]) };
+    const db = createMemoryAdapter();
+    const one = await db.create("session", { name: "Monday" }, { entityRevision: 1 });
+    const two = await db.create("session", { name: "Tuesday" }, { entityRevision: 1 });
+    await db.create("log", { session_id: one.id, note: "squats" }, { entityRevision: 1 });
+    await db.create("log", { session_id: two.id, note: "bench" }, { entityRevision: 1 });
+    const seen: unknown[] = [];
+    render(<TableRenderer entity={parent} view={sessions} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={docs} onDrillChange={(d) => seen.push(d)} />);
+    await screen.findByText("Monday");
+    fireEvent.click(screen.getAllByRole("button", { name: /^Open / })[0] as HTMLElement);
+    await screen.findByText("squats");
+    expect(screen.queryByText("bench")).toBeNull();
+    expect(seen).toEqual([[{ viewId: "logs", bindings: { session_id: one.id } }]]);
+  });
+});

@@ -1,6 +1,6 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
 import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, PageNotice, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { bindFilter, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, initialQuickFilters, neighbourQuery, quickRangeKey, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
+import { bindFilter, bindingValues, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, initialQuickFilters, neighbourQuery, quickRangeKey, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -206,7 +206,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     if (index >= MAX_ROW_ACTION_DEPTH) return {}; // the validator caps chains; never nest deeper at run time
     if (!rowActionVisible(action, viewer)) return {}; // hidden for this viewer: rows are plain rows
     const text = (record: DataRecord, field: string): string => {
-      const value = record.values[field];
+      const value = bindingValues(record, level.entity)[field];
       return value === undefined || value === null || value === "" ? "" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
     };
     const first = action.bind[0];

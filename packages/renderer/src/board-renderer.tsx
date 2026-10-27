@@ -1,6 +1,6 @@
 import { AdapterError, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
 import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { BOARD_OTHER_LABEL, bindFilter, boardColumns, boardGroupField, boardRecordColumns, canEditField, canMoveColumn, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
+import { BOARD_OTHER_LABEL, bindFilter, bindingValues, boardColumns, boardGroupField, boardRecordColumns, canEditField, canMoveColumn, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
 import type { BoardColumnDef, BoardLoad } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -126,13 +126,13 @@ export function BoardRenderer({ entity, view, registry, dataSources, entities, r
   const open = (record: DataRecord): void => {
     if (!action || !target || target.kind !== "table" || !targetEntity) return;
     const text = (field: string): string => {
-      const value = record.values[field];
+      const value = bindingValues(record, entity)[field];
       return value === undefined || value === null || value === "" ? "" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
     };
     const locked = action.bind.map((b) => b.to);
     const quickFilters = target.quickFilters?.filter((q) => !locked.includes(q.field));
     const { quickFilters: _dropped, filter: _filter, ...rest } = target;
-    const filter = bindFilter(record.values, action.bind, target.filter);
+    const filter = bindFilter(bindingValues(record, entity), action.bind, target.filter);
     const chips = action.bind.map((b) => `${targetEntity.fields.find((f) => f.id === b.to)?.label ?? b.to} = ${text(b.field) || "(empty)"}`);
     afterRender.current = () => containerRef.current?.querySelector<HTMLElement>("[data-yadad-drill-heading]")?.focus();
     setOpened({

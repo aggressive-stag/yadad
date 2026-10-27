@@ -1642,8 +1642,10 @@ function checkRowActionTarget(errors: DocumentError[], view: TableView | Calenda
   }
   const targetEntity = idx.entities.get(target.entity);
   action.bind.forEach((b, i) => {
-    const from = entity.fields.find((f) => f.id === b.field);
-    if (!from) {
+    // RFC 0008 item 1: "id" names the record's own id when the entity declares no field of that name. It is a string.
+    const idPseudo = b.field === "id" && !entity.fields.some((f) => f.id === "id");
+    const from = idPseudo ? undefined : entity.fields.find((f) => f.id === b.field);
+    if (!from && !idPseudo) {
       const ids = [...new Set(entity.fields.map((f) => f.id))];
       errors.push(refError(view.id, ["rowAction", "bind", i, "field"], `Field "${b.field}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, ids));
     }
@@ -1652,6 +1654,15 @@ function checkRowActionTarget(errors: DocumentError[], view: TableView | Calenda
     if (!to) {
       const ids = [...new Set(targetEntity.fields.map((f) => f.id))];
       errors.push(refError(view.id, ["rowAction", "bind", i, "to"], `Field "${b.to}" is not on entity "${targetEntity.id}" (the entity of "${target.id}").`, `Use a field id on "${targetEntity.id}".`, ids));
+    }
+    if (idPseudo && to && !(to.type === "text" || (to.type === "reference" && to.entity === entity.id))) {
+      errors.push({
+        path: jsonPointer(["rowAction", "bind", i]),
+        code: "invalid-value",
+        message: `Cannot bind the record id ("id") to "${b.to}" (${describeKind(to)}): the id is text.`,
+        hint: `Bind "id" to a text field, or to a reference to "${entity.id}", on "${targetEntity.id}".`,
+        document: view.id,
+      });
     }
     if (from && to && !bindable(from, to)) {
       errors.push({
