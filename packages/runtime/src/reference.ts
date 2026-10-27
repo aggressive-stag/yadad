@@ -53,6 +53,34 @@ export async function loadReferenceOptions(
   };
 }
 
+/** One choice of a reference quick filter: `value` is the record id the filter matches with `eq`, `label` is what the picker shows. */
+export interface ReferenceFilterChoice {
+  readonly value: string;
+  readonly label: string;
+}
+
+export interface ReferenceFilterChoicesResult {
+  readonly choices: readonly ReferenceFilterChoice[];
+  /** True when the target has more records than `choices` holds. */
+  readonly more: boolean;
+}
+
+/**
+ * Loads the choices of a reference quick filter (RFC 0011 item 3): the target entity's records through its
+ * data source, labelled by the same rule reference display uses (`display`, else the target's first text
+ * field, else the id), sorted by that label, at most `limit` (default `REFERENCE_OPTION_LIMIT`, 200). A
+ * longer list is cut and flagged with `more`. Choosing one filters with `{ field, op: "eq", value }`.
+ */
+export async function loadReferenceFilterChoices(
+  adapter: DataAdapter,
+  target: EntityDocument,
+  field: ReferenceField,
+  limit: number = REFERENCE_OPTION_LIMIT,
+): Promise<ReferenceFilterChoicesResult> {
+  const { options, more } = await loadReferenceOptions(adapter, target, field, limit);
+  return { choices: options.map((o) => ({ value: o.id, label: o.label })), more };
+}
+
 /** The `#RRGGBB` shape the colour surfaces accept (RFC 0008 items 5 and 8). */
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 

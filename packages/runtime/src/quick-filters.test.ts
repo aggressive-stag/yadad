@@ -12,6 +12,7 @@ const entity: EntityDocument = {
     { id: "n", type: "number", label: "N" },
     { id: "d", type: "date", label: "D" },
     { id: "w", type: "datetime", label: "W" },
+    { id: "r", type: "reference", label: "R", entity: "other" },
   ],
 };
 
@@ -41,5 +42,10 @@ describe("initialQuickFilters", () => {
   test("shows a datetime bound in the viewer's zone", () => {
     const state = initialQuickFilters({ quickFilters: [{ field: "w", default: { to: "2026-10-17T09:30:00.000Z" } }] }, entity, "Asia/Tokyo");
     expect(state[quickRangeKey("to", "w")]).toBe("2026-10-17T18:30");
+  });
+
+  test("seeds a reference default as its record id", () => {
+    expect(initialQuickFilters({ quickFilters: [{ field: "r", default: "rec-1" }] }, entity, "UTC")).toEqual({ r: "rec-1" });
+    expect(initialQuickFilters({ quickFilters: [{ field: "r" }, { field: "r", default: "" }] }, entity, "UTC")).toEqual({});
   });
 });

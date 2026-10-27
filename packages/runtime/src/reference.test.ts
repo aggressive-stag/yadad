@@ -1,7 +1,7 @@
 import type { EntityDocument, Field, ReferenceField } from "@yadad/core";
 import { describe, expect, test } from "vitest";
 import { createMemoryAdapter } from "./memory-adapter.js";
-import { loadReferenceOptions, referenceDisplayField, resolveReferenceColors, resolveReferenceLabels } from "./reference.js";
+import { loadReferenceFilterChoices, loadReferenceOptions, referenceDisplayField, resolveReferenceColors, resolveReferenceLabels } from "./reference.js";
 import { validateRecord } from "./record.js";
 
 const exercise: EntityDocument = {
@@ -101,5 +101,27 @@ describe("resolveReferenceColors (RFC 0008 item 8)", () => {
     expect([...byHex]).toEqual([[red.id, "#D13438"]]); // free text, no value, and a missing record are all absent
     const byTone = await resolveReferenceColors(db, colours, toneField, [red.id, free.id]);
     expect([...byTone]).toEqual([[red.id, "#D13438"]]); // the chosen option's colour; an option without one paints none
+  });
+});
+
+describe("loadReferenceFilterChoices", () => {
+  test("loads { value: id, label } choices sorted by the display value", async () => {
+    const db = await seeded();
+    const { choices, more } = await loadReferenceFilterChoices(db, exercise, ref);
+    expect(choices.map((c) => c.label)).toEqual(["Bench", "Deadlift", "Squat"]);
+    const all = await db.find("exercise", {});
+    for (const c of choices) expect(all.items.some((r) => r.id === c.value)).toBe(true);
+    expect(more).toBe(false);
+  });
+
+  test("labels a record with no display value by its id, and caps the list", async () => {
+    const db = createMemoryAdapter();
+    const bare = await db.create("exercise", { rank: 1 }, { entityRevision: 1 });
+    for (const name of ["A", "B", "C"]) await db.create("exercise", { name }, { entityRevision: 1 });
+    const all = await loadReferenceFilterChoices(db, exercise, ref);
+    expect(all.choices.find((c) => c.value === bare.id)?.label).toBe(bare.id);
+    const cut = await loadReferenceFilterChoices(db, exercise, ref, 2);
+    expect(cut.choices).toHaveLength(2);
+    expect(cut.more).toBe(true);
   });
 });

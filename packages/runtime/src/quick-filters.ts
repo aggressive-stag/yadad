@@ -7,7 +7,7 @@ export const quickRangeKey = (end: "from" | "to", fieldId: string): string => `$
 
 /**
  * The quick-filter state a table opens with (RFC 0010 item 4): each filter's `default`, in the form the
- * filter's control keeps its value. Text, time, select and date-less values stay strings; a boolean is
+ * filter's control keeps its value. Text, time, select, reference (a record id) and date-less values stay strings; a boolean is
  * "Yes" or "No"; tags are a string array; a number, date or datetime range is two values under
  * `quickRangeKey("from" | "to", field)`, a datetime bound shown as the local time "YYYY-MM-DDTHH:MM" in
  * `timeZone` (the stored instant is what the document holds). Filters without a default, and defaults that
@@ -40,6 +40,7 @@ export function initialQuickFilters(view: { readonly quickFilters?: readonly Qui
         break;
       }
       case "reference":
+        if (typeof value === "string" && value !== "") state[id] = value; // a record id; the picker shows its label
         break;
       default:
         if (typeof value === "string") state[id] = value;
