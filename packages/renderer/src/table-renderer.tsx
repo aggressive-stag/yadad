@@ -160,17 +160,30 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   const top0: Level = { view, entity, baseFilter: view.filter, lockedFields: [] };
   // A supplied drill is re-validated level by level; `valid` is the prefix that resolved.
   const controlled = drill !== undefined;
+  // Levels derived from a step are kept by the step's content (view id + bindings), so a step that did
+  // not change keeps the same filter object and its loaded rows when another hop opens.
+  const levelCache = useRef<{ inputs: readonly unknown[]; byKey: Map<string, Level> }>({ inputs: [], byKey: new Map() });
   const derived = useMemo(() => {
     const levels: Level[] = [];
     if (!drill) return { levels, failed: false };
+    const inputs = [documents, viewer, view, entity];
+    if (levelCache.current.inputs.length !== inputs.length || inputs.some((v, i) => v !== levelCache.current.inputs[i])) {
+      levelCache.current = { inputs, byKey: new Map() };
+    }
+    const cache = levelCache.current.byKey;
+    const kept = new Map<string, Level>();
     let parent = top0;
+    let path = "";
     for (let i = 0; i < drill.length; i++) {
       const step = drill[i];
-      const next = step && documents && viewer ? levelFromBindings(parent, i, step, documents, viewer) : undefined;
+      path += `${JSON.stringify([step?.viewId, Object.entries(step?.bindings ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))])}/`;
+      const next = cache.get(path) ?? (step && documents && viewer ? levelFromBindings(parent, i, step, documents, viewer) : undefined);
       if (!next) return { levels, failed: true };
+      kept.set(path, next);
       levels.push(next);
       parent = next;
     }
+    levelCache.current.byKey = kept;
     return { levels, failed: false };
   }, [drill, documents, viewer, view, entity]);
   const stack: readonly Level[] = controlled ? derived.levels : privateStack;

@@ -208,6 +208,30 @@ describe("controlled drill (RFC 0010 item 1)", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  test("opening hop 2 does not refetch hop 1, and Back does not refetch it either", async () => {
+    const real = await seed();
+    const db = real.get("default") as NonNullable<ReturnType<typeof real.get>>;
+    let finds = 0;
+    const counting = new Proxy(db, { get: (t, k, r) => (k === "find" ? (...a: unknown[]) => { finds++; return (t.find as (...x: unknown[]) => unknown)(...a); } : Reflect.get(t, k, r)) });
+    const dataSources = new Map([["default", counting]]);
+    const ui = (d: readonly { viewId: string; bindings: Readonly<Record<string, string>> }[]) => <TableRenderer entity={entity} view={a} registry={mockRegistry} dataSources={dataSources} documents={docs} drill={d} />;
+    const hop1 = { viewId: "b", bindings: { day: "2026-10-01" } };
+    const hop2 = { viewId: "c", bindings: { day: "2026-10-01" } };
+    const r = render(ui([]));
+    await screen.findAllByText("2026-10-01");
+    const top = finds;
+    r.rerender(ui([hop1]));
+    await screen.findByRole("heading", { name: "b: Day = 2026-10-01" });
+    await waitFor(() => expect(finds).toBe(top + 1));
+    r.rerender(ui([hop1, hop2]));
+    await screen.findByRole("heading", { name: "c: Day = 2026-10-01" });
+    await waitFor(() => expect(finds).toBe(top + 2));
+    r.rerender(ui([hop1]));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /^c:/ })).toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(finds).toBe(top + 2);
+  });
+
   test("a stale level cuts the drill back to its valid prefix and says so", async () => {
     const seen: unknown[] = [];
     await mount([{ viewId: "b", bindings: { day: "2026-10-01" } }, { viewId: "ghost", bindings: { day: "2026-10-01" } }], (d) => seen.push(d));
