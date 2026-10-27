@@ -110,14 +110,24 @@ export interface TextInputExtras {
   readonly placeholder?: string;
 }
 
-/** Extra Input props per field type; only text and reference have any. */
+/**
+ * Extra Input props for a datetime field (RFC 0010 item 12): the field's
+ * `min`/`max` limits as local wall time (`YYYY-MM-DDTHH:mm`) in the viewer's
+ * zone, ready for a `datetime-local` input. The stored instants stay on `field`.
+ */
+export interface DatetimeInputExtras {
+  readonly minLocal?: string;
+  readonly maxLocal?: string;
+}
+
+/** Extra Input props per field type; only text, datetime and reference have any. */
 export interface FieldInputExtras {
   readonly text: TextInputExtras;
   readonly number: Record<never, never>;
   readonly boolean: Record<never, never>;
   readonly select: Record<never, never>;
   readonly date: Record<never, never>;
-  readonly datetime: Record<never, never>;
+  readonly datetime: DatetimeInputExtras;
   readonly reference: ReferenceInputExtras;
   readonly time: Record<never, never>;
   readonly tags: Record<never, never>;

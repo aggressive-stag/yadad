@@ -99,9 +99,14 @@ export function renderInput(
       const stored = asString(value);
       const zone = formatting?.timeZone ?? environmentTimeZone();
       const local = stored !== undefined && isIsoDatetime(stored) ? instantToLocal(stored, zone) : "";
+      // RFC 0010 item 12: the limits as local wall time in the same zone; an unparseable limit is left out.
+      const minLocal = field.min !== undefined && isIsoDatetime(field.min) ? instantToLocal(field.min, zone) : undefined;
+      const maxLocal = field.max !== undefined && isIsoDatetime(field.max) ? instantToLocal(field.max, zone) : undefined;
       return (
         <Input
           {...common}
+          {...(minLocal !== undefined ? { minLocal } : {})}
+          {...(maxLocal !== undefined ? { maxLocal } : {})}
           field={field}
           value={local}
           onChange={(v) => {

@@ -87,6 +87,15 @@ describe("datetime input", () => {
     expect(inputEl(INSTANT, () => {}, "UTC").props.value).toBe("2026-10-17T09:30");
   });
 
+  test("min and max also reach the Input as local wall time in the viewer's zone", () => {
+    const limited = { ...field, min: "2026-10-17T00:00:00.000Z", max: "2026-10-18T12:30:00.000Z" } as typeof field;
+    const el = (zone: string) => renderInput(mockRegistry, limited, undefined, { inputId: "f-when", invalid: false }, () => {}, noRefs, { timeZone: zone }) as ReactElement<{ minLocal?: string; maxLocal?: string; field: { min?: string } }>;
+    expect(el("America/New_York").props).toMatchObject({ minLocal: "2026-10-16T20:00", maxLocal: "2026-10-18T08:30", field: { min: "2026-10-17T00:00:00.000Z" } });
+    expect(el("UTC").props).toMatchObject({ minLocal: "2026-10-17T00:00", maxLocal: "2026-10-18T12:30" });
+    const none = renderInput(mockRegistry, field, undefined, { inputId: "f-when", invalid: false }, () => {}, noRefs, { timeZone: "UTC" }) as ReactElement<Record<string, unknown>>;
+    expect("minLocal" in none.props || "maxLocal" in none.props).toBe(false);
+  });
+
   test("a round trip across the fall DST change stores the earlier instant (the RFC rule)", () => {
     // 2026-11-01T01:30 in America/New_York occurs twice (clocks fall back at 02:00). The earlier reading is EDT: 05:30Z.
     const stored: (FieldValue | undefined)[] = [];

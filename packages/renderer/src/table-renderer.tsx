@@ -1,5 +1,5 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
-import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
+import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, PageNotice, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
 import { bindFilter, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, initialQuickFilters, neighbourQuery, quickRangeKey, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -137,7 +137,7 @@ interface Editing {
   readonly state: FormState;
 }
 
-type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readonly items: readonly DataRecord[]; readonly total?: number; readonly next?: string | null } | { readonly status: "failed"; readonly message: string };
+type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readonly items: readonly DataRecord[]; readonly total?: number; readonly next?: string | null; readonly notice?: PageNotice } | { readonly status: "failed"; readonly message: string };
 
 /**
  * Renders a table view: rows from the data adapter, sortable column headers,
@@ -440,7 +440,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     Promise.all([adapter.find(entity.id, mainQuery), prevLoad, nextLoad]).then(
       ([result, prev, next]) => {
         if (!current) return;
-        setRows({ status: "loaded", items: result.items, ...(result.total !== undefined ? { total: result.total } : {}), ...(result.next !== undefined ? { next: result.next } : {}) });
+        setRows({ status: "loaded", items: result.items, ...(result.total !== undefined ? { total: result.total } : {}), ...(result.next !== undefined ? { next: result.next } : {}), ...(result.notice !== undefined ? { notice: result.notice } : {}) });
         // The response decides: total keeps offset paging; next with no total switches to cursors (RFC 0007).
         setPaging((prev) => {
           const base = prev.sig === sig ? prev : { sig, cursors: [undefined] as (string | undefined)[], mode: "offset" as "offset" | "cursor" };
@@ -738,6 +738,11 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       )}
       {rows.status === "failed" && (
         <ErrorSummary errors={[loadFailure(rows.message)]} />
+      )}
+      {rows.status === "loaded" && rows.notice !== undefined && (
+        <Section id={`${tableId}-notice`}>
+          <p role="status" data-yadad-page-notice="" data-tone={rows.notice.tone}>{rows.notice.text}</p>
+        </Section>
       )}
       <Table
         caption={view.title ?? entity.id}

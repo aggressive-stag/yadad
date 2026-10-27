@@ -599,3 +599,29 @@ describe("RFC 0010 items 4, 5, 6, 8 (card 48j)", () => {
     expect(page.items.map((r) => r.values["body"])).toContain("changed");
   });
 });
+
+describe("page notice (RFC 0010 item 7)", () => {
+  const ent: EntityDocument = { kind: "entity", specVersion: 1, id: "n", revision: 1, fields: [{ id: "t", type: "text", label: "T" }] };
+  const view: TableView = { kind: "table", specVersion: 1, id: "ns", entity: "n", revision: 1, dataSource: "default", columns: [{ field: "t" }], pageSize: 1 };
+
+  test("shows the server's notice in a polite status region, replaces it per page and drops it when absent", async () => {
+    const db = createMemoryAdapter();
+    await db.create("n", { t: "a" }, { entityRevision: 1 });
+    await db.create("n", { t: "b" }, { entityRevision: 1 });
+    const notices = [{ tone: "warning" as const, text: "Served without vector search." }, undefined];
+    let call = 0;
+    const adapter = { ...db, find: async (...args: Parameters<typeof db.find>) => {
+      const page = await db.find(...args);
+      const notice = notices[call++];
+      return notice === undefined ? page : { ...page, notice };
+    } };
+    render(<TableRenderer entity={ent} view={view} registry={mockRegistry} dataSources={new Map([["default", adapter]])} />);
+    const el = await screen.findByText("Served without vector search.");
+    expect(el.getAttribute("role")).toBe("status");
+    expect(el.getAttribute("data-tone")).toBe("warning");
+    expect(el.closest("[data-testid$='-notice']")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => expect(screen.queryByText("Served without vector search.")).toBeNull());
+    expect(document.querySelector("[data-yadad-page-notice]")).toBeNull();
+  });
+});
