@@ -94,6 +94,10 @@ function QuickFilterRow({ qf, field, view, registry, run, announce, base }: Quic
         setDef(picked === undefined ? undefined : optionValue(picked));
       });
     }
+    if (field.type === "reference") {
+      // RFC 0011 item 3: the default is a record id, typed; a picker over live records is not offered here.
+      return propertyInput(registry, dId, { id: `${qf.field}_default`, type: "text", label: `${field.label} default record id` }, typeof def === "string" ? def : "", (v) => setDef(asText(v).trim() === "" ? undefined : asText(v).trim()));
+    }
     return null;
   };
 

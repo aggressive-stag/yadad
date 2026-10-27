@@ -383,13 +383,13 @@ export const QUICK_FILTER_KINDS: { readonly [K in FieldType]: "match" | "contain
   number: "range",
   date: "range",
   datetime: "range", // RFC 0007: a from/to range; the viewer types it in its zone, the renderer converts (35c)
-  reference: undefined,
+  reference: "match", // RFC 0011 item 3: matches the stored record id; the default is a record id.
   time: undefined, // RFC 0008 item 14 (card 47k): the time from/to pair is 47d's quick-filter work.
   tags: undefined, // RFC 0008 item 15 (card 47k): any-element matching is 47d's; no quick filter until then.
 };
 
 /** Said where a field cannot be a quick filter. */
-export const QUICK_FILTER_REASON = "Quick filters work on select, boolean, text, number, date and datetime fields.";
+export const QUICK_FILTER_REASON = "Quick filters work on select, boolean, reference, text, number, date and datetime fields.";
 
 /** Whether a field of this type can be a quick filter. */
 export function canQuickFilter(type: FieldType | undefined): boolean {

@@ -83,19 +83,31 @@ const ACTION_PANEL_PROPERTIES: readonly Field[] = [
   choiceField("confirmTone", "Confirm tone", Object.values(CONFIRM_TONE_LABELS)),
 ];
 
+const NO_SUBJECT = "(none)";
+const subjectLabel = (f: Field): string => `${f.label} (${f.id})`;
+
+/** The confirm-subject picker: none, or one field of the entity (RFC 0011 item 2). */
+const subjectOf = (id: string, fields: readonly Field[]): string => {
+  const f = fields.find((x) => x.id === id);
+  return f === undefined ? NO_SUBJECT : subjectLabel(f);
+};
+
+const subjectPicker = (fields: readonly Field[]): Field => choiceField("confirmSubject", "Name the record with", [NO_SUBJECT, ...fields.map(subjectLabel)]);
+
 /** The panel values as a RecordAction, keeping the parts this card does not edit. */
-function actionFromPanel(state: ActionPanelState, current?: RecordAction): RecordAction {
+function actionFromPanel(state: ActionPanelState, fields: readonly Field[], current?: RecordAction): RecordAction {
   const id = typeof state.values["id"] === "string" && state.values["id"] !== "" ? state.values["id"] : (current?.id ?? "");
   const label = typeof state.values["label"] === "string" ? state.values["label"] : (current?.label ?? "");
   const message = typeof state.values["confirmMessage"] === "string" ? state.values["confirmMessage"].trim() : "";
   const title = typeof state.values["confirmTitle"] === "string" ? state.values["confirmTitle"].trim() : "";
   const confirmLabel = typeof state.values["confirmLabel"] === "string" ? state.values["confirmLabel"].trim() : "";
   const tone = Object.keys(CONFIRM_TONE_LABELS).find((t) => CONFIRM_TONE_LABELS[t as ActionConfirmTone] === state.values["confirmTone"]) as ActionConfirmTone | undefined;
-  const confirm: ActionConfirm | undefined = message === "" ? undefined : { message, ...(title !== "" ? { title } : {}), ...(confirmLabel !== "" ? { confirmLabel } : {}), ...(tone !== undefined && tone !== "neutral" ? { tone } : {}) };
+  const subjectField = fields.find((f) => subjectLabel(f) === state.values["confirmSubject"])?.id;
+  const confirm: ActionConfirm | undefined = message === "" ? undefined : { message, ...(subjectField !== undefined ? { subjectField } : {}), ...(title !== "" ? { title } : {}), ...(confirmLabel !== "" ? { confirmLabel } : {}), ...(tone !== undefined && tone !== "neutral" ? { tone } : {}) };
   return { id, label, ...(confirm === undefined ? {} : { confirm }), ...(current?.input === undefined ? {} : { input: current.input }), ...(current?.visibleWhen === undefined ? {} : { visibleWhen: current.visibleWhen }) };
 }
 
-function panelFromAction(action: RecordAction): ActionPanelState {
+function panelFromAction(action: RecordAction, fields: readonly Field[]): ActionPanelState {
   return {
     editing: action.id,
     values: {
@@ -105,6 +117,7 @@ function panelFromAction(action: RecordAction): ActionPanelState {
       ...(action.confirm !== undefined ? { confirmMessage: action.confirm.message } : {}),
       ...(action.confirm?.confirmLabel !== undefined ? { confirmLabel: action.confirm.confirmLabel } : {}),
       ...(action.confirm?.tone !== undefined ? { confirmTone: CONFIRM_TONE_LABELS[action.confirm.tone] } : {}),
+      ...(action.confirm?.subjectField !== undefined ? { confirmSubject: subjectOf(action.confirm.subjectField, fields) } : {}),
     },
   };
 }
@@ -148,7 +161,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
   const applyActionPanel = () => {
     if (!actionPanel) return;
     const editing = actionPanel.editing === undefined ? undefined : (current.actions ?? []).find((a) => a.id === actionPanel.editing);
-    const draft = actionFromPanel(actionPanel, editing);
+    const draft = actionFromPanel(actionPanel, current.fields, editing);
     // The label and confirm are what this card edits; on an existing action the id in the panel cannot change.
     const result = editing === undefined ? addAction(current, draft) : updateAction(current, editing.id, { label: draft.label, ...(draft.confirm === undefined ? {} : { confirm: draft.confirm }) });
     if (!result.ok) setProblems([result.error]);
@@ -207,7 +220,8 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
 
   const actionProperty = (field: Field): ReactNode => propertyInput(registry, `${base}-action-prop-${field.id}`, field, actionPanel?.values[field.id] ?? undefined, (v) => setActionValue(field.id, v));
 
-  const actionPanelFields: readonly Field[] = actionPanel?.editing === undefined ? ACTION_PANEL_PROPERTIES : ACTION_PANEL_PROPERTIES.filter((p) => p.id !== "id");
+  const panelBase: readonly Field[] = actionPanel?.editing === undefined ? ACTION_PANEL_PROPERTIES : ACTION_PANEL_PROPERTIES.filter((p) => p.id !== "id");
+  const actionPanelFields: readonly Field[] = [...panelBase, subjectPicker(current.fields)];
 
   const applyPanel = () => {
     if (!panel) return;
@@ -429,7 +443,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
       action.id,
       action.confirm === undefined ? "Runs on press" : action.confirm.tone === "danger" ? `Danger: ${action.confirm.message}` : action.confirm.message,
       <span key="actions" style={{ display: "inline-flex", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
-        <Button label={`Edit ${action.label}`} type="button" variant="secondary" disabled={false} onPress={() => setActionPanel(panelFromAction(action))} />
+        <Button label={`Edit ${action.label}`} type="button" variant="secondary" disabled={false} onPress={() => setActionPanel(panelFromAction(action, current.fields))} />
         <Button label={`Move ${action.label} up`} type="button" variant="secondary" disabled={i === 0} onPress={() => moveActionRow(action, -1)} />
         <Button label={`Move ${action.label} down`} type="button" variant="secondary" disabled={i === (current.actions ?? []).length - 1} onPress={() => moveActionRow(action, 1)} />
         <Button label={`Remove ${action.label}`} type="button" variant="secondary" disabled={false} onPress={() => removeActionRow(action)} />

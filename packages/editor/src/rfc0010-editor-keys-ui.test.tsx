@@ -165,3 +165,36 @@ describe("condition builder: hours from now", () => {
     expect(document.getElementById("t-mode-0")).toBeNull();
   });
 });
+
+describe("RFC 0011 editor keys", () => {
+  const withRef: EntityDocument = { ...entity, fields: [...entity.fields, { id: "owner", type: "reference", label: "Owner", entity: "person" }] };
+  const refTable: TableView = { ...table, entity: "task", columns: [{ field: "title" }, { field: "owner" }] };
+
+  test("a reference column can be a quick filter with a record-id default", () => {
+    const saved: TableView[] = [];
+    render(<TableViewEditor view={{ ...refTable, quickFilters: [{ field: "owner" }] } as TableView} entity={withRef} registry={mockRegistry} onSave={(v) => saved.push(v)} onCancel={() => {}} />);
+    type("Owner default record id", " p1 ");
+    press("Apply Owner filter details");
+    press("Save table");
+    expect(saved[0]?.quickFilters).toEqual([{ field: "owner", default: "p1" }]);
+  });
+
+  test("a reference column offers the quick filter toggle", () => {
+    render(<TableViewEditor view={refTable} entity={withRef} registry={mockRegistry} onSave={() => {}} onCancel={() => {}} />);
+    press("Filter by Owner");
+    expect(screen.getByRole("button", { name: "Remove Owner filter" })).toBeTruthy();
+  });
+
+  test("an action's confirm can name the record with a field", () => {
+    const saved: EntityDocument[] = [];
+    render(<EntityFieldsEditor entity={entity} views={[]} registry={mockRegistry} onSave={(e) => saved.push(e)} onCancel={() => {}} />);
+    press("New action");
+    fireEvent.change(screen.getByLabelText(/^Id/), { target: { value: "ship" } });
+    fireEvent.change(screen.getByLabelText(/^Label/), { target: { value: "Ship" } });
+    fireEvent.change(screen.getByLabelText(/Confirm message/), { target: { value: "Ship it?" } });
+    fireEvent.change(screen.getByLabelText("Name the record with"), { target: { value: "Title (title)" } });
+    press("Add action");
+    press("Save fields");
+    expect(saved[0]?.actions).toEqual([{ id: "ship", label: "Ship", confirm: { message: "Ship it?", subjectField: "title" } }]);
+  });
+});

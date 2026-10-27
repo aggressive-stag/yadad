@@ -327,7 +327,8 @@ describe("quick filter support", () => {
     const { canQuickFilter, QUICK_FILTER_KINDS } = await import("./views.js");
     for (const type of ["text", "number", "boolean", "select", "date", "datetime"] as const) expect(canQuickFilter(type)).toBe(true);
     expect(canQuickFilter(undefined)).toBe(false);
-    expect(canQuickFilter("reference")).toBe(false);
+    expect(canQuickFilter("reference")).toBe(true);
+    expect(canQuickFilter("time")).toBe(false);
     expect(QUICK_FILTER_KINDS.number).toBe("range");
     expect(QUICK_FILTER_KINDS.date).toBe("range");
     expect(QUICK_FILTER_KINDS.datetime).toBe("range");
