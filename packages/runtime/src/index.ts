@@ -20,3 +20,4 @@ export * from "./move-plan.js";
 export * from "./combine-axes.js";
 export * from "./view-states.js";
 export * from "./viewer.js";
+export * from "./quick-filters.js";

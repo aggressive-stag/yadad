@@ -304,3 +304,19 @@ describe("recordJsonSchema write mode (RFC 0010 item 8)", () => {
     expect(recordJsonSchema(entity, { mode: "write" }).required).toEqual(["name"]);
   });
 });
+
+describe("readOnly fields (RFC 0010 item 8)", () => {
+  const entity = entityOf({ id: "id", type: "text", label: "Session id", required: true, readOnly: true }, { id: "name", type: "text", label: "Name" });
+
+  test("a required readOnly field is not a create requirement", () => {
+    expect(validateRecord(entity, { name: "x" })).toEqual([]);
+  });
+
+  test("a write that sends one is refused, as the write schema refuses it", () => {
+    const errors = validateRecord(entity, { id: "s1", name: "x" });
+    expect(errors).toEqual([expect.objectContaining({ path: "/id", message: '"Session id" is set by the server.' })]);
+    const validate = newAjv().compile(recordJsonSchema(entity, { mode: "write" }));
+    expect(validate({ id: "s1", name: "x" })).toBe(false);
+    expect(validate({ name: "x" })).toBe(true);
+  });
+});

@@ -12,8 +12,21 @@ import type { DocumentError, EntityDocument, Field, FieldValue, RecordValues } f
 export function validateRecord(entity: EntityDocument, values: RecordValues): readonly DocumentError[] {
   const errors: DocumentError[] = [];
   const known = new Set(entity.fields.map((f) => f.id));
+  const serverSet = new Set(entity.fields.filter((f) => f.readOnly === true).map((f) => f.id));
 
   for (const key of Object.keys(values)) {
+    // RFC 0010 item 8: the write schema leaves a readOnly field out, so sending one (even null) is refused.
+    if (serverSet.has(key)) {
+      if (values[key] === undefined) continue;
+      const label = entity.fields.find((f) => f.id === key)?.label ?? key;
+      errors.push({
+        path: jsonPointer([key]),
+        code: "invalid-value",
+        message: `"${label}" is set by the server.`,
+        hint: `Remove "${key}" from the values you send; the server sets it.`,
+      });
+      continue;
+    }
     if (!known.has(key)) {
       errors.push({
         path: jsonPointer([key]),
@@ -25,6 +38,7 @@ export function validateRecord(entity: EntityDocument, values: RecordValues): re
   }
 
   for (const field of entity.fields) {
+    if (field.readOnly === true) continue; // never a form requirement, even with `required`
     const problem = checkValue(field, values[field.id] ?? null);
     if (problem) errors.push({ path: jsonPointer([field.id]), ...problem });
   }

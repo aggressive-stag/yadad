@@ -38,7 +38,8 @@ export async function submitEdit(entity: EntityDocument, record: DataRecord, pat
   // keep them out of the merge, or one of them refuses every edit of every
   // record of the entity. Keys the *patch* introduces stay under validation
   // below, so a record the client builds is still checked strictly.
-  const declared = new Set(entity.fields.map((f) => f.id));
+  // A readOnly field (RFC 0010 item 8) is served but never sent back: the server sets it.
+  const declared = new Set(entity.fields.filter((f) => f.readOnly !== true).map((f) => f.id));
   const served = Object.fromEntries(Object.entries(record.values).filter(([key]) => declared.has(key)));
   const errors = validateRecord(entity, { ...served, ...patch });
   if (errors.length > 0) return { ok: false, errors };

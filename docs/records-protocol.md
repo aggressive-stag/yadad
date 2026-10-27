@@ -51,6 +51,10 @@ Regenerate the schema whenever the entity changes revision.
 
 What the schema says: one property per field; `additionalProperties: false` (unknown field); `required` lists required fields; optional fields also accept `null`; a required boolean must be `true`; a required text or reference field must not be blank; a select is an `enum`; a number has `minimum`/`maximum`; a date is a `YYYY-MM-DD` string within `min`/`max`; a tags field is an array of strings with `uniqueItems`, each element `pattern: "\\S"`, plus `minItems: 1` when the field is required (`minItems: 0` otherwise).
 
+### Server-set fields (`readOnly`)
+
+A field marked `"readOnly": true` is set by the server (an id, a created-at). Reads carry it in `values`. Writes must not send it: `validateRecord` refuses it ("<label> is set by the server"), and `recordJsonSchema(entity, { mode: "write" })` leaves it out of `properties` and `required`, so its `additionalProperties: false` rejects a write that sends one. Validate create and update bodies with the write schema; the default (stored) schema describes what a read returns. `required` together with `readOnly` is allowed: stored records must have the value, but it is never a form requirement.
+
 ### Where the schema and `validateRecord` differ
 
 `validateRecord` (the browser check) is checked against the schema by a parity test that fails when one changes without the other. These cases are the known, deliberate differences:
