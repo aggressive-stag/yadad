@@ -421,7 +421,7 @@ export interface CalendarProps<N> {
   /** 42 (month) or 7 (week), in order, in rows of 7. */
   readonly days: readonly CalendarDayProps<N>[];
   /** Colour slots present in the range, with their texts. */
-  readonly legend: readonly { readonly slot: number; readonly label: string }[];
+  readonly legend: readonly { readonly slot: number; readonly label: string; /** The `#RRGGBB` the entries of this slot receive, when they have one. */ readonly color?: string }[];
   /** Entries are being fetched; days are still given. */
   readonly loading: boolean;
   /** E.g. the over-cap message; shown above the grid and announced politely. */

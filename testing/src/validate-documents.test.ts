@@ -61,6 +61,12 @@ const expected: Record<string, Picked[]> = {
   "readonly-editable-column.json": [
     { path: "/columns/0/field", code: "invalid-value", document: "thing_table", allowed: undefined },
   ],
+  "readonly-board-group.json": [
+    { path: "/groupBy/0/field", code: "invalid-value", document: "thing_board", allowed: undefined },
+  ],
+  "readonly-calendar-date.json": [
+    { path: "/dateField", code: "invalid-value", document: "thing_calendar", allowed: undefined },
+  ],
   "readonly-not-true.json": [
     { path: "/fields/0/readOnly", code: "invalid-value", document: "thing", allowed: undefined },
   ],
@@ -438,8 +444,10 @@ const validSetDir = new URL("../../fixtures/valid-sets/", import.meta.url);
 
 /** The exact warnings (and no errors) each whole-set valid fixture must yield. */
 const expectedSetWarnings: Record<string, { path: string; code: string; document: string | undefined }[]> = {
+  "off-palette-colour.json": [{ path: "/fields/0/options/values/1/color", code: "empty", document: "thing" }],
   "review.json": [],
-  "rfc-0008-9-v8.json": [],
+  // A version-8 document with an off-palette colour stays valid; the colour only warns (card 48g).
+  "rfc-0008-9-v8.json": [{ path: "/fields/2/options/values/1/color", code: "empty", document: "chore" }],
   "rfc-0010-v9.json": [],
   "viewer-minimal.json": [],
   "viewer-unread-fact.json": [{ path: "/facts/1", code: "empty", document: "viewer" }],

@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      { "id": "stage", "type": "select", "label": "Stage", "readOnly": true, "options": { "source": "static", "values": ["Open", "Done"] } },
+      { "id": "name", "type": "text", "label": "Name" }
+    ]
+  },
+  {
+    "kind": "board",
+    "specVersion": 0,
+    "id": "thing_board",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "groupBy": [{ "field": "stage" }],
+    "editable": true
+  }
+]

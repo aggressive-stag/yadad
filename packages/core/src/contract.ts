@@ -359,7 +359,7 @@ const FIELD_SPECS: Record<FieldType, FieldSpec> = {
   select: {
     type: "select",
     description: "A fixed list of choices.",
-    properties: [{ key: "options", required: true, description: '{ source: "static", values: [non-empty, unique texts] }; at least one value.' }],
+    properties: [{ key: "options", required: true, description: '{ source: "static", values: [non-empty, unique entries] }; at least one value. An entry is a text or { value, label?, color? }; a color is one of the eight COLOR_PALETTE hexes (any other is a warning and paints nothing).' }],
   },
   date: {
     type: "date",

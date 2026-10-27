@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 9,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            { "value": "calm", "color": "#D13438" },
+            { "value": "odd", "color": "#336699" }
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -10,6 +10,7 @@ import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, TEXT_MAX_LENGTH_CEILING, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
 import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, FORM_ITEM_LABEL_MAX, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField, optionValue } from "./document.js";
 import type { BoardView, CalendarView, QuickFilter, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, SeriesWidget, TableView, ViewerDocument, ViewerFact } from "./document.js";
+import { COLOR_PALETTE, isPaletteColor } from "./palette.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -34,6 +35,12 @@ class Errors {
   warn(path: Path, message: string, hint: string): void {
     this.warnings.push({ path: jsonPointer(path), code: "empty", message, hint });
   }
+}
+
+/** An option colour outside `COLOR_PALETTE` paints nothing in the components set, so it is flagged (a warning now, an error in a later specVersion, D50). */
+function warnOffPalette(errors: Errors, color: string, path: Path): void {
+  if (isPaletteColor(color)) return;
+  errors.warn(path, `Colour ${JSON.stringify(color)} is not in the palette, so it paints nothing.`, `Use one of the eight palette colours: ${COLOR_PALETTE.map((c) => `${c.hex} (${c.name})`).join(", ")}.`);
 }
 
 /** Validates the shape of a single entity or view document. */
@@ -1100,6 +1107,7 @@ function validateViewerFact(errors: Errors, fact: JsonObject, path: Path): void 
           if (v["color"] !== undefined && (typeof v["color"] !== "string" || !/^#[0-9a-fA-F]{6}$/.test(v["color"]))) {
             errors.add([...vpath, "color"], "invalid-value", 'Option color must be "#RRGGBB".', `Got ${JSON.stringify(v["color"])}. Use six hex digits with a leading #.`);
           }
+          else if (v["color"] !== undefined) warnOffPalette(errors, v["color"] as string, [...vpath, "color"]);
         });
         values = list.map((v) => (typeof v === "string" ? v : isObject(v) && typeof v["value"] === "string" ? v["value"] : "")).filter((s) => s !== "");
       }
@@ -1322,6 +1330,7 @@ function checkStaticOptions(errors: Errors, field: JsonObject, path: Path): void
     if (v["color"] !== undefined && (typeof v["color"] !== "string" || !/^#[0-9a-fA-F]{6}$/.test(v["color"]))) {
       errors.add([...vpath, "color"], "invalid-value", 'Option color must be "#RRGGBB".', `Got ${JSON.stringify(v["color"])}. Use six hex digits with a leading #.`);
     }
+    else if (v["color"] !== undefined) warnOffPalette(errors, v["color"] as string, [...vpath, "color"]);
   });
 }
 
@@ -1852,6 +1861,11 @@ function checkViewFilterSortTail(
   checkRecordActionRefs(errors, view, entity);
   if (view.rowAction) checkRowActionTarget(errors, view, entity, idx);
   if (view.kind === "board" && view.columnsFrom !== undefined) checkColumnsFrom(errors, view, entity);
+  // Moving an item writes its grouping / date field, so a read-only one cannot be moved (RFC 0010 item 8).
+  if (view.editable === true) {
+    if (view.kind === "board") view.groupBy.forEach((g, i) => checkNotReadOnly(errors, view.id, entity, g.field, ["groupBy", i, "field"], "moved between columns (an editable board writes it)"));
+    else checkNotReadOnly(errors, view.id, entity, view.dateField, ["dateField"], "moved to another day (an editable calendar writes it)");
+  }
 }
 
 /** Checks a calendar's entity and every field it uses. */

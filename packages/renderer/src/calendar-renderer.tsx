@@ -490,7 +490,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
         modes={modes.map((m) => ({ mode: m, label: MODE_LABELS[m] }))}
         weekdays={weekdayLabels(weekStartsOn)}
         days={days}
-        legend={legend.map(({ slot, label }) => ({ slot, label }))}
+        legend={legend.map(({ slot, label, color }) => (color === undefined ? { slot, label } : { slot, label, color }))}
         loading={here === undefined}
         {...(notice ? { notice } : {})}
         {...(announcement ? { announcement } : {})}

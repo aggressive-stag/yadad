@@ -1,0 +1,22 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      { "id": "day", "type": "date", "label": "Day", "readOnly": true },
+      { "id": "name", "type": "text", "label": "Name" }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 0,
+    "id": "thing_calendar",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "day",
+    "editable": true
+  }
+]

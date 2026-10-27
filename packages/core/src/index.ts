@@ -6,6 +6,7 @@ export * from "./contract.js";
 export * from "./document.js";
 export * from "./errors.js";
 export * from "./migrate.js";
+export * from "./palette.js";
 export * from "./record-schema.js";
 export * from "./registry.js";
 export * from "./data-adapter.js";
