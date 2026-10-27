@@ -1,4 +1,4 @@
-import type { BatchOperations, BatchResult, DataAdapter, DataRecord, DocumentError, Page, Query } from "@yadad/core";
+import type { BatchOperations, BatchResult, DataAdapter, DataRecord, DocumentError, Page, PageNotice, Query } from "@yadad/core";
 import {
   ForbiddenError,
   RecordConflictError,
@@ -64,6 +64,17 @@ interface ErrorBody {
  * to a same-origin backend. Reads build query strings; writes send JSON and are
  * never retried. Every non-2xx status maps to a typed error.
  */
+// The runtime compiles without the DOM or node typings; every JS host has a console.
+declare const console: { warn(...args: unknown[]): void };
+
+const isPageNotice = (value: unknown): value is PageNotice => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Object.keys(v).length === 2 && (v.tone === "info" || v.tone === "warning") && typeof v.text === "string" && v.text.length > 0
+  );
+};
+
 export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
   const base = options.baseUrl.replace(/\/+$/, "");
   const credentials = options.credentials ?? "same-origin";
@@ -148,7 +159,11 @@ export function createHttpAdapter(options: HttpAdapterOptions): DataAdapter {
       if (status === 404) return { items: [], total: 0 };
       if (status < 200 || status >= 300) throwForStatus(status, body);
       const page = body as Page<DataRecord>;
-      return Array.isArray(page?.items) ? { ...page, items: page.items.map(readRecord) } : page;
+      if (!Array.isArray(page?.items)) return page;
+      const { notice, ...rest } = page;
+      const valid = isPageNotice(notice);
+      if (notice !== undefined && !valid) console.warn("yadad: dropped a malformed notice from a list response");
+      return { ...rest, items: page.items.map(readRecord), ...(valid ? { notice } : {}) };
     },
     async findOne(entity, id) {
       const { status, body } = await send("GET", `${base}/${entity}/${encodeURIComponent(id)}`);

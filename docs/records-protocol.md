@@ -180,6 +180,7 @@ A `datetime` field's value is an instant, and it travels in exactly one form: `Y
 - `next` is **opaque**: the client passes it back untouched as `cursor` and never parses it. `null` or absent means the end.
 - The client's rule: no `total` and a `next` switches it to cursors, and it keeps a stack of the cursors it visited so Previous works without the server supporting backward cursors; the pager shows "Page 2" with no "of N". Changing the sort, a quick filter or the page size clears the stack.
 - The table never "loads more": appending rows without bound changes where focus goes, so the client keeps Previous and Next on both paths.
+- `notice` (optional): the server's statement about this one answer, `{ "tone": "info" | "warning", "text": string }`, for example `{ "tone": "warning", "text": "Served without vector search" }`. `text` is plain text, never markup, and is not empty. It is per response and never cached or sent back, and it changes no record. A client drops a malformed `notice` (wrong tone, non-string or empty text, extra keys) with a console warning and shows the page without it.
 - `limit=0` is the count request and needs `total`. A count widget against a counting-free server walks pages up to the 5,000-record cap and shows what it read, or "5000+" when the cap was hit with more pending.
 - `cursor` and `offset` together is a `400`.
 

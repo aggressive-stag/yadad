@@ -74,6 +74,18 @@ export interface Page<T> {
   readonly total?: number;
   /** Opaque token for the following page; `null` or absent at the end. A page with neither `total` nor `next` is the last. */
   readonly next?: string | null;
+  /**
+   * The server's statement about this answer (for example "served without
+   * vector search"), shown beside the list. Plain text only. It is protocol
+   * data, not document data, and changes nothing about the records.
+   */
+  readonly notice?: PageNotice;
+}
+
+/** A server notice on one list response: a tone and plain text. */
+export interface PageNotice {
+  readonly tone: "info" | "warning";
+  readonly text: string;
 }
 
 /** What running an action needs (RFC 0007): the input fields' values and the guard, the version the client last read. */
