@@ -84,6 +84,10 @@ const history: TableView = {
 
 A `datetime` quick filter is a from/to range on the viewer's clock (gte/lte, either end optional). `Page.total` in the `DataAdapter` contract is optional: a server may answer with only `next`, an opaque cursor the client never parses (see `docs/records-protocol.md`).
 
+## Options that live on the server
+
+A select field's `options.values` is part of the document and is validated with it. When the choices live on the server, fill them into the document at host build time and validate after filling. The committed document may carry a placeholder only if your loader replaces it before validation. A dynamic option source is not part of the contract; a `reference` field is the in-contract way to point at server records. See `docs/records-protocol.md`.
+
 ## Exports
 
 - Document types: `EntityDocument`, `FormView`, `TableView`, `CalendarView`, `BoardView`, `DashboardView`, `ViewerDocument` (with `ViewerFact`, `ResolvedViewer`), `Field`, `Condition` and `ViewerCondition` (the `viewerIn` subset for viewer-only places) and friends; `SPEC_VERSION`. RFC 0007 adds `RecordAction` (with `ActionConfirm`, `ActionInputField`, `ActionConfirmTone`), `ColumnCompare` and `CompareNeighbour` (`COMPARE_NEIGHBOURS`), the grid limits `ACTIONS_MAX`, `ACTION_INPUT_MAX`, `RECORD_ACTIONS_MAX`, and `isIsoDatetime` (the one canonical stored form a `datetime` value takes). RFC 0008/0009 add `TimeField`, `TagsField`, `SubRecordSection`, `NamedFilter`, the `fieldEqFact` leaf in `Condition`/`CONDITION_OPS`, `PagerProps`, and the board `columnsFrom`/calendar `doneField`/table `addForm` keys.
