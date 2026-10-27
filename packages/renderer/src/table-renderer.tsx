@@ -1,6 +1,6 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
 import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { bindFilter, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, neighbourQuery, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
+import { bindFilter, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, initialQuickFilters, neighbourQuery, quickRangeKey, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -381,7 +381,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const typed = useRef(false);
   const [saving, setSaving] = useState(false);
   const [reloads, setReloads] = useState(0);
-  const [quick, setQuick] = useState<RecordValues>({});
+  const [quick, setQuick] = useState<RecordValues>(() => initialQuickFilters(view, entity, viewerZone(formatting)));
   // RFC 0010 item 10: a text quick filter shows what the viewer types at once but commits (and reloads) only after a pause.
   const [typedQuick, setTypedQuick] = useState<Readonly<RecordValues>>({});
   const typedTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -469,17 +469,17 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     const value = (editing?.record.id === record.id && field.id in editing.state.values ? editing.state.values[field.id] : undefined) ?? record.values[field.id];
     return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
   }));
-  const editableReferences = editing ? referenceColumns.filter((f) => shownColumns.some((c) => c.field === f.id && columnEditable(c, viewer))) : [];
+  const editableReferences = editing ? referenceColumns.filter((f) => shownColumns.some((c) => c.field === f.id && f.readOnly !== true && columnEditable(c, viewer))) : [];
   const references = useReferences(adapter, entities, editableReferences, wants, reloadKey);
 
   // Entering edit mode moves focus to the row's first editable input.
   const editingId = editing?.record.id;
   useEffect(() => {
     if (editingId === undefined) return;
-    const first = shownColumns.find((c) => columnEditable(c, viewer));
+    const first = shownColumns.find((c) => columnEditable(c, viewer) && entity.fields.find((f) => f.id === c.field)?.readOnly !== true);
     if (!first) return;
     document.getElementById(`${tableId}-${editingId}-${first.field}`)?.focus();
-  }, [editingId, tableId, shownColumns, viewer]);
+  }, [editingId, tableId, shownColumns, viewer, entity]);
 
   // Drafts (the form's rule): typed input in the open row edit is stored after a pause; a
   // restored draft alone never rewrites the store. An emptied edit clears the stored draft.
@@ -524,7 +524,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
 
   const columns = shownColumns.flatMap((c) => {
     const field = entity.fields.find((f) => f.id === c.field);
-    return field ? [{ field, editable: columnEditable(c, viewer), ...(c.compare !== undefined ? { compare: c.compare } : {}) }] : [];
+    // A readOnly field is set by the server: never an input, even if a column asks for one.
+    return field ? [{ field, editable: field.readOnly !== true && columnEditable(c, viewer), sortable: view.sortable !== false && c.sortable !== false, ...(c.compare !== undefined ? { compare: c.compare } : {}) }] : [];
   });
   if (shownColumns.length === 0) return <p data-yadad-table-view={view.id} data-yadad-table-nothing="">There is nothing to show you here.</p>;
   const hasActions = columns.some((c) => c.editable) || rowAction !== undefined;
@@ -532,16 +533,17 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const editErrorsId = `${tableId}-edit-errors`;
 
   const headers: TableColumnHeader[] = [
-    ...columns.map(({ field }) => {
+    ...columns.map(({ field, sortable }) => {
       const active = sort[0]?.field === field.id ? { sort: sort[0].dir } : {};
       // A reference holds a record id, which says nothing about order.
-      return { id: field.id, headerId: headerId(field.id), label: field.label, sortable: field.type !== "reference", ...active };
+      return { id: field.id, headerId: headerId(field.id), label: field.label, sortable: sortable && field.type !== "reference", ...active };
     }),
     ...(hasActions ? [{ id: ACTIONS_COLUMN, headerId: headerId(ACTIONS_COLUMN), label: "Actions", sortable: false }] : []),
   ];
 
   /** First click sorts ascending; clicking the sorted column again flips it. */
   const onSort = (columnId: string): void => {
+    if (!headers.some((h) => h.id === columnId && h.sortable)) return;
     const dir = sort[0]?.field === columnId && sort[0].dir === "asc" ? "desc" : "asc";
     setSort([{ field: columnId, dir }]);
     setPage(0);
@@ -662,7 +664,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     // No filter control for a column this viewer cannot see (the filter itself still works).
     if (view.columns.some((c) => c.field === f.field) && !shownColumns.some((c) => c.field === f.field)) return [];
     const field = entity.fields.find((x) => x.id === f.field);
-    return field && field.type !== "reference" ? [field] : []; // a reference cannot be a quick filter (the validator rejects it)
+    return field && field.type !== "reference" ? [{ field, filter: f }] : []; // a reference cannot be a quick filter (the validator rejects it)
   });
 
   // RFC 0009 item 5: named saved filters as chips beside the quick filters. The renderer
@@ -700,14 +702,15 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       )}
       {quickFields.length > 0 && (
         <Section id={`${view.id}-filters`} title="Filter">
-          {quickFields.map((field) =>
+          {quickFields.map(({ field, filter }) =>
             isRangeFilter(field) ? (
               <div key={field.id} data-yadad-filter-field={field.id}>
               {RANGE_ENDS.map(({ end, word }) => {
+                const name = filter.label ?? field.label;
                 const control = field.type === "datetime" && formatting?.timeZone !== undefined
-                  ? { ...filterControl(field), label: `${field.label} ${word} (${formatting.timeZone})` }
-                  : { ...filterControl(field), label: `${field.label} ${word}` };
-                const key = rangeKey(end, field.id);
+                  ? { ...filterControl(field), label: `${name} ${word} (${formatting.timeZone})` }
+                  : { ...filterControl(field), label: `${name} ${word}` };
+                const key = quickRangeKey(end, field.id);
                 const inputId = `${tableId}-filter-${field.id}-${end}`;
                 return (
                   <FieldFrame key={key} inputId={inputId} errorId={`${inputId}-errors`} label={control.label} required={false} errors={[]}>
@@ -721,12 +724,12 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
               </div>
             ) : (
               <div key={field.id} data-yadad-filter-field={field.id}>
-              <FieldFrame inputId={`${tableId}-filter-${field.id}`} errorId={`${tableId}-filter-${field.id}-errors`} label={field.label} required={false} errors={[]}>
+              <FieldFrame inputId={`${tableId}-filter-${field.id}`} errorId={`${tableId}-filter-${field.id}-errors`} label={filter.label ?? field.label} required={false} errors={[]}>
                 {renderInput(registry, filterControl(field), field.id in typedQuick ? typedQuick[field.id] : quick[field.id], { inputId: `${tableId}-filter-${field.id}`, invalid: false }, (v) => {
                   if (field.type === "text") { changeTextQuick(field.id, v); return; }
                   setQuick((q) => ({ ...q, [field.id]: v ?? null }));
                   setPage(0);
-                }, references)}
+                }, references, undefined, field.type === "text" ? filter.placeholder : undefined)}
               </FieldFrame>
               </div>
             ),
@@ -773,9 +776,6 @@ const RANGE_ENDS = [
 /** How long a text quick filter waits after the last keystroke before it reloads (RFC 0010 item 10). */
 const QUICK_TEXT_DEBOUNCE_MS = 300;
 
-/** Where a range end is kept among the quick values. A colon can never be in a field id, so it cannot collide with one. */
-const rangeKey = (end: "from" | "to", fieldId: string): string => `${end}:${fieldId}`;
-
 /** The control a quick filter shows: the field itself (never required), Yes/No for a checkbox, or a plain text box for a datetime range — the viewer types a local time there, and combineFilters converts it to instants. */
 function filterControl(field: Field): Field {
   if (field.type === "boolean") return { id: field.id, type: "select", label: field.label, options: { source: "static", values: BOOLEAN_CHOICES } };
@@ -794,13 +794,13 @@ function combineFilters(view: TableView, entity: EntityDocument, quick: RecordVa
     if (field && isRangeFilter(field)) {
       // A range filter is a from and a to bound; either end may stay empty.
       for (const { end, op } of RANGE_ENDS) {
-        const bound = quick[rangeKey(end, id)];
+        const bound = quick[quickRangeKey(end, id)];
         if (typeof bound === "number" && field.type === "number") parts.push({ op, field: id, value: bound });
         else if (typeof bound === "string" && bound !== "" && field.type === "date") parts.push({ op, field: id, value: bound });
         else if (field.type === "datetime" && typeof bound === "string" && LOCAL_DATETIME_PATTERN.test(bound)) {
           // The viewer typed a local time; compare instants; "to" covers its whole minute (RFC 0007).
           // With only this end set, the other bound is a placeholder — the pushed one is what filters.
-          const other = quick[rangeKey(op === "gte" ? "to" : "from", id)];
+          const other = quick[quickRangeKey(op === "gte" ? "to" : "from", id)];
           const bounds = typeof other === "string" && other !== ""
             ? instantRangeBounds(op === "gte" ? bound : other, op === "gte" ? other : bound, zone)
             : { from: localToInstant(bound, zone), to: new Date(new Date(localToInstant(bound, zone)).getTime() + 59_999).toISOString() };

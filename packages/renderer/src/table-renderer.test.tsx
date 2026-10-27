@@ -526,3 +526,76 @@ describe("RFC 0008 surfaces (card 47e)", () => {
   });
 
 });
+
+describe("RFC 0010 items 4, 5, 6, 8 (card 48j)", () => {
+  const noteEntity: EntityDocument = {
+    kind: "entity", specVersion: 9, id: "note", revision: 1,
+    fields: [
+      { id: "sid", type: "text", label: "Session id", readOnly: true, required: true },
+      { id: "body", type: "text", label: "Body" },
+      { id: "state", type: "select", label: "State", options: { source: "static", values: ["pending", "done"] } },
+      { id: "flag", type: "boolean", label: "Flag" },
+    ],
+  };
+  const baseView: TableView = { kind: "table", specVersion: 9, id: "notes", title: "Notes", entity: "note", revision: 1, dataSource: "default", columns: [{ field: "sid" }, { field: "body" }, { field: "state" }] };
+  // The mock text input ignores `placeholder`, so this registry records what the slot is given.
+  const seenPlaceholders: Array<string | undefined> = [];
+  const MockText = mockRegistry.fields.text.Input;
+  const spyRegistry = { ...mockRegistry, fields: { ...mockRegistry.fields, text: { ...mockRegistry.fields.text, Input: (props: Parameters<typeof MockText>[0]) => { seenPlaceholders.push(props.placeholder); return <MockText {...props} />; } } } };
+  async function open(v: TableView, registry: typeof mockRegistry = mockRegistry): Promise<DataAdapter> {
+    const db = createMemoryAdapter();
+    await db.create("note", { sid: "s1", body: "alpha", state: "pending", flag: true }, { entityRevision: 1 });
+    await db.create("note", { sid: "s2", body: "beta", state: "done", flag: false }, { entityRevision: 1 });
+    render(<TableRenderer entity={noteEntity} view={v} registry={registry} dataSources={new Map([["default", db]])} />);
+    await waitFor(() => expect(screen.getAllByRole("row").length).toBeGreaterThan(1));
+    return db;
+  }
+
+  test("a quick filter shows its own label and a text filter its placeholder", async () => {
+    await open({ ...baseView, quickFilters: [{ field: "body", label: "Search", placeholder: "Contains..." }, { field: "state", label: "Status" }] }, spyRegistry);
+    expect(screen.getByRole("textbox", { name: "Search" })).toBeTruthy();
+    expect(seenPlaceholders).toContain("Contains...");
+    expect(screen.getByLabelText("Status")).toBeTruthy();
+    expect(screen.queryByLabelText("Body")).toBeNull();
+  });
+
+  test("a quick filter opens on its default, and the viewer can clear it", async () => {
+    await open({ ...baseView, quickFilters: [{ field: "state", default: "pending" }, { field: "flag", default: true }] });
+    const bodies = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[1]?.textContent);
+    expect((screen.getByLabelText("State") as HTMLSelectElement).value).toBe("pending");
+    expect((screen.getByLabelText("Flag") as HTMLSelectElement).value).toBe("Yes");
+    await waitFor(() => expect(bodies()).toEqual(["alpha"]));
+    fireEvent.change(screen.getByLabelText("State"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Flag"), { target: { value: "" } });
+    await waitFor(() => expect(bodies().sort()).toEqual(["alpha", "beta"]));
+  });
+
+  test("an unsortable view or column offers no sort button and clicking does nothing", async () => {
+    await open({ ...baseView, sortable: false });
+    for (const name of ["Session id", "Body", "State"]) expect(within(screen.getByRole("columnheader", { name })).queryByRole("button")).toBeNull();
+    cleanup();
+    await open({ ...baseView, columns: [{ field: "sid" }, { field: "body", sortable: false }, { field: "state" }] });
+    expect(within(screen.getByRole("columnheader", { name: "Body" })).queryByRole("button")).toBeNull();
+    expect(within(screen.getByRole("columnheader", { name: "State" })).getByRole("button")).toBeTruthy();
+  });
+
+  test("a readOnly field is never an inline input, even on an editable column", async () => {
+    await open({ ...baseView, columns: [{ field: "sid", editable: true }, { field: "body", editable: true }] });
+    fireEvent.click(within(screen.getAllByRole("row")[1]!).getAllByRole("button", { name: "Edit" })[0]!);
+    const row = screen.getAllByRole("row")[1]!;
+    await waitFor(() => expect(within(row).getByRole("textbox", { name: "Body" })).toBeTruthy());
+    expect(within(row).queryByRole("textbox", { name: "Session id" })).toBeNull();
+    expect(within(row).getByText("s1") ?? within(row).getByText("s2")).toBeTruthy();
+  });
+
+  test("saving an edit of a record that carries a served readOnly id succeeds", async () => {
+    const db = await open({ ...baseView, columns: [{ field: "sid" }, { field: "body", editable: true }] });
+    fireEvent.click(within(screen.getAllByRole("row")[1]!).getByRole("button", { name: "Edit" }));
+    const input = await within(screen.getAllByRole("row")[1]!).findByRole("textbox", { name: "Body" });
+    fireEvent.change(input, { target: { value: "changed" } });
+    fireEvent.click(within(screen.getAllByRole("row")[1]!).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Body" })).toBeNull());
+    const page = await db.find("note", {});
+    expect(page.items.map((r) => r.values["body"])).toContain("changed");
+  });
+});

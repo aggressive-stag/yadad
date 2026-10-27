@@ -105,9 +105,14 @@ export interface ReferenceDisplayExtras {
   readonly color?: string;
 }
 
-/** Extra Input props per field type; only reference has any. */
+/** Extra Input props for a text field: the hint a quick filter's `placeholder` carries (RFC 0010 item 5). */
+export interface TextInputExtras {
+  readonly placeholder?: string;
+}
+
+/** Extra Input props per field type; only text and reference have any. */
 export interface FieldInputExtras {
-  readonly text: Record<never, never>;
+  readonly text: TextInputExtras;
   readonly number: Record<never, never>;
   readonly boolean: Record<never, never>;
   readonly select: Record<never, never>;

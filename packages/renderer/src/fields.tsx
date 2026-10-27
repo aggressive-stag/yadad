@@ -59,11 +59,12 @@ export function renderInput(
   onChange: (value: FieldValue | undefined) => void,
   references: ReferenceSupport,
   formatting?: FieldFormatting,
+  placeholder?: string,
 ): ReactNode {
   switch (field.type) {
     case "text": {
       const { Input } = registry.fields.text;
-      return <Input {...common} field={field} value={asString(value)} onChange={onChange} />;
+      return <Input {...common} {...(placeholder !== undefined ? { placeholder } : {})} field={field} value={asString(value)} onChange={onChange} />;
     }
     case "number": {
       const { Input } = registry.fields.number;
