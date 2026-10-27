@@ -7,7 +7,7 @@ import { act, render as mount } from "@testing-library/react";
 import { sectionItems } from "@yadad/core"; // RFC 0008/9: card 47b
 import type { BoardProps, CalendarProps, DataAdapter, DataRecord, DiffSegment, Document, EntityDocument, FieldDisplayProps, FormView, Registry, ResolvedViewer, TableProps, TabsProps, ViewDocument } from "@yadad/core";
 import { availableActions, canEditField, canUpdate, columnEditable, compareCells, createDraftStore, evaluateFormRules, rowActionVisible, viewEditable, viewStates, visibleColumns, visibleTabs } from "@yadad/runtime";
-import type { DraftStore, ViewStatesOptions } from "@yadad/runtime";
+import type { DraftStore, SkippedState, ViewStatesOptions } from "@yadad/runtime";
 import axe from "axe-core";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
@@ -45,7 +45,9 @@ export type StateCheck =
   | "sort-missing"
   | "quick-default"
   | "notice-missing"
-  | "axis-missing";
+  | "axis-missing"
+  | "grid-fault"
+  | "too-many-skipped";
 
 export interface StateProblem {
   readonly check: StateCheck;
@@ -113,6 +115,12 @@ export interface CheckViewStatesOptions {
    * otherwise stay green with fewer states and nothing to say so.
    */
   readonly expectAxes?: readonly string[];
+  /**
+   * The most declared-limit skips (`skippedStates` of kind `"limit"`) the view
+   * may have. Unset: any number. Above it the report fails with
+   * `too-many-skipped`. Grid faults always fail, whatever this is.
+   */
+  readonly maxSkipped?: number;
 }
 
 const AXE_NAME_RULES = [
@@ -148,6 +156,8 @@ export interface StateCheckReport {
   readonly axes: readonly string[];
   /** States the grid left out on purpose (e.g. a state a condition makes unreachable). */
   readonly skipped: number;
+  /** Every skipped state with its reason. `"fault"` skips fail the report (`grid-fault`); `"limit"` skips are the grid's declared limits. */
+  readonly skippedStates: readonly SkippedState[];
 }
 
 /**
@@ -183,11 +193,19 @@ export async function checkViewStatesReport(options: CheckViewStatesOptions): Pr
     const problems = await checkState(state, view, entity, documents, registry, keys, options, skip);
     results.push({ id: state.id, label: state.label, problems: problems.filter((p) => !skip.has(p.check)) });
   }
-  if (missingAxes.length > 0 && !skip.has("axis-missing")) {
-    if (results.length === 0) results.push({ id: "no-states", label: "no states rendered", problems: [] });
-    results[0] = { ...results[0]!, problems: [...missingAxes, ...results[0]!.problems] };
+  const gridProblems: StateProblem[] = [
+    ...(skip.has("axis-missing") ? [] : missingAxes),
+    ...(skip.has("grid-fault") ? [] : grid.skipped.filter((s) => s.kind === "fault").map((s) => ({ check: "grid-fault" as const, message: `${s.id}: ${s.reason}` }))),
+  ];
+  const limitSkips = grid.skipped.filter((s) => s.kind === "limit").length;
+  if (options.maxSkipped !== undefined && limitSkips > options.maxSkipped && !skip.has("too-many-skipped")) {
+    gridProblems.push({ check: "too-many-skipped", message: `${limitSkips} states were skipped (limit ${options.maxSkipped}): ${grid.skipped.filter((s) => s.kind === "limit").map((s) => `${s.id} (${s.reason})`).join("; ")}` });
   }
-  return { results, states: grid.states.length, strategy: grid.strategy, complete: grid.complete, axes: grid.axes.map((a) => a.id), skipped: grid.skipped.length };
+  if (gridProblems.length > 0) {
+    if (results.length === 0) results.push({ id: "no-states", label: "no states rendered", problems: [] });
+    results[0] = { ...results[0]!, problems: [...gridProblems, ...results[0]!.problems] };
+  }
+  return { results, states: grid.states.length, strategy: grid.strategy, complete: grid.complete, axes: grid.axes.map((a) => a.id), skipped: grid.skipped.length, skippedStates: grid.skipped.map((s) => ({ id: s.id, reason: s.reason, kind: s.kind })) };
 }
 
 /**

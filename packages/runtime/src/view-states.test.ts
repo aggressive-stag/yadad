@@ -297,12 +297,13 @@ describe("generated records validate", () => {
     expect(withRecords).toEqual([]);
     expect(r.skipped.length).toBeGreaterThan(0);
     expect(r.skipped[0]?.reason).toMatch(/not valid/);
+    expect(r.skipped[0]?.kind).toBe("fault");
   });
 
   it("a missing entity gives no states and says why", () => {
     const r = viewStates(table(), [], { now: NOW });
     expect(r.states).toEqual([]);
-    expect(r.skipped).toEqual([{ id: "view", reason: 'entity "task" is not among the documents' }]);
+    expect(r.skipped).toEqual([{ id: "view", kind: "limit", reason: 'entity "task" is not among the documents' }]);
   });
 });
 

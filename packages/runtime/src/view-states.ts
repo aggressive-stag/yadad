@@ -172,7 +172,17 @@ export interface ViewState {
 export interface SkippedState {
   readonly id: string;
   readonly reason: string;
+  /**
+   * `"fault"`: the grid could not build a valid sample (a generated record
+   * fails validation, no records could be generated) — a grid or validator bug
+   * to report. `"limit"`: a declared limit of the grid (a dashboard cannot
+   * embed a dashboard, a view not among the documents, a series over a
+   * non-table, a value the field forbids).
+   */
+  readonly kind: "fault" | "limit";
 }
+
+type SkipKind = SkippedState["kind"];
 
 export interface ViewStatesOptions {
   /** The moment relative dates and "today" resolve against. Required, so the result is a pure function of its input. */
@@ -498,14 +508,14 @@ function fieldCandidates(field: Field, probes: Probes, ctx: CandidateContext): F
     const problem = problemOf(field, candidate.value);
     if (problem === undefined) candidates.push(candidate);
     // An empty value for a required field is simply not a record: leave it out without a note.
-    else if (candidate.value !== null) skipped.push({ id: `field:${name}=${candidate.id}`, reason: problem });
+    else if (candidate.value !== null) skipped.push({ id: `field:${name}=${candidate.id}`, reason: problem, kind: "limit" });
   }
   return { candidates, skipped };
 }
 
 // --- plans: the axes of a view, and how to build a state from a selection ---
 
-type Built = { readonly ok: true; readonly render: ViewStateRender } | { readonly ok: false; readonly reason: string };
+type Built = { readonly ok: true; readonly render: ViewStateRender } | { readonly ok: false; readonly reason: string; readonly kind: SkipKind };
 
 interface Plan {
   readonly axes: StateAxis[];
@@ -639,7 +649,7 @@ function planForm(view: FormView, ctx: Context): Plan {
 }
 
 function missing(reason: string): Plan {
-  return { axes: [], skipped: [{ id: "view", reason }], build: () => ({ ok: false, reason }) };
+  return { axes: [], skipped: [{ id: "view", reason, kind: "limit" }], build: () => ({ ok: false, reason, kind: "limit" }) };
 }
 
 type CollectionView = TableView | CalendarView | BoardView;
@@ -829,7 +839,7 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
           : records.map((r, i) => (i === 0 ? { ...r, can: { ...r.can, actions: { ...r.can?.actions, ...Object.fromEntries(withheld.map((id) => [id, false])) } } } : r));
       for (const record of marked) {
         const problem = validateRecord(entity, record.values, { mode: "stored" })[0];
-        if (problem) return { ok: false, reason: `generated record ${record.id} is not valid: ${problem.message}` };
+        if (problem) return { ok: false, reason: `generated record ${record.id} is not valid: ${problem.message}`, kind: "fault" };
       }
       const litFilter = savedFilters.find((f) => `filter:${f.id}` === selection[SAVED_FILTER_AXIS]);
       const filter: Condition | undefined =
@@ -846,7 +856,7 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
       try {
         page = runQuery(marked, { ...queryBase, page: { offset: 0, limit: Number.MAX_SAFE_INTEGER } }, undefined, ctx.now);
       } catch (error) {
-        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+        return { ok: false, reason: error instanceof Error ? error.message : String(error), kind: "limit" };
       }
       const matching = page.items.map((r) => r.id);
       let withTargets: readonly DataRecord[] = marked;
@@ -1065,17 +1075,17 @@ interface SeriesPlan {
  * record set for the state, the way the `records` axis does. A field that can
  * show no group under the view's filter is a skipped widget, not an empty chart.
  */
-function planSeries(widgetId: string, view: TableView, entity: EntityDocument, groupBy: { readonly field: string; readonly bucket?: SeriesBucket }, ctx: Context): SeriesPlan | { reason: string } {
+function planSeries(widgetId: string, view: TableView, entity: EntityDocument, groupBy: { readonly field: string; readonly bucket?: SeriesBucket }, ctx: Context): SeriesPlan | { reason: string; kind: SkipKind } {
   const fieldId = groupBy.field;
   const field = entity.fields.find((f) => f.id === fieldId);
-  if (!field) return { reason: `series widget "${widgetId}" groups by field "${fieldId}", which entity "${entity.id}" does not have` };
+  if (!field) return { reason: `series widget "${widgetId}" groups by field "${fieldId}", which entity "${entity.id}" does not have`, kind: "limit" };
   const base = planCollection(view, ctx);
   const picks: Record<string, string> = {};
   for (const axis of base.axes) if (axis.kind === "field" || axis.id === "records" || axis.id === PAGING_AXIS) picks[axis.id] = axis.values[0]?.id ?? "";
   const built = base.build({ ...picks, records: "many" });
-  if (!built.ok || built.render.kind !== "table") return { reason: `series widget "${widgetId}": ${(built.ok ? "unexpected render" : built.reason)}` };
+  if (!built.ok || built.render.kind !== "table") return { reason: `series widget "${widgetId}": ${(built.ok ? "unexpected render" : built.reason)}`, kind: built.ok ? "fault" : built.kind };
   const baseRecords = built.render.records;
-  if (baseRecords.length === 0) return { reason: `series widget "${widgetId}": no records could be generated for entity "${entity.id}"` };
+  if (baseRecords.length === 0) return { reason: `series widget "${widgetId}": no records could be generated for entity "${entity.id}"`, kind: "fault" };
   // A group value is usable when every seeded record keeps passing the view's filter (the loader re-filters) and stays valid.
   const usable = (value: FieldValue | null): boolean =>
     (value !== null || !field.required) &&
@@ -1085,7 +1095,7 @@ function planSeries(widgetId: string, view: TableView, entity: EntityDocument, g
     });
   const good = candidateGroupValues(field, groupBy.bucket, ctx).filter((v) => usable(v));
   const empty = field.required ? false : usable(null);
-  if (good.length === 0 && !empty) return { reason: `series widget "${widgetId}": field "${fieldId}" can show no group that the view's filter and validation allow` };
+  if (good.length === 0 && !empty) return { reason: `series widget "${widgetId}": field "${fieldId}" can show no group that the view's filter and validation allow`, kind: "limit" };
   const achievable: Record<SeriesChoice, boolean> = { none: empty, one: good.length >= 1, many: good.length >= SERIES_MANY_GROUPS, partial: good.length >= SERIES_MANY_GROUPS };
   const axisValues = SERIES_CHOICES.filter((c) => achievable[c]).map((c) => ({ id: c, label: SERIES_CHOICE_LABEL[c] }));
   const seed = (choice: SeriesChoice): readonly DataRecord[] => {
@@ -1128,7 +1138,7 @@ function assemble(view: ViewDocument, plan: Plan, limit: number, viewer: ViewerP
     // An impossible combination ("no records" with "1 record locked" or a withheld action) is left out, not reported.
     if (built.ok && needsRecord(selection) && !hasRecordToLock(built.render)) return;
     if (built.ok) states.push({ id, label, values: selection, render: lockRecords(built.render, selection), viewer: viewer.viewerFor(selection), ...extra });
-    else if (!skipped.some((s) => s.id === "view")) skipped.push({ id, reason: built.reason });
+    else if (!skipped.some((s) => s.id === "view")) skipped.push({ id, reason: built.reason, kind: built.kind });
   };
   for (const selection of combined.selections) stateFor(stateId(axes, selection), stateLabel(axes, selection), selection);
   const first = combined.selections[0];
@@ -1146,8 +1156,8 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
   const embedded = (id: string): ViewStatesResult | undefined => {
     if (!cache.has(id)) {
       const target = findView(ctx, id);
-      if (!target) skipped.push({ id: `view:${id}`, reason: `view "${id}" is not among the documents` });
-      else if (target.kind === "dashboard") skipped.push({ id: `view:${id}`, reason: `dashboard "${id}" cannot be embedded in a dashboard` });
+      if (!target) skipped.push({ id: `view:${id}`, reason: `view "${id}" is not among the documents`, kind: "limit" });
+      else if (target.kind === "dashboard") skipped.push({ id: `view:${id}`, reason: `dashboard "${id}" cannot be embedded in a dashboard`, kind: "limit" });
       cache.set(id, target && target.kind !== "dashboard" ? viewStatesIn(target, ctx, embeddedLimit, true) : undefined);
     }
     return cache.get(id);
@@ -1176,17 +1186,17 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
       } else if (item.widget === "series") {
         const target = findView(ctx, item.view);
         if (!target || target.kind !== "table") {
-          skipped.push({ id: `series:${item.id}`, reason: target ? `series widget "${item.id}" needs a table view; "${item.view}" is a ${target.kind}` : `series widget "${item.id}" points at view "${item.view}", which is not among the documents` });
+          skipped.push({ id: `series:${item.id}`, reason: target ? `series widget "${item.id}" needs a table view; "${item.view}" is a ${target.kind}` : `series widget "${item.id}" points at view "${item.view}", which is not among the documents`, kind: "limit" });
           continue;
         }
         const entity = findEntity(ctx, target.entity);
         if (!entity) {
-          skipped.push({ id: `series:${item.id}`, reason: `series widget "${item.id}" groups over entity "${target.entity}", which is not among the documents` });
+          skipped.push({ id: `series:${item.id}`, reason: `series widget "${item.id}" groups over entity "${target.entity}", which is not among the documents`, kind: "limit" });
           continue;
         }
         const plan = planSeries(item.id, target, entity, item.groupBy, ctx);
         if ("reason" in plan) {
-          skipped.push({ id: `series:${item.id}`, reason: plan.reason });
+          skipped.push({ id: `series:${item.id}`, reason: plan.reason, kind: plan.kind });
           continue;
         }
         const axis: StateAxis = { id: `widget:${item.id}`, label: `${item.id} (${item.view})`, kind: "widget", values: plan.axisValues };
@@ -1196,7 +1206,7 @@ function dashboardStates(view: DashboardView, ctx: Context, limit: number, viewe
     }
     return { widgets, series };
   });
-  for (const result of cache.values()) skipped.push(...(result?.skipped.map((s) => ({ id: `${result.view}/${s.id}`, reason: s.reason })) ?? []));
+  for (const result of cache.values()) skipped.push(...(result?.skipped.map((s) => ({ id: `${result.view}/${s.id}`, reason: s.reason, kind: s.kind })) ?? []));
 
   const states: ViewState[] = [];
   let complete = view.tabs.length <= limit;
