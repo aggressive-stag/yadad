@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registry } from "virtual:yadad-registry";
-import { lightTheme, themeToCss } from "@yadad/theme";
+import { applySystemTheme, lightTheme, themeToCss } from "@yadad/theme";
 import { App } from "./App";
 
 // Theme tokens (--yadad-*) that component stylesheets read.
@@ -39,6 +39,8 @@ nav button[aria-current="page"] { font-weight: 700; text-decoration: underline; 
 [data-state-width] { display: flex; gap: var(--yadad-space-3); border: 0; padding: 0; margin-block: var(--yadad-space-2); }
 [data-state-frame] { margin-inline: auto; border: 1px solid var(--yadad-color-border, #ccc); padding: var(--yadad-space-2); overflow-x: auto; }`;
 document.head.prepend(tokens);
+// The light tokens above are the fallback; this follows the OS colour scheme (and its later changes) from here on.
+applySystemTheme();
 
 const root = document.getElementById("root");
 if (!root) throw new Error('index.html is missing <div id="root">.');

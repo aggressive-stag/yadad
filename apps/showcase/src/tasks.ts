@@ -29,6 +29,8 @@ export const taskEntity: EntityDocument = {
   id: "task",
   revision: 1,
   fields: [
+    // Set by the server on create (RFC 0010 item 8): required on a stored task, never asked of the person in a form.
+    { id: "ref", type: "text", label: "Ref", required: true, readOnly: true },
     { id: "title", type: "text", label: "Title", required: true },
     { id: "status", type: "select", label: "Status", required: true, options: { source: "static", values: [...STATUSES] } },
     { id: "owner", type: "reference", label: "Owner", entity: "person", display: "name" },
@@ -74,6 +76,9 @@ const named: readonly TaskSeed[] = [
   { title: "Triage new feedback", status: "Backlog", priority: "Medium", tags: ["weekly"] },
 ];
 
+/** The server-set reference of the nth task. */
+const taskRef = (n: number): string => `TSK-${String(n).padStart(3, "0")}`;
+
 /** About thirty tasks: most sit in Backlog so that column scrolls; a few are unowned. */
 export function taskSeeds(): readonly TaskSeed[] {
   const filler: TaskSeed[] = Array.from({ length: 24 }, (_, i) => ({
@@ -99,15 +104,18 @@ export function tasksAdapter(): DataAdapter {
   // The memory adapter numbers records from 1 and writes before its first await, so the
   // people created here get the ids "1" to "4" at once; the tasks reference them.
   PEOPLE.forEach((name) => void db.create("person", { name }, { entityRevision: 1 }));
-  for (const t of taskSeeds()) {
+  taskSeeds().forEach((t, i) => {
     const owner = t.owner === undefined ? null : String(t.owner + 1);
-    void db.create("task", { title: t.title, status: t.status, owner, priority: t.priority, tags: [...(t.tags ?? [])], due_time: t.due_time ?? null, done: t.done ?? false }, { entityRevision: 1 });
-  }
+    void db.create("task", { ref: taskRef(i + 1), title: t.title, status: t.status, owner, priority: t.priority, tags: [...(t.tags ?? [])], due_time: t.due_time ?? null, done: t.done ?? false }, { entityRevision: 1 });
+  });
+  let nextRef = taskSeeds().length + 1;
   // Checklist children (RFC 0009 item 3): two items on the first task, one done.
   void db.create("checklist_item", { task: "1", title: "Draft the outline", done: true, order: 1 }, { entityRevision: 1 });
   void db.create("checklist_item", { task: "1", title: "Get a second read", done: false, order: 2 }, { entityRevision: 1 });
   return {
     ...db,
+    // The server sets `ref` (RFC 0010 item 8): the form never sends it.
+    create: (entity, values, meta) => db.create(entity, entity === "task" && values["ref"] === undefined ? { ...values, ref: taskRef(nextRef++) } : values, meta),
     update: async (entity, id, patch, meta) => {
       if (entity === "task" && patch["status"] === "Done") {
         const current = await db.findOne("task", id);

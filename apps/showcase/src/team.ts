@@ -126,7 +126,7 @@ export function teamAdapter(getRole: () => string): DataAdapter {
     recordPermissions: (record) => (record.entityId === "task" && record.values["status"] === "Done" && getRole() !== "owner" ? { update: false } : undefined),
   });
   PEOPLE.forEach((name) => void db.create("person", { name }, { entityRevision: 1 }));
-  for (const t of seeds) void db.create("task", { title: t.title, status: t.status, owner: String(t.owner + 1), priority: t.priority }, { entityRevision: 1 });
+  seeds.forEach((t, i) => void db.create("task", { ref: `TSK-${String(i + 1).padStart(3, "0")}`, title: t.title, status: t.status, owner: String(t.owner + 1), priority: t.priority }, { entityRevision: 1 }));
   return {
     ...db,
     update: async (entity, id, patch, meta) => {

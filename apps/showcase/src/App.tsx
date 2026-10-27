@@ -2,11 +2,11 @@ import { optionValue, validateDocument } from "@yadad/core"; // RFC 0008: card 4
 import type { ResolvedViewer, ViewerDocument, ViewerFactValue, BoardView, CalendarView, DashboardView, DataAdapter, Document, EntityDocument, FormView, Registry, TableView, ViewDocument } from "@yadad/core";
 import { addWidget, blankBoard, blankDashboard, blankEntity, blankForm, blankTable, BoardViewEditor, CalendarViewEditor, ViewerPanel, DashboardLayoutEditor, EntityFieldsEditor, FormViewEditor, idFromTitle, TableViewEditor, uniqueItemId } from "@yadad/editor";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer } from "@yadad/renderer";
-import type { DocumentSet } from "@yadad/renderer";
+import type { DocumentSet, DrillStep } from "@yadad/renderer";
 import { applyPatch, createDraftStore, createKeyValueAdapter, createMemoryAdapter, resolveViewer } from "@yadad/runtime";
 import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
 
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { bookingEntity, bookingsAdapter } from "./bookings";
 import { checklistItemEntity, personEntity, taskEntity, tasksAdapter } from "./tasks";
@@ -28,7 +28,7 @@ import { StatesPage } from "./states";
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
 
 /** Views rendered at the top level of the page, by id. */
-export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_table", "tasks_home", "team_home"];
+export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_table", "tasks_home", "drill_home", "team_home"];
 
 /** The review page's sections, in reading order: changes, history, decisions, the join. */
 const REVIEW_ROOTS: readonly string[] = ["review_changes", "review_history", "review_decisions", "review_decision_records"];
@@ -109,14 +109,21 @@ const tasksTable: TableView = {
   revision: 1,
   dataSource: "tasks",
   columns: [
+    { field: "ref" },
     { field: "title" },
     { field: "status" },
     { field: "priority" },
-    { field: "tags" },
+    { field: "tags", sortable: false },
     { field: "due_time" },
     { field: "owner" },
   ],
-  quickFilters: [{ field: "tags" }, { field: "priority" }],
+  // RFC 0010 items 4, 5 and 6: opens on active work, with its own labels and a text hint; the tags column is not sortable.
+  quickFilters: [
+    { field: "title", label: "Search", placeholder: "Search titles" },
+    { field: "status", label: "Status", default: "In progress" },
+    { field: "tags" },
+    { field: "priority" },
+  ],
   filters: [
     { id: "open", name: "Open", condition: { op: "neq", field: "status", value: "Done" } },
     { id: "high", name: "High priority", condition: { op: "eq", field: "priority", value: "High" } },
@@ -149,6 +156,67 @@ const tasksHome: DashboardView = {
   tabs: [{ id: "work", title: "Work", items: [{ id: "board", x: 0, y: 0, w: 12, h: 10, widget: "view", view: "tasks_board" }] }],
 };
 
+/**
+ * A dashboard with two drillable table widgets (RFC 0010 item 1): a task opens the tasks of the same owner,
+ * a booking opens the bookings of the same client. The host keeps both drills in the URL
+ * (see `UrlDrilledDashboard`), so a reload restores them.
+ */
+const tasksByOwner: TableView = {
+  kind: "table",
+  specVersion: 9,
+  id: "tasks_by_owner",
+  title: "Tasks",
+  entity: "task",
+  revision: 1,
+  dataSource: "tasks",
+  columns: [{ field: "ref" }, { field: "title" }, { field: "owner" }],
+  pageSize: 5,
+  sort: [{ field: "ref", dir: "asc" }],
+  rowAction: { open: "tasks_for_owner", bind: [{ field: "owner", to: "owner" }] },
+};
+const tasksForOwner: TableView = {
+  kind: "table",
+  specVersion: 9,
+  id: "tasks_for_owner",
+  title: "Tasks",
+  entity: "task",
+  revision: 1,
+  dataSource: "tasks",
+  columns: [{ field: "ref" }, { field: "title" }, { field: "status" }],
+  pageSize: 5,
+  sort: [{ field: "ref", dir: "asc" }],
+};
+const bookingsByClient: TableView = {
+  kind: "table",
+  specVersion: 9,
+  id: "bookings_by_client",
+  title: "Bookings",
+  entity: "booking",
+  revision: 1,
+  dataSource: "bookings",
+  columns: [{ field: "title" }, { field: "day" }, { field: "client" }],
+  pageSize: 5,
+  sort: [{ field: "day", dir: "asc" }],
+  rowAction: { open: "booking_history", bind: [{ field: "client", to: "client" }] },
+};
+const drillHome: DashboardView = {
+  kind: "dashboard",
+  specVersion: 9,
+  id: "drill_home",
+  title: "Drill-downs in the URL",
+  revision: 1,
+  tabs: [
+    {
+      id: "drills",
+      title: "Drill-downs",
+      items: [
+        { id: "tasks", x: 0, y: 0, w: 6, h: 8, widget: "view", view: "tasks_by_owner" },
+        { id: "bookings", x: 6, y: 0, w: 6, h: 8, widget: "view", view: "bookings_by_client" },
+      ],
+    },
+  ],
+};
+
 /** Folds the bookings and tasks demo documents into a loaded set, as a host would seed its own data sources. */
 export function withBookings(base: DocumentSet): DocumentSet {
   const entities = new Map(base.entities);
@@ -159,6 +227,7 @@ export function withBookings(base: DocumentSet): DocumentSet {
   views.set(tasksTable.id, tasksTable);
   views.set(tasksBatchForm.id, tasksBatchForm);
   views.set(tasksHome.id, tasksHome);
+  for (const view of [tasksByOwner, tasksForOwner, bookingsByClient, drillHome]) views.set(view.id, view);
   entities.set(checklistItemEntity.id, checklistItemEntity);
   entities.set(bookingEntity.id, bookingEntity);
   views.set(bookingsView.id, bookingsView);
@@ -507,6 +576,7 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
   const view = documents.views.get(id);
   if (!view) return null;
   const drafts = draftStore ? { drafts: { store: draftStore } } : {};
+  if (view.kind === "dashboard" && view.id === drillHome.id) return <UrlDrilledDashboard dashboard={view} documents={documents} registry={registry} dataSources={dataSources} viewer={viewer} />;
   if (view.kind === "dashboard") return <DashboardRenderer dashboard={view} documents={documents} registry={registry} dataSources={dataSources} viewer={viewer} {...drafts} />;
   const entity = documents.entities.get(view.entity);
   if (!entity) return null;
@@ -517,6 +587,52 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
   ) : (
     <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} documents={documents} viewer={viewer} />
   );
+}
+
+/** The URL parameter that holds a dashboard's drills: `?drills.<dashboard id>=<json>`. */
+const drillParam = (dashboardId: string): string => `drills.${dashboardId}`;
+
+/** Reads the drills from the URL; anything that is not the expected shape is ignored (a hand-edited URL). */
+function readDrills(dashboardId: string): Readonly<Record<string, readonly DrillStep[]>> {
+  try {
+    const raw = new URLSearchParams(window.location.search).get(drillParam(dashboardId));
+    const parsed: unknown = raw === null ? {} : JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    const out: Record<string, readonly DrillStep[]> = {};
+    for (const [item, steps] of Object.entries(parsed)) {
+      if (!Array.isArray(steps)) continue;
+      const valid = steps.every((x): x is DrillStep => typeof x === "object" && x !== null && typeof (x as DrillStep).viewId === "string" && typeof (x as DrillStep).bindings === "object" && (x as DrillStep).bindings !== null);
+      if (valid) out[item] = steps;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * A dashboard whose table widgets' drill-downs live in the URL (RFC 0010 item 1): each drill is pushed
+ * as a history entry, a reload restores them, and the browser's Back and Forward move between them.
+ */
+function UrlDrilledDashboard({ dashboard, documents, registry, dataSources, viewer }: { readonly dashboard: DashboardView; readonly documents: DocumentSet; readonly registry: Registry<ReactNode>; readonly dataSources: ReadonlyMap<string, DataAdapter>; readonly viewer: ResolvedViewer }): ReactNode {
+  const [drills, setDrills] = useState(() => readDrills(dashboard.id));
+  useEffect(() => {
+    const onPop = () => setDrills(readDrills(dashboard.id));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [dashboard.id]);
+  const change = (item: string, drill: readonly DrillStep[]) => {
+    const next = { ...drills, [item]: drill };
+    for (const key of Object.keys(next)) if ((next[key]?.length ?? 0) === 0) delete next[key];
+    setDrills(next);
+    try {
+      const url = new URL(window.location.href);
+      if (Object.keys(next).length === 0) url.searchParams.delete(drillParam(dashboard.id));
+      else url.searchParams.set(drillParam(dashboard.id), JSON.stringify(next));
+      window.history.pushState(null, "", url);
+    } catch { /* no history in this environment: the drills still work, they are just not in the URL */ }
+  };
+  return <DashboardRenderer dashboard={dashboard} documents={documents} registry={registry} dataSources={dataSources} viewer={viewer} drills={drills} onDrillChange={change} />;
 }
 
 /**
