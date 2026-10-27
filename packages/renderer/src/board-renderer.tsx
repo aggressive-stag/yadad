@@ -377,7 +377,9 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   if (setupErrors.length > 0 || !Board) return <ErrorSummary errors={setupErrors} />;
 
   const cardsLoading = cards === undefined;
-  const targetsLoading = isReference && (!targetEntity || !targetState || targetState.status === "loading");
+  // Busy only while a target fetch this board starts is in flight: the default records grouping
+  // fetches nothing, and an unwired target never starts a fetch (it warns instead).
+  const targetsLoading = fromOptions && targetEntity !== undefined && (!targetState || targetState.status === "loading");
   const loading = cardsLoading || targetsLoading;
 
   const recordTitle = (record: DataRecord): string => {

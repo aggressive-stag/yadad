@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ForbiddenError, RecordValidationError } from "@yadad/core";
 import type { BoardView, DashboardView, DataAdapter, EntityDocument, Field, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
-import { mockRegistry, waitForRows } from "@yadad/testing";
+import { mockRegistry, waitForRows, waitForSettled } from "@yadad/testing";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { BoardRenderer } from "./board-renderer.js";
@@ -104,7 +104,7 @@ async function open(options: Options = {}) {
     ...(options.reloadKey !== undefined ? { reloadKey: options.reloadKey } : {}),
   };
   const ui = render(<BoardRenderer {...props} />);
-  await screen.findByText("Pay rent"); // not waitForRows: a reference grouping leaves the board aria-busy (see report)
+  await waitForRows(document.body);
   return { ...seeded, rerender: (next: Partial<Options>) => ui.rerender(<BoardRenderer {...props} {...next} />) };
 }
 
@@ -165,11 +165,30 @@ describe("groupings", () => {
     await db.create("task", { title: "Pay rent", assignee: ada.id }, { entityRevision: 1 });
     const find = vi.spyOn(db, "find");
     render(<BoardRenderer entity={entity} view={{ ...board, groupBy: [{ field: "assignee" }] }} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} />);
-    await screen.findByText("Pay rent");
+    await waitForSettled(document.body);
     const headings = await screen.findAllByRole("heading", { level: 4 });
     expect(headings.map((h) => h.textContent)).toEqual(["No Assignee (0)", "Ada (1)"]);
     // only the card find ran — no query against the target entity (the cap and the latency both stand down)
     expect(find.mock.calls.filter(([e]) => e === "person")).toHaveLength(0);
+  });
+
+  test("a reference grouping settles: not aria-busy with the default grouping, an unwired target or a loaded target", async () => {
+    const db = createMemoryAdapter();
+    const ada = await db.create("person", { name: "Ada" }, { entityRevision: 1 });
+    await db.create("task", { title: "Pay rent", assignee: ada.id }, { entityRevision: 1 });
+    const grouped = { ...board, groupBy: [{ field: "assignee" }] };
+    // wired target, options mode: busy until the target fetch lands, then settled
+    const wired = render(<BoardRenderer entity={entity} view={{ ...grouped, columnsFrom: "options" }} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} />);
+    await waitForSettled(document.body);
+    expect(screen.getByText("Pay rent")).toBeTruthy();
+    expect(wired.container.querySelector("[aria-busy='true']")).toBeNull();
+    wired.unmount();
+    // unwired target: warns as before, but is not busy forever
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const unwired = render(<BoardRenderer entity={entity} view={{ ...grouped, columnsFrom: "options" }} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={new Map()} />);
+    await waitForSettled(document.body);
+    expect(unwired.container.querySelector("[aria-busy='true']")).toBeNull();
+    warn.mockRestore();
   });
 
   test("a value that matches no column goes to a non-droppable Other column", async () => {
@@ -512,7 +531,8 @@ describe("states", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Could not load records: The server responded with status 503.");
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText("Pay rent")).toBeTruthy();
+    await waitForRows(document.body);
+    expect(screen.getByText("Pay rent")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -766,7 +786,8 @@ describe("in a dashboard", () => {
     const { db } = await seed();
     render(<DashboardRenderer dashboard={dashboard} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
     expect(await screen.findByRole("group", { name: "Tasks" })).toBeTruthy();
-    expect(await screen.findByText("Pay rent")).toBeTruthy();
+    await waitForSettled(document.body);
+    expect(screen.getByText("Pay rent")).toBeTruthy();
   });
 
   test("moving a card refreshes the count widget beside it", async () => {
