@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { TOKEN_NAMES, cssVar, darkTheme, lightTheme, themeToCss } from "./tokens.js";
+import { type TokenName, TOKEN_NAMES, cssVar, darkTheme, lightTheme, themeToCss } from "./tokens.js";
 
 describe("themes", () => {
   test.each([
@@ -42,4 +42,27 @@ test("themeToCss emits every token in the yadad.tokens layer", () => {
   expect(css.startsWith("@layer yadad.tokens {\n  .app {\n")).toBe(true);
   for (const name of TOKEN_NAMES) expect(css).toContain(`--yadad-${name}: ${lightTheme[name]};`);
   expect(cssVar("color-accent")).toBe("var(--yadad-color-accent)");
+});
+
+describe("category colours", () => {
+  // The hue names and slots come from core's COLOR_PALETTE. Theme imports
+  // nothing, so the hexes are duplicated on purpose and tested here.
+  const hues = ["blue", "red", "orange", "yellow", "green", "teal", "purple", "pink"];
+  const palette = ["#464ea9", "#d13438", "#f7630c", "#ffb900", "#107c10", "#038387", "#8764b8", "#c239b3"];
+  // Light values that differ from the palette hex: yellow is darkened to reach 3:1 on white.
+  const adjusted: Record<string, string> = { yellow: "#bc8900" };
+  const slot = (i: number) => `color-category-${i}` as TokenName;
+
+  test.each(hues.map((hue, i) => [hue, i] as const))("light %s matches the palette", (hue, i) => {
+    expect(lightTheme[slot(i)]).toBe(adjusted[hue] ?? palette[i]);
+  });
+
+  test.each([
+    ["light", lightTheme],
+    ["dark", darkTheme],
+  ])("%s: all eight reach 3:1 against the background", (_name, t) => {
+    for (let i = 0; i < 8; i++) {
+      expect(contrast(t[slot(i)], t["color-background"])).toBeGreaterThanOrEqual(3);
+    }
+  });
 });

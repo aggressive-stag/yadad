@@ -31,6 +31,7 @@ const stop = applySystemTheme();
 | Group | Names |
 | --- | --- |
 | Color | `color-text`, `color-text-muted`, `color-background`, `color-surface`, `color-border`, `color-accent`, `color-danger` |
+| Category colours | `color-category-0` … `color-category-7`: blue, red, orange, yellow, green, teal, purple, pink (the slot is the index, matching `COLOR_PALETTE` in `@yadad/core`). Each is at least 3:1 against its theme background. |
 | Space | `space-1`, `space-2`, `space-3`, `space-4` |
 | Shape | `radius-sm`, `radius-md`, `focus-ring-width` |
 | Type | `font-family`, `font-size-sm`, `font-size-md` |
