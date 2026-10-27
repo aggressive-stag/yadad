@@ -126,6 +126,28 @@ The renderer owns these attributes; scope a selector with them instead of walkin
 - `data-yadad-table-view="<view id>"` wraps a table view. Inside it, every quick-filter control (every kind, including the two ends of a date or number range) sits in a wrapper with `data-yadad-filter-field="<field id>"`, so `[data-yadad-table-view="sessions"] [data-yadad-filter-field="tags"] input` picks one table's tags filter even when a dashboard renders another.
 - `data-yadad-form="<view id>"` is on a form's `<form>`. A batch composer also stamps its view id as the value of `data-yadad-batch-controls`, `data-yadad-batch-count` and `data-yadad-batch-status` (the attribute names are unchanged, so bare `[data-yadad-batch-count]` selectors still match). When the same form renders twice, scope by the host wrapper, for example `[data-yadad-add-form="add_task"] [data-yadad-batch-controls]`.
 
+## Telling instances apart
+
+A page can render one view twice: a batch composer on a dashboard widget and again in a table's add panel, or two tables that each have a tags quick filter. The renderer does not number the copies. Scope a selector with the nearest ancestor hook instead:
+
+- `data-yadad-dashboard="<dashboard id>"` is the dashboard root; `data-yadad-grid-item="<item id>"` wraps one widget in its grid.
+- `data-yadad-table-view="<view id>"` wraps a table; `data-yadad-add-form="<form view id>"` wraps the add panel's form inside it.
+- `data-yadad-form="<view id>"` is on a form's `<form>`.
+- `data-yadad-filter-field="<field id>"` wraps one quick-filter control inside a table.
+- `data-yadad-action-input="<field id>"` wraps one input in a record action's dialog.
+
+Batch composer in the add panel of one table, not the dashboard widget's copy:
+
+```css
+[data-yadad-add-form="add_task"] [data-yadad-batch-controls]
+```
+
+Tags quick filter of one table, when another table or a dashboard also has one:
+
+```css
+[data-yadad-table-view="sessions"] [data-yadad-filter-field="tags"] input
+```
+
 ## Saved filters as chips (RFC 0009)
 
 A table view's `filters` entries render as a chip row beside the quick filters. The renderer holds no chip state — the host owns which chip is lit and persists that choice:

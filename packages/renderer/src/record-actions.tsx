@@ -232,10 +232,12 @@ export function useRecordActions(options: {
           const errorId = `${inputId}-errors`;
           return (
             <FieldFrame key={field.id} inputId={inputId} errorId={errorId} label={field.label} required={field.required === true} errors={errors}>
-              {renderInput(registry, field, open.values[field.id], { inputId, invalid: errors.length > 0, ...(errors.length > 0 ? { describedBy: errorId } : {}) }, (v) =>
+              <div data-yadad-action-input={field.id}>
+                {renderInput(registry, field, open.values[field.id], { inputId, invalid: errors.length > 0, ...(errors.length > 0 ? { describedBy: errorId } : {}) }, (v) =>
                 setDialog((d) => (d === undefined ? d : { ...d, values: { ...d.values, [field.id]: v ?? null } })),
                 noReferences,
               )}
+              </div>
             </FieldFrame>
           );
         })}

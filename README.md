@@ -69,6 +69,8 @@ export function App() {
 
 Documents that come from a database or a user are untrusted JSON: run them through `validateDocument` from `@yadad/core` first. Emit the theme's CSS variables once, e.g. into a `<style>` tag, with `themeToCss(lightTheme)` from `@yadad/theme`. Swap `createMemoryAdapter()` for `createHttpAdapter({ baseUrl: "/api/records" })` to talk to a backend that speaks the [records protocol](docs/records-protocol.md). This exact sample is compiled and rendered by `apps/showcase/src/readme-quickstart-sample.test.tsx` (with `mockRegistry` standing in for the reference registry) — if the renderers' props change, that test fails and this sample is fixed with it.
 
+A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
+
 ## Check every state of your views
 
 A screen is more than the one state you looked at. `viewStates` in `@yadad/runtime` lists the states a view can be in, read from its conditions (a field hidden by `visibleWhen`, no records, many records, a locked record, each role), and `checkViewStates` in `@yadad/testing/state-checks` renders every one with your renderers and reports the ones that throw, log errors, show a field that should be hidden, lack an accessible name or offer an edit the viewer may not make. The editor package has a `StatesPreview` that shows the same states next to a view as you edit it. See [`@yadad/testing`](testing) for a test you can paste.

@@ -229,6 +229,20 @@ describe("the action dialog (RFC 0007)", () => {
     await waitFor(() => expect(acts).toBe(1));
   });
 
+  test("each dialog input sits in a wrapper that carries its field id", async () => {
+    const limited: EntityDocument = {
+      ...entity,
+      actions: [{ id: "note", label: "Note", confirm: { message: "Add a note?", confirmLabel: "Save note" }, input: [{ id: "reason", type: "text", label: "Reason" }] }],
+    };
+    const db = await seeded({ actions: { "doc.note": () => ({ values: { tag: "noted" } }) } });
+    render(<TableRenderer entity={limited} view={{ ...view, recordActions: ["note"] }} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-note']")).not.toBeNull());
+    press("note");
+    const wrapper = dialog()?.querySelector("[data-yadad-action-input='reason']");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.contains(reasonInput())).toBe(true);
+  });
+
   test("a 400 keeps the dialog open and puts the /input/<id> issue on its field", async () => {
     const db = await seeded({
       actions: {
