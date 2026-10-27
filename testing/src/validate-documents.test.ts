@@ -55,6 +55,15 @@ const expected: Record<string, Picked[]> = {
   "sort-on-unsortable-column.json": [
     { path: "/sort/1/field", code: "invalid-value", document: "thing_table", allowed: undefined },
   ],
+  "readonly-form-item.json": [
+    { path: "/sections/0/items/0/field", code: "invalid-value", document: "thing_form", allowed: undefined },
+  ],
+  "readonly-editable-column.json": [
+    { path: "/columns/0/field", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
+  "readonly-not-true.json": [
+    { path: "/fields/0/readOnly", code: "invalid-value", document: "thing", allowed: undefined },
+  ],
   "sort-on-unsortable-view.json": [
     { path: "/sort/0/field", code: "invalid-value", document: "thing_table", allowed: undefined },
   ],

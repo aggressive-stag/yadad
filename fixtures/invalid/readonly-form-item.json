@@ -1,0 +1,43 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "ref",
+        "type": "text",
+        "label": "Ref",
+        "required": true,
+        "readOnly": true
+      },
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      }
+    ]
+  },
+  {
+    "kind": "form",
+    "specVersion": 0,
+    "id": "thing_form",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "ref"
+          },
+          {
+            "field": "name"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -33,6 +33,8 @@ interface FieldBase {
   readonly id: string;
   readonly label: string;
   readonly required?: boolean;
+  /** The server sets this field (an id, a created-at). Shown in tables, never a form item, editable column or inline edit; stored records still carry it, and a write does not send it (RFC 0010 item 8). Only `true`. */
+  readonly readOnly?: true;
 }
 
 export interface TextField extends FieldBase {

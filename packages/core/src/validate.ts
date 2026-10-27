@@ -209,10 +209,13 @@ function validateField(errors: Errors, field: JsonObject, path: Path): void {
     return;
   }
   const keys = FIELD_KEYS[type];
-  checkKeys(errors, field, path, ["id", "type", "label", ...keys.required], ["required", ...keys.optional]);
+  checkKeys(errors, field, path, ["id", "type", "label", ...keys.required], ["required", "readOnly", ...keys.optional]);
   checkId(errors, field, path, "id");
   checkNonEmptyString(errors, field, path, "label");
   checkBoolean(errors, field, path, "required");
+  if (field["readOnly"] !== undefined && field["readOnly"] !== true) {
+    errors.add([...path, "readOnly"], "invalid-value", `"readOnly" only accepts true (got ${JSON.stringify(field["readOnly"])}).`, 'Leave "readOnly" out for a field the viewer can fill, or use true for one the server sets.');
+  }
 
   switch (type) {
     case "text": // RFC 0008 item 13 (a+c): card 47g — display hints; storage stays a plain string
@@ -1496,6 +1499,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
       (section.items ?? []).forEach((item, j) => {
         const itemPath: Path = ["sections", i, "items", j];
         checkField(item.field, [...itemPath, "field"]);
+        checkNotReadOnly(errors, view.id, entity, item.field, [...itemPath, "field"], "a form item");
         checkConditionFields(item.visibleWhen, [...itemPath, "visibleWhen"], checkField);
         checkConditionFields(item.requiredWhen, [...itemPath, "requiredWhen"], checkField);
         checkDates(item.visibleWhen, [...itemPath, "visibleWhen"]);
@@ -1504,7 +1508,10 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     });
     return;
   }
-  view.columns.forEach((column, i) => checkField(column.field, ["columns", i, "field"]));
+  view.columns.forEach((column, i) => {
+    checkField(column.field, ["columns", i, "field"]);
+    if (column.editable === true) checkNotReadOnly(errors, view.id, entity, column.field, ["columns", i, "field"], "an editable column (an inline edit)");
+  });
   view.sort?.forEach((key, i) => {
     checkField(key.field, ["sort", i, "field"]);
     checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
@@ -2109,6 +2116,19 @@ function checkQuickFilterExtras(errors: DocumentError[], document: string, entit
 }
 
 /** A tags field holds a list (RFC 0008 item 15): no order, no partition. */
+/** A `readOnly` field (RFC 0010 item 8) is set by the server: a form cannot ask for it and a table cannot edit it in place. */
+function checkNotReadOnly(errors: DocumentError[], document: string, entity: EntityDocument, fieldId: string, path: Path, what: string): void {
+  const field = entity.fields.find((f) => f.id === fieldId);
+  if (field?.readOnly !== true) return;
+  errors.push({
+    path: jsonPointer(path),
+    code: "invalid-value",
+    message: `Field "${fieldId}" is read-only, so it cannot be ${what}.`,
+    hint: 'The server sets a "readOnly" field. Show it in a table column without "editable", or remove "readOnly" from the entity field.',
+    document,
+  });
+}
+
 function checkNotTags(errors: DocumentError[], document: string, entity: EntityDocument, fieldId: string, path: Path, what: string): void {
   const field = entity.fields.find((f) => f.id === fieldId);
   if (field?.type !== "tags") return;

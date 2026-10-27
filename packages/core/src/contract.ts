@@ -211,7 +211,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
       { key: "id", required: true, description: "The entity's id." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
-      { key: "fields", required: true, description: "The fields, an array of { id, type, label, ... }." },
+      { key: "fields", required: true, description: "The fields, an array of { id, type, label, required?, readOnly?, ... }. readOnly (RFC 0010) accepts only true: the server sets the field (an id, a created-at). It is shown in tables, conditions and bindings, but refused as a form item, an editable column or an inline edit; a write does not send it, and recordJsonSchema(entity, { mode: \"write\" }) leaves it out. required together with readOnly is valid: stored records carry it, but it is never a form requirement." },
       {
         key: "actions",
         required: false,

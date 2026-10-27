@@ -287,3 +287,20 @@ describe("recordJsonSchema parity with validateRecord", () => {
     expect(recordJsonSchema(entityOf(...fields)).required).toEqual(["a", "c"]);
   });
 });
+
+describe("recordJsonSchema write mode (RFC 0010 item 8)", () => {
+  const entity = entityOf({ id: "ref", type: "text", label: "Ref", required: true, readOnly: true }, { id: "name", type: "text", label: "Name", required: true });
+
+  test("stored mode requires and annotates the read-only field", () => {
+    const schema = recordJsonSchema(entity);
+    expect(schema.required).toEqual(["ref", "name"]);
+    expect(schema.properties["ref"]?.readOnly).toBe(true);
+  });
+
+  test("write mode leaves it out, so a write that sends it is rejected", () => {
+    const validate = newAjv().compile(recordJsonSchema(entity, { mode: "write" }));
+    expect(validate({ name: "a" })).toBe(true);
+    expect(validate({ ref: "x", name: "a" })).toBe(false);
+    expect(recordJsonSchema(entity, { mode: "write" }).required).toEqual(["name"]);
+  });
+});

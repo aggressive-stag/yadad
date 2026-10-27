@@ -1,0 +1,39 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "ref",
+        "type": "text",
+        "label": "Ref",
+        "required": true,
+        "readOnly": true
+      },
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 0,
+    "id": "thing_table",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "ref",
+        "editable": true
+      },
+      {
+        "field": "name"
+      }
+    ]
+  }
+]

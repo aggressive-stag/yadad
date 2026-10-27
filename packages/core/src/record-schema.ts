@@ -15,6 +15,8 @@ export interface RecordFieldSchema {
   readonly minItems?: number;
   readonly uniqueItems?: boolean;
   readonly description?: string;
+  /** JSON Schema annotation: the server sets this field (stored mode only). */
+  readonly readOnly?: true;
   readonly enum?: readonly (string | null)[];
   readonly const?: true;
   readonly minimum?: number;
@@ -39,6 +41,16 @@ export interface RecordSchema {
   readonly additionalProperties: false;
 }
 
+export interface RecordSchemaOptions {
+  /**
+   * `"stored"` (default) describes a record as the server holds it: every `required` field is required,
+   * and a `readOnly` field carries the JSON Schema annotation `readOnly: true`.
+   * `"write"` describes a create or update body (RFC 0010 item 8): a `readOnly` field is left out of
+   * `properties` and `required`, so `additionalProperties: false` rejects a write that sends it.
+   */
+  readonly mode?: "stored" | "write";
+}
+
 /**
  * Builds the JSON Schema for a record's `values` under `entity`.
  *
@@ -50,17 +62,19 @@ export interface RecordSchema {
  * is the stricter or the plainer of the two and the field's `description`
  * says so. The known differences are listed in docs/records-protocol.md.
  */
-export function recordJsonSchema(entity: EntityDocument): RecordSchema {
+export function recordJsonSchema(entity: EntityDocument, options: RecordSchemaOptions = {}): RecordSchema {
+  const write = options.mode === "write";
   const properties: Record<string, RecordFieldSchema> = {};
   const required: string[] = [];
   for (const field of entity.fields) {
-    properties[field.id] = fieldSchema(field);
+    if (write && field.readOnly === true) continue;
+    properties[field.id] = field.readOnly === true ? { ...fieldSchema(field), readOnly: true } : fieldSchema(field);
     if (field.required === true) required.push(field.id);
   }
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: `urn:yadad:record:${entity.id}:${entity.revision}`,
-    title: `Record values of entity "${entity.id}" (revision ${entity.revision})`,
+    $id: `urn:yadad:record:${entity.id}:${entity.revision}${write ? ":write" : ""}`,
+    title: `Record values of entity "${entity.id}" (revision ${entity.revision})${write ? ", write body" : ""}`,
     type: "object",
     properties,
     required,

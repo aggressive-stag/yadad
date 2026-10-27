@@ -6,6 +6,13 @@
     "revision": 1,
     "fields": [
       {
+        "id": "id",
+        "type": "text",
+        "label": "Id",
+        "required": true,
+        "readOnly": true
+      },
+      {
         "id": "title",
         "type": "text",
         "label": "Title",
@@ -27,6 +34,9 @@
     "revision": 1,
     "dataSource": "default",
     "columns": [
+      {
+        "field": "id"
+      },
       {
         "field": "title"
       },
