@@ -193,6 +193,8 @@ export interface ActionConfirm {
   readonly confirmLabel?: string;
   /** "danger" marks the confirm button as destructive. Defaults to "neutral". */
   readonly tone?: ActionConfirmTone;
+  /** A field id of the action's entity. The dialog shows that field's display value as a subject line under the message (RFC 0011). Any field type, including read-only ones. */
+  readonly subjectField?: string;
 }
 
 /**

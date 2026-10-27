@@ -412,6 +412,7 @@ const expected: Record<string, Picked[]> = {
   ],
   "action-visible-when-no-viewer.json": [{ path: "/actions/0/visibleWhen/fact", code: "unknown-reference", document: "e", allowed: [] }],
   "action-visible-when-unknown-fact.json": [{ path: "/actions/0/visibleWhen/fact", code: "unknown-reference", document: "e", allowed: ["beta"] }],
+  "action-confirm-subject-unknown-field.json": [{ path: "/actions/0/confirm/subjectField", code: "unknown-reference", document: "e", allowed: ["name","state","at"] }],
   "action-visible-when-unknown-field.json": [{ path: "/actions/0/visibleWhen/conditions/1/field", code: "unknown-reference", document: "e", allowed: ["name","state","at"] }],
   "record-actions-bad-entries.json": [
     { path: "/recordActions/1", code: "type", document: "t" },

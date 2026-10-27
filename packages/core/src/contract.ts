@@ -215,7 +215,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       {
         key: "actions",
         required: false,
-        description: `Commands a record can run (RFC 0007): an array of ${ACTIONS_MAX} at most, each { id, label, confirm?, input?, visibleWhen? }. confirm is { message, title?, confirmLabel?, tone?: "neutral" | "danger" }. input is 1 to ${ACTION_INPUT_MAX} fields of type ${ACTION_INPUT_FIELD_TYPES.join(", ")} (never reference), each id once. visibleWhen takes record and viewerIn leaves: the action is offered on a record only while it holds. An action with neither confirm nor input runs on press; one with input always asks in a dialog. Views offer actions with recordActions; the server runs and authorises them.`,
+        description: `Commands a record can run (RFC 0007): an array of ${ACTIONS_MAX} at most, each { id, label, confirm?, input?, visibleWhen? }. confirm is { message, title?, confirmLabel?, tone?: "neutral" | "danger", subjectField? }; subjectField is a field id of the entity (any type, read-only allowed), and the dialog shows that field's display value as a subject line under the message, the way a table cell shows it. input is 1 to ${ACTION_INPUT_MAX} fields of type ${ACTION_INPUT_FIELD_TYPES.join(", ")} (never reference), each id once. visibleWhen takes record and viewerIn leaves: the action is offered on a record only while it holds. An action with neither confirm nor input runs on press; one with input always asks in a dialog. Views offer actions with recordActions; the server runs and authorises them.`,
       },
     ],
   },

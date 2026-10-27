@@ -23,6 +23,16 @@
         "type": "text",
         "label": "Body"
       }
+    ],
+    "actions": [
+      {
+        "id": "archive",
+        "label": "Archive",
+        "confirm": {
+          "message": "Archive this note?",
+          "subjectField": "title"
+        }
+      }
     ]
   },
   {

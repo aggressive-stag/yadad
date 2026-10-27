@@ -160,8 +160,9 @@ function validateActionConfirm(errors: Errors, confirm: unknown, path: Path): vo
     errors.add(path, "type", '"confirm" must be an object.', 'Use { "message": "Apply this decision?" }.');
     return;
   }
-  checkKeys(errors, confirm, path, ["message"], ["title", "confirmLabel", "tone"]);
+  checkKeys(errors, confirm, path, ["message"], ["title", "confirmLabel", "tone", "subjectField"]);
   checkNonEmptyString(errors, confirm, path, "message");
+  checkNonEmptyString(errors, confirm, path, "subjectField");
   checkNonEmptyString(errors, confirm, path, "title");
   checkNonEmptyString(errors, confirm, path, "confirmLabel");
   const tone = confirm["tone"];
@@ -2009,6 +2010,10 @@ function checkRecordActionRefs(errors: DocumentError[], view: TableView | Calend
 function checkActionConditions(errors: DocumentError[], entity: EntityDocument): void {
   const fieldIds = entityFieldIds(entity);
   entity.actions?.forEach((action, i) => {
+    const subject = action.confirm?.subjectField;
+    if (subject !== undefined && !fieldIds.includes(subject)) {
+      errors.push(refError(entity.id, ["actions", i, "confirm", "subjectField"], `Field "${subject}" is not on entity "${entity.id}".`, `Use a field id on "${entity.id}".`, fieldIds));
+    }
     const base: Path = ["actions", i, "visibleWhen"];
     checkConditionFields(action.visibleWhen, base, (fieldId, path) => {
       if (!fieldIds.includes(fieldId)) {
