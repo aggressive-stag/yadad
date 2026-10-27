@@ -103,6 +103,8 @@ A select field's `options.values` is part of the document and is validated with 
 
 Documents stamped older still validate; run `migrate()` to restamp them to the current `specVersion`. Each step so far only stamps the new version, so a document keeps its content.
 
+A purely additive change (a new optional key, value or field type) does not bump `specVersion`. A document that uses a newer optional key therefore needs the core version that introduced it; the changeset or `CHANGELOG.md` for that release names it.
+
 ## Rules worth knowing
 
 - `specVersion` is the document format (currently 10); `revision` counts user edits to a document and is data.

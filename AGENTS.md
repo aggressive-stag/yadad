@@ -29,7 +29,7 @@ Read order: `ARCHITECTURE.md`, then this file, then your task card. (A maintaine
 5. **No escape hatches.** No string expressions, no free-form props bags, no index signatures, no `custom` field types, no `any` in `core` exports.
 6. **Small, focused commits.** One logical step per commit; add a changeset when a published package's behavior changes.
 7. **No new packages or new runtime dependencies** without an RFC. Test-only dev dependencies (DOM environments, testing libraries, axe) may be added directly; name them in the commit body (DECISIONS.md D16).
-8. **Versioning:** any change to `core` schema files bumps `specVersion` and adds a `migrate()` step plus a before/after fixture pair. User document `revision`s are data, not code.
+8. **Versioning:** a change that needs a migration (a rename, a removal, a changed meaning, or a new required key) bumps `specVersion` and adds a real (non-identity) `migrate()` step plus a before/after fixture pair. A purely additive change (a new optional key, value or field type) does **not** bump `specVersion`: it lands with valid and invalid fixtures, a `describeContract` entry, and a changeset that names the core version that introduced it. User document `revision`s are data, not code.
 9. **New field type** = JSON Schema entry + registry contract entry + valid and invalid fixtures + render test against the mock registry.
 10. **Copied third-party code never lives in this repo.** It belongs in the components repo.
 

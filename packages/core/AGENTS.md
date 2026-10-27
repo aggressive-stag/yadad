@@ -7,5 +7,5 @@ Package rules on top of the root `AGENTS.md`. **This package is the contract.** 
 - **Shapes:** discriminated unions everywhere (`kind`, `type`, `op`, `widget`). No index signatures, no `additionalProperties: true`, no `custom` field type, no string expressions, no `any` in exports.
 - **Schemas:** one source of truth. Author types once and generate the JSON Schemas; commit the generated `*.schema.json` and never hand-edit them.
 - **Errors:** `{ path, code, message, hint }`, where `path` is a JSON Pointer and the message is readable by a person and actionable by an agent.
-- **Changes:** only when your task card or an accepted RFC in `rfcs/` calls for them. There is no separate review step: land and release them like any other change, with a changeset. Schema changes also bump `specVersion` and add a `migrate()` step with a before/after fixture pair.
+- **Changes:** only when your task card or an accepted RFC in `rfcs/` calls for them. There is no separate review step: land and release them like any other change, with a changeset. A schema change that needs a migration (a rename, a removal, a changed meaning, a new required key) also bumps `specVersion` and adds a real `migrate()` step with a before/after fixture pair; a purely additive change does not bump (root `AGENTS.md` rule 8).
 - **Commit scope:** `core`.
