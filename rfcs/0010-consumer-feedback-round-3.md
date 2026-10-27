@@ -258,7 +258,7 @@ Landed on `main` in two lanes and released as one train.
 - Item 7, `Page.notice`: 56470ba, renderer in fad57e0.
 - Item 8, `readOnly`: ba3a7bd.
 - Item 9, `initialRows`: 857c23d (`BATCH_ROW_CAP = 50`).
-- Item 10, text quick filters debounce at 300 ms: 38eff32. The tags blur-commit is not built: the input slot has no blur or draft prop, which needs a core registry change.
+- Item 10, text quick filters debounce at 300 ms: 38eff32. The tags blur-commit is left to the components set. The tags input owns its draft, and on blur it commits the draft through the existing `onChange`, the same path a chip add takes. No slot prop and no engine change is needed.
 - Item 11, `maxLength` in the record JSON Schema: 547299f.
 - Item 12, palette and calendar legend: 616b2fb (`COLOR_PALETTE`), fad57e0 (legend colour, datetime `min`/`max`), 49f edd8ac3 (theme category tokens).
 - `applySystemTheme`: df86e16.
