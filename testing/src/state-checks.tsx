@@ -414,16 +414,19 @@ function noticeChecks(container: HTMLElement, state: SourceViewState, adapter: S
 
 /**
  * RFC 0010 item 4: the `quick` axis. In "applied" every defaulted text or select filter control shows its default;
- * in "cleared" the check clears each one the way a viewer would, and the control must then be empty.
+ * in "cleared" the check clears each one the way a viewer would, and the control must then be empty. A `reference` filter
+ * is a select over the target entity's records (RFC 0011 item 3) and is checked the same way.
  */
 async function quickDefaultChecks(container: HTMLElement, entity: EntityDocument, view: ViewDocument, state: SourceViewState, options: CheckViewStatesOptions): Promise<StateProblem[]> {
   if (view.kind !== "table" || state.render.kind !== "table" || state.render.quickDefaults === undefined) return [];
   const out: StateProblem[] = [];
   for (const q of view.quickFilters ?? []) {
     const field = entity.fields.find((f) => f.id === q.field);
-    if (!field || typeof q.default !== "string" || (field.type !== "text" && field.type !== "select")) continue;
+    if (!field || typeof q.default !== "string" || (field.type !== "text" && field.type !== "select" && field.type !== "reference")) continue;
     const control = container.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-yadad-filter-field="${q.field}"] input, [data-yadad-filter-field="${q.field}"] select`);
     if (!control) continue; // no control for this viewer: the visibility check owns that
+    // A reference picker lists the target's records through the data source: while that load is pending or has failed there is no option to show.
+    if (field.type === "reference" && (state.source === "loading" || state.source === "error")) continue;
     if (state.render.quickDefaults === "applied") {
       if (control.value !== q.default) out.push({ check: "quick-default", message: `quick filter "${q.field}" has default "${q.default}" but its control shows "${control.value}"` });
       continue;

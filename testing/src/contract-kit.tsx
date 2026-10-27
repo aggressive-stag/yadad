@@ -369,7 +369,7 @@ export interface ActionScenarioOptions {
   readonly registry: Registry<ReactNode>;
 }
 
-/** The kit's action documents: Publish runs on press; Archive confirms (danger) and asks for a required Reason. */
+/** The kit's action documents: Publish runs on press; Archive confirms (danger), names its record by `tag` and asks for a required Reason. */
 const SCENARIO_ENTITY: EntityDocument = {
   kind: "entity",
   specVersion: SPEC_VERSION,
@@ -381,7 +381,7 @@ const SCENARIO_ENTITY: EntityDocument = {
     {
       id: "archive",
       label: "Archive",
-      confirm: { title: "Archive this", message: "Archive this record?", confirmLabel: "Reject", tone: "danger" },
+      confirm: { title: "Archive this", message: "Archive this record?", confirmLabel: "Reject", tone: "danger", subjectField: "tag" },
       input: [{ id: "reason", type: "text", label: "Reason", required: true }],
     },
   ],
@@ -509,6 +509,34 @@ export function actionScenarioChecks(options: ActionScenarioOptions): readonly C
         fireEvent.click(cancel);
         if (dialog() !== null) problems.push("Cancel must close the dialog.");
         if (calls.length > 0) problems.push("Cancel must not run the action.");
+      });
+    }),
+
+    namedCheck("scenarios: a confirm with subjectField names the record it acts on (RFC 0011 item 2)", async (problems) => {
+      await runScenario({}, async ({ rowFor, buttonIn, dialog }) => {
+        for (const [tag, other] of [["first", "second"], ["second", "first"]] as const) {
+          const row = rowFor(tag);
+          const archive = row ? buttonIn(row, "Archive") : undefined;
+          if (!archive) {
+            problems.push('The row must offer a button named "Archive".');
+            return;
+          }
+          fireEvent.click(archive);
+          const open = dialog();
+          if (!open) {
+            problems.push("The Archive action must open a dialog.");
+            return;
+          }
+          const subject = open.querySelector("[data-yadad-confirm-subject]");
+          if (!subject) problems.push("A confirm with subjectField must show the record's subject line (data-yadad-confirm-subject) in the dialog.");
+          else if (text(subject).trim() !== tag) problems.push(`The subject line must show the record's field as a table cell does ("${tag}"), got "${text(subject)}" (the other row is "${other}").`);
+          const cancel = within(open).queryAllByRole("button").find((b) => text(b) === "Cancel");
+          if (!cancel) {
+            problems.push('The dialog must offer a "Cancel" button.');
+            return;
+          }
+          fireEvent.click(cancel);
+        }
       });
     }),
 

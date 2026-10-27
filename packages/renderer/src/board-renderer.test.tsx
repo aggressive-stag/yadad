@@ -656,6 +656,9 @@ describe("record actions on cards (RFC 0007)", () => {
     await waitFor(() => expect(screen.getByText("archived:done")).toBeTruthy());
   });
 
+  // The board clears its cards while it reloads, so the pressed button is replaced by a new node. The
+  // test holds the reload open until the board reports busy, so both the loading render and the rebuilt
+  // card always happen (a fast reload used to keep the old node and pass by timing alone).
   test("a card press returns focus to the card's button after the reload (todo-app F9)", async () => {
     const base = await seeded({ actions: { "task.publish": () => ({ values: { notes: "published" } }) } });
     const inner = base.db.act!.bind(base.db);
@@ -663,7 +666,24 @@ describe("record actions on cards (RFC 0007)", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const db = { ...base.db, act: async (e: string, id: string, a: string, request: Parameters<NonNullable<typeof inner>>[3]) => { await gate; return inner(e, id, a, request); } };
+    let reloadGated = false;
+    let finishReload: () => void = () => undefined;
+    const reloadGate = new Promise<void>((resolve) => {
+      finishReload = resolve;
+    });
+    const db = {
+      ...base.db,
+      act: async (e: string, id: string, a: string, request: Parameters<NonNullable<typeof inner>>[3]) => {
+        await gate;
+        const done = await inner(e, id, a, request);
+        reloadGated = true; // the reload that follows waits for the test
+        return done;
+      },
+      find: async (...args: Parameters<typeof base.db.find>) => {
+        if (reloadGated) await reloadGate;
+        return base.db.find(...args);
+      },
+    };
     render(
       <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
     );
@@ -678,8 +698,12 @@ describe("record actions on cards (RFC 0007)", () => {
     expect(document.activeElement).toBe(document.body);
     release();
     await waitFor(() => expect(status()).toBe("Publish done"));
+    await waitFor(() => expect(screen.getByRole("group", { name: "Tasks" }).getAttribute("aria-busy")).toBe("true")); // reloading: the cards are gone
+    expect(btn.isConnected).toBe(false);
+    finishReload();
     await waitFor(() => expect(screen.getByText("published")).toBeTruthy()); // reloaded with the new notes
-    await waitFor(() => expect(document.activeElement).toBe(btn)); // back on the card's button
+    // The card was rebuilt, so focus belongs on the new node: wait for that real condition.
+    await waitFor(() => expect(document.activeElement).toBe(cardButton(base.ids["Pay rent"]!, "publish")));
   });
 });
 

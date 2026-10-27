@@ -12,6 +12,32 @@ import type { ReferenceSupport, ReferenceWant } from "./references.js";
 /** How many renders the focus-return effect retries across after a flight ends (todo-app F14 part B). */
 const RESTORE_ATTEMPTS = 50;
 
+/** The node and its ancestors up to (not including) body, each with its index among its parent's children. */
+function ancestry(node: Element): { readonly node: Element; readonly index: number }[] {
+  const chain: { node: Element; index: number }[] = [];
+  for (let cur: Element | null = node; cur !== null && cur !== document.body && cur.parentElement !== null; cur = cur.parentElement) {
+    chain.push({ node: cur, index: Array.prototype.indexOf.call(cur.parentElement.children, cur) as number });
+  }
+  return chain;
+}
+
+/**
+ * The pressed control's replacement after a view rebuilt its DOM (a board clears its cards while it reloads, so
+ * the whole card is a new node). Start at the nearest ancestor that survived and walk down the recorded child
+ * indexes, accepting only the same tags ending on an enabled node with the same text.
+ */
+function replacement(chain: readonly { readonly node: Element; readonly index: number }[], text: string): HTMLElement | null {
+  const start = chain.findIndex((link) => link.node.isConnected);
+  if (start <= 0) return null;
+  let cur: Element = chain[start]!.node;
+  for (let k = start - 1; k >= 0; k -= 1) {
+    const next: Element | undefined = cur.children[chain[k]!.index];
+    if (next === undefined || next.tagName !== chain[k]!.node.tagName) return null;
+    cur = next;
+  }
+  return cur instanceof HTMLElement && (cur as HTMLButtonElement).disabled !== true && (cur.textContent ?? "") === text ? cur : null;
+}
+
 /** What `useRecordActions` gives a view: the row's buttons, the failure summary, the announcement, and the open dialog. */
 export interface RecordActions {
   /** The record's available actions as ready-to-draw buttons (empty when the view offers none). */
@@ -90,10 +116,17 @@ export function useRecordActions(options: {
     readonly recordId: string;
     readonly element: HTMLElement;
     readonly parent: Element | null;
+    /** The pressed node and its ancestors up to (not including) body, with each one's index among its parent's children. */
+    readonly chain: readonly { readonly node: Element; readonly index: number }[];
+    readonly text: string; // the pressed node's text, to recognise its replacement
     focused: HTMLElement | undefined; // the last node this effect focused, awaiting confirmation
     attempts: number; // renders spent retrying; bounds the retry window
   } | undefined>(undefined);
   const flights = useRef(new Set<string>());
+  // The records the view asked actions for in this render: a rebuilt control is only the pressed one's
+  // replacement while its record is still shown (a removed record's neighbour slides into its place).
+  const shown = useRef(new Set<string>());
+  shown.current = new Set();
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -134,7 +167,7 @@ export function useRecordActions(options: {
       held.parent !== null && held.parent.isConnected
         ? held.parent.querySelector<HTMLButtonElement>("button:not([disabled])")
         : null;
-    const target: HTMLElement | null = held.element.isConnected ? held.element : live;
+    const target: HTMLElement | null = held.element.isConnected ? held.element : (live ?? (shown.current.has(held.recordId) ? replacement(held.chain, held.text) : null));
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;
@@ -206,8 +239,9 @@ export function useRecordActions(options: {
     run(dialog.record, dialog.action, Object.keys(dialog.values).length > 0 ? dialog.values : undefined, dialog);
   };
 
-  const items = (record: DataRecord): readonly RecordActionItem[] =>
-    availableActions(entity, view, record, viewer).map((action) => ({
+  const items = (record: DataRecord): readonly RecordActionItem[] => {
+    shown.current.add(record.id);
+    return availableActions(entity, view, record, viewer).map((action) => ({
       id: action.id,
       label: action.label,
       tone: action.confirm?.tone ?? "neutral",
@@ -218,11 +252,12 @@ export function useRecordActions(options: {
         pressed.current =
           actionNeedsDialog(action) || !(document.activeElement instanceof HTMLElement)
             ? undefined
-            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, focused: undefined, attempts: 0 };
+            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, chain: ancestry(document.activeElement), text: document.activeElement.textContent ?? "", focused: undefined, attempts: 0 };
         if (actionNeedsDialog(action)) openDialog(record, action);
         else run(record, action, undefined, undefined);
       },
     }));
+  };
 
   const { Dialog, FieldFrame, Button, ErrorSummary } = registry.layout;
   const open = dialog;

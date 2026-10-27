@@ -726,6 +726,22 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
     });
     return { target, displayField: display.id };
   })();
+  // RFC 0011 item 3: a table's reference quick filter is a picker over the target entity's records. The target
+  // records ride in the state's record set (as a board's columns do), so the picker really loads them through the
+  // state's adapter: one per reference value the generated rows carry, plus the filter's default.
+  const referenceFilters = (() => {
+    if (view.kind !== "table") return [];
+    const out: { field: string; target: EntityDocument; displayField: string; defaultId: string | undefined }[] = [];
+    for (const q of view.quickFilters ?? []) {
+      const field = entity.fields.find((f) => f.id === q.field);
+      if (field === undefined || field.type !== "reference") continue;
+      const target = findEntity(ctx, field.entity);
+      const display = target?.fields.find((f) => f.id === field.display);
+      if (target === undefined || display === undefined) continue;
+      out.push({ field: field.id, target, displayField: display.id, defaultId: typeof q.default === "string" ? q.default : undefined });
+    }
+    return out;
+  })();
   // RFC 0007: a table also varies how its page is described — counted, a cursor page with more, the last cursor page.
   if (view.kind === "table") {
     axes.push({
@@ -833,7 +849,21 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         return { ok: false, reason: error instanceof Error ? error.message : String(error) };
       }
       const matching = page.items.map((r) => r.id);
-      const base = { view: view.id, records: marked, matching, now: ctx.now };
+      let withTargets: readonly DataRecord[] = marked;
+      if (view.kind === "table" && referenceFilters.length > 0) {
+        const targets = new Map<string, DataRecord>();
+        for (const rf of referenceFilters) {
+          const ids = new Set<string>(rf.defaultId === undefined ? [] : [rf.defaultId]);
+          for (const record of marked) {
+            const value = record.values[rf.field];
+            if (typeof value === "string" && value !== "") ids.add(value);
+          }
+          for (const id of ids)
+            if (!targets.has(`${rf.target.id}/${id}`)) targets.set(`${rf.target.id}/${id}`, { id, entityId: rf.target.id, entityRevision: rf.target.revision, version: "1", values: { [rf.displayField]: `Option ${id}` } });
+        }
+        withTargets = [...marked, ...targets.values()];
+      }
+      const base = { view: view.id, records: withTargets, matching, now: ctx.now };
       if (view.kind === "table") {
         const pageSize = view.pageSize ?? TABLE_DEFAULT_PAGE_SIZE;
         const paging = selection[PAGING_AXIS] ?? "total";
