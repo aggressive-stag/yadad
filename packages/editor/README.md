@@ -115,4 +115,8 @@ Property panels are built from an exhaustive per-field-type map, so a new field 
 - `startSession`, `edit`, `undo`, `redo`, `isDirty` and `finish` drive an `EditSession` directly if you build your own UI.
 - `idFromTitle(title, used, fallback)` turns a title into a valid id that is unique among `used`.
 
+## How it fits
+
+`editor` imports `core` and `runtime` and emits JSON Patch against documents; it never imports `renderer` or `testing`, so the host passes in anything that renders (see the [dependency graph](../../ARCHITECTURE.md#4-dependency-rules)).
+
 See the [repo README](../../README.md) and [ARCHITECTURE.md](../../ARCHITECTURE.md).

@@ -167,4 +167,8 @@ describeRegistryContract(myRegistry);
 - `defaultSamples` is the fixture per field type; pass your own `FieldSamples` to override them.
 - The `layout.Calendar`, `layout.Board` and `layout.Dialog` keys, the `widgets.series` key and the `fields.datetime` key are optional, so their checks only run when the registry has them. `layout.Dialog` is checked for the modal behaviour RFC 0007 needs: named by its label, focus taken on open and returned on close, Escape closes. `fields.datetime` is checked for a `<time>` element whose `dateTime` is the stored instant, showing the formatted `text` it was given. `widgets.series` is checked the way a chart must be: reachable by its label as an accessible name, every group's label and formatted text present as text in the accessible tree (an SVG of bars is decoration, not data), the `measureLabel` shown, and no throwing or self-unmounting on `groups: []` or a gap bucket whose `value` is undefined. The mock registry ships all of them (a plain board with a "Move to…" action and no drag, a datetime input over `datetime-local`, a minimal dialog, a series as a plain table of groups) and passes the kit.
 
+## How it fits
+
+`testing` imports `core` and `runtime` only, so `renderer` and `editor` can use it in their tests without a cycle; `checkViewStates` takes the host's `render` function (see the [dependency graph](../ARCHITECTURE.md#4-dependency-rules) and the [state grid](../ARCHITECTURE.md#13-the-state-grid)).
+
 See the [repo README](../README.md) and [ARCHITECTURE.md](../ARCHITECTURE.md).

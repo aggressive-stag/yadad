@@ -1,5 +1,7 @@
 # Research: Architecture Review and Build Plan
 
+> Historical, see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current design.
+
 > Reference material from the Oct 4, 2026 research pass. Its recommendations are merged into `ARCHITECTURE.md` and `docs/BUILD_PLAN.md`; where they differ, those files win. Kept here for the evidence and sources behind the decisions.
 
 **Bottom line: the plan is mostly sound, but three changes matter before anyone starts coding.** First, add a headless, React-free `runtime` package for form state, condition evaluation, record validation and query semantics. Second, split the schema into entity definitions and view definitions, and design every view kind up front (form, table, dashboard) before freezing the contract. Third, change "own the code" to mean owning the styled layer only. Accessible behavior primitives and the drag/grid engines should be accepted as dependencies, and only in the components repo and the editor.

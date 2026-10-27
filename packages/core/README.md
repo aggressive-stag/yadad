@@ -112,4 +112,8 @@ A purely additive change (a new optional key, value or field type) does not bump
 - Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`, and `datetime` comparisons a relative instant, `{ "hoursFromNow": n }`; `viewerIn` tests a viewer fact.
 - A table view or column can set `sortable: false` (a declared `sort` on such a column is a validation error). A field can be `readOnly` (server-set): it is refused as a form item, an editable column and an inline edit. `COLOR_PALETTE` is the eight-colour palette that option and reference colours are checked against (an off-palette hex is a warning).
 
+## How it fits
+
+`core` is the bottom of the dependency graph: it imports nothing from the workspace, and `runtime`, `renderer`, `editor` and `testing` all import it. A document passes through its `migrate()` and `validateDocuments` before anything renders (see the [render pipeline](../../ARCHITECTURE.md#the-render-pipeline)).
+
 See the [repo README](../../README.md) and [ARCHITECTURE.md](../../ARCHITECTURE.md).

@@ -1,5 +1,7 @@
 # Prior Art
 
+> Historical, see [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current design.
+
 Reference only. Nothing here is a dependency of the engine unless `ARCHITECTURE.md` §9 says so. Checked October 4, 2026.
 
 ## Who already does this

@@ -61,6 +61,8 @@ yadad/
 
 Why `runtime` is separate: TanStack Table, Formily, JSON Forms, RJSF (`@rjsf/utils`) and React Stately all keep state and logic out of the view layer. It keeps `core` small and slow-moving, makes logic testable without a DOM, and lets the same record validation run server-side (a backend can validate against the same generated JSON Schema).
 
+The design grew through eleven RFCs in `rfcs/`: computed widgets (0001), related records (0002), row drill-down (0003), the calendar (0004) and board (0005) views, who is viewing (0006), review screens (0007), and four rounds of consumer feedback (0008 to 0011) that added field types, saved filters, controlled drill and tab state, and the confirm and reference-filter surfaces. Each is marked implemented or deferred in its own file.
+
 ## 4. Dependency rules
 
 ```mermaid
@@ -74,9 +76,14 @@ flowchart BT
   testing[testing] --> core
   testing --> runtime
   theme[theme]
+  renderer -. tests only .-> testing
+  editor -. tests only .-> testing
   showcase[apps/showcase] --> renderer
   showcase --> editor
+  showcase --> runtime
+  showcase --> core
   showcase --> theme
+  showcase --> testing
   showcase -. injects .-> reg
   subgraph comp["components repo"]
     reg[registry/base.ts] --> sets[sets/base/*]
@@ -85,7 +92,7 @@ flowchart BT
   end
 ```
 
-Arrows mean "imports from".
+Arrows mean "imports from"; dotted `tests only` edges are test files, which may import `@yadad/testing` (D20). Checked against `.dependency-cruiser.ts` and the `package.json` files at 99c6244 (2026-10-27).
 
 - `core` imports nothing.
 - `runtime` imports `core` only. No `react`.
@@ -117,6 +124,24 @@ flowchart LR
 - **Data access is injected.** Views name a `dataSource` key; the host maps keys to adapters, just as it maps field types to components. No API URLs in documents.
 - **Who is viewing is a third, host-supplied input.** The host tells the renderers facts about the viewer (a role, a plan) and the documents say what those facts show or allow (§6). It narrows what is offered; it never replaces the server's checks.
 - **Build-time** = pass a bundled document where a fetched one would go. Nothing else changes.
+
+### The render pipeline
+
+```mermaid
+flowchart LR
+  doc[(Stored document)] --> mig["core: migrate()"]
+  mig --> val["core: validateDocuments"]
+  val -- errors --> stop[Rejected: nothing renders]
+  val --> set["renderer: documentSet"]
+  set --> rt["runtime: conditions, quick filters, viewer predicates"]
+  rt --> rend["renderer: form / table / calendar / board / dashboard"]
+  rend --> keys{{Registry keys}}
+  keys --> comps[Component set]
+  set --> vst["runtime: viewStates"]
+  vst -. checks and previews .-> rend
+```
+
+A document the host loads goes through `migrate()` (an older `specVersion` is upgraded; `validateDocuments` itself refuses one that was not), then `validateDocuments`. Only a valid set reaches the renderer, which sorts it with `documentSet`, evaluates conditions, quick filters and viewer predicates through `runtime`, and asks the registry for a component by key. It never names a component. `viewStates` reads the same documents to list the states the state grid (section 13) checks. Checked against `packages/core/src/migrate.ts`, `validate.ts`, `packages/renderer/src/document-set.ts` and `packages/runtime/src/view-states.ts` at 99c6244 (2026-10-27).
 
 ## 6. Document model: entities and views
 
@@ -305,6 +330,38 @@ interface DataAdapter {
 
 Interface, `Query` and the typed adapter errors in `core`. The memory, key-value and HTTP adapters in `runtime` all implement record versions and optimistic concurrency; the HTTP adapter (`createHttpAdapter`) speaks the records protocol in `docs/records-protocol.md` to a same-origin backend. A Supabase adapter can live here (depending on `core` only) or in the host app; none exists yet.
 
+### One load and one write
+
+```mermaid
+sequenceDiagram
+  participant V as Renderer
+  participant A as DataAdapter (HTTP)
+  participant S as Records server
+  V->>A: find(entity, query)
+  A->>S: GET /{entity}?filter=&sort=&limit= (same-origin cookies)
+  S-->>A: 200 items (each with version and can), total, optional notice
+  A-->>V: Page of records (a malformed notice is dropped)
+  Note over V: can.update false hides the edit, the server still decides
+  V->>A: update(entity, id, patch, baseVersion)
+  A->>S: PATCH /{entity}/{id} values, entityRevision, baseVersion
+  alt version is current
+    S-->>A: 200 Record with a new version
+    A-->>V: the saved record
+  else version is stale
+    S-->>A: 409 errors and current record
+    A-->>V: RecordConflictError carrying current
+    Note over V: shows the conflict message, the user reloads and retries
+  else not signed in
+    S-->>A: 401
+    A-->>V: onUnauthorized hook, then UnauthorizedError
+  else refused
+    S-->>A: 403
+    A-->>V: ForbiddenError
+  end
+```
+
+Writes are never retried. Checked against `docs/records-protocol.md` and `packages/runtime/src/http-adapter.ts` at 99c6244 (2026-10-27).
+
 ## 11. Stability policy
 
 - Fixed package list; new packages and new dependencies need an RFC.
@@ -346,3 +403,51 @@ flowchart LR
 4. **Consumers.** The showcase's States page renders the whole grid for any view with the checks beside it, and `StatesPreview` (`editor`) sits next to a view editor and marks states that are new or differ from the saved revision. The editor cannot import `testing`, so the host passes `renderState` and, optionally, `checkStates` as props.
 
 The states are documents-in, pictures-out: adding a condition to a document changes its grid without anyone writing a test.
+
+## 14. State ownership
+
+```mermaid
+flowchart LR
+  subgraph host["Host owns, persists and puts in the URL"]
+    sf["savedFilter + onSavedFilterChange"]
+    dr["drill / drills + onDrillChange"]
+    tb["tab + onTabChange"]
+    vw["viewer facts"]
+    reg2["Registry and DataAdapter"]
+  end
+  subgraph rend["Renderer owns"]
+    qf[Quick filter inputs]
+    sort[Sort and page position]
+    form[Form values and errors]
+    sel[Private drill stack and tab, when the host passes none]
+  end
+  subgraph store["Stored elsewhere"]
+    dft[("Drafts: createDraftStore, browser storage")]
+    recs[(Records: the data source)]
+  end
+  host --> rend
+  rend -- callbacks --> host
+  form --> dft
+  rend -- writes via adapter --> recs
+```
+
+Each controlled value follows one rule: supplied, the host owns it and the renderer reports changes through a callback; unset, the renderer keeps its own copy. Checked against the `TableRenderer` and `DashboardRenderer` props (RFC 0009 item 5, RFC 0010 item 1, RFC 0011 item 1) at 99c6244 (2026-10-27).
+
+## 15. Release pipeline
+
+```mermaid
+flowchart LR
+  c[Commit with a changeset] --> m[Push to main]
+  m --> gh["GitHub CI: typecheck, lint, depcruise, test"]
+  m --> mir[GitLab push mirror]
+  v["pnpm changeset version, run locally"] --> m
+  mir --> ci["GitLab CI: tools/release/publish.sh"]
+  ci --> chk{Changesets pending?}
+  chk -- yes --> skip[Publishes nothing]
+  chk -- no --> gate[typecheck, lint, depcruise, test]
+  gate --> pub["pnpm publish of versions the registry lacks"]
+  pub --> reg3[(GitLab npm registry)]
+  reg3 --> cons["Consumers pin exact versions"]
+```
+
+Versions are made locally and committed, never in CI, so the mirror cannot diverge. CI publishes with its job token and does not sign packages or attach provenance (an **open** gap, see `docs/security.md`). Checked against `.gitlab-ci.yml`, `tools/release/publish.sh`, `.changeset/config.json` and `.github/workflows/ci.yml` at 99c6244 (2026-10-27).

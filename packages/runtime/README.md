@@ -124,3 +124,7 @@ const drafts = createDraftStore(window.localStorage);
 ```
 
 When a draft is loaded, `restoreDraft(entity, draft)` fits it to the entity as it is now: values for fields the entity no longer has are dropped (and listed in `droppedFields`), values the current schema rejects are kept but reported in `invalidFields` (the renderer seeds them into the form's errors, so the field frames invalid instead of the bad value restoring silently), `revisionChanged` says the entity revision moved since the draft was taken, and it returns `null` if nothing is left to restore. The renderer uses this for its `drafts` option.
+
+## How it fits
+
+`runtime` imports `core` only and has no React, so the same logic runs in a test, a server or a browser. The renderer and editor build on it, and its HTTP adapter is the client half of the records protocol (see the [dependency graph](../../ARCHITECTURE.md#4-dependency-rules) and the [load and write sequence](../../ARCHITECTURE.md#one-load-and-one-write)).

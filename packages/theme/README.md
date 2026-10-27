@@ -39,4 +39,8 @@ const stop = applySystemTheme();
 
 Token names are the contract; values are free to change. The dashboard grid's row height is a separate variable, `--yadad-grid-row-height` (default `4rem`).
 
+## How it fits
+
+`theme` imports nothing: it is token names and values plus a CSS-variable emitter that a component set and the host both read (see the [dependency graph](../../ARCHITECTURE.md#4-dependency-rules)).
+
 See the [repo README](../../README.md) and [ARCHITECTURE.md](../../ARCHITECTURE.md).

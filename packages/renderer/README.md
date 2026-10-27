@@ -187,3 +187,7 @@ A table's `rowAction` opens its target in the same container. By default the ren
 - `DashboardRenderer` keys it by grid item id: `drills={{ [itemId]: drill }}` and `onDrillChange(itemId, drill)`. Every table widget with an entry is controlled; a widget with no entry keeps its private stack, unless `onDrillChange` is set, in which case it starts at the top level and reports under its own id. Entries for widgets on other tabs are kept as they are.
 - A controlled Back returns focus to the row (its Open button) the level was opened from, found by its bound values; if that row is not on screen, to the table's heading.
 - `DashboardRenderer` also takes a controlled-optional `tab` / `onTabChange(tab)` for the selected tab, so it can live in a URL beside the drills. Unset, the renderer keeps its own selection, seeded by `initialTab`. A supplied `tab` the viewer cannot see falls back to the first visible tab, and the fallback is reported through `onTabChange`. Restoring `drills` never changes the tab; the host owns both.
+
+## How it fits
+
+`renderer` imports `core` and `runtime`, looks components up by registry key and never names one. The host injects the registry and the adapter, and owns the controlled state (`savedFilter`, `drill`, `tab`); see the [render pipeline](../../ARCHITECTURE.md#the-render-pipeline) and [state ownership](../../ARCHITECTURE.md#14-state-ownership).
