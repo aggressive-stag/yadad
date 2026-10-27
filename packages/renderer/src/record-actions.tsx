@@ -12,6 +12,16 @@ import type { ReferenceSupport, ReferenceWant } from "./references.js";
 /** How many renders the focus-return effect retries across after a flight ends (todo-app F14 part B). */
 const RESTORE_ATTEMPTS = 50;
 
+/** A record's place in a view: its group (a board column id, a calendar day, "" for a table) and its index within the group. */
+interface Place {
+  readonly group: string;
+  readonly index: number;
+}
+
+function samePlace(a: Place | undefined, b: Place | undefined): boolean {
+  return a !== undefined && b !== undefined && a.group === b.group && a.index === b.index;
+}
+
 /** The node and its ancestors up to (not including) body, each with its index among its parent's children. */
 function ancestry(node: Element): { readonly node: Element; readonly index: number }[] {
   const chain: { node: Element; index: number }[] = [];
@@ -41,7 +51,7 @@ function replacement(chain: readonly { readonly node: Element; readonly index: n
 /** What `useRecordActions` gives a view: the row's buttons, the failure summary, the announcement, and the open dialog. */
 export interface RecordActions {
   /** The record's available actions as ready-to-draw buttons (empty when the view offers none). */
-  readonly items: (record: DataRecord) => readonly RecordActionItem[];
+  readonly items: (record: DataRecord, group?: string) => readonly RecordActionItem[];
   /** The failed action's summary lines, shown by the view's ErrorSummary; undefined when nothing failed. */
   readonly failures: readonly DocumentError[] | undefined;
   /** The last announcement, for a registry component with an `announcement` prop (board, calendar). */
@@ -119,14 +129,18 @@ export function useRecordActions(options: {
     /** The pressed node and its ancestors up to (not including) body, with each one's index among its parent's children. */
     readonly chain: readonly { readonly node: Element; readonly index: number }[];
     readonly text: string; // the pressed node's text, to recognise its replacement
+    readonly place: Place | undefined; // where the pressed record sat in the view when it was pressed
     focused: HTMLElement | undefined; // the last node this effect focused, awaiting confirmation
     attempts: number; // renders spent retrying; bounds the retry window
   } | undefined>(undefined);
   const flights = useRef(new Set<string>());
   // The records the view asked actions for in this render: a rebuilt control is only the pressed one's
   // replacement while its record is still shown (a removed record's neighbour slides into its place).
-  const shown = useRef(new Set<string>());
-  shown.current = new Set();
+  // It also records each record's place (its group and its index within the group, in render order): a
+  // rebuilt control is only the pressed one's replacement while its record kept that place, because a
+  // different record sitting at the old path can have a button with the same text.
+  const shown = useRef(new Map<string, Place>());
+  shown.current = new Map();
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -167,7 +181,7 @@ export function useRecordActions(options: {
       held.parent !== null && held.parent.isConnected
         ? held.parent.querySelector<HTMLButtonElement>("button:not([disabled])")
         : null;
-    const target: HTMLElement | null = held.element.isConnected ? held.element : (live ?? (shown.current.has(held.recordId) ? replacement(held.chain, held.text) : null));
+    const target: HTMLElement | null = held.element.isConnected ? held.element : (live ?? (samePlace(held.place, shown.current.get(held.recordId)) ? replacement(held.chain, held.text) : null));
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;
@@ -239,8 +253,12 @@ export function useRecordActions(options: {
     run(dialog.record, dialog.action, Object.keys(dialog.values).length > 0 ? dialog.values : undefined, dialog);
   };
 
-  const items = (record: DataRecord): readonly RecordActionItem[] => {
-    shown.current.add(record.id);
+  const items = (record: DataRecord, group = ""): readonly RecordActionItem[] => {
+    if (!shown.current.has(record.id)) {
+      let index = 0;
+      for (const place of shown.current.values()) if (place.group === group) index += 1;
+      shown.current.set(record.id, { group, index });
+    }
     return availableActions(entity, view, record, viewer).map((action) => ({
       id: action.id,
       label: action.label,
@@ -252,7 +270,7 @@ export function useRecordActions(options: {
         pressed.current =
           actionNeedsDialog(action) || !(document.activeElement instanceof HTMLElement)
             ? undefined
-            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, chain: ancestry(document.activeElement), text: document.activeElement.textContent ?? "", focused: undefined, attempts: 0 };
+            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, chain: ancestry(document.activeElement), text: document.activeElement.textContent ?? "", place: shown.current.get(record.id), focused: undefined, attempts: 0 };
         if (actionNeedsDialog(action)) openDialog(record, action);
         else run(record, action, undefined, undefined);
       },

@@ -151,6 +151,46 @@ describe("record actions on tables (RFC 0007)", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 
+  // 51g: a sort moves the pressed row, so another record sits at its old path with a same-text button.
+  test("focus does not land on the row that took the pressed row's place after a sort", async () => {
+    const base = await seeded({ actions: { "doc.publish": () => ({ values: { n: 99 } }) } });
+    const inner = base.act!.bind(base);
+    let reloadGated = false;
+    let finishReload: () => void = () => undefined;
+    const reloadGate = new Promise<void>((resolve) => {
+      finishReload = resolve;
+    });
+    const db = {
+      ...base,
+      act: async (e: string, id: string, a: string, request: Parameters<NonNullable<typeof inner>>[3]) => {
+        const done = await inner(e, id, a, request);
+        reloadGated = true;
+        return done;
+      },
+      find: async (...args: Parameters<typeof base.find>) => {
+        if (reloadGated) await reloadGate;
+        return base.find(...args);
+      },
+    };
+    render(<TableRenderer entity={entity} view={{ ...view, sort: [{ field: "n", dir: "asc" }] }} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await waitFor(() => expect(document.querySelector("[data-testid='action-publish']")).not.toBeNull());
+    const btn = document.querySelector("[data-testid='action-publish']") as HTMLButtonElement; // row n=1
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    btn.disabled = false; // jsdom keeps focus on a disabled button; the browser drops it to body
+    btn.blur();
+    btn.disabled = true;
+    await waitFor(() => expect(statusText()).toBe("Publish done"));
+    finishReload();
+    await waitFor(() => expect(tagOf(99)).toBe("draft")); // the row moved to the end
+    await new Promise((resolve) => setTimeout(resolve, 50)); // let the focus-return effect run its retries
+    const rows = screen.getAllByRole("row");
+    const active = document.activeElement;
+    expect(rows.some((r) => r.querySelector("[data-testid='display-n']")?.textContent === "2" && r.contains(active))).toBe(false);
+    expect(document.activeElement === document.body || rows.some((r) => r.querySelector("[data-testid='display-n']")?.textContent === "99" && r.contains(active))).toBe(true);
+  });
+
   test("a view with no recordActions gets no actions column and no errors", async () => {
     const db = await seeded();
     const { recordActions, ...plain } = view;

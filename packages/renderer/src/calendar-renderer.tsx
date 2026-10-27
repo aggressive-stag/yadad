@@ -393,7 +393,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       ...(doneDef === undefined
         ? {}
         : { done: { checked: record.values[doneDef.id] === true, disabled: !editable || !canEditField(record, doneDef.id) || toggling.has(record.id), toggle: () => toggleDone(record) } }),
-      actions: recordActions.items(record),
+      actions: recordActions.items(record, String(record.values[view.dateField] ?? "")),
     };
   };
 

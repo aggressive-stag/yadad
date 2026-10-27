@@ -442,7 +442,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         ...(doneDef === undefined
           ? {}
           : { done: { checked: record.values[doneDef.id] === true, disabled: !editable || !canEditField(record, doneDef.id) || toggling.has(record.id), toggle: () => toggleDone(record) } }),
-        actions: recordActions.items(record),
+        actions: recordActions.items(record, columnId),
       };
     });
   const columns: BoardColumn<ReactNode>[] = [

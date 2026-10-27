@@ -705,6 +705,51 @@ describe("record actions on cards (RFC 0007)", () => {
     // The card was rebuilt, so focus belongs on the new node: wait for that real condition.
     await waitFor(() => expect(document.activeElement).toBe(cardButton(base.ids["Pay rent"]!, "publish")));
   });
+
+  // 51g: a board action that moves its card leaves a neighbour at the card's old path, with a button of the
+  // same text. Focus must not land on it.
+  test("focus does not land on a neighbour that took the moved card's place", async () => {
+    const base = await seeded({ actions: { "task.publish": () => ({ values: { list: "Work" } }) } });
+    const inner = base.db.act!.bind(base.db);
+    let reloadGated = false;
+    let finishReload: () => void = () => undefined;
+    const reloadGate = new Promise<void>((resolve) => {
+      finishReload = resolve;
+    });
+    const db = {
+      ...base.db,
+      act: async (e: string, id: string, a: string, request: Parameters<NonNullable<typeof inner>>[3]) => {
+        const done = await inner(e, id, a, request);
+        reloadGated = true; // the reload that follows waits for the test
+        return done;
+      },
+      find: async (...args: Parameters<typeof base.db.find>) => {
+        if (reloadGated) await reloadGate;
+        return base.db.find(...args);
+      },
+    };
+    render(
+      <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
+    );
+    await screen.findByText("Pay rent");
+    const btn = cardButton(base.ids["Book flights"]!, "publish"); // first card of Home
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    btn.disabled = false; // jsdom keeps focus on a disabled button; the browser drops it to body
+    btn.blur();
+    btn.disabled = true;
+    await waitFor(() => expect(screen.getByRole("group", { name: "Tasks" }).getAttribute("aria-busy")).toBe("true")); // reloading: the cards are gone
+    expect(btn.isConnected).toBe(false);
+    expect(document.activeElement).toBe(document.body);
+    finishReload();
+    await waitFor(() => expect(titles("v:Work")).toContain("Book flights")); // the card moved
+    await waitFor(() => expect(screen.getByRole("group", { name: "Tasks" }).getAttribute("aria-busy")).not.toBe("true"));
+    await new Promise((resolve) => setTimeout(resolve, 50)); // let the focus-return effect run its retries
+    const neighbour = cardButton(base.ids["Pay rent"]!, "publish");
+    expect(document.activeElement).not.toBe(neighbour);
+    expect(document.activeElement).toBe(document.body);
+  });
 });
 
 describe("in a dashboard", () => {
