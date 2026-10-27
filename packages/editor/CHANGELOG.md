@@ -1,5 +1,31 @@
 # @yadad/editor
 
+## 0.16.0
+
+### Minor Changes
+
+- 435df4b: The editors write the RFC 0010 keys. A quick filter row takes a label, a placeholder (text filters only) and a first value of the kind the filter takes. The table editor has "Make column not sortable" per column and "Not sortable (every column)" for the table; a sort that names an unsortable column is refused. The field editor has a "Set by the server (read-only)" toggle. The condition builder offers "Hours from now" for datetime fields with the comparing operators, writing `{ "hoursFromNow": n }`.
+
+### Patch Changes
+
+- Updated dependencies [616b2fb]
+- Updated dependencies [ba3a7bd]
+- Updated dependencies [857c23d]
+- Updated dependencies [dae59e6]
+- Updated dependencies [56470ba]
+- Updated dependencies [6a95a8d]
+- Updated dependencies [547299f]
+- Updated dependencies [24212d8]
+- Updated dependencies [9c2ebdc]
+- Updated dependencies [fad57e0]
+- Updated dependencies [59601ab]
+- Updated dependencies [1da41e8]
+- Updated dependencies [0945183]
+- Updated dependencies [939df3b]
+- Updated dependencies [4bc846a]
+  - @yadad/core@0.16.0
+  - @yadad/runtime@0.14.0
+
 ## 0.15.2
 
 ### Patch Changes

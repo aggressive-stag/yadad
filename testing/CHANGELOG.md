@@ -1,5 +1,32 @@
 # @yadad/testing
 
+## 0.13.0
+
+### Minor Changes
+
+- 857c23d: `FormRenderer` takes `initialRows` (default 1, clamped to 1..50, the new `BATCH_ROW_CAP`) so a batch composer can start with several rows; "+ another" now stops at the cap. The runtime's state grid gives a batch form a `rows` axis (one row, three rows queued) and the form render carries `rows`; pass it to `initialRows`.
+- 4bc846a: The state grid reaches the RFC 0010 states. A table whose quick filter declares a `default` gains the `quick` axis ("default applied", "default cleared"; `TableStateRender.quickDefaults`), and a table gains the `notice-info` and `notice-warning` source states (the state adapter's lists carry `notice`, and the new source value is part of `SourceState`). The checks gain `sort-offered` and `sort-missing` (a header is sortable exactly when the view and the column allow it), `notice-missing` and `quick-default`. A host with a hand-written table must draw the page notice, or skip `notice-missing`. The mock registry's text input renders `placeholder`.
+
+### Patch Changes
+
+- Updated dependencies [616b2fb]
+- Updated dependencies [ba3a7bd]
+- Updated dependencies [857c23d]
+- Updated dependencies [dae59e6]
+- Updated dependencies [56470ba]
+- Updated dependencies [6a95a8d]
+- Updated dependencies [547299f]
+- Updated dependencies [24212d8]
+- Updated dependencies [9c2ebdc]
+- Updated dependencies [fad57e0]
+- Updated dependencies [59601ab]
+- Updated dependencies [1da41e8]
+- Updated dependencies [0945183]
+- Updated dependencies [939df3b]
+- Updated dependencies [4bc846a]
+  - @yadad/core@0.16.0
+  - @yadad/runtime@0.14.0
+
 ## 0.12.1
 
 ### Patch Changes

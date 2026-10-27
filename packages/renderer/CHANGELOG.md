@@ -1,5 +1,36 @@
 # @yadad/renderer
 
+## 0.16.0
+
+### Minor Changes
+
+- 857c23d: `FormRenderer` takes `initialRows` (default 1, clamped to 1..50, the new `BATCH_ROW_CAP`) so a batch composer can start with several rows; "+ another" now stops at the cap. The runtime's state grid gives a batch form a `rows` axis (one row, three rows queued) and the form render carries `rows`; pass it to `initialRows`.
+- 38eff32: A text quick filter on a `TableRenderer` now waits 300 ms after the last keystroke before it reloads the table, instead of sending a request per character. The box still shows what is typed at once, and clearing it commits immediately. A tags quick filter is unchanged: a typed-but-unadded draft still waits for Enter, because the tags input slot has no blur or draft callback yet.
+- 2f807c2: `TableRenderer` takes an optional `drill` and `onDrillChange`, and `DashboardRenderer` takes `drills` (keyed by grid item id) and `onDrillChange(itemId, drill)`, so a drill-down can live in a URL. Unset, the renderer keeps its private stack as before. A supplied drill is re-validated level by level and a stale one is cut back to its valid prefix with a polite notice. A controlled Back returns focus to the row it came from. `DrillStep` is exported.
+- 9c2ebdc: `TableRenderer` renders what specVersion 9 declared. A quick filter opens on its `default` (seeded by the runtime's `initialQuickFilters`, never persisted), is labelled `filter.label ?? field.label`, and a text filter passes its `placeholder` to the text input slot; `@yadad/core` adds the optional `placeholder` to the text `Input` props (`TextInputExtras`). A header is plain text, and clicking does nothing, when the view or the column sets `sortable: false`. A `readOnly` field is never an inline input, even on a column marked `editable`.
+- fad57e0: The table shows a list page's `notice` in a polite status region above the rows (inside a `layout.Section`, as `<p role="status" data-yadad-page-notice data-tone>`), replaced on every load. The `datetime` input slot gets optional `minLocal` / `maxLocal` (`YYYY-MM-DDTHH:mm`, the field's `min` / `max` in the viewer's zone) beside the stored instants; core's `FieldInputExtras.datetime` is now `DatetimeInputExtras`. The calendar legend already receives each entry's `color`.
+
+### Patch Changes
+
+- dae59e6: A row action binding may name the reserved field `id` (RFC 0008 item 1), which the validator used to reject. It binds the record's own id to a `text` field, or to a `reference` to the same entity, and is used only when the entity declares no field named `id` (a declared field wins). `@yadad/runtime` adds `bindingValues(record, entity)`, the values a row action's bindings read; the table, calendar and board renderers use it.
+- Updated dependencies [616b2fb]
+- Updated dependencies [ba3a7bd]
+- Updated dependencies [857c23d]
+- Updated dependencies [dae59e6]
+- Updated dependencies [56470ba]
+- Updated dependencies [6a95a8d]
+- Updated dependencies [547299f]
+- Updated dependencies [24212d8]
+- Updated dependencies [9c2ebdc]
+- Updated dependencies [fad57e0]
+- Updated dependencies [59601ab]
+- Updated dependencies [1da41e8]
+- Updated dependencies [0945183]
+- Updated dependencies [939df3b]
+- Updated dependencies [4bc846a]
+  - @yadad/core@0.16.0
+  - @yadad/runtime@0.14.0
+
 ## 0.15.1
 
 ### Patch Changes

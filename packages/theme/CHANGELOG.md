@@ -1,5 +1,12 @@
 # @yadad/theme
 
+## 0.3.0
+
+### Minor Changes
+
+- df86e16: Adds `applySystemTheme(target?)`: applies the light or dark token set to an element (default the document element) from `prefers-color-scheme`, follows changes, and returns an unsubscribe. A no-op where `matchMedia` is missing.
+- edd8ac3: Add eight category colour tokens, `color-category-0` to `color-category-7` (`--yadad-color-category-0` to `-7`), for light and dark: blue, red, orange, yellow, green, teal, purple, pink. Hosts that supply a full `Theme` object must add the eight new keys.
+
 ## 0.2.1
 
 ### Patch Changes

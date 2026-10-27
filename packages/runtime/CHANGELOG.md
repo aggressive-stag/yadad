@@ -1,5 +1,32 @@
 # @yadad/runtime
 
+## 0.14.0
+
+### Minor Changes
+
+- 857c23d: `FormRenderer` takes `initialRows` (default 1, clamped to 1..50, the new `BATCH_ROW_CAP`) so a batch composer can start with several rows; "+ another" now stops at the cap. The runtime's state grid gives a batch form a `rows` axis (one row, three rows queued) and the form render carries `rows`; pass it to `initialRows`.
+- 56470ba: A list `Page` may carry an optional `notice: { tone: "info" | "warning"; text: string }`, the server's statement about one answer (for example "served without vector search"). It is protocol data, so documents and `specVersion` are unchanged. `docs/records-protocol.md` documents the `notice` key on a list response. The HTTP adapter passes a well-formed `notice` through and drops a malformed one with a console warning.
+- 24212d8: Add the relative instant `{ "hoursFromNow": N }` (a whole number, negative is the past) as the value of eq, neq, gt, gte, lt and lte on a `datetime` field, for windows such as "the last 24 hours". It is refused on other field types, in `in` and `contains`, and `{ "daysFromToday" }` stays refused on `datetime`. `resolveRelativeDates()` and `evaluateCondition()` resolve it against `now` to the stored `...Z` instant, so adapters and servers receive a concrete instant. `describeContract()` gains `conditions.relativeInstant`. New runtime exports: `instantFromNow()` and `resolveComparisonValue()`.
+- 1da41e8: `initialQuickFilters(view, entity, timeZone)` returns the quick-filter state a table opens with, seeded from each filter's `default` (a boolean as "Yes"/"No", a range as `quickRangeKey("from"|"to", field)` values, a datetime bound as local time in the zone); nothing stores it. `validateRecord` skips `readOnly` fields for the required check and refuses a write that sends one ("<label> is set by the server"), agreeing with `recordJsonSchema(entity, { mode: "write" })`; `submitEdit` no longer carries a served read-only value into the merge.
+- 4bc846a: The state grid reaches the RFC 0010 states. A table whose quick filter declares a `default` gains the `quick` axis ("default applied", "default cleared"; `TableStateRender.quickDefaults`), and a table gains the `notice-info` and `notice-warning` source states (the state adapter's lists carry `notice`, and the new source value is part of `SourceState`). The checks gain `sort-offered` and `sort-missing` (a header is sortable exactly when the view and the column allow it), `notice-missing` and `quick-default`. A host with a hand-written table must draw the page notice, or skip `notice-missing`. The mock registry's text input renders `placeholder`.
+
+### Patch Changes
+
+- dae59e6: A row action binding may name the reserved field `id` (RFC 0008 item 1), which the validator used to reject. It binds the record's own id to a `text` field, or to a `reference` to the same entity, and is used only when the entity declares no field named `id` (a declared field wins). `@yadad/runtime` adds `bindingValues(record, entity)`, the values a row action's bindings read; the table, calendar and board renderers use it.
+- 59601ab: The memory and HTTP adapters now refuse a query whose filter holds a `fieldEqFact` leaf, as they already did for `viewerIn`: both read the viewer, and a filter is a server query. Before, the leaf silently matched nothing.
+- Updated dependencies [616b2fb]
+- Updated dependencies [ba3a7bd]
+- Updated dependencies [dae59e6]
+- Updated dependencies [56470ba]
+- Updated dependencies [6a95a8d]
+- Updated dependencies [547299f]
+- Updated dependencies [24212d8]
+- Updated dependencies [9c2ebdc]
+- Updated dependencies [fad57e0]
+- Updated dependencies [0945183]
+- Updated dependencies [939df3b]
+  - @yadad/core@0.16.0
+
 ## 0.13.1
 
 ### Patch Changes
