@@ -1,6 +1,6 @@
 # RFC 0010: Consumer feedback round 3
 
-- Status: Draft
+- Status: Accepted (2026-10-27). Every item as recommended; see `## Owner decisions`.
 - Touches: `core` (`QuickFilter.default`/`label`/`placeholder`, a relative-instant condition value, `Field.readOnly`, `TableColumn.sortable`/`TableView.sortable`, `Page.notice`, possibly `StaticOptions`; the validators, `describeContract`, `recordJsonSchema`), `runtime` (relative-instant resolution, create validation that skips read-only fields, quick-filter initial state), `renderer` (controlled drill state, `FormRenderer` `initialRows`, quick-filter commit timing, the notice region, sortable headers), `testing` (state-grid axes for the new states), `editor` (the matching editors), `docs/records-protocol.md` (the `notice` page key, read-only fields), and the components repo (header, notice and quick-filter markup).
 - Proposes the next `specVersion` with an identity `migrate()` step (everything here is optional and additive) and a before/after fixture pair, once, when the first accepted contract item lands. Items 1 and 7 are renderer API and need no bump.
 
@@ -223,6 +223,24 @@ Nothing here moves authority: the server remains the only one, documents decide 
 9. **Item 11**: emit `maxLength` in `recordJsonSchema` (a)?
 10. **Item 12**: legend gets the entry colour (i)(a); validate colours against the palette (ii)(a) or paint any hex (ii)(b); renderer passes local datetime limits (iii)(a)?
 
-## Owner decisions
+## Owner decisions (2026-10-27)
 
-_Pending. The owner has not yet decided any item._
+The owner accepted every item **as recommended**. `specVersion` moves 8 → 9 once, with an identity `migrate()` step and one before/after fixture pair, when the first accepted contract item lands. Items 1, 3, 7, 9, 10 and 11 need no bump.
+
+1. **Item 1: accepted (a).** Controlled-optional `drill` / `onDrillChange` on `TableRenderer` and `DashboardRenderer`, shaped like `savedFilter`. A supplied drill is re-validated through `resolveRowAction`, and a stale one falls back to the top level with a notice.
+2. **Item 2: accepted (a).** `{ "hoursFromNow": <whole number> }`, valid on `datetime` fields with the `RELATIVE_DATE_OPS` comparisons only. The runtime resolves it to a stored `...Z` instant at query time.
+3. **Item 3: accepted (c).** Build-time filling of select options is the documented pattern, stated in the README and `docs/records-protocol.md`. Nothing is built in `core`. If an in-contract path is wanted later, try (b), a `reference` quick filter, before (a).
+4. **Item 4: accepted (a).** `QuickFilter.default`, initial state only. The renderer never persists it. There is no host-controlled `filterValues` prop for now.
+5. **Item 5: accepted (a).** Optional `label` and `placeholder` on `QuickFilter`. The placeholder is for text filters only.
+6. **Item 6: accepted (c).** `TableView.sortable: false` and `TableColumn.sortable: false`. A declared `sort` on an unsortable column is a validation error.
+7. **Item 7: accepted (a).** An optional `notice` on the list `Page` and in the records protocol. It is the server's statement about its own answer, so it sits inside "the server is the only authority". It changes no document, so there is no `specVersion` bump.
+8. **Item 8: accepted (a), named `readOnly`.** A `readOnly` field is refused as a form item, an editable column and an inline edit. `required` together with `readOnly` is allowed, but it is never a form requirement.
+9. **Item 9: accepted (a).** The `FormRenderer` prop `initialRows`, capped at the composer's row cap.
+10. **Item 10: accepted (b).** Text quick filters debounce at 300 ms. A typed tags draft commits as a chip on blur.
+11. **Item 11: accepted (a).** `recordJsonSchema` emits `maxLength` for `text` fields that declare it.
+12. **Item 12: accepted (i)(a), (ii)(a) and (iii)(a).**
+    - (i) The calendar legend receives the entries' `color`.
+    - (ii) Option and reference colours are checked against the eight-colour palette. `core` exports the palette, and the components set reads it from there rather than keeping its own copy. **This release reports an off-palette hex as a warning.** The warning becomes an error in a later `specVersion`, so existing documents keep validating.
+    - (iii) The renderer passes local-time `min`/`max` to the datetime input slot.
+
+**`applySystemTheme`: go.** A small `@yadad/theme` helper with no contract impact.
