@@ -22,6 +22,8 @@ export interface RecordFieldSchema {
   readonly multipleOf?: number;
   readonly format?: "date" | "date-time";
   readonly pattern?: string;
+  /** A text field's `maxLength`; JSON Schema counts code points, as validateRecord does. */
+  readonly maxLength?: number;
   /** Conjunction of `{ pattern }` subschemas; used for date ranges. */
   readonly allOf?: readonly { readonly pattern: string }[];
 }
@@ -77,7 +79,11 @@ function fieldSchema(field: Field): RecordFieldSchema {
     case "text":
     case "reference":
       // A blank string counts as empty, so a required one must hold a non-space character.
-      return { type: nullable("string", field), ...(field.required === true ? { pattern: "\\S" } : {}) };
+      return {
+        type: nullable("string", field),
+        ...(field.required === true ? { pattern: "\\S" } : {}),
+        ...(field.type === "text" && field.maxLength !== undefined ? { maxLength: field.maxLength } : {}),
+      };
 
     case "number": {
       const notes: string[] = [];

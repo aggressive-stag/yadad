@@ -46,6 +46,9 @@ const tags = (extra: object = {}): Field => ({ id: "f", type: "tags", label: "F"
 const CASES: Case[] = [
   // text
   c("text: string", [text()], { f: "hi" }, true),
+  c("text: at maxLength", [{ id: "f", type: "text", label: "F", maxLength: 3 }], { f: "abc" }, true),
+  c("text: over maxLength", [{ id: "f", type: "text", label: "F", maxLength: 3 }], { f: "abcd" }, false),
+  c("text: maxLength counts code points", [{ id: "f", type: "text", label: "F", maxLength: 2 }], { f: "a\u{1F600}" }, true),
   c("text: empty string, optional", [text()], { f: "" }, true),
   c("text: blank string, optional", [text()], { f: "  " }, true),
   c("text: null, optional", [text()], { f: null }, true),
@@ -237,8 +240,6 @@ const KNOWN_DIFFERENCES: { readonly name: string; readonly fields: Field[]; read
   { name: "number: step tolerance of 1e-9", fields: [num({ step: 0.5 })], values: { f: 1.0000000001 }, validateRecord: true, schema: false },
   // RFC 0008 card 47k: the time schema says HH:MM; a step has no JSON Schema keyword, so validateRecord is the step gate.
   { name: "time: off step", fields: [time({ step: 15 })], values: { f: "09:47" }, validateRecord: false, schema: true },
-  // RFC 0008 item 13c: recordJsonSchema does not emit maxLength yet, so validateRecord is the only gate.
-  { name: "text: over maxLength", fields: [{ id: "f", type: "text", label: "F", maxLength: 3 } as Field], values: { f: "abcd" }, validateRecord: false, schema: true },
   // RFC 0008 card 47k: the protocol schema says uniqueItems; validateRecord leaves repeats to the input, so they pass the engine.
   { name: "tags: duplicate element", fields: [tags()], values: { f: ["a", "a"] }, validateRecord: true, schema: false },
 ];
