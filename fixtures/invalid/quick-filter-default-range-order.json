@@ -1,0 +1,75 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 0,
+    "id": "thing",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "mood",
+        "type": "select",
+        "label": "Mood",
+        "options": {
+          "source": "static",
+          "values": [
+            "happy",
+            "sad"
+          ]
+        }
+      },
+      {
+        "id": "done",
+        "type": "boolean",
+        "label": "Done"
+      },
+      {
+        "id": "tags",
+        "type": "tags",
+        "label": "Tags"
+      },
+      {
+        "id": "qty",
+        "type": "number",
+        "label": "Qty"
+      },
+      {
+        "id": "day",
+        "type": "date",
+        "label": "Day"
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 0,
+    "id": "thing_table",
+    "entity": "thing",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "quickFilters": [
+      {
+        "field": "qty",
+        "default": {
+          "from": 9,
+          "to": 2,
+          "step": 1
+        }
+      }
+    ]
+  }
+]

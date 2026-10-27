@@ -24,6 +24,30 @@ const expected: Record<string, Picked[]> = {
     { path: "/quickFilters/0/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
     { path: "/filter/field", code: "unknown-reference", document: "thing_table", allowed: ["name"] },
   ],
+  "quick-filter-default-wrong-shape.json": [
+    { path: "/quickFilters/0/default", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/1/default", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/2/default", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/3/default", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/4/default", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
+  "quick-filter-default-bad-range.json": [
+    { path: "/quickFilters/0/default/from", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/1/default/from", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/2/default/to", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
+  "quick-filter-default-range-order.json": [
+    { path: "/quickFilters/0/default/step", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/0/default", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
+  "quick-filter-placeholder-not-text.json": [
+    { path: "/quickFilters/0/placeholder", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/1/placeholder", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
+  "quick-filter-label-placeholder-empty.json": [
+    { path: "/quickFilters/0/label", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/quickFilters/0/placeholder", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
   "dashboard-unknown-view.json": [
     { path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["the_form"] },
   ],

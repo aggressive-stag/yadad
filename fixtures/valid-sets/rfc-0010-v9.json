@@ -5,8 +5,17 @@
     "id": "note",
     "revision": 1,
     "fields": [
-      { "id": "title", "type": "text", "label": "Title", "required": true },
-      { "id": "body", "type": "text", "label": "Body" }
+      {
+        "id": "title",
+        "type": "text",
+        "label": "Title",
+        "required": true
+      },
+      {
+        "id": "body",
+        "type": "text",
+        "label": "Body"
+      }
     ]
   },
   {
@@ -17,7 +26,14 @@
     "entity": "note",
     "revision": 1,
     "dataSource": "default",
-    "columns": [{ "field": "title" }, { "field": "body" }]
+    "columns": [
+      {
+        "field": "title"
+      },
+      {
+        "field": "body"
+      }
+    ]
   },
   {
     "kind": "form",
@@ -26,6 +42,139 @@
     "entity": "note",
     "revision": 1,
     "dataSource": "default",
-    "sections": [{ "id": "main", "items": [{ "field": "title" }, { "field": "body" }] }]
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "title"
+          },
+          {
+            "field": "body"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 9,
+    "id": "ticket",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "title",
+        "type": "text",
+        "label": "Title"
+      },
+      {
+        "id": "status",
+        "type": "select",
+        "label": "Status",
+        "options": {
+          "source": "static",
+          "values": [
+            "open",
+            "pending",
+            "done"
+          ]
+        }
+      },
+      {
+        "id": "urgent",
+        "type": "boolean",
+        "label": "Urgent"
+      },
+      {
+        "id": "labels",
+        "type": "tags",
+        "label": "Labels"
+      },
+      {
+        "id": "points",
+        "type": "number",
+        "label": "Points"
+      },
+      {
+        "id": "due",
+        "type": "date",
+        "label": "Due"
+      },
+      {
+        "id": "seen_at",
+        "type": "datetime",
+        "label": "Seen at"
+      },
+      {
+        "id": "starts",
+        "type": "time",
+        "label": "Starts"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 9,
+    "id": "tickets",
+    "title": "Tickets",
+    "entity": "ticket",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "title"
+      },
+      {
+        "field": "status"
+      }
+    ],
+    "quickFilters": [
+      {
+        "field": "title",
+        "default": "login",
+        "label": "Search",
+        "placeholder": "Search titles"
+      },
+      {
+        "field": "status",
+        "default": "pending",
+        "label": "State"
+      },
+      {
+        "field": "urgent",
+        "default": true
+      },
+      {
+        "field": "labels",
+        "default": [
+          "bug",
+          "ui"
+        ]
+      },
+      {
+        "field": "points",
+        "default": {
+          "from": 1,
+          "to": 8
+        }
+      },
+      {
+        "field": "due",
+        "default": {
+          "from": "2026-10-01"
+        }
+      },
+      {
+        "field": "seen_at",
+        "default": {
+          "from": "2026-10-17T09:30:00.000Z",
+          "to": "2026-10-18T09:30:00.000Z"
+        }
+      },
+      {
+        "field": "starts",
+        "default": "09:30"
+      }
+    ]
   }
 ]

@@ -481,8 +481,27 @@ export interface BoardView {
   readonly recordActions?: readonly string[];
 }
 
+/** The two ends of a from/to quick filter; either end may be left out. Numbers for a number field, dates ("YYYY-MM-DD") for a date field, stored instants for a datetime field. */
+export interface QuickFilterRange {
+  readonly from?: string | number;
+  readonly to?: string | number;
+}
+
+/**
+ * A quick filter's first value (RFC 0010 item 4), in the shape the filter takes: a string for select, text
+ * and time fields (a select's must be one of its options), a boolean for boolean fields, a string array
+ * for tags, `{ from?, to? }` for number, date and datetime fields.
+ */
+export type QuickFilterDefault = string | boolean | readonly string[] | QuickFilterRange;
+
 export interface QuickFilter {
   readonly field: string;
+  /** The filter's initial state only: the viewer clears it like any chip, and the renderer never persists it. */
+  readonly default?: QuickFilterDefault;
+  /** The control's label; the field's own label is the default. */
+  readonly label?: string;
+  /** Hint text in the control. Text quick filters only. */
+  readonly placeholder?: string;
 }
 
 /**

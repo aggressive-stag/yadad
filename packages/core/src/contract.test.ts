@@ -217,7 +217,7 @@ function allowedPropertyKeysFor(level: string): string[] {
     case "table.sort":
       return ["field", "dir"];
     case "table.quickFilters":
-      return ["field"];
+      return ["field", "default", "label", "placeholder"];
     case "dashboard.tabs":
       return ["id", "title", "columns"];
     case "dashboard.tabs.items":
@@ -286,6 +286,7 @@ function valueForLevelProperty(level: string, key: string): unknown {
   }
   if (level === "table.columns" && key === "editable") return true;
   if (level === "table.sort" && key === "dir") return "desc";
+  if (level === "table.quickFilters" && (key === "default" || key === "placeholder")) return "x";
   if (level === "dashboard.tabs" && key === "columns") return 12;
   if (level === "dashboard.tabs.items") {
     if (key === "x" || key === "y") return 0; // x + w must fit the tab's 12 columns

@@ -9,7 +9,7 @@ import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } f
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, TEXT_MAX_LENGTH_CEILING, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
 import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, FORM_ITEM_LABEL_MAX, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField, optionValue } from "./document.js";
-import type { BoardView, CalendarView, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, SeriesWidget, TableView, ViewerDocument, ViewerFact } from "./document.js";
+import type { BoardView, CalendarView, QuickFilter, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, SeriesWidget, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { jsonPointer } from "./errors.js";
 import type { DocumentError, ErrorCode } from "./errors.js";
 
@@ -377,8 +377,10 @@ function validateTable(errors: Errors, doc: JsonObject): void {
       errors.add(path, "type", "A filter must be a JSON object.", 'Use { "field": "<field id>" }.');
       return;
     }
-    checkKeys(errors, f, path, ["field"], []);
+    checkKeys(errors, f, path, ["field"], ["default", "label", "placeholder"]);
     checkId(errors, f, path, "field");
+    checkNonEmptyString(errors, f, path, "label");
+    checkNonEmptyString(errors, f, path, "placeholder");
     if (typeof f["field"] === "string") filtered.push({ id: f["field"], path: [...path, "field"] });
   });
   reportDuplicates(errors, filtered, "filter", "a table's quick filters");
@@ -1461,6 +1463,7 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   view.quickFilters?.forEach((filter, i) => {
     checkField(filter.field, ["quickFilters", i, "field"]);
     checkNotReference(errors, view.id, entity, filter.field, ["quickFilters", i, "field"], "quick filter");
+    checkQuickFilterExtras(errors, view.id, entity, filter, ["quickFilters", i]);
   });
   checkConditionFields(view.filter, ["filter"], checkField);
   checkDates(view.filter, ["filter"]);
@@ -1993,6 +1996,65 @@ function checkNotReference(errors: DocumentError[], document: string, entity: En
     hint: "Reference fields hold a record id, so they cannot be a quick filter or sort key. Use a fixed filter with eq, neq, in, empty or notEmpty instead.",
     document,
   });
+}
+
+/** A quick filter's `default` and `placeholder` against its field (RFC 0010 items 4 and 5). */
+function checkQuickFilterExtras(errors: DocumentError[], document: string, entity: EntityDocument, filter: QuickFilter, base: Path): void {
+  const field = entity.fields.find((f) => f.id === filter.field);
+  if (!field || field.type === "reference") return; // unknown and reference fields are reported elsewhere
+  const bad = (key: string, message: string, hint: string, sub: Path = []): void => {
+    errors.push({ path: jsonPointer([...base, key, ...sub]), code: "invalid-value", message, hint, document });
+  };
+  if (filter.placeholder !== undefined && field.type !== "text") {
+    bad("placeholder", `A placeholder only applies to a text quick filter, and "${field.id}" is a ${field.type} field.`, "Remove the placeholder, or filter a text field.");
+  }
+  const value: unknown = filter.default;
+  if (value === undefined) return;
+  const shape = (hint: string): void => bad("default", `The default for ${field.type} quick filter "${field.id}" has the wrong shape.`, hint);
+  switch (field.type) {
+    case "text":
+      if (typeof value !== "string") shape('Use a string, e.g. "draft".');
+      return;
+    case "time":
+      if (typeof value !== "string" || !isHhMm(value)) shape('Use a time like "09:30" (HH:MM).');
+      return;
+    case "boolean":
+      if (typeof value !== "boolean") shape("Use true or false.");
+      return;
+    case "select": {
+      const allowed = field.options.values.map(optionValue);
+      if (typeof value !== "string" || !allowed.includes(value)) {
+        bad("default", `${JSON.stringify(value)} is not an option of select field "${field.id}".`, `Use one of: ${allowed.join(", ")}.`);
+      }
+      return;
+    }
+    case "tags":
+      if (!Array.isArray(value) || value.some((t) => typeof t !== "string" || t === "")) shape('Use an array of non-empty strings, e.g. ["urgent"].');
+      return;
+    case "number":
+    case "date":
+    case "datetime": {
+      const hint = field.type === "number" ? "Use { from?, to? } with numbers, e.g. { \"from\": 10 }." : field.type === "date" ? 'Use { from?, to? } with dates like "2026-10-04".' : 'Use { from?, to? } with instants like "2026-10-17T09:30:00.000Z".';
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return shape(hint);
+      const range = value as Record<string, unknown>;
+      for (const key of Object.keys(range)) {
+        if (key !== "from" && key !== "to") bad("default", `Unknown key "${key}" in the default of "${field.id}".`, hint, [key]);
+      }
+      for (const end of ["from", "to"]) {
+        const bound = range[end];
+        if (bound === undefined) continue;
+        const ok = field.type === "number" ? typeof bound === "number" && Number.isFinite(bound) : typeof bound === "string" && (field.type === "date" ? isIsoDate(bound) : isIsoDatetime(bound));
+        if (!ok) bad("default", `${JSON.stringify(bound)} is not a valid "${end}" bound for ${field.type} field "${field.id}".`, hint, [end]);
+      }
+      const { from, to } = range;
+      if ((typeof from === "number" && typeof to === "number" && from > to) || (typeof from === "string" && typeof to === "string" && from > to)) {
+        bad("default", `The default's "from" is after its "to".`, 'Swap them, or drop one end.');
+      }
+      return;
+    }
+    default:
+      return;
+  }
 }
 
 /** A tags field holds a list (RFC 0008 item 15): no order, no partition. */
