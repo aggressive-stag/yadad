@@ -33,12 +33,12 @@ A board shows records as cards in columns, one per value of a select, boolean or
 import type { BoardView, ViewerDocument } from "@yadad/core";
 
 const viewer: ViewerDocument = {
-  kind: "viewer", specVersion: 8, id: "viewer", revision: 1,
+  kind: "viewer", specVersion: 9, id: "viewer", revision: 1,
   facts: [{ id: "role", label: "Role", type: "select", options: { source: "static", values: ["viewer", "editor"] }, default: "viewer" }],
 };
 
 const board: BoardView = {
-  kind: "board", specVersion: 8, id: "task_board", entity: "task", revision: 1, dataSource: "default",
+  kind: "board", specVersion: 9, id: "task_board", entity: "task", revision: 1, dataSource: "default",
   groupBy: [{ field: "status" }, { field: "owner" }], // the viewer picks one; the first is the default
   titleField: "title",
   editable: true, // dragging a card to another column changes the grouping field...
@@ -56,7 +56,7 @@ RFC 0007 adds the document pieces a review screen needs. An entity declares what
 import type { EntityDocument, TableView } from "@yadad/core";
 
 const change: EntityDocument = {
-  kind: "entity", specVersion: 8, id: "change", revision: 1,
+  kind: "entity", specVersion: 9, id: "change", revision: 1,
   fields: [
     { id: "title", type: "text", label: "Title", required: true },
     { id: "body", type: "text", label: "Body" },
@@ -73,7 +73,7 @@ const change: EntityDocument = {
 };
 
 const history: TableView = {
-  kind: "table", specVersion: 8, id: "change_history", entity: "change", revision: 1, dataSource: "default",
+  kind: "table", specVersion: 9, id: "change_history", entity: "change", revision: 1, dataSource: "default",
   columns: [
     { field: "title" },
     { field: "body", compare: { field: "previous" } }, // diffs this cell against another field of the record; { to: "previousRow" } is the other choice
@@ -95,7 +95,7 @@ A `datetime` quick filter is a from/to range on the viewer's clock (gte/lte, eit
 
 ## Rules worth knowing
 
-- `specVersion` is the document format (currently 8); `revision` counts user edits to a document and is data.
+- `specVersion` is the document format (currently 9); `revision` counts user edits to a document and is data.
 - Ids (documents, fields, sections, tabs, grid items) match `[a-z][a-z0-9_]*`, e.g. `workout_set`; grid-item ids need only be unique within their tab.
 - Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`; `viewerIn` tests a viewer fact.
 

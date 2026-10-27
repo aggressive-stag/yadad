@@ -34,7 +34,7 @@ import "@yadad/components/styles.css";
 import { useState } from "react";
 
 const entity: EntityDocument = {
-  kind: "entity", specVersion: 8, id: "workout_set", revision: 1,
+  kind: "entity", specVersion: 9, id: "workout_set", revision: 1,
   fields: [
     { id: "day", type: "date", label: "Day", required: true },
     { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat", "Bench press"] } },
@@ -43,12 +43,12 @@ const entity: EntityDocument = {
 };
 
 const form: FormView = {
-  kind: "form", specVersion: 8, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "form", specVersion: 9, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
   sections: [{ id: "set", title: "Log a set", items: [{ field: "day" }, { field: "exercise" }, { field: "reps" }] }],
 };
 
 const table: TableView = {
-  kind: "table", specVersion: 8, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "table", specVersion: 9, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
   columns: [{ field: "day" }, { field: "exercise" }, { field: "reps" }],
   filter: { op: "gte", field: "day", value: { daysFromToday: -7 } },
   quickFilters: [{ field: "exercise" }],
@@ -107,7 +107,7 @@ The showcase's review page is a worked example: changes, version history with co
 - **Conditions.** A JSON AST (`eq`, `gt`, `in`, `and`, `not`, ...) drives `visibleWhen`, `requiredWhen` and filters; there are no string expressions. Date comparisons accept a relative date, `{ "daysFromToday": n }` (0 is today, -7 a week ago), resolved from the viewer's local date.
 - **Viewer facts.** A `viewer` document lists facts (`select` or `boolean`, each with a default). The host resolves them for the current user with `resolveViewer` and passes the result to a renderer's `viewer` prop. A `viewerIn` condition on a column, form field, tab, widget, row action or `editableWhen` shows or allows it only for matching viewers; hidden things are not rendered, not greyed out. A record may also carry `can: { update?, delete? }`, which can only take rights away. The server still decides: a refused write is a 403. See [ARCHITECTURE.md](ARCHITECTURE.md) and [RFC 0006](rfcs/0006-viewer.md).
 - **Quick filters.** A table's `quickFilters` lets the viewer filter by a field: exact for select and boolean, substring for text, a from/to range for number and date.
-- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 8) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
+- **`specVersion` and `revision`.** `specVersion` is the engine's document format (currently 9) and is upgraded by `migrate()`. `revision` is bumped whenever a user edits a document; it is data, not code.
 - **Document ids.** Document, field, section, tab and grid-item ids all match `[a-z][a-z0-9_]*`: lowercase letters, digits and underscores, starting with a letter. Use `workout_set`, not `workout-set`, `WorkoutSet` or `1st_set`. Grid-item ids only need to be unique within their tab.
 
 ## Documentation

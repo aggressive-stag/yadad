@@ -26,11 +26,11 @@ describe("migrate", () => {
     expect(migrate({ ...v0, specVersion: 99 })).toEqual({ ...v0, specVersion: 99 });
   });
 
-  test("each step moves up exactly one version, so version 0, 1, 2, 3, 4, 5, 6 and 7 documents all reach the current one", () => {
-    for (const from of [0, 1, 2, 3, 4, 5, 6, 7]) {
+  test("each step moves up exactly one version, so version 0, 1, 2, 3, 4, 5, 6, 7 and 8 documents all reach the current one", () => {
+    for (const from of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
       const result = migrate({ ...v0, specVersion: from });
       expect(result).toEqual({ ...v0, specVersion: SPEC_VERSION });
     }
-    expect(SPEC_VERSION).toBe(8);
+    expect(SPEC_VERSION).toBe(9);
   });
 });

@@ -394,6 +394,7 @@ const validSetDir = new URL("../../fixtures/valid-sets/", import.meta.url);
 const expectedSetWarnings: Record<string, { path: string; code: string; document: string | undefined }[]> = {
   "review.json": [],
   "rfc-0008-9-v8.json": [],
+  "rfc-0010-v9.json": [],
   "viewer-minimal.json": [],
   "viewer-unread-fact.json": [{ path: "/facts/1", code: "empty", document: "viewer" }],
 };

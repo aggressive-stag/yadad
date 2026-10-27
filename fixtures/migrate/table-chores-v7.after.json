@@ -1,6 +1,6 @@
 {
   "kind": "table",
-  "specVersion": 8,
+  "specVersion": 9,
   "id": "chores_v7",
   "title": "Chores, written before version 8",
   "entity": "chore",
