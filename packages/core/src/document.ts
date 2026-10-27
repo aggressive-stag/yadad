@@ -306,6 +306,8 @@ export interface TableColumn {
   readonly editableWhen?: ViewerCondition;
   /** Show what changed in this text field against a neighbouring row or another field (RFC 0007). Text fields only; not with `editable`. */
   readonly compare?: ColumnCompare;
+  /** `false` keeps the header from offering a sort (RFC 0010 item 6). Only `false` is accepted; sortable is the default. */
+  readonly sortable?: false;
 }
 
 export interface SortSpec {
@@ -327,6 +329,8 @@ export interface TableView {
   readonly columns: readonly TableColumn[];
   /** Initial sort; viewers can change it. First entry sorts first. */
   readonly sort?: readonly SortSpec[];
+  /** `false` makes every column unsortable, for a list the server only serves in one order (RFC 0010 item 6). Only `false` is accepted. A declared `sort` is then an error. */
+  readonly sortable?: false;
   /** Rows per page. Defaults to 25. */
   readonly pageSize?: number;
   /** Rows must always match this. */

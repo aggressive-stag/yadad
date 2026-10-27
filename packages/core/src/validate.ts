@@ -348,7 +348,8 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "sortable", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm"]);
+  checkSortableFlag(errors, doc, []);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkRecordActions(errors, doc["recordActions"]);
@@ -400,8 +401,9 @@ function validateTable(errors: Errors, doc: JsonObject): void {
       errors.add(path, "type", "A column must be a JSON object.", 'Use { "field": "<field id>" }.');
       return;
     }
-    checkKeys(errors, column, path, ["field"], ["editable", "visibleWhen", "editableWhen", "compare"]);
+    checkKeys(errors, column, path, ["field"], ["editable", "visibleWhen", "editableWhen", "compare", "sortable"]);
     checkId(errors, column, path, "field");
+    checkSortableFlag(errors, column, path);
     checkCompare(errors, column, path);
     checkBoolean(errors, column, path, "editable");
     checkCondition(errors, column["visibleWhen"], [...path, "visibleWhen"], "viewer");
@@ -412,6 +414,7 @@ function validateTable(errors: Errors, doc: JsonObject): void {
   reportDuplicates(errors, shown, "column", "a table (each field appears once)");
 
   checkSort(errors, doc, "a table's sort");
+  checkSortAgainstSortable(errors, doc, columns);
 
   const pageSize = doc["pageSize"];
   if (pageSize !== undefined && (typeof pageSize !== "number" || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > PAGE_SIZE_MAX)) {
@@ -1172,6 +1175,33 @@ function checkNonEmptyString(errors: Errors, obj: JsonObject, path: Path, key: s
   } else if (v.trim() === "") {
     errors.add([...path, key], "invalid-value", `"${key}" must not be empty.`, `Give "${key}" a non-empty value.`);
   }
+}
+
+/** `sortable` (RFC 0010 item 6) accepts only `false`; `true` is the default and so is refused. */
+function checkSortableFlag(errors: Errors, obj: JsonObject, path: Path): void {
+  const v = obj["sortable"];
+  if (v !== undefined && v !== false) {
+    errors.add([...path, "sortable"], "invalid-value", `"sortable" only accepts false (got ${JSON.stringify(v)}).`, 'Leave "sortable" out to keep sorting on, or use false to turn it off.');
+  }
+}
+
+/** A declared sort may not name an unsortable column, nor appear at all on an unsortable view. */
+function checkSortAgainstSortable(errors: Errors, doc: JsonObject, columns: readonly unknown[] | undefined): void {
+  const sort = doc["sort"];
+  if (!Array.isArray(sort)) return;
+  const viewOff = doc["sortable"] === false;
+  const off = new Set<string>();
+  columns?.forEach((c) => {
+    if (isObject(c) && c["sortable"] === false && typeof c["field"] === "string") off.add(c["field"]);
+  });
+  sort.forEach((key, i) => {
+    if (!isObject(key) || typeof key["field"] !== "string") return;
+    if (viewOff) {
+      errors.add(["sort", i, "field"], "invalid-value", `The sort names "${key["field"]}", but this table has "sortable": false.`, 'Remove "sort", or remove "sortable": false.');
+    } else if (off.has(key["field"])) {
+      errors.add(["sort", i, "field"], "invalid-value", `The sort names column "${key["field"]}", which has "sortable": false.`, `Sort by another column, or remove "sortable": false from "${key["field"]}".`);
+    }
+  });
 }
 
 function checkBoolean(errors: Errors, obj: JsonObject, path: Path, key: string): void {

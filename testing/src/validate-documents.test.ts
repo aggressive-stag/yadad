@@ -48,6 +48,16 @@ const expected: Record<string, Picked[]> = {
     { path: "/quickFilters/0/label", code: "invalid-value", document: "thing_table", allowed: undefined },
     { path: "/quickFilters/0/placeholder", code: "invalid-value", document: "thing_table", allowed: undefined },
   ],
+  "sortable-true.json": [
+    { path: "/sortable", code: "invalid-value", document: "thing_table", allowed: undefined },
+    { path: "/columns/0/sortable", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
+  "sort-on-unsortable-column.json": [
+    { path: "/sort/1/field", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
+  "sort-on-unsortable-view.json": [
+    { path: "/sort/0/field", code: "invalid-value", document: "thing_table", allowed: undefined },
+  ],
   "dashboard-unknown-view.json": [
     { path: "/tabs/0/items/0/view", code: "unknown-reference", document: "board", allowed: ["the_form"] },
   ],

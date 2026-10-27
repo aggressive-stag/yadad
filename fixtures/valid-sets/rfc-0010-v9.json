@@ -33,7 +33,8 @@
       {
         "field": "body"
       }
-    ]
+    ],
+    "sortable": false
   },
   {
     "kind": "form",
@@ -125,7 +126,8 @@
         "field": "title"
       },
       {
-        "field": "status"
+        "field": "status",
+        "sortable": false
       }
     ],
     "quickFilters": [
@@ -182,6 +184,12 @@
       "value": {
         "hoursFromNow": -24
       }
-    }
+    },
+    "sort": [
+      {
+        "field": "title",
+        "dir": "asc"
+      }
+    ]
   }
 ]
