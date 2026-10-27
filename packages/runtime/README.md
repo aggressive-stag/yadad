@@ -59,6 +59,7 @@ instantRangeBounds("2026-10-21T10:00", "2026-10-21T10:30", "America/Chicago"); /
 ## Actions and compare
 
 - `availableActions(entity, view, record, viewer?)` is the one answer to "may this row offer this action": the view's `recordActions` order, kept only where the action exists, its `visibleWhen` holds for the record and viewer, and `can.actions` does not say false. The renderer and the state grid both call this, so they cannot disagree.
+- `loadReferenceFilterChoices(adapter, targetEntity, referenceField, limit?)` loads a reference quick filter's picker choices as `{ value: id, label }`, sorted by the display rule and capped at `REFERENCE_OPTION_LIMIT` (200, with `more` set).
 - `actionNeedsDialog(action)` (a `confirm` or any `input`) and `validateActionInput(action, input)` drive the confirm-and-input dialog; the input field types are the ones with a plain input — no `reference`.
 - `diffWords(before, after)` is a word diff (`{ text, added? }` segments); `compareCells(rows, column, edge?)` runs it for a `compare` column across a page — against a neighbour row (widen the read with `neighbourQuery`, or pass the page outside your window as `edge` for cursor pages) or against another text field of each record. `neighbourQuery` widens an offset page by one row and leaves cursor queries alone; a cursor page's first row needs the previous page's last row as `edge`.
 

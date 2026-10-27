@@ -82,6 +82,8 @@ const history: TableView = {
 };
 ```
 
+A `reference` quick filter is a picker over the target entity's records; it matches the stored id with `eq` and its `default` is a record id. A reference field is still refused as a sort key. An action's `confirm.subjectField` is a field id of the action's entity; the confirm dialog shows that field's display value under the message.
+
 A `datetime` quick filter is a from/to range on the viewer's clock (gte/lte, either end optional). `Page.total` in the `DataAdapter` contract is optional: a server may answer with only `next`, an opaque cursor the client never parses (see `docs/records-protocol.md`).
 
 ## Options that live on the server

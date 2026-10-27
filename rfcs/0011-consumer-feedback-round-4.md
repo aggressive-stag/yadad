@@ -1,6 +1,6 @@
 # RFC 0011: Consumer feedback round 4
 
-- Status: Accepted (2026-10-27). Every item as recommended; see `## Owner decisions`.
+- Status: Implemented (2026-10-27). Every item as recommended; see `## Owner decisions` and `## Implemented`.
 - Touches: `core` (a confirm subject field, `reference` fields as quick filters; the validators, `describeContract`), `runtime` (two regressions in `validateRecord`, the state grid's record generation, quick-filter options for references), `renderer` (a controlled dashboard tab, drill levels that keep their rows, the confirm subject line, the reference quick-filter picker), `testing` (a calendar check, state-grid axes for the new keys), `editor` (the matching editors), docs, and the components repo (a diff raw-text hook).
 - Proposes the next `specVersion` with an identity `migrate()` step and a before/after fixture pair, once, when the first accepted contract item lands (items 2 and 3). Items 1 and 4 need no bump.
 
@@ -134,3 +134,17 @@ The owner accepted every item **as recommended**. `specVersion` moves 9 → 10 o
    - A `reference` field may be a quick filter. Its control is a picker over the target entity's records, it matches on the stored id with `eq`, and its `default` is a record id.
    - Reference fields stay refused as sort keys.
 4. **Item 4: accepted (b).** Text-match kinds stay with the server. The quick filter's label and placeholder say which match it runs. Revisit only when a second consumer needs a document to choose the match.
+
+## Implemented
+
+- Fix: `validateRecord` accepts labelled select options (`43ddfc9`) and validates state-grid records as stored records (`967c63a`); released as runtime 0.14.1 and testing 0.13.1 (`b6b430b`).
+- Fix: the calendar `done-missing` check skips day-capped entries (`53fa1d6`).
+- `specVersion` 10 with an identity `migrate()` step and a fixture pair (`4a7c283`).
+- Item 1: `DashboardRenderer` controlled `tab` / `onTabChange` (`6c9d461`).
+- Item 2: `ActionConfirm.subjectField` in core (`3856559`); the renderer's subject line (`af14589`); the editor picker (`8bbb91d`).
+- Item 3: `reference` quick filters in core (`ff70dc0`) and runtime (`8501d2a`); the renderer picker (`af14589`); the editor column option (`8bbb91d`).
+- Item 4: no change, per the decision.
+- Fix: a controlled drill keeps the rows of unchanged levels (`df5dc55`).
+- Fix: the action dialog's `data-yadad-action-input` hook and the instance-scoping docs (`2292782`).
+- Fix: focus returns only to a rebuilt control whose record kept its place (`108094a`).
+- Testing: state-grid axes and checks for the new surfaces (`9543bfd`); upgrade notes (`9fe2999`).

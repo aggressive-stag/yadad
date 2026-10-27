@@ -150,6 +150,8 @@ Tags quick filter of one table, when another table or a dashboard also has one:
 
 ## Saved filters as chips (RFC 0009)
 
+A `reference` quick filter renders as a picker over the target entity's records (the first 200, with a note when there are more) and filters on the chosen id. A record action's confirm dialog shows its `subjectField` as `<p data-yadad-confirm-subject>` under the message, drawn the way a table cell draws that field.
+
 A table view's `filters` entries render as a chip row beside the quick filters. The renderer holds no chip state — the host owns which chip is lit and persists that choice:
 
 ```tsx
