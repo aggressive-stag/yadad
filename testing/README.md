@@ -69,7 +69,7 @@ const render: CheckViewStatesOptions["render"] = (state, { view, entity, registr
   switch (view.kind) {
     // A form state's values arrive through the draft store — pass `drafts` or the form renders empty.
     case "form": return <FormRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} {...(drafts ? { drafts } : {})} {...who} />;
-    case "table": return <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} {...who} />;
+    case "table": return state.render.kind === "table" ? <TableRenderer entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} savedFilter={state.render.savedFilter} {...who} /> : null;
     // The state names the mode and the day the calendar opens on; key remounts it per state so the seed applies.
     case "calendar": return state.render.kind === "calendar" ? <CalendarRenderer key={state.id} entity={entity!} view={view} registry={registry} dataSources={dataSources} entities={set.entities} documents={set} now={now} initialMode={state.render.mode} initialAnchor={state.render.anchor} {...who} /> : null;
     // The state names the grouping; the viewer can still switch after the state seeds it.
@@ -84,6 +84,15 @@ test.each(["task_form", "task_table", "task_board", "task_dashboard"])("%s, in e
   expect(problems(results)).toEqual([]);
 });
 ```
+
+### Upgrading hand-written drivers
+
+**0.12 and later.** A `render` function must pass the state's `state.render` keys to the renderer: `state.render.savedFilter` to `TableRenderer`'s `savedFilter`, and likewise `mode` and `anchor` (calendar), `groupBy` (board), `tab` (dashboard), `rows` (batch form, to `initialRows`) and `quickDefaults` (table quick filters). A driver that ignores `savedFilter` fails the `saved-filter` check on every table with named `filters`, because the table never applies the filter the state selected.
+
+**0.13.1 and later.**
+- A `readOnly` field keeps its `field:<id>` axis when a view condition references it (so a condition on a server-set field is still exercised), and has none otherwise.
+- States that used to be skipped silently are now generated and checked: labelled select values, and entities with a `readOnly` value (including a server-set `required` + `readOnly` id). Expect new failures on upgrade; they are real.
+- The calendar `done-missing` check counts only the entries a day cell draws, so a calendar with `maxEntriesPerDay` no longer needs the check skipped.
 
 **What state checks don't check.** The checks render your component tree against the mock adapter, so they can't see: which `dataSource` key a view names (every key serves the same seeded adapter — a wrong key renders green here and empty in the app); what a real server serves or refuses (the adapter is seeded, not queried); and anything after a write (saving, actions, optimistic refresh). Cover those with adapter tests against your real data source and end-to-end tests.
 
