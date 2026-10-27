@@ -498,7 +498,7 @@ export interface QuickFilterRange {
 /**
  * A quick filter's first value (RFC 0010 item 4), in the shape the filter takes: a string for select, text
  * and time fields (a select's must be one of its options), a boolean for boolean fields, a string array
- * for tags, `{ from?, to? }` for number, date and datetime fields.
+ * for tags, a record id (a non-empty string) for reference fields, `{ from?, to? }` for number, date and datetime fields.
  */
 export type QuickFilterDefault = string | boolean | readonly string[] | QuickFilterRange;
 

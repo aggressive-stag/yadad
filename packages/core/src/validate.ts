@@ -1530,7 +1530,6 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   if (view.kind === "table" && view.addForm !== undefined) checkAddFormTarget(errors, view, entity, idx);
   view.quickFilters?.forEach((filter, i) => {
     checkField(filter.field, ["quickFilters", i, "field"]);
-    checkNotReference(errors, view.id, entity, filter.field, ["quickFilters", i, "field"], "quick filter");
     checkQuickFilterExtras(errors, view.id, entity, filter, ["quickFilters", i]);
   });
   checkConditionFields(view.filter, ["filter"], checkField);
@@ -2073,7 +2072,7 @@ function checkReferenceFields(errors: DocumentError[], entity: EntityDocument, i
 
 const isLabelField = (f: Field): boolean => f.type === "text" || f.type === "select";
 
-/** Reference fields cannot be quick filters or sort keys in this version. */
+/** Reference fields cannot be sort keys (RFC 0011 item 3 lets them be quick filters). */
 function checkNotReference(errors: DocumentError[], document: string, entity: EntityDocument, fieldId: string, path: Path, what: string): void {
   const field = entity.fields.find((f) => f.id === fieldId);
   if (field?.type !== "reference") return;
@@ -2081,7 +2080,7 @@ function checkNotReference(errors: DocumentError[], document: string, entity: En
     path: jsonPointer(path),
     code: "invalid-value",
     message: `Reference field "${fieldId}" cannot be a ${what}.`,
-    hint: "Reference fields hold a record id, so they cannot be a quick filter or sort key. Use a fixed filter with eq, neq, in, empty or notEmpty instead.",
+    hint: "Reference fields hold a record id, so they cannot be a sort key. Use a fixed filter with eq, neq, in, empty or notEmpty instead.",
     document,
   });
 }
@@ -2089,7 +2088,7 @@ function checkNotReference(errors: DocumentError[], document: string, entity: En
 /** A quick filter's `default` and `placeholder` against its field (RFC 0010 items 4 and 5). */
 function checkQuickFilterExtras(errors: DocumentError[], document: string, entity: EntityDocument, filter: QuickFilter, base: Path): void {
   const field = entity.fields.find((f) => f.id === filter.field);
-  if (!field || field.type === "reference") return; // unknown and reference fields are reported elsewhere
+  if (!field) return; // unknown fields are reported elsewhere
   const bad = (key: string, message: string, hint: string, sub: Path = []): void => {
     errors.push({ path: jsonPointer([...base, key, ...sub]), code: "invalid-value", message, hint, document });
   };
@@ -2116,6 +2115,9 @@ function checkQuickFilterExtras(errors: DocumentError[], document: string, entit
       }
       return;
     }
+    case "reference":
+      if (typeof value !== "string" || value === "") shape("Use a record id of the target entity, as a non-empty string.");
+      return;
     case "tags":
       if (!Array.isArray(value) || value.some((t) => typeof t !== "string" || t === "")) shape('Use an array of non-empty strings, e.g. ["urgent"].');
       return;

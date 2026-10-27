@@ -141,9 +141,13 @@ const expected: Record<string, Picked[]> = {
   "reference-unknown-display.json": [{ path: "/fields/0/display", code: "unknown-reference", document: "entry", allowed: ["name"] }],
   "reference-display-not-text.json": [{ path: "/fields/0/display", code: "invalid-value", document: "entry" }],
   "reference-missing-entity.json": [{ path: "/fields/0/entity", code: "required", document: "entry" }],
+  "quick-filter-reference-bad-default.json": [
+    { path: "/quickFilters/0/default", code: "invalid-value", document: "entries" },
+    { path: "/quickFilters/1/default", code: "invalid-value", document: "entries" },
+    { path: "/quickFilters/2/placeholder", code: "invalid-value", document: "entries" },
+  ],
   "reference-unsupported-use.json": [
     { path: "/sort/0/field", code: "invalid-value", document: "entries" },
-    { path: "/quickFilters/0/field", code: "invalid-value", document: "entries" },
     { path: "/filter/op", code: "invalid-value", document: "entries" },
   ],
   "row-action-unknown-view.json": [{ path: "/rowAction/open", code: "unknown-reference", document: "a", allowed: ["a"] }],

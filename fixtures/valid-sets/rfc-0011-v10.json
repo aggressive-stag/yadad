@@ -2,6 +2,20 @@
   {
     "kind": "entity",
     "specVersion": 10,
+    "id": "topic",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name",
+        "required": true
+      }
+    ]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 10,
     "id": "note",
     "revision": 1,
     "fields": [
@@ -22,6 +36,19 @@
         "id": "body",
         "type": "text",
         "label": "Body"
+      },
+      {
+        "id": "topic",
+        "type": "reference",
+        "label": "Topic",
+        "entity": "topic"
+      },
+      {
+        "id": "owner",
+        "type": "reference",
+        "label": "Owner",
+        "entity": "topic",
+        "display": "name"
       }
     ],
     "actions": [
@@ -54,7 +81,17 @@
         "field": "body"
       }
     ],
-    "sortable": false
+    "sortable": false,
+    "quickFilters": [
+      {
+        "field": "topic"
+      },
+      {
+        "field": "owner",
+        "default": "topic-1",
+        "label": "Owner"
+      }
+    ]
   },
   {
     "kind": "form",

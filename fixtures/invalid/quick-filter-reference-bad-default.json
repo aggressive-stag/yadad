@@ -1,0 +1,68 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 10,
+    "id": "topic",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      }
+    ]
+  },
+  {
+    "kind": "entity",
+    "specVersion": 10,
+    "id": "entry",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "topic",
+        "type": "reference",
+        "label": "Topic",
+        "entity": "topic"
+      },
+      {
+        "id": "other",
+        "type": "reference",
+        "label": "Other",
+        "entity": "topic"
+      },
+      {
+        "id": "third",
+        "type": "reference",
+        "label": "Third",
+        "entity": "topic"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 10,
+    "id": "entries",
+    "entity": "entry",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "topic"
+      }
+    ],
+    "quickFilters": [
+      {
+        "field": "topic",
+        "default": 5
+      },
+      {
+        "field": "other",
+        "default": ""
+      },
+      {
+        "field": "third",
+        "placeholder": "Pick"
+      }
+    ]
+  }
+]
