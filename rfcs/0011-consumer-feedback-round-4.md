@@ -44,7 +44,7 @@ Nothing here moves authority: the server stays the only one, documents decide wh
 
 **Recommendation.** (a). It answers the real need (which record?) with one typed reference and leaves no template to grow.
 
-**Contract impact.** `core`: `subjectField` on `ActionConfirm`, the validator, `describeContract`. `renderer`: the subject line in the confirm dialog, through the existing dialog slot (add an optional `subject?: string` to its props in `registry.ts`). `components`: render `subject`. `editor`: a field picker on the confirm editor. `testing`: a contract-kit fixture. `specVersion`: next.
+**Contract impact.** `core`: `subjectField` on `ActionConfirm`, the validator, `describeContract`. `renderer`: the subject line in the confirm dialog, inside the dialog content the renderer already builds (`DialogProps` is modal behaviour only). `components`: a style for the subject line. `editor`: a field picker on the confirm editor. `testing`: a contract-kit fixture. `specVersion`: next.
 
 ### 3. Server-backed choices as reference quick filters (RFC 0010 item 3, revisited)
 
@@ -128,7 +128,7 @@ The owner accepted every item **as recommended**. `specVersion` moves 9 → 10 o
    - A supplied tab the viewer cannot see falls back to the first visible tab, and the fallback is reported through `onTabChange`.
 2. **Item 2: accepted (a).**
    - `ActionConfirm.subjectField` names one field of the record's entity, and the dialog shows that field's display value as a subject line.
-   - The dialog slot gains an optional `subject`.
+   - The renderer builds the dialog's content (`DialogProps` only supplies modal behaviour), so the subject is a renderer-drawn line, `data-yadad-confirm-subject`, under the message. No slot prop changes.
    - No template and no interpolation.
 3. **Item 3: accepted (a).**
    - A `reference` field may be a quick filter. Its control is a picker over the target entity's records, it matches on the stored id with `eq`, and its `default` is a record id.
