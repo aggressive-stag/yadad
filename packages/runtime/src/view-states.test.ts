@@ -71,6 +71,22 @@ function axis(result: ViewStatesResult, id: string): StateAxis {
 const ids = (a: StateAxis): string[] => a.values.map((v) => v.id);
 const labels = (a: StateAxis): string[] => a.values.map((v) => v.label);
 
+describe("batch composer rows axis", () => {
+  it("a batch form gets a rows axis whose three-row state carries rows: 3", () => {
+    const batch: FormView = { ...form(), repeat: "batch" };
+    const r = viewStates(batch, [entity, batch], { now: NOW });
+    expect(labels(axis(r, "rows"))).toEqual(["one row", "three rows queued"]);
+    const rows = r.states.flatMap((s) => (s.render.kind === "form" ? [s.render.rows] : []));
+    expect(new Set(rows)).toEqual(new Set([1, 3]));
+  });
+
+  it("a plain form has no rows axis and no rows", () => {
+    const f = form();
+    const r = viewStates(f, [entity, f], { now: NOW });
+    expect(r.states.every((s) => s.render.kind === "form" && s.render.rows === undefined)).toBe(true);
+  });
+});
+
 describe("field boundaries", () => {
   it("select: every option plus empty", () => {
     const r = viewStates(form(eq("status", "done")), docs, { now: NOW });

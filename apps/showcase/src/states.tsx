@@ -29,7 +29,7 @@ export function renderState(state: SourceViewState, context: StateRenderContext,
   const viewer = context.omitViewer ? {} : { viewer: context.viewer };
   switch (view.kind) {
     case "form":
-      return entity ? <FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} {...(drafts ? { drafts } : {})} {...viewer} /> : null;
+      return entity ? <FormRenderer {...(state.render.kind === "form" && state.render.rows !== undefined ? { initialRows: state.render.rows } : {})} entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} {...(drafts ? { drafts } : {})} {...viewer} /> : null;
     case "table":
       return entity ? <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={entities} documents={set} {...viewer} /> : null;
     case "calendar":

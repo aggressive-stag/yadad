@@ -4,7 +4,7 @@ import type { EntityDocument, FormView, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry as registry } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
-import { FormRenderer } from "./form-renderer.js";
+import { BATCH_ROW_CAP, FormRenderer } from "./form-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
 
 afterEach(cleanup);
@@ -59,5 +59,27 @@ describe("batch composer hooks", () => {
       expect(scope.querySelectorAll('[data-yadad-batch-controls="add_item"]')).toHaveLength(1);
       expect(scope.querySelector('[data-yadad-batch-count="add_item"]')?.textContent).toBe("1 row");
     }
+  });
+
+  test("initialRows starts the composer with that many rows, clamped to 1..the cap", () => {
+    const view: FormView = { kind: "form", specVersion: 8, id: "add_item", entity: "item", revision: 1, dataSource: "default", repeat: "batch", sections: [{ id: "main", items: [{ field: "title" }] }] };
+    const count = (initialRows: number | undefined): string | null | undefined => {
+      const { container, unmount } = render(<FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources()} {...(initialRows === undefined ? {} : { initialRows })} />);
+      const text = container.querySelector('[data-yadad-batch-count="add_item"]')?.textContent;
+      unmount();
+      return text;
+    };
+    expect(count(3)).toBe("3 rows");
+    expect(count(undefined)).toBe("1 row");
+    expect(count(0)).toBe("1 row");
+    expect(count(2.9)).toBe("2 rows");
+    expect(count(9999)).toBe(`${BATCH_ROW_CAP} rows`);
+  });
+
+  test("initialRows is ignored on a form that is not a batch composer", () => {
+    const view: FormView = { kind: "form", specVersion: 8, id: "plain", entity: "item", revision: 1, dataSource: "default", sections: [{ id: "main", items: [{ field: "title" }] }] };
+    const { container } = render(<FormRenderer entity={entity} view={view} registry={registry} dataSources={dataSources()} initialRows={3} />);
+    expect(container.querySelector("[data-yadad-batch-count]")).toBeNull();
+    expect(container.querySelectorAll("[data-yadad-batch-row]")).toHaveLength(0);
   });
 });

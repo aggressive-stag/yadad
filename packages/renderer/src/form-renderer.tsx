@@ -12,6 +12,9 @@ import { useReferences } from "./references.js";
 import { SubRecordChecklist } from "./sub-records.js";
 import { useViewerSetup } from "./viewer.js";
 
+/** The most rows the batch composer holds; `initialRows` is clamped to it and "+ another" stops there. */
+export const BATCH_ROW_CAP = 50;
+
 export interface FormRendererProps {
   readonly entity: EntityDocument;
   readonly view: FormView;
@@ -25,6 +28,12 @@ export interface FormRendererProps {
    */
   readonly entities?: ReadonlyMap<string, EntityDocument>;
   readonly onSaved?: (record: DataRecord) => void;
+  /**
+   * How many empty rows a batch composer (`repeat: "batch"`) starts with.
+   * Default 1, clamped to 1..`BATCH_ROW_CAP`; read once, and ignored when the
+   * view is not a batch composer.
+   */
+  readonly initialRows?: number;
   /**
    * Opt-in drafts: unsaved input is kept in the store (debounced, default
    * 400 ms) and restored on the next load, until it is saved or discarded.
@@ -59,7 +68,12 @@ export interface FormRendererProps {
  * the Save button) comes from the injected registry; saving goes through
  * runtime and the data adapter.
  */
-export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents, formatting, parent, reloadKey }: FormRendererProps): ReactNode {
+function clampRows(n: number | undefined): number {
+  if (n === undefined || !Number.isFinite(n)) return 1;
+  return Math.min(BATCH_ROW_CAP, Math.max(1, Math.floor(n)));
+}
+
+export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents, formatting, parent, reloadKey, initialRows }: FormRendererProps): ReactNode {
   const formId = useId();
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const store = drafts?.store;
@@ -78,7 +92,9 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
   // `batch create`. Drafts do not apply — the DraftStore bag holds one
   // record's values, and a composer is quick-add, not an edit in progress.
   const isBatch = view.repeat === "batch";
-  const [rows, setRows] = useState<readonly FormState[]>([emptyFormState]);
+  const [rows, setRows] = useState<readonly FormState[]>(() =>
+    Array.from({ length: isBatch ? clampRows(initialRows) : 1 }, () => emptyFormState),
+  );
   const [batchNotice, setBatchNotice] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
   const [batchErrors, setBatchErrors] = useState<readonly DocumentError[]>([]);
 
@@ -171,7 +187,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
     else void save();
   };
 
-  const addRow = (): void => setRows((rs) => [...rs, emptyFormState]);
+  const addRow = (): void => setRows((rs) => (rs.length >= BATCH_ROW_CAP ? rs : [...rs, emptyFormState]));
 
   /** One field of one row: the row supplies values, errors and the write-back. */
   const renderItem = (item: FormItem, rowIndex: number): ReactNode => {
@@ -253,7 +269,7 @@ export function FormRenderer({ entity, view, registry, dataSources, entities, on
       ))}
       {isBatch && (
         <div data-yadad-batch-controls={view.id}>
-          <Button label="+ another" type="button" variant="secondary" disabled={saving} onPress={addRow} />
+          <Button label="+ another" type="button" variant="secondary" disabled={saving || rows.length >= BATCH_ROW_CAP} onPress={addRow} />
           <span data-yadad-batch-count={view.id} role="status">{rows.length} {rows.length === 1 ? "row" : "rows"}</span>
         </div>
       )}

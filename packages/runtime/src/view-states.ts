@@ -39,7 +39,7 @@ export const VIEW_STATES_DEFAULT_EMBEDDED_LIMIT = 3;
 export const TABLE_DEFAULT_PAGE_SIZE = 25;
 
 /** What an axis varies. New kinds are added to this union as new axes appear. */
-export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission" | "action" | "paging" | "filter";
+export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission" | "action" | "paging" | "filter" | "rows";
 
 export interface StateAxisValue {
   /** Stable within its axis. */
@@ -68,6 +68,8 @@ export interface FormStateRender {
   readonly view: string;
   /** The form's current values. They are a draft: they may break the entity's rules (an empty required field). */
   readonly values: RecordValues;
+  /** For a batch composer (`repeat: "batch"`): how many rows are queued. Pass it to the renderer's `initialRows`. Absent otherwise. */
+  readonly rows?: number;
   readonly now: Date;
 }
 
@@ -599,9 +601,19 @@ function planForm(view: FormView, ctx: Context): Plan {
       { id: "filled", label: "other fields filled" },
     ],
   };
+  const rowsAxis: StateAxis = {
+    id: "rows",
+    label: "Composer rows",
+    kind: "rows",
+    values: [
+      { id: "one", label: "one row" },
+      { id: "three", label: "three rows queued" },
+    ],
+  };
+  const isBatch = view.repeat === "batch";
   const formFields = formItems(view).flatMap((i) => entity.fields.filter((f) => f.id === i.field));
   return {
-    axes: [...found.axes, fill],
+    axes: [...found.axes, fill, ...(isBatch ? [rowsAxis] : [])],
     skipped: found.skipped,
     build(selection) {
       const values: Record<string, FieldValue> = {};
@@ -615,7 +627,7 @@ function planForm(view: FormView, ctx: Context): Plan {
         if (value === null) delete values[fieldId];
         else values[fieldId] = value;
       }
-      return { ok: true, render: { kind: "form", view: view.id, values, now: ctx.now } };
+      return { ok: true, render: { kind: "form", view: view.id, values, ...(isBatch ? { rows: selection["rows"] === "three" ? 3 : 1 } : {}), now: ctx.now } };
     },
   };
 }
@@ -1217,7 +1229,7 @@ function viewStatesIn(view: ViewDocument, ctx: Context, limit: number, embedded 
  * - Every condition the view uses (form `visibleWhen` and `requiredWhen`, the
  *   `filter` of a table, calendar or board, row-action bindings) becomes
  *   field axes with boundary values by type (see the README).
- * - The view kind adds axes: forms a `fill` axis; tables, calendars and boards
+ * - The view kind adds axes: forms a `fill` axis (a batch composer also a `rows` axis); tables, calendars and boards
  *   a `records` axis (none, one, one with optional values empty, one with long
  *   text, many) plus a calendar's `mode` and a board's `group`; dashboards a
  *   `tab` axis and one axis per embedded view.

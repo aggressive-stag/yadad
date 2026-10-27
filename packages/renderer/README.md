@@ -114,6 +114,7 @@ const view: FormView = { kind: "form", …, repeat: "batch", sections: […] };
 <FormRenderer entity={step} view={view} registry={registry} dataSources={dataSources} onSaved={refresh} />;
 ```
 
+- `initialRows` (default 1, clamped to 1..50, the composer's row cap) starts the composer with that many empty rows; it is read once and ignored unless the view is `repeat: "batch"`.
 - "+ another" adds an unsaved row; each extra row gets a Remove control. Nothing persists while rows are queued, and drafts never apply to a batch composer — rows live in component state only.
 - The single Add flushes every row through `submitBatchCreate` (exported from `@yadad/runtime`): all rows are validated first, then written in ONE adapter `batch` call — all of them land or none do. A row's validation error stays on that row (`/rows/<i>/…`); the other rows keep what was typed.
 - A section that declares `subRecords` renders once per composer, not once per queued row.
