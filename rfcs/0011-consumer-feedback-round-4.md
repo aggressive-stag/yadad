@@ -1,6 +1,6 @@
 # RFC 0011: Consumer feedback round 4
 
-- Status: Draft
+- Status: Accepted (2026-10-27). Every item as recommended; see `## Owner decisions`.
 - Touches: `core` (a confirm subject field, `reference` fields as quick filters; the validators, `describeContract`), `runtime` (two regressions in `validateRecord`, the state grid's record generation, quick-filter options for references), `renderer` (a controlled dashboard tab, drill levels that keep their rows, the confirm subject line, the reference quick-filter picker), `testing` (a calendar check, state-grid axes for the new keys), `editor` (the matching editors), docs, and the components repo (a diff raw-text hook).
 - Proposes the next `specVersion` with an identity `migrate()` step and a before/after fixture pair, once, when the first accepted contract item lands (items 2 and 3). Items 1 and 4 need no bump.
 
@@ -119,6 +119,18 @@ Verified on `main` at `1ed71ca`:
 3. **Item 3:** allow `reference` fields as quick filters (a), or keep build-time filling (b)?
 4. **Item 4:** keep the RFC 0010 verdict on text-match kinds (b), or add `match` (a)?
 
-## Owner decisions
+## Owner decisions (2026-10-27)
 
-_Pending. The owner has not yet decided any item._
+The owner accepted every item **as recommended**. `specVersion` moves 9 → 10 once, with an identity `migrate()` step and one before/after fixture pair, when the first accepted contract item lands (items 2 and 3). Items 1 and 4 need no bump. The fixes under "Fix without a contract change" proceed as cards.
+
+1. **Item 1: accepted (a).**
+   - `DashboardRenderer` gains a controlled-optional `tab` / `onTabChange`. Unset, it behaves as today.
+   - A supplied tab the viewer cannot see falls back to the first visible tab, and the fallback is reported through `onTabChange`.
+2. **Item 2: accepted (a).**
+   - `ActionConfirm.subjectField` names one field of the record's entity, and the dialog shows that field's display value as a subject line.
+   - The dialog slot gains an optional `subject`.
+   - No template and no interpolation.
+3. **Item 3: accepted (a).**
+   - A `reference` field may be a quick filter. Its control is a picker over the target entity's records, it matches on the stored id with `eq`, and its `default` is a record id.
+   - Reference fields stay refused as sort keys.
+4. **Item 4: accepted (b).** Text-match kinds stay with the server. The quick filter's label and placeholder say which match it runs. Revisit only when a second consumer needs a document to choose the match.
