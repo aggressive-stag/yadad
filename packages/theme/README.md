@@ -15,6 +15,15 @@ cssVar("color-accent"); // "var(--yadad-color-accent)"
 
 `themeToCss(theme, selector = ":root")` emits one `--yadad-<name>` variable per token inside `@layer yadad.tokens`, so any unlayered host CSS overrides it. To customize, spread a theme and change values: `{ ...lightTheme, "color-accent": "#0a7d4f" }`.
 
+## Following the system theme
+
+`applySystemTheme(target = document.documentElement)` sets the light or dark token values on `target` from `prefers-color-scheme`, follows changes, and returns an unsubscribe. The values are inline custom properties, so they win over `themeToCss` output. It does nothing (and returns a no-op) when `window.matchMedia` is missing, such as during server rendering.
+
+```ts
+const stop = applySystemTheme();
+// later: stop();
+```
+
 ## Tokens
 
 `TOKEN_NAMES` is the list; `Theme` is an object with a value for every name.
