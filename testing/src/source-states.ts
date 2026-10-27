@@ -39,6 +39,8 @@ const LABELS: Record<SourceState, string> = {
   error: "failed to load",
   refused: "save refused",
   conflict: "save conflicts",
+  "notice-info": "server notice (info)",
+  "notice-warning": "server notice (warning)",
 };
 
 /**
@@ -51,7 +53,8 @@ export function applicableSources(view: ViewDocument): readonly SourceState[] {
     case "form":
       return ["ready", "refused"];
     case "table":
-      return view.columns.some((c) => c.editable === true) ? ["ready", "loading", "error", "refused", "conflict"] : ["ready", "loading", "error"];
+      // RFC 0010 item 7: only a table lists with a page, so only a table can carry the server's notice.
+      return view.columns.some((c) => c.editable === true) ? ["ready", "loading", "error", "refused", "conflict", "notice-info", "notice-warning"] : ["ready", "loading", "error", "notice-info", "notice-warning"];
     case "calendar":
     case "board":
       return view.editable === true ? ["ready", "loading", "error", "refused", "conflict"] : ["ready", "loading", "error"];
@@ -69,7 +72,8 @@ function recordCount(state: ViewState): number {
 
 /** The state a source mode is shown on: one that gives it something to act on. */
 function representative(source: SourceState, states: readonly ViewState[], entity: EntityDocument | undefined): ViewState | undefined {
-  if (source === "loading" || source === "error") return states[0]; // no records are shown, so the data does not matter
+  if (source === "loading" || source === "error") return states[0];
+  if (source === "notice-info" || source === "notice-warning") return states.reduce<ViewState | undefined>((best, s) => (best === undefined || recordCount(s) > recordCount(best) ? s : best), undefined); // no records are shown, so the data does not matter
   const first = states[0];
   if (first?.render.kind === "form") {
     // A refused save is most telling when the draft was valid.

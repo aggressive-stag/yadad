@@ -14,7 +14,7 @@ import { expect, test } from "vitest";
 
 // The sample, verbatim.
 const entity: EntityDocument = {
-  kind: "entity", specVersion: 8, id: "workout_set", revision: 1,
+  kind: "entity", specVersion: 9, id: "workout_set", revision: 1,
   fields: [
     { id: "day", type: "date", label: "Day", required: true },
     { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat", "Bench press"] } },
@@ -23,12 +23,12 @@ const entity: EntityDocument = {
 };
 
 const form: FormView = {
-  kind: "form", specVersion: 8, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "form", specVersion: 9, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
   sections: [{ id: "set", title: "Log a set", items: [{ field: "day" }, { field: "exercise" }, { field: "reps" }] }],
 };
 
 const table: TableView = {
-  kind: "table", specVersion: 8, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "table", specVersion: 9, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
   columns: [{ field: "day" }, { field: "exercise" }, { field: "reps" }],
   filter: { op: "gte", field: "day", value: { daysFromToday: -7 } },
   quickFilters: [{ field: "exercise" }],

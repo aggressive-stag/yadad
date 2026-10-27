@@ -25,7 +25,7 @@ export const personEntity: EntityDocument = {
 
 export const taskEntity: EntityDocument = {
   kind: "entity",
-  specVersion: 8,
+  specVersion: 9,
   id: "task",
   revision: 1,
   fields: [
@@ -42,7 +42,7 @@ export const taskEntity: EntityDocument = {
 /** The child entity of the batch form's sub-record checklist (RFC 0009 item 3). */
 export const checklistItemEntity: EntityDocument = {
   kind: "entity",
-  specVersion: 8,
+  specVersion: 9,
   id: "checklist_item",
   revision: 1,
   fields: [

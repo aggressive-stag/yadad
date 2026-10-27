@@ -4,9 +4,9 @@ import type { ViewState } from "@yadad/runtime";
 import { runQuery } from "@yadad/runtime";
 
 /** What the data source is doing: the values of the `source` axis. */
-export type SourceState = "ready" | "loading" | "error" | "refused" | "conflict";
+export type SourceState = "ready" | "loading" | "error" | "refused" | "conflict" | "notice-info" | "notice-warning";
 
-export const SOURCE_STATES: readonly SourceState[] = ["ready", "loading", "error", "refused", "conflict"];
+export const SOURCE_STATES: readonly SourceState[] = ["ready", "loading", "error", "refused", "conflict", "notice-info", "notice-warning"];
 
 export interface StateAdapterOptions {
   /**
@@ -17,7 +17,9 @@ export interface StateAdapterOptions {
    * - "refused": every write is refused: a `RecordValidationError` (400) with one
    *   field error, or a `ForbiddenError` (403) when `status` is 403.
    * - "conflict": every write throws a `RecordConflictError` (409) carrying the stored record.
-   * Reads work in "refused" and "conflict"; writes work in "loading" and "error".
+   * - "notice-info" / "notice-warning" (RFC 0010 item 7): a working source whose list answers carry
+   *   `notice: { tone, text }`, the text being `message`.
+   * Reads work in "refused" and "conflict"; writes work in "loading" and "error" and in the notice states.
    */
   readonly source?: SourceState;
   /** The readable message of a failure. Each mode has a default. */
@@ -44,6 +46,8 @@ const DEFAULT_MESSAGES: Record<SourceState, string> = {
   error: "The data source did not answer. Try again in a moment.",
   refused: "The data source refused this change.",
   conflict: "The record was changed since you loaded it.",
+  "notice-info": "This answer was served from a cached copy.",
+  "notice-warning": "This answer was served without search, so results may be incomplete.",
 };
 
 /** The records a state puts in the data source: its own, or those of the views it embeds. */
@@ -137,7 +141,14 @@ export function createStateAdapter(seed: ViewState | readonly DataRecord[], opti
     },
     configure,
     records: () => [...tables.values()].flatMap((t) => [...t.values()]),
-    find: (entity: string, query: Query) => read(() => runQuery([...table(entity).values()], query)),
+    find: (entity: string, query: Query) =>
+      read(() => {
+        const page = runQuery([...table(entity).values()], query);
+        if (current.source === "notice-info" || current.source === "notice-warning") {
+          return { ...page, notice: { tone: current.source === "notice-info" ? ("info" as const) : ("warning" as const), text: current.message } };
+        }
+        return page;
+      }),
     findOne: (entity: string, id: string) => read(() => table(entity).get(id) ?? null),
     async create(entity, values, meta) {
       refuse(entity);

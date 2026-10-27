@@ -81,14 +81,14 @@ function fakeTable(state: SourceViewState, registry: Registry<ReactNode>, column
 
 // The fake table never renders the source's failure message — that DOM check
 // belongs to the real renderers (packages/renderer/src/state-checks.test.tsx).
-const check = (view: TableView, render: (state: SourceViewState, context: { registry: Registry<ReactNode> }) => ReactNode) => checkViewStates({ view, documents, now: NOW, render, skip: ["error-message"] });
+const check = (view: TableView, render: (state: SourceViewState, context: { registry: Registry<ReactNode> }) => ReactNode) => checkViewStates({ view, documents, now: NOW, render, skip: ["error-message", "notice-missing"] });
 const checkNames = (results: Awaited<ReturnType<typeof check>>): Set<string> => new Set(results.flatMap((r) => r.problems.map((p) => p.check)));
 const messages = (results: Awaited<ReturnType<typeof check>>): string[] => results.flatMap((r) => r.problems.map((p) => p.message));
 
 describe("checkViewStates action problems (RFC 0007)", () => {
   test("a table that offers exactly availableActions passes in every state", async () => {
     const results = await check(actionsTable, (state, context) =>
-      fakeTable(state, context.registry, [{ id: "name", headerId: "r-name", label: "Name", sortable: false }], (r) => (state.render.kind === "table" ? availableActions(actionEntity, { recordActions: ["publish", "retract"] }, r, state.viewer).map((a) => a.id) : []), "never"),
+      fakeTable(state, context.registry, [{ id: "name", headerId: "r-name", label: "Name", sortable: true }], (r) => (state.render.kind === "table" ? availableActions(actionEntity, { recordActions: ["publish", "retract"] }, r, state.viewer).map((a) => a.id) : []), "never"),
     );
     expect(results.length).toBeGreaterThan(3);
     expect(problems(results)).toEqual([]);
@@ -97,7 +97,7 @@ describe("checkViewStates action problems (RFC 0007)", () => {
   test("an action offered where it is withheld or hidden is reported", async () => {
     // retract is hidden on a draft record and withheld when can.actions says no;
     // this fake table offers it on every record regardless.
-    const results = await check(actionsTable, (state, context) => fakeTable(state, context.registry, [{ id: "name", headerId: "r-name", label: "Name", sortable: false }], () => ["publish", "retract"], "never"));
+    const results = await check(actionsTable, (state, context) => fakeTable(state, context.registry, [{ id: "name", headerId: "r-name", label: "Name", sortable: true }], () => ["publish", "retract"], "never"));
     expect(checkNames(results)).toEqual(new Set(["action-offered"]));
     const message = messages(results).find((m) => m.includes('"retract"'));
     expect(message).toContain("withheld or its visibleWhen is false");
@@ -105,7 +105,7 @@ describe("checkViewStates action problems (RFC 0007)", () => {
   });
 
   test("an action withheld where the state allows it is reported", async () => {
-    const results = await check(actionsTable, (state, context) => fakeTable(state, context.registry, [{ id: "name", headerId: "r-name", label: "Name", sortable: false }], () => [], "never"));
+    const results = await check(actionsTable, (state, context) => fakeTable(state, context.registry, [{ id: "name", headerId: "r-name", label: "Name", sortable: true }], () => [], "never"));
     expect(checkNames(results)).toEqual(new Set(["action-missing"]));
     expect(messages(results).some((m) => m.includes('"publish"') && m.includes("although this state allows it"))).toBe(true);
   });
@@ -113,13 +113,13 @@ describe("checkViewStates action problems (RFC 0007)", () => {
 
 describe("checkViewStates compare problems (RFC 0007)", () => {
   test("a compare column whose Display gets compareCells' diff passes in every state", async () => {
-    const results = await check(changesTable, (state, context) => fakeTable(state, context.registry, [{ id: "title", headerId: "t-title", label: "Title", sortable: false }, { id: "body", headerId: "t-body", label: "Body", sortable: false }], () => [], "correct"));
+    const results = await check(changesTable, (state, context) => fakeTable(state, context.registry, [{ id: "title", headerId: "t-title", label: "Title", sortable: true }, { id: "body", headerId: "t-body", label: "Body", sortable: true }], () => [], "correct"));
     expect(results.length).toBeGreaterThan(3);
     expect(problems(results)).toEqual([]);
   });
 
   test("a neighbour with no diff handed to the Display is reported", async () => {
-    const results = await check(changesTable, (state, context) => fakeTable(state, context.registry, [{ id: "title", headerId: "t-title", label: "Title", sortable: false }, { id: "body", headerId: "t-body", label: "Body", sortable: false }], () => [], "never"));
+    const results = await check(changesTable, (state, context) => fakeTable(state, context.registry, [{ id: "title", headerId: "t-title", label: "Title", sortable: true }, { id: "body", headerId: "t-body", label: "Body", sortable: true }], () => [], "never"));
     // Every multi-record state has a neighbour (row 2 against row 1); a
     // single-row page has none, so its states stay clean.
     expect([...checkNames(results)]).toEqual(["diff-missing"]);
@@ -127,7 +127,7 @@ describe("checkViewStates compare problems (RFC 0007)", () => {
   });
 
   test("a diff handed to the Display with no neighbour is reported", async () => {
-    const results = await check(changesTable, (state, context) => fakeTable(state, context.registry, [{ id: "title", headerId: "t-title", label: "Title", sortable: false }, { id: "body", headerId: "t-body", label: "Body", sortable: false }], () => [], "always"));
+    const results = await check(changesTable, (state, context) => fakeTable(state, context.registry, [{ id: "title", headerId: "t-title", label: "Title", sortable: true }, { id: "body", headerId: "t-body", label: "Body", sortable: true }], () => [], "always"));
     expect([...checkNames(results)]).toEqual(["diff-offered"]);
     expect(messages(results)[0]).toContain("against nothing");
   });

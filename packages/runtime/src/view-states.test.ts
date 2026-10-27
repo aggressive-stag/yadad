@@ -869,6 +869,18 @@ describe("saved filter and doneField axes (RFC 0008/0009)", () => {
     expect(none.every((s) => s.render.kind === "table" && s.render.savedFilter === undefined)).toBe(true);
   });
 
+  it("a table whose quick filter has a default gets a quick axis; the render says which state it is", () => {
+    const q: TableView = { ...table(), quickFilters: [{ field: "urgent", default: true }] };
+    const r = viewStates(q, [entity, q], { now: NOW, limit: 500 });
+    const a = r.axes.find((x) => x.id === "quick");
+    expect(a?.kind).toBe("quick");
+    expect(a?.values.map((v) => v.id)).toEqual(["applied", "cleared"]);
+    const seen = new Set(r.states.map((s) => (s.render.kind === "table" ? s.render.quickDefaults : undefined)));
+    expect(seen).toEqual(new Set(["applied", "cleared"]));
+    const plain: TableView = { ...table(), quickFilters: [{ field: "urgent" }] };
+    expect(viewStates(plain, [entity, plain], { now: NOW }).axes.some((x) => x.id === "quick")).toBe(false);
+  });
+
   it("a table without saved filters has no filter axis", () => {
     expect(viewStates(table(), docs, { now: NOW }).axes.some((a) => a.id === "filter")).toBe(false);
   });

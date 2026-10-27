@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Document, EntityDocument, ViewDocument, ViewerDocument } from "@yadad/core";
 import { validateDocument } from "@yadad/core";
 import { mockRegistry } from "@yadad/testing";
-import { checkViewStates, problems } from "@yadad/testing/state-checks";
+import { checkViewStates, checkViewStatesReport, problems } from "@yadad/testing/state-checks";
 import type { CheckViewStatesOptions } from "@yadad/testing/state-checks";
 import { describe, expect, test } from "vitest";
 import { BoardRenderer } from "./board-renderer.js";
@@ -105,3 +105,43 @@ for (const file of readdirSync(setDir).filter((f) => f.endsWith(".json"))) {
     }, 60_000);
   }
 }
+
+// RFC 0010 (card 48m): the quick filter default axis, the "not offered" sort and the notice source state, on the
+// whole-set fixture. A host that draws what the renderer hands it passes; one that breaks each surface is named.
+describe("RFC 0010 states on fixtures/valid-sets/rfc-0010-v9.json", () => {
+  const docs: Document[] = (JSON.parse(readFileSync(join(setDir, "rfc-0010-v9.json"), "utf8")) as unknown[]).map((doc) => {
+    const result = validateDocument(doc);
+    if (!result.ok) throw new Error("rfc-0010-v9.json is invalid");
+    return result.value;
+  });
+  const ents = new Map(docs.filter((d): d is EntityDocument => d.kind === "entity").map((d) => [d.id, d]));
+  const docSet: DocumentSet = { entities: ents, views: new Map(docs.filter((d): d is ViewDocument => d.kind !== "entity" && d.kind !== "viewer").map((d) => [d.id, d])) };
+  const draw = renderFor(ents, docSet);
+  const tickets = docSet.views.get("tickets")!;
+  const run = (view: ViewDocument, registry = mockRegistry) => checkViewStatesReport({ view, documents: docs, registry, now: NOW, manyRecords: 40, render: draw });
+
+  test("the tickets table has the quick axis and both notice tones, and is green", async () => {
+    const report = await run(tickets);
+    expect(report.axes).toContain("quick");
+    expect(problems(report.results)).toEqual([]);
+    const ids = report.results.map((r) => r.id);
+    expect(ids.some((id) => id.includes("quick=cleared"))).toBe(true);
+    expect(ids.some((id) => id.endsWith("source=notice-info"))).toBe(true);
+    expect(ids.some((id) => id.endsWith("source=notice-warning"))).toBe(true);
+  }, 60_000);
+
+  test("a table that never shows the server's notice is reported on the notice states only", async () => {
+    const Section = mockRegistry.layout.Section;
+    const registry = { ...mockRegistry, layout: { ...mockRegistry.layout, Section: (p: Parameters<typeof Section>[0]) => (p.id.endsWith("-notice") ? null : Section(p)) } };
+    const failing = (await run(tickets, registry)).results.filter((r) => r.problems.length > 0);
+    expect(failing.map((r) => r.id).every((id) => id.includes("source=notice-"))).toBe(true);
+    expect(failing.flatMap((r) => r.problems.map((p) => p.check))).toContain("notice-missing");
+  }, 60_000);
+
+  test("a quick filter that ignores its default is reported", async () => {
+    const Input = mockRegistry.fields.text.Input;
+    const registry = { ...mockRegistry, fields: { ...mockRegistry.fields, text: { ...mockRegistry.fields.text, Input: (p: Parameters<typeof Input>[0]) => Input(p.field.id === "title" ? { ...p, value: "" } : p) } } };
+    const checks = (await run(tickets, registry)).results.flatMap((r) => r.problems.map((p) => p.check));
+    expect(checks).toContain("quick-default");
+  }, 60_000);
+});

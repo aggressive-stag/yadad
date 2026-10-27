@@ -161,7 +161,7 @@ describe("checkViewStates", () => {
     const results = await run(table, () => {
       console.error("Warning: each child needs a key");
       return <p>rows</p>;
-    }, ["error-message"]);
+    }, ["error-message", "notice-missing"]);
     expect(checks(results)).toEqual(["console-error"]);
   });
 
@@ -172,7 +172,7 @@ describe("checkViewStates", () => {
       console.warn('yadad: reference field "owner" points at entity "person", which was not passed in the renderer\'s "entities" prop, so its cells show raw ids.');
       console.warn("Some library deprecation notice");
       return <p>rows</p>;
-    }, ["error-message"]);
+    }, ["error-message", "notice-missing"]);
     spy.mockRestore();
     expect(checks(results)).toEqual(["yadad-warning"]);
     expect(problems(results)[0]).toContain('yadad: reference field "owner"');
@@ -202,11 +202,11 @@ describe("checkViewStates", () => {
   });
 
   test("a failed read with no visible message", async () => {
-    const results = await run(table, (_s, c) => <FakeList adapter={c.adapter} showError={false} />);
+    const results = await run(table, (_s, c) => <FakeList adapter={c.adapter} showError={false} />, ["notice-missing"]);
     const failing = results.filter((r) => r.problems.length > 0);
     expect(failing.map((r) => r.id)).toEqual(["records=none;paging=total;source=error"]); // table state ids carry the paging axis (RFC 0007)
     expect(checks(results)).toEqual(["error-message"]);
-    expect(problems(await run(table, (_s, c) => <FakeList adapter={c.adapter} showError />))).toEqual([]);
+    expect(problems(await run(table, (_s, c) => <FakeList adapter={c.adapter} showError />, ["notice-missing"]))).toEqual([]);
   });
 
   test("skip leaves a check out", async () => {

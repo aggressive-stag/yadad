@@ -538,10 +538,6 @@ describe("RFC 0010 items 4, 5, 6, 8 (card 48j)", () => {
     ],
   };
   const baseView: TableView = { kind: "table", specVersion: 9, id: "notes", title: "Notes", entity: "note", revision: 1, dataSource: "default", columns: [{ field: "sid" }, { field: "body" }, { field: "state" }] };
-  // The mock text input ignores `placeholder`, so this registry records what the slot is given.
-  const seenPlaceholders: Array<string | undefined> = [];
-  const MockText = mockRegistry.fields.text.Input;
-  const spyRegistry = { ...mockRegistry, fields: { ...mockRegistry.fields, text: { ...mockRegistry.fields.text, Input: (props: Parameters<typeof MockText>[0]) => { seenPlaceholders.push(props.placeholder); return <MockText {...props} />; } } } };
   async function open(v: TableView, registry: typeof mockRegistry = mockRegistry): Promise<DataAdapter> {
     const db = createMemoryAdapter();
     await db.create("note", { sid: "s1", body: "alpha", state: "pending", flag: true }, { entityRevision: 1 });
@@ -552,9 +548,9 @@ describe("RFC 0010 items 4, 5, 6, 8 (card 48j)", () => {
   }
 
   test("a quick filter shows its own label and a text filter its placeholder", async () => {
-    await open({ ...baseView, quickFilters: [{ field: "body", label: "Search", placeholder: "Contains..." }, { field: "state", label: "Status" }] }, spyRegistry);
+    await open({ ...baseView, quickFilters: [{ field: "body", label: "Search", placeholder: "Contains..." }, { field: "state", label: "Status" }] });
     expect(screen.getByRole("textbox", { name: "Search" })).toBeTruthy();
-    expect(seenPlaceholders).toContain("Contains...");
+    expect(screen.getByRole("textbox", { name: "Search" }).getAttribute("placeholder")).toBe("Contains...");
     expect(screen.getByLabelText("Status")).toBeTruthy();
     expect(screen.queryByLabelText("Body")).toBeNull();
   });

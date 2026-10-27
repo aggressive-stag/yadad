@@ -39,7 +39,7 @@ export const VIEW_STATES_DEFAULT_EMBEDDED_LIMIT = 3;
 export const TABLE_DEFAULT_PAGE_SIZE = 25;
 
 /** What an axis varies. New kinds are added to this union as new axes appear. */
-export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission" | "action" | "paging" | "filter" | "rows";
+export type StateAxisKind = "field" | "fill" | "records" | "mode" | "group" | "tab" | "widget" | "viewer" | "permission" | "action" | "paging" | "filter" | "quick" | "rows";
 
 export interface StateAxisValue {
   /** Stable within its axis. */
@@ -98,6 +98,12 @@ export interface TableStateRender extends CollectionRenderBase {
    * prop. `matching` already counts the saved condition.
    */
   readonly savedFilter?: string;
+  /**
+   * Present when the view has a quick filter with a `default` (RFC 0010 item 4): `applied` is the state a
+   * viewer opens on (the renderer seeds the defaults), `cleared` is the state after the viewer cleared every
+   * defaulted control. `matching` is unaffected: it counts the view's `filter` and the saved filter only.
+   */
+  readonly quickDefaults?: "applied" | "cleared";
 }
 
 export interface CalendarStateRender extends CollectionRenderBase {
@@ -744,6 +750,17 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
     });
   }
 
+  // RFC 0010 item 4: a table whose quick filters declare a `default` varies whether the viewer still has it.
+  const hasQuickDefault = view.kind === "table" && (view.quickFilters ?? []).some((q) => q.default !== undefined);
+  if (hasQuickDefault) {
+    axes.push({
+      id: QUICK_AXIS,
+      label: "Quick filter default",
+      kind: "quick",
+      values: [{ id: "applied", label: "default applied" }, { id: "cleared", label: "default cleared" }],
+    });
+  }
+
   return {
     axes,
     skipped: found.skipped,
@@ -823,7 +840,10 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
         // The page shape the axis names, produced the way an adapter produces
         // it. `many` is pageSize+1 records by construction (recordsAxis), so a
         // cursor page over the matched set answers "more" honestly.
-        const lit = litFilter === undefined ? {} : { savedFilter: litFilter.id };
+        const lit = {
+          ...(litFilter === undefined ? {} : { savedFilter: litFilter.id }),
+          ...(hasQuickDefault ? { quickDefaults: selection[QUICK_AXIS] === "cleared" ? ("cleared" as const) : ("applied" as const) } : {}),
+        };
         if (paging === "total") return { ok: true, render: { kind: "table", ...base, ...lit, pageSize, total: matching.length } };
         // `cursor-more` is the first page of pageSize — its `next` is whatever
         // the matched set says (token when a page follows, null when not).
@@ -867,6 +887,7 @@ const WITHHELD = "withheld";
 const DONE_AXIS = "done"; // RFC 0008 item 12 (card 47h): the doneField toggle axis.
 const COLUMNS_AXIS = "columns"; // RFC 0008 item 10 (card 47h): the columnsFrom "options" empty-column axis.
 const PAGING_AXIS = "paging";
+const QUICK_AXIS = "quick"; // RFC 0010 item 4: whether the quick filters' defaults are still applied.
 const SAVED_FILTER_AXIS = "filter"; // RFC 0009 item 5: which named saved filter is lit.
 /** Id of the extra state that renders with the viewer omitted. */
 export const VIEWER_NOT_PROVIDED_STATE = "viewer-not-provided";

@@ -33,7 +33,7 @@ const plan = (...values: string[]) => ({ op: "viewerIn" as const, fact: "plan", 
 
 export const teamBoard: BoardView = {
   kind: "board",
-  specVersion: 8,
+  specVersion: 9,
   id: "team_board",
   title: "Team board",
   entity: "task",

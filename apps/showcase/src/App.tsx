@@ -54,7 +54,7 @@ const bookingsTable: TableView = {
  */
 const bookingsView: CalendarView = {
   kind: "calendar",
-  specVersion: 8,
+  specVersion: 9,
   id: "bookings_calendar",
   title: "Bookings",
   entity: "booking",
@@ -80,7 +80,7 @@ const bookingsView: CalendarView = {
  */
 const tasksView: BoardView = {
   kind: "board",
-  specVersion: 8,
+  specVersion: 9,
   id: "tasks_board",
   title: "Tasks",
   entity: "task",
@@ -102,7 +102,7 @@ const tasksView: BoardView = {
  */
 const tasksTable: TableView = {
   kind: "table",
-  specVersion: 8,
+  specVersion: 9,
   id: "tasks_table",
   title: "All tasks",
   entity: "task",
@@ -128,7 +128,7 @@ const tasksTable: TableView = {
 /** The table's addForm: a batch form (RFC 0008 item 6) with a sub-record checklist (RFC 0009 item 3). */
 const tasksBatchForm: FormView = {
   kind: "form",
-  specVersion: 8,
+  specVersion: 9,
   id: "tasks_batch_form",
   entity: "task",
   revision: 1,

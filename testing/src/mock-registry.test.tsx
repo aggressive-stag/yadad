@@ -17,6 +17,11 @@ const { Input: DatetimeInput, Display: DatetimeDisplay } = mockRegistry.fields.d
 
 afterEach(cleanup);
 
+test("text input renders a placeholder only when it is given one", () => {
+  expect(renderToStaticMarkup(<Input inputId="f-name" field={field} value="" onChange={() => {}} invalid={false} placeholder="Search names" />)).toContain('placeholder="Search names"');
+  expect(renderToStaticMarkup(<Input inputId="f-name" field={field} value="" onChange={() => {}} invalid={false} />)).not.toContain("placeholder");
+});
+
 test("text input exposes a test id and the current value", () => {
   const html = renderToStaticMarkup(<Input inputId="f-name" field={field} value="Ada" onChange={() => {}} invalid={false} />);
   expect(html).toContain('id="f-name"');

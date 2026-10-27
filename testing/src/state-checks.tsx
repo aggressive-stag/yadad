@@ -41,6 +41,10 @@ export type StateCheck =
   | "saved-filter"
   | "diff-missing"
   | "diff-offered"
+  | "sort-offered"
+  | "sort-missing"
+  | "quick-default"
+  | "notice-missing"
   | "axis-missing";
 
 export interface StateProblem {
@@ -266,6 +270,9 @@ async function checkState(
       found.push(...actionChecks(entity, view, documents, state, seen));
       found.push(...diffChecks(entity, view, state, seen));
     }
+    found.push(...sortChecks(entity, view, seen));
+    found.push(...noticeChecks(container, state, adapter));
+    if (view.kind === "table" && entity) found.push(...(await quickDefaultChecks(container, entity, view, state, options)));
     if (!skip.has("accessible-name")) found.push(...(await nameChecks(container)));
     if (!skip.has("error-message") && state.source === "error") found.push(...errorChecks(container, adapter));
   } finally {
@@ -373,6 +380,64 @@ function errorChecks(container: HTMLElement, adapter: StateAdapter): StateProble
   const text = container.textContent ?? "";
   if (adapter.options.message !== "" && text.includes(adapter.options.message)) return [];
   return [{ check: "error-message", message: `the data source failed ("${adapter.options.message}") but no message is visible` }];
+}
+
+/**
+ * RFC 0010 item 6: a header is sortable exactly when the view and the column both allow it (and the field is
+ * not a reference). An unsortable column is "not offered" and must reach the component as plain text.
+ */
+function sortChecks(entity: EntityDocument | undefined, view: ViewDocument, seen: Seen): StateProblem[] {
+  const table = seen.tables.at(-1);
+  if (view.kind !== "table" || !entity || !table) return [];
+  const out: StateProblem[] = [];
+  for (const column of view.columns) {
+    const field = entity.fields.find((f) => f.id === column.field);
+    const header = table.columns.find((c) => c.id === column.field);
+    if (!field || !header) continue; // a column this viewer cannot see has no header: the visibility check owns that
+    const expected = view.sortable !== false && column.sortable !== false && field.type !== "reference";
+    if (header.sortable && !expected) out.push({ check: "sort-offered", message: `column "${column.field}" is declared unsortable but its header is offered for sorting` });
+    if (!header.sortable && expected) out.push({ check: "sort-missing", message: `column "${column.field}" is sortable but its header is not offered for sorting` });
+  }
+  return out;
+}
+
+/** RFC 0010 item 7: a notice state must put the server's text on screen, in a status region with its tone. */
+function noticeChecks(container: HTMLElement, state: SourceViewState, adapter: StateAdapter): StateProblem[] {
+  if (state.source !== "notice-info" && state.source !== "notice-warning") return [];
+  const tone = state.source === "notice-info" ? "info" : "warning";
+  const region = [...container.querySelectorAll<HTMLElement>('[role="status"]')].find((el) => (el.textContent ?? "").includes(adapter.options.message));
+  if (!region) return [{ check: "notice-missing", message: `the data source sent a ${tone} notice ("${adapter.options.message}") but no status region shows it` }];
+  const shown = region.getAttribute("data-tone");
+  if (shown !== null && shown !== tone) return [{ check: "notice-missing", message: `the notice has tone "${tone}" but the page shows it as "${shown}"` }];
+  return [];
+}
+
+/**
+ * RFC 0010 item 4: the `quick` axis. In "applied" every defaulted text or select filter control shows its default;
+ * in "cleared" the check clears each one the way a viewer would, and the control must then be empty.
+ */
+async function quickDefaultChecks(container: HTMLElement, entity: EntityDocument, view: ViewDocument, state: SourceViewState, options: CheckViewStatesOptions): Promise<StateProblem[]> {
+  if (view.kind !== "table" || state.render.kind !== "table" || state.render.quickDefaults === undefined) return [];
+  const out: StateProblem[] = [];
+  for (const q of view.quickFilters ?? []) {
+    const field = entity.fields.find((f) => f.id === q.field);
+    if (!field || typeof q.default !== "string" || (field.type !== "text" && field.type !== "select")) continue;
+    const control = container.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-yadad-filter-field="${q.field}"] input, [data-yadad-filter-field="${q.field}"] select`);
+    if (!control) continue; // no control for this viewer: the visibility check owns that
+    if (state.render.quickDefaults === "applied") {
+      if (control.value !== q.default) out.push({ check: "quick-default", message: `quick filter "${q.field}" has default "${q.default}" but its control shows "${control.value}"` });
+      continue;
+    }
+    const proto = control instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(control, "");
+      control.dispatchEvent(new Event(control instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
+    });
+    await act(async () => void (await new Promise((r) => setTimeout(r, options.settleMs ?? 30))));
+    const after = container.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-yadad-filter-field="${q.field}"] input, [data-yadad-filter-field="${q.field}"] select`);
+    if (after && after.value !== "") out.push({ check: "quick-default", message: `quick filter "${q.field}" was cleared but its control still shows "${after.value}"` });
+  }
+  return out;
 }
 
 /** What the registry's layout components were given, in the order they rendered. */

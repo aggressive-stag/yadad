@@ -73,6 +73,16 @@ describe("createStateAdapter", () => {
     expect((await adapter.find("task", {})).total).toBe(2);
   });
 
+  test("a notice state answers lists with the server's notice and still writes", async () => {
+    const info = createStateAdapter(records, { source: "notice-info", message: "Cached." });
+    expect((await info.find("task", {})).notice).toEqual({ tone: "info", text: "Cached." });
+    const warning = createStateAdapter(records, { source: "notice-warning" });
+    expect((await warning.find("task", {})).notice?.tone).toBe("warning");
+    expect((await warning.find("task", {})).notice?.text).not.toBe("");
+    expect((await warning.create("task", { title: "x" }, meta)).id).toBeDefined();
+    expect((await createStateAdapter(records).find("task", {})).notice).toBeUndefined();
+  });
+
   test("configure switches the behavior while running", async () => {
     const adapter = createStateAdapter(records, { source: "refused" });
     await expect(adapter.create("task", { title: "x" }, meta)).rejects.toBeInstanceOf(RecordValidationError);
@@ -160,15 +170,17 @@ describe("sourceStates", () => {
   });
 
   test("a read-only table gets loading and error but not refused or conflict", () => {
-    expect(applicableSources(table)).toEqual(["ready", "loading", "error"]);
+    expect(applicableSources(table)).toEqual(["ready", "loading", "error", "notice-info", "notice-warning"]);
     const result = sourceStates(viewStates(table, docs, { now: NOW }), docs);
-    expect(new Set(result.states.map((s) => s.source))).toEqual(new Set(["ready", "loading", "error"]));
+    expect(new Set(result.states.map((s) => s.source))).toEqual(new Set(["ready", "loading", "error", "notice-info", "notice-warning"]));
   });
 
   test("an editable table and board get every source; refused and conflict sit on the fullest state", () => {
     for (const view of [editableTable, board]) {
       const result = sourceStates(viewStates(view, docs, { now: NOW }), docs);
-      expect(new Set(result.states.map((s) => s.source))).toEqual(new Set(["ready", "loading", "error", "refused", "conflict"]));
+      // Only a table lists with a page, so only a table carries the server's notice (RFC 0010 item 7).
+      const notices = view.kind === "table" ? ["notice-info", "notice-warning"] : [];
+      expect(new Set(result.states.map((s) => s.source))).toEqual(new Set(["ready", "loading", "error", "refused", "conflict", ...notices]));
       const most = Math.max(...result.states.map((s) => (s.render.kind === "form" || s.render.kind === "dashboard" ? 0 : s.render.records.length)));
       const conflict = result.states.find((s) => s.source === "conflict")!;
       expect(conflict.render.kind !== "form" && conflict.render.kind !== "dashboard" ? conflict.render.records.length : -1).toBe(most);

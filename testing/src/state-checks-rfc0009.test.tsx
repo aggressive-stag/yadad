@@ -98,7 +98,7 @@ describe("the doneField axis and its checks (RFC 0008 item 3)", () => {
   });
 });
 
-function fakeTable(state: SourceViewState, registry: Registry<ReactNode>, litFromState: boolean): ReactNode {
+function fakeTable(state: SourceViewState, registry: Registry<ReactNode>, litFromState: boolean, sortable = true): ReactNode {
   if (state.render.kind !== "table") return null;
   const lit = litFromState ? state.render.savedFilter : undefined;
   const { Table } = registry.layout;
@@ -111,13 +111,23 @@ function fakeTable(state: SourceViewState, registry: Registry<ReactNode>, litFro
           </button>
         ))}
       </nav>
-      <Table caption="rows" columns={[{ id: "title", headerId: "h-title", label: "Title", sortable: false }]} onSort={() => undefined} empty="none" rows={[]} />
+      <Table caption="rows" columns={[{ id: "title", headerId: "h-title", label: "Title", sortable }]} onSort={() => undefined} empty="none" rows={[]} />
     </div>
   );
 }
 
 const checkTable = (litFromState: boolean) =>
-  checkViewStatesReport({ view: table, documents, now: NOW, skip: ["error-message"], render: (state, ctx) => fakeTable(state, ctx.registry, litFromState) });
+  checkViewStatesReport({ view: table, documents, now: NOW, skip: ["error-message", "notice-missing"], render: (state, ctx) => fakeTable(state, ctx.registry, litFromState) });
+
+describe("sorting that is not offered (RFC 0010 item 6)", () => {
+  test("a header that is sortable by the document but drawn plain is sort-missing; an unsortable column drawn sortable is sort-offered", async () => {
+    const plain = await checkViewStatesReport({ view: table, documents, now: NOW, skip: ["error-message", "notice-missing"], render: (state, ctx) => fakeTable(state, ctx.registry, true, false) });
+    expect(new Set(plain.results.flatMap((r) => r.problems.map((p) => p.check)))).toEqual(new Set(["sort-missing"]));
+    const unsortable: TableView = { ...table, id: "chore_table_fixed", sortable: false };
+    const offered = await checkViewStatesReport({ view: unsortable, documents: [...documents, unsortable], now: NOW, skip: ["error-message", "notice-missing"], render: (state, ctx) => fakeTable(state, ctx.registry, true, true) });
+    expect(new Set(offered.results.flatMap((r) => r.problems.map((p) => p.check)))).toEqual(new Set(["sort-offered"]));
+  });
+});
 
 describe("the saved filter axis (RFC 0009 item 5)", () => {
   test("a table that lights the state's chip passes in every state", async () => {

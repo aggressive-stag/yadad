@@ -26,7 +26,6 @@ import type {
   TimeField,
   TableProps,
   TabsProps,
-  TextField,
 } from "@yadad/core";
 import { optionColor, optionLabel, optionValue } from "@yadad/core"; // RFC 0008: card 47a
 import type { KeyboardEvent, ReactNode } from "react";
@@ -68,8 +67,8 @@ function controlProps<F extends Field, V>({ inputId, field, invalid, describedBy
 /** Text-like controls store "" as no value. */
 const orUndefined = (s: string): string | undefined => (s === "" ? undefined : s);
 
-function MockTextInput(props: InputProps<TextField, string>): ReactNode {
-  return <input {...controlProps(props)} type="text" maxLength={props.field.maxLength} value={props.value ?? ""} onChange={(e) => props.onChange(orUndefined(e.target.value))} />;
+function MockTextInput(props: FieldInputProps<"text">): ReactNode {
+  return <input {...controlProps(props)} type="text" maxLength={props.field.maxLength} {...(props.placeholder !== undefined ? { placeholder: props.placeholder } : {})} value={props.value ?? ""} onChange={(e) => props.onChange(orUndefined(e.target.value))} />;
 }
 
 function MockNumberInput(props: InputProps<NumberField, number>): ReactNode {
