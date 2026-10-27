@@ -1,6 +1,6 @@
 # RFC 0010: Consumer feedback round 3
 
-- Status: Accepted (2026-10-27). Every item as recommended; see `## Owner decisions`.
+- Status: Implemented (2026-10-27). Every item as recommended; see `## Owner decisions` and `## Implemented`.
 - Touches: `core` (`QuickFilter.default`/`label`/`placeholder`, a relative-instant condition value, `Field.readOnly`, `TableColumn.sortable`/`TableView.sortable`, `Page.notice`, possibly `StaticOptions`; the validators, `describeContract`, `recordJsonSchema`), `runtime` (relative-instant resolution, create validation that skips read-only fields, quick-filter initial state), `renderer` (controlled drill state, `FormRenderer` `initialRows`, quick-filter commit timing, the notice region, sortable headers), `testing` (state-grid axes for the new states), `editor` (the matching editors), `docs/records-protocol.md` (the `notice` page key, read-only fields), and the components repo (header, notice and quick-filter markup).
 - Proposes the next `specVersion` with an identity `migrate()` step (everything here is optional and additive) and a before/after fixture pair, once, when the first accepted contract item lands. Items 1 and 7 are renderer API and need no bump.
 
@@ -244,3 +244,23 @@ The owner accepted every item **as recommended**. `specVersion` moves 8 → 9 on
     - (iii) The renderer passes local-time `min`/`max` to the datetime input slot.
 
 **`applySystemTheme`: go.** A small `@yadad/theme` helper with no contract impact.
+
+## Implemented
+
+Landed on `main` in two lanes and released as one train.
+
+- `specVersion` 9 with the identity `migrate()` step and fixture pair: 0945183.
+- Item 1, drill props: 2f807c2 (`TableRenderer`); the dashboard drill is keyed by widget id (`drills` / `onDrillsChange`): 51c4164.
+- Item 2, `hoursFromNow`: 24212d8, runtime resolution in 1da41e8. Datetime quick-filter defaults are stored instants.
+- Item 3, build-time options: documented in 8d0d778.
+- Items 4 and 5, quick-filter `default`, `label`, `placeholder`: 6a95a8d, runtime in 1da41e8, renderer in 9c2ebdc.
+- Item 6, `sortable`: 939df3b, renderer in 9c2ebdc.
+- Item 7, `Page.notice`: 56470ba, renderer in fad57e0.
+- Item 8, `readOnly`: ba3a7bd.
+- Item 9, `initialRows`: 857c23d (`BATCH_ROW_CAP = 50`).
+- Item 10, text quick filters debounce at 300 ms: 38eff32. The tags blur-commit is not built: the input slot has no blur or draft prop, which needs a core registry change.
+- Item 11, `maxLength` in the record JSON Schema: 547299f.
+- Item 12, palette and calendar legend: 616b2fb (`COLOR_PALETTE`), fad57e0 (legend colour, datetime `min`/`max`), 49f edd8ac3 (theme category tokens).
+- `applySystemTheme`: df86e16.
+- The reserved `id` field in row bindings: dae59e6.
+- Editor support: 435df4b. Testing and showcase: 4bc846a, 59601ab, 2a7fb93.

@@ -101,6 +101,7 @@ A select field's `options.values` is part of the document and is validated with 
 
 - `specVersion` is the document format (currently 9); `revision` counts user edits to a document and is data.
 - Ids (documents, fields, sections, tabs, grid items) match `[a-z][a-z0-9_]*`, e.g. `workout_set`; grid-item ids need only be unique within their tab.
-- Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`; `viewerIn` tests a viewer fact.
+- Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`, and `datetime` comparisons a relative instant, `{ "hoursFromNow": n }`; `viewerIn` tests a viewer fact.
+- A table view or column can set `sortable: false` (a declared `sort` on such a column is a validation error). A field can be `readOnly` (server-set): it is refused as a form item, an editable column and an inline edit. `COLOR_PALETTE` is the eight-colour palette that option and reference colours are checked against (an off-palette hex is a warning).
 
 See the [repo README](../../README.md) and [ARCHITECTURE.md](../../ARCHITECTURE.md).
