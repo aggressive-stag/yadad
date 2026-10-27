@@ -1,0 +1,42 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 9,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "at",
+        "type": "datetime",
+        "label": "At"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 9,
+    "id": "t",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "filter": {
+      "op": "in",
+      "field": "at",
+      "values": [
+        {
+          "hoursFromNow": -24
+        }
+      ]
+    }
+  }
+]

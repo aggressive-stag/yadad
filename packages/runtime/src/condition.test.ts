@@ -1,6 +1,6 @@
 import type { Condition, EntityDocument, FormView, ResolvedViewer } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { applyFormRules, dateFromToday, evaluateCondition, evaluateFormRules, evaluateViewerCondition, resolveRelativeDates } from "./condition.js";
+import { applyFormRules, dateFromToday, evaluateCondition, evaluateFormRules, evaluateViewerCondition, instantFromNow, resolveRelativeDates } from "./condition.js";
 import { createMemoryAdapter } from "./memory-adapter.js";
 
 const values = { exercise: "Squat", weight: 100, day: "2026-10-04", warmup: false, notes: "Left Knee pain", empty: "  " };
@@ -263,5 +263,29 @@ describe("viewerIn (stub until the viewer runtime lands)", () => {
   test("resolveRelativeDates leaves a viewer leaf alone", () => {
     const c: Condition = { op: "viewerIn", fact: "beta", values: [true] };
     expect(resolveRelativeDates(c)).toBe(c);
+  });
+});
+
+describe("relative instants", () => {
+  const now = new Date("2026-10-27T12:00:00.000Z");
+
+  test("instantFromNow returns the stored UTC instant, negative hours in the past", () => {
+    expect(instantFromNow(0, now)).toBe("2026-10-27T12:00:00.000Z");
+    expect(instantFromNow(-24, now)).toBe("2026-10-26T12:00:00.000Z");
+    expect(instantFromNow(2, now)).toBe("2026-10-27T14:00:00.000Z");
+  });
+
+  test("resolveRelativeDates turns hoursFromNow into a concrete instant, through and/not", () => {
+    const filter: Condition = { op: "and", conditions: [{ op: "gte", field: "at", value: { hoursFromNow: -24 } }, { op: "not", condition: { op: "lt", field: "at", value: { hoursFromNow: 2 } } }] };
+    expect(resolveRelativeDates(filter, now)).toEqual({
+      op: "and",
+      conditions: [{ op: "gte", field: "at", value: "2026-10-26T12:00:00.000Z" }, { op: "not", condition: { op: "lt", field: "at", value: "2026-10-27T14:00:00.000Z" } }],
+    });
+  });
+
+  test("evaluateCondition compares a stored instant with the window", () => {
+    const within: Condition = { op: "gte", field: "at", value: { hoursFromNow: -24 } };
+    expect(evaluateCondition(within, { at: "2026-10-26T12:00:00.000Z" }, now)).toBe(true);
+    expect(evaluateCondition(within, { at: "2026-10-26T11:59:59.999Z" }, now)).toBe(false);
   });
 });

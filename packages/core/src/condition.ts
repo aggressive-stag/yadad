@@ -14,13 +14,25 @@ export interface RelativeDate {
   readonly daysFromToday: number;
 }
 
-/** What eq/neq/gt/gte/lt/lte compare a field with: a fixed value, or (date fields only) a relative date. */
-export type ComparisonValue = Scalar | RelativeDate;
+/**
+ * An instant relative to now: 0 is now, -24 a day ago, 2 in two hours. The
+ * runtime turns it into a stored "...Z" instant at query time, so adapters and
+ * servers never see this shape. Only valid on `datetime` fields.
+ */
+export interface RelativeInstant {
+  readonly hoursFromNow: number;
+}
+
+/** What eq/neq/gt/gte/lt/lte compare a field with: a fixed value, a relative date (date fields only) or a relative instant (datetime fields only). */
+export type ComparisonValue = Scalar | RelativeDate | RelativeInstant;
 
 /** Relative dates may reach at most this many days from today (about 100 years). */
 export const MAX_RELATIVE_DAYS = 36500;
 
-/** The comparison ops that accept a relative date. */
+/** Relative instants may reach at most this many hours from now (about 100 years). */
+export const MAX_RELATIVE_HOURS = 876000;
+
+/** The comparison ops that accept a relative date or a relative instant. */
 export const RELATIVE_DATE_OPS = ["eq", "neq", "gt", "gte", "lt", "lte"] as const;
 
 export type Condition =
@@ -57,6 +69,11 @@ export type ConditionOp = Condition["op"];
 /** True for a `{ daysFromToday }` value. Shape only; the validator checks the number. */
 export function isRelativeDate(value: unknown): value is RelativeDate {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "daysFromToday" in value;
+}
+
+/** True for a `{ hoursFromNow }` value. Shape only; the validator checks the number. */
+export function isRelativeInstant(value: unknown): value is RelativeInstant {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && "hoursFromNow" in value;
 }
 
 export const CONDITION_OPS: readonly ConditionOp[] = ["eq", "neq", "gt", "gte", "lt", "lte", "in", "contains", "empty", "notEmpty", "and", "or", "not", "viewerIn", "fieldEqFact"];

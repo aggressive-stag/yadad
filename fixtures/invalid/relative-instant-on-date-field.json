@@ -1,0 +1,40 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 9,
+    "id": "e",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "name",
+        "type": "text",
+        "label": "Name"
+      },
+      {
+        "id": "at",
+        "type": "date",
+        "label": "At"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 9,
+    "id": "t",
+    "entity": "e",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "name"
+      }
+    ],
+    "filter": {
+      "op": "gte",
+      "field": "at",
+      "value": {
+        "hoursFromNow": -24
+      }
+    }
+  }
+]

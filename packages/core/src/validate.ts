@@ -5,7 +5,7 @@
 // cross-document referential checks (entity exists, field ids exist on it,
 // widgets point at existing views) that only hold across a whole set.
 
-import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS, isRelativeDate } from "./condition.js";
+import { CONDITION_OPS, MAX_RELATIVE_DAYS, MAX_RELATIVE_HOURS, RELATIVE_DATE_OPS, isRelativeDate, isRelativeInstant } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, TEXT_MAX_LENGTH_CEILING, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
 import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, FORM_ITEM_LABEL_MAX, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField, optionValue } from "./document.js";
@@ -874,14 +874,20 @@ function checkCondition(errors: Errors, value: unknown, path: Path, place: Condi
       checkConditionKeys(errors, value, path, op, ["field", "value"]);
       checkId(errors, value, path, "field");
       if (value["value"] === undefined) return;
-      if (isRelativeDate(value["value"])) {
+      if (isRelativeInstant(value["value"])) {
+        if (op === "contains") {
+          errors.add([...path, "value"], "type", '"contains" matches text, not a relative instant.', `Use ${CONDITION_SHAPES[op]}; relative instants work with ${RELATIVE_DATE_OPS.join(", ")} on datetime fields.`);
+        } else {
+          checkRelativeInstant(errors, value["value"], [...path, "value"]);
+        }
+      } else if (isRelativeDate(value["value"])) {
         if (op === "contains") {
           errors.add([...path, "value"], "type", '"contains" matches text, not a relative date.', `Use ${CONDITION_SHAPES[op]}; relative dates work with ${RELATIVE_DATE_OPS.join(", ")} on date fields.`);
         } else {
           checkRelativeDate(errors, value["value"], [...path, "value"]);
         }
       } else if (!(op === "contains" ? typeof value["value"] === "string" : isScalar(value["value"]))) {
-        errors.add([...path, "value"], "type", `"value" must be ${op === "contains" ? "text" : "text, a number, true/false or { \"daysFromToday\": <whole number> }"}.`, `Use ${CONDITION_SHAPES[op]}.`);
+        errors.add([...path, "value"], "type", `"value" must be ${op === "contains" ? "text" : "text, a number, true/false, { \"daysFromToday\": <whole number> } or { \"hoursFromNow\": <whole number> }"}.`, `Use ${CONDITION_SHAPES[op]}.`);
       }
       return;
     case "in": {
@@ -889,8 +895,8 @@ function checkCondition(errors: Errors, value: unknown, path: Path, place: Condi
       checkId(errors, value, path, "field");
       const values = checkArray(errors, value, path, "values");
       values?.forEach((v, i) => {
-        if (isRelativeDate(v)) {
-          errors.add([...path, "values", i], "type", '"in" lists fixed values; a relative date is not allowed here.', `Use ${CONDITION_SHAPES.in} with fixed values, or compare with gte/lte and { "daysFromToday": N } on a date field.`);
+        if (isRelativeDate(v) || isRelativeInstant(v)) {
+          errors.add([...path, "values", i], "type", '"in" lists fixed values; a relative date or instant is not allowed here.', `Use ${CONDITION_SHAPES.in} with fixed values, or compare with gte/lte and { "daysFromToday": N } on a date field.`);
         } else if (!isScalar(v)) {
           errors.add([...path, "values", i], "type", "Each value must be text, a number or true/false.", `Use ${CONDITION_SHAPES.in}.`);
         }
@@ -950,6 +956,21 @@ function checkRelativeDate(errors: Errors, value: object, path: Path): void {
     errors.add([...path, "daysFromToday"], "type", '"daysFromToday" must be a whole number.', shape);
   } else if (Math.abs(days) > MAX_RELATIVE_DAYS) {
     errors.add([...path, "daysFromToday"], "invalid-value", `"daysFromToday" ${days} is out of range.`, `Use a whole number from -${MAX_RELATIVE_DAYS} to ${MAX_RELATIVE_DAYS}.`);
+  }
+}
+
+/** A relative instant is exactly { hoursFromNow: <whole number within +-MAX_RELATIVE_HOURS> }. */
+function checkRelativeInstant(errors: Errors, value: object, path: Path): void {
+  const obj = value as JsonObject;
+  const shape = 'Use { "hoursFromNow": -24 } for a day ago, 0 for now, 2 for in two hours.';
+  for (const key of Object.keys(obj)) {
+    if (key !== "hoursFromNow") errors.add([...path, key], "unknown-property", `Unknown property "${key}" in a relative instant.`, shape, ["hoursFromNow"]);
+  }
+  const hours = obj["hoursFromNow"];
+  if (typeof hours !== "number" || !Number.isInteger(hours)) {
+    errors.add([...path, "hoursFromNow"], "type", '"hoursFromNow" must be a whole number.', shape);
+  } else if (Math.abs(hours) > MAX_RELATIVE_HOURS) {
+    errors.add([...path, "hoursFromNow"], "invalid-value", `"hoursFromNow" ${hours} is out of range.`, `Use a whole number from -${MAX_RELATIVE_HOURS} to ${MAX_RELATIVE_HOURS}.`);
   }
 }
 
@@ -2211,7 +2232,7 @@ function checkDatetimeConditions(errors: DocumentError[], document: string, enti
         return;
       }
       const bad = (path: Path, value: unknown): void => {
-        if (isRelativeDate(value)) return; // reported by checkRelativeDateFields
+        if (isRelativeDate(value) || isRelativeInstant(value)) return; // reported by checkRelativeDateFields
         if (typeof value === "string" && isIsoDatetime(value)) return;
         errors.push({ path: jsonPointer(path), code: "invalid-value", message: `${JSON.stringify(value)} is not an instant in the stored form for datetime field "${field.id}".`, hint: canonical, document });
       };
@@ -2238,6 +2259,18 @@ function checkRelativeDateFields(errors: DocumentError[], document: string, enti
     case "gte":
     case "lt":
     case "lte": {
+      if (isRelativeInstant(condition.value)) {
+        const target = entity.fields.find((f) => f.id === condition.field);
+        if (!target || target.type === "datetime") return;
+        errors.push({
+          path: jsonPointer([...base, "value"]),
+          code: "invalid-value",
+          message: `A relative instant ({ "hoursFromNow" }) can only be compared with a datetime field, but "${target.id}" is a ${target.type} field.`,
+          hint: `Use ${exampleFor(condition.op, target.type)}, or point "${condition.op}" at a datetime field.`,
+          document,
+        });
+        return;
+      }
       if (!isRelativeDate(condition.value)) return;
       const field = entity.fields.find((f) => f.id === condition.field);
       if (!field || field.type === "date") return;

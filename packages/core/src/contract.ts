@@ -3,7 +3,7 @@
 // constants, so the description and the validation cannot drift apart.
 
 import type { ConditionOp } from "./condition.js";
-import { CONDITION_OPS, MAX_RELATIVE_DAYS, RELATIVE_DATE_OPS } from "./condition.js";
+import { CONDITION_OPS, MAX_RELATIVE_DAYS, MAX_RELATIVE_HOURS, RELATIVE_DATE_OPS } from "./condition.js";
 import type { CalendarMode, Document, FieldType, MeasureOp, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, ViewerFactType, WidgetType } from "./document.js";
 import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 
@@ -139,6 +139,7 @@ export interface ContractDescription {
     readonly maxValueType: string;
     readonly maxDepth: number;
     readonly relativeDate: { readonly description: string; readonly ops: readonly ConditionOp[]; readonly fieldTypes: readonly FieldType[]; readonly maxDays: number; readonly example: string };
+    readonly relativeInstant: { readonly description: string; readonly ops: readonly ConditionOp[]; readonly fieldTypes: readonly FieldType[]; readonly maxHours: number; readonly example: string };
   };
   readonly widgets: readonly WidgetSpec[];
   /** Limits and defaults of the `calendar` view kind. */
@@ -557,7 +558,7 @@ export function describeContract(): ContractDescription {
     fieldTypes: FIELD_TYPES.map((type) => FIELD_SPECS[type]),
     conditions: {
       ops: CONDITION_OPS.map((op) => ({ op, shape: CONDITION_SHAPES[op], example: CONDITION_EXAMPLES[op] })),
-      maxValueType: "text, a number or true/false (contains: text only; eq, neq, gt, gte, lt, lte on a date field also take a relative date)",
+      maxValueType: "text, a number or true/false (contains: text only; eq, neq, gt, gte, lt, lte on a date field also take a relative date, and on a datetime field a relative instant)",
       maxDepth: MAX_CONDITION_DEPTH,
       relativeDate: {
         description:
@@ -566,6 +567,14 @@ export function describeContract(): ContractDescription {
         fieldTypes: ["date"],
         maxDays: MAX_RELATIVE_DAYS,
         example: '{ "op": "gte", "field": "day", "value": { "daysFromToday": -7 } }',
+      },
+      relativeInstant: {
+        description:
+          'Instead of a fixed instant, the value of a comparison may be { "hoursFromNow": <whole number> } (0 is now, -24 a day ago, 2 in two hours), resolved at query time to the stored UTC instant. Datetime fields only; not in "in" or "contains". A "daysFromToday" value stays refused on a datetime field.',
+        ops: [...RELATIVE_DATE_OPS],
+        fieldTypes: ["datetime"],
+        maxHours: MAX_RELATIVE_HOURS,
+        example: '{ "op": "gte", "field": "at", "value": { "hoursFromNow": -24 } }',
       },
     },
     widgets: WIDGET_TYPES.map((widget) => WIDGET_SPECS[widget]),

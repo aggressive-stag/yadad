@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { describeContract, DOCUMENT_KINDS } from "./contract.js";
 import { FIELD_TYPES, MEASURE_OPS, SPEC_VERSION, WIDGET_TYPES } from "./document.js";
 import { ERROR_CODES } from "./contract.js";
-import { validateDocument } from "./validate.js";
+import { validateDocument, validateDocuments } from "./validate.js";
 
 const contract = describeContract();
 
@@ -450,6 +450,17 @@ describe("relative dates in the description", () => {
     const example: unknown = JSON.parse(rd.example);
     const doc = { kind: "table", specVersion: SPEC_VERSION, id: "t", entity: "e", revision: 1, dataSource: "d", columns: [{ field: "day" }], filter: example };
     expect(validateDocument(doc).ok).toBe(true);
+  });
+});
+
+describe("relative instants in the description", () => {
+  test("is described and its example validates on a datetime field", () => {
+    const ri = describeContract().conditions.relativeInstant;
+    expect(ri.ops).toEqual(["eq", "neq", "gt", "gte", "lt", "lte"]);
+    expect(ri.fieldTypes).toEqual(["datetime"]);
+    const entity = { kind: "entity", specVersion: SPEC_VERSION, id: "e", revision: 1, fields: [{ id: "name", type: "text", label: "Name" }, { id: "at", type: "datetime", label: "At" }] };
+    const table = { kind: "table", specVersion: SPEC_VERSION, id: "t", entity: "e", revision: 1, dataSource: "d", columns: [{ field: "name" }], filter: JSON.parse(ri.example) as unknown };
+    expect(validateDocuments([entity, table]).ok).toBe(true);
   });
 });
 

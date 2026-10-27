@@ -1,4 +1,4 @@
-import { isRelativeDate, sectionItems } from "@yadad/core";
+import { isRelativeDate, isRelativeInstant, sectionItems } from "@yadad/core";
 import type { ComparisonValue, Condition, EntityDocument, FieldValue, FormView, RecordValues, ResolvedViewer, Scalar, ViewerCondition } from "@yadad/core";
 
 const isEmpty = (v: FieldValue | undefined): boolean => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
@@ -22,13 +22,20 @@ export function dateFromToday(days: number, now: Date = new Date()): string {
   return localIsoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days));
 }
 
-function resolveValue(value: ComparisonValue, now: Date | undefined): Scalar {
+/** The stored UTC instant ("...Z", three fractional digits) `hours` from `now` (negative: before). */
+export function instantFromNow(hours: number, now: Date = new Date()): string {
+  return new Date(now.getTime() + hours * 3600e3).toISOString();
+}
+
+export function resolveComparisonValue(value: ComparisonValue, now: Date | undefined): Scalar {
+  if (isRelativeInstant(value)) return instantFromNow(value.hoursFromNow, now);
   return isRelativeDate(value) ? dateFromToday(value.daysFromToday, now) : value;
 }
 
 /**
  * Replaces every relative date ({ daysFromToday }) in a condition with the
- * "YYYY-MM-DD" it means on the client's local date (`now`, default the current
+ * "YYYY-MM-DD" it means on the client's local date, and every relative instant
+ * ({ hoursFromNow }) with the stored "...Z" instant (`now`, default the current
  * time). Run it before a filter goes to a DataAdapter, so servers and the
  * records protocol only ever see fixed values. Conditions without a relative
  * date come back as the same object.
@@ -53,7 +60,7 @@ export function resolveRelativeDates(condition: Condition | undefined, now?: Dat
     case "gte":
     case "lt":
     case "lte":
-      return isRelativeDate(condition.value) ? { op: condition.op, field: condition.field, value: resolveValue(condition.value, now) } : condition;
+      return isRelativeDate(condition.value) || isRelativeInstant(condition.value) ? { op: condition.op, field: condition.field, value: resolveComparisonValue(condition.value, now) } : condition;
     default:
       return condition;
   }
@@ -97,14 +104,14 @@ export function evaluateCondition(condition: Condition, values: RecordValues, no
       // viewerIn's rule, mirrored: unknown facts are a validator concern (47b), and
       // at runtime an absent fact behaves like a viewer who never set one.
       const entry = viewer?.facts.find((f) => f.fact === condition.fact);
-      return entry !== undefined && values[condition.field] === resolveValue(entry.value, now);
+      return entry !== undefined && values[condition.field] === resolveComparisonValue(entry.value, now);
     }
     case "eq":
-      return values[condition.field] === resolveValue(condition.value, now);
+      return values[condition.field] === resolveComparisonValue(condition.value, now);
     case "neq":
-      return values[condition.field] !== resolveValue(condition.value, now);
+      return values[condition.field] !== resolveComparisonValue(condition.value, now);
     default: {
-      const o = order(values[condition.field], resolveValue(condition.value, now));
+      const o = order(values[condition.field], resolveComparisonValue(condition.value, now));
       if (o === undefined) return false;
       return condition.op === "gt" ? o > 0 : condition.op === "gte" ? o >= 0 : condition.op === "lt" ? o < 0 : o <= 0;
     }

@@ -1,4 +1,4 @@
-import { isHhMm, isIsoDate, isRelativeDate, jsonPointer, optionValue, sectionItems } from "@yadad/core"; // RFC 0008: card 47a (optionValue keeps compiling; 47d reviews)
+import { isHhMm, isIsoDate, jsonPointer, optionValue, sectionItems } from "@yadad/core"; // RFC 0008: card 47a (optionValue keeps compiling; 47d reviews)
 import type {
   BoardView,
   CalendarMode,
@@ -27,7 +27,7 @@ import { CALENDAR_MAX_RECORDS, calendarToday, visibleDays, visibleRange } from "
 import type { DateRange } from "./calendar.js";
 import { combineAxes } from "./combine-axes.js";
 import type { AxisSelection } from "./combine-axes.js";
-import { dateFromToday, evaluateCondition } from "./condition.js";
+import { dateFromToday, evaluateCondition, resolveComparisonValue } from "./condition.js";
 import { validateRecord } from "./record.js";
 import { findViewerDocument, resolveViewer, viewerLeavesRead, visibleTabs } from "./viewer.js";
 
@@ -385,7 +385,7 @@ function collectProbes(conditions: readonly Condition[], now: Date, into: Map<st
         return;
       }
       default:
-        probesOf(condition.field).thresholds.push(isRelativeDate(condition.value) ? dateFromToday(condition.value.daysFromToday, now) : condition.value);
+        probesOf(condition.field).thresholds.push(resolveComparisonValue(condition.value, now));
     }
   };
   conditions.forEach(walk);

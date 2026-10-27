@@ -1,0 +1,36 @@
+{
+  "kind": "table",
+  "specVersion": 9,
+  "id": "recent_events",
+  "title": "Events in the last day",
+  "entity": "event",
+  "revision": 1,
+  "dataSource": "default",
+  "columns": [
+    {
+      "field": "title"
+    },
+    {
+      "field": "happened_at"
+    }
+  ],
+  "filter": {
+    "op": "and",
+    "conditions": [
+      {
+        "op": "gte",
+        "field": "happened_at",
+        "value": {
+          "hoursFromNow": -24
+        }
+      },
+      {
+        "op": "lt",
+        "field": "happened_at",
+        "value": {
+          "hoursFromNow": 2
+        }
+      }
+    ]
+  }
+}
