@@ -2,6 +2,20 @@
 
 > **Upgrade notes (0.12 and 0.13.1).** Hand-written `checkViewStates` drivers must pass `state.render.savedFilter` to `TableRenderer`'s `savedFilter` (and the other `state.render` keys the README lists), or the `saved-filter` check fails. Since runtime 0.14.1, states skipped silently before (labelled select values, entities with a `readOnly` value) are generated and checked, so expect new failures that are real. A `readOnly` field keeps its `field:<id>` axis only when a view condition references it. The calendar `done-missing` check respects `maxEntriesPerDay`. See "Upgrading hand-written drivers" in the README.
 
+## 0.15.0
+
+### Minor Changes
+
+- 0b65de0: Skipped states are no longer silent. `SkippedState` (runtime) gains `kind: "fault" | "limit"`: a fault is a state the grid could not build a valid sample for (a generated record that fails validation, no records could be generated); a limit is a declared limit of the grid (a dashboard cannot embed a dashboard, a view not among the documents, a series over a non-table, a value the field forbids). `checkViewStates` and `checkViewStatesReport` (testing) turn every fault skip into a failing result with the new check `grid-fault`, so `problems(results)` lists it. `StateCheckReport` gains `skippedStates` (`{ id, reason, kind }`), and the new option `maxSkipped` fails the report with `too-many-skipped` when the limit-skip count exceeds it.
+  
+  Upgrade: expect new `grid-fault` failures in hosts whose state checks used to stay green while states were skipped. They are real grid or validator bugs, so report them rather than skipping the check. Hand-built `SkippedState` values need a `kind`.
+- 3feb34a: New test helpers `waitForRows(container, { view?, count?, rowSelector? })` and `waitForSettled(container)`. They wait (Testing Library `waitFor`, no timeouts) until nothing under the container reports busy (`aria-busy`, a loading quick filter, the series loading marker) and, for rows, until the view's rows are drawn. Use them instead of asserting right after a render or an action that loads.
+
+### Patch Changes
+
+- Updated dependencies [0b65de0]
+  - @yadad/runtime@0.16.0
+
 ## 0.14.0
 
 ### Minor Changes

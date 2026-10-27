@@ -1,5 +1,14 @@
 # @yadad/renderer
 
+## 0.17.1
+
+### Patch Changes
+
+- 3d40b9a: A board grouped by a reference field no longer stays `aria-busy` forever. It is busy only while a target fetch it started is in flight; the default records grouping and an unwired target (which still warns) are not busy.
+- 4cd4a49: Data fetches and the drill-level cache now depend on the content of `entity`, `view`, `dashboard`, `documents`, `entities`, `viewer`, `drill`, `drills` and `dataSources`, not their object identity. A host that rebuilds its documents on every render no longer refetches rows. Data adapters are still compared by identity.
+- Updated dependencies [0b65de0]
+  - @yadad/runtime@0.16.0
+
 ## 0.17.0
 
 ### Minor Changes
