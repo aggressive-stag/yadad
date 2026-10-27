@@ -98,6 +98,53 @@ describe("DashboardRenderer", () => {
     expect(await screen.findByLabelText(/^Exercise/)).toBeTruthy();
   });
 
+  test("a controlled tab is shown as given, clicks are reported, and the host decides", async () => {
+    const onTabChange = vi.fn();
+    const props = { dashboard, documents: { entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }, registry: mockRegistry, dataSources: new Map([["default", createMemoryAdapter()]]), onTabChange };
+    const { rerender } = render(<DashboardRenderer {...props} tab="history" />);
+    expect(screen.getByRole("tab", { name: "History" }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("tab", { name: "Log" }));
+    expect(onTabChange).toHaveBeenCalledWith("log");
+    // The host has not updated `tab`, so the screen does not move.
+    expect(screen.getByRole("tab", { name: "History" }).getAttribute("aria-selected")).toBe("true");
+    rerender(<DashboardRenderer {...props} tab="log" />);
+    expect(screen.getByRole("tab", { name: "Log" }).getAttribute("aria-selected")).toBe("true");
+    expect(onTabChange).toHaveBeenCalledTimes(1);
+  });
+
+  test("a controlled tab the viewer cannot see falls back to the first visible tab and reports it", async () => {
+    const onTabChange = vi.fn();
+    render(
+      <DashboardRenderer
+        dashboard={dashboard}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", createMemoryAdapter()]])}
+        tab="nope"
+        onTabChange={onTabChange}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "Log" }).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(onTabChange).toHaveBeenCalledWith("log"));
+    expect(onTabChange).toHaveBeenCalledTimes(1);
+  });
+
+  test("uncontrolled, a click moves the tab and onTabChange is only a notification", () => {
+    const onTabChange = vi.fn();
+    render(
+      <DashboardRenderer
+        dashboard={dashboard}
+        documents={{ entities: new Map([["set", entity]]), views: new Map([form, table].map((v) => [v.id, v])) }}
+        registry={mockRegistry}
+        dataSources={new Map([["default", createMemoryAdapter()]])}
+        onTabChange={onTabChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
+    expect(screen.getByRole("tab", { name: "History" }).getAttribute("aria-selected")).toBe("true");
+    expect(onTabChange).toHaveBeenCalledWith("history");
+  });
+
   test("one visible tab means no tab strip; a named region keeps the landmark; two tabs keep the strip", () => {
     // A strip with one tab repeats the page title and pushes content down on a phone.
     const single: DashboardView = { ...dashboard, tabs: [dashboard.tabs[1]!] };

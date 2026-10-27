@@ -214,6 +214,11 @@ const drillHome: DashboardView = {
         { id: "bookings", x: 6, y: 0, w: 6, h: 8, widget: "view", view: "bookings_by_client" },
       ],
     },
+    {
+      id: "all_tasks",
+      title: "All tasks",
+      items: [{ id: "all", x: 0, y: 0, w: 12, h: 8, widget: "view", view: "tasks_by_owner" }],
+    },
   ],
 };
 
@@ -592,6 +597,18 @@ function renderRoot(id: string, documents: DocumentSet, registry: Registry<React
 /** The URL parameter that holds a dashboard's drills: `?drills.<dashboard id>=<json>`. */
 const drillParam = (dashboardId: string): string => `drills.${dashboardId}`;
 
+/** The URL parameter that holds a dashboard's selected tab: `?tab.<dashboard id>=<tab id>`. */
+const tabParam = (dashboardId: string): string => `tab.${dashboardId}`;
+
+/** The tab named in the URL, or undefined; the renderer falls back to the first visible tab for an unknown id. */
+function readTab(dashboardId: string): string | undefined {
+  try {
+    return new URLSearchParams(window.location.search).get(tabParam(dashboardId)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Reads the drills from the URL; anything that is not the expected shape is ignored (a hand-edited URL). */
 function readDrills(dashboardId: string): Readonly<Record<string, readonly DrillStep[]>> {
   try {
@@ -616,8 +633,12 @@ function readDrills(dashboardId: string): Readonly<Record<string, readonly Drill
  */
 function UrlDrilledDashboard({ dashboard, documents, registry, dataSources, viewer }: { readonly dashboard: DashboardView; readonly documents: DocumentSet; readonly registry: Registry<ReactNode>; readonly dataSources: ReadonlyMap<string, DataAdapter>; readonly viewer: ResolvedViewer }): ReactNode {
   const [drills, setDrills] = useState(() => readDrills(dashboard.id));
+  const [tab, setTab] = useState(() => readTab(dashboard.id) ?? dashboard.tabs[0]?.id);
   useEffect(() => {
-    const onPop = () => setDrills(readDrills(dashboard.id));
+    const onPop = () => {
+      setDrills(readDrills(dashboard.id));
+      setTab(readTab(dashboard.id) ?? dashboard.tabs[0]?.id);
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [dashboard.id]);
@@ -632,7 +653,16 @@ function UrlDrilledDashboard({ dashboard, documents, registry, dataSources, view
       window.history.pushState(null, "", url);
     } catch { /* no history in this environment: the drills still work, they are just not in the URL */ }
   };
-  return <DashboardRenderer dashboard={dashboard} documents={documents} registry={registry} dataSources={dataSources} viewer={viewer} drills={drills} onDrillChange={change} />;
+  const changeTab = (next: string) => {
+    if (next === tab) return;
+    setTab(next);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set(tabParam(dashboard.id), next);
+      window.history.pushState(null, "", url);
+    } catch { /* no history in this environment */ }
+  };
+  return <DashboardRenderer dashboard={dashboard} documents={documents} registry={registry} dataSources={dataSources} viewer={viewer} drills={drills} onDrillChange={change} {...(tab !== undefined ? { tab } : {})} onTabChange={changeTab} />;
 }
 
 /**

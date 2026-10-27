@@ -59,6 +59,17 @@ export interface DashboardRendererProps {
    */
   readonly initialTab?: string;
   /**
+   * The selected tab, controlled (RFC 0011 item 1), shaped like `drills`: the
+   * host owns it and the renderer shows it, so update it in `onTabChange`.
+   * Unset, the renderer keeps its own selection, seeded by `initialTab`. An id
+   * that names no tab, or a tab this viewer may not see, falls back to the
+   * first visible tab and the fallback is reported through `onTabChange`.
+   * Restoring a drill never changes the tab; the host owns both.
+   */
+  readonly tab?: string;
+  /** Called with the tab id when the viewer picks a tab, and when a supplied `tab` fell back to the first visible one. */
+  readonly onTabChange?: (tab: string) => void;
+  /**
    * Controlled drill-downs of the table widgets (RFC 0010 item 1), keyed by
    * grid item id: each entry is that widget's `drill` as `TableRenderer`
    * takes it. A widget with no entry keeps its private stack, unless
@@ -99,12 +110,24 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables, counts and stats.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab, drills, onDrillChange }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab, tab: tabProp, onTabChange, drills, onDrillChange }: DashboardRendererProps): ReactNode {
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, dashboard, documents);
   const tabs = useMemo(() => visibleTabs(dashboard, viewer), [dashboard, viewer]);
   const [rootRef, width] = useWidth();
   // `initialTab` seeds the selection; a name that matches no visible tab falls back to the first one below.
   const [selected, setSelected] = useState(initialTab ?? tabs[0]?.id ?? "");
+  const selectedId = tabProp ?? selected;
+  const shownId = tabs.find((t) => t.id === selectedId)?.id ?? tabs[0]?.id;
+  // A supplied tab the viewer cannot see: report the fallback so the host's state agrees with the screen.
+  const onTabChangeRef = useRef(onTabChange);
+  onTabChangeRef.current = onTabChange;
+  useEffect(() => {
+    if (tabProp !== undefined && shownId !== undefined && shownId !== tabProp) onTabChangeRef.current?.(shownId);
+  }, [tabProp, shownId]);
+  const selectTab = (id: string): void => {
+    if (tabProp === undefined) setSelected(id);
+    onTabChange?.(id);
+  };
   const [reloadKey, setReloadKey] = useState(0);
   // One bump for every successful write in any widget: a form save (onSaved)
   // and a write inside a table/board/calendar (onChanged) both go through it.
@@ -115,7 +138,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
   const setupErrors = [...checkDashboard(dashboard, documents, dataSources), ...(viewerError ? [viewerError] : [])];
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const tab = tabs.find((t) => t.id === selected) ?? tabs[0];
+  const tab = tabs.find((t) => t.id === selectedId) ?? tabs[0];
   if (!tab) return <p data-yadad-dashboard-nothing="">There is nothing to show you here.</p>;
   const stacked = width !== undefined && width < stackBelow;
   const columns = stacked ? 1 : (tab.columns ?? DEFAULT_COLUMNS);
@@ -188,7 +211,7 @@ export function DashboardRenderer({ dashboard, documents, registry, dataSources,
         // grid keeps a named landmark instead, so the page does not lose the region.
         <section aria-label={dashboard.title ?? dashboard.id}>{grid}</section>
       ) : (
-        <Tabs label={dashboard.title ?? dashboard.id} tabs={tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={setSelected} panel={grid} />
+        <Tabs label={dashboard.title ?? dashboard.id} tabs={tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={selectTab} panel={grid} />
       )}
     </div>
   );
