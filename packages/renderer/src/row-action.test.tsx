@@ -217,3 +217,49 @@ describe("controlled drill (RFC 0010 item 1)", () => {
     expect(screen.getByRole("status").textContent).toContain("no longer available");
   });
 });
+
+describe("dashboard drills keyed by widget (RFC 0010 item 1)", () => {
+  const two: DashboardView = {
+    kind: "dashboard",
+    specVersion: 2,
+    id: "board2",
+    revision: 1,
+    tabs: [{ id: "main", title: "Main", items: [
+      { id: "w1", x: 0, y: 0, w: 6, h: 4, widget: "view", view: "sets" },
+      { id: "w2", x: 6, y: 0, w: 6, h: 4, widget: "view", view: "sets" },
+    ] }],
+  };
+  type Drill = readonly { viewId: string; bindings: Readonly<Record<string, string>> }[];
+  const ui = (dataSources: Awaited<ReturnType<typeof seed>>, drills?: Record<string, Drill>, onDrillChange?: (id: string, d: Drill) => void) => (
+    <DashboardRenderer dashboard={two} documents={documents} registry={mockRegistry} dataSources={dataSources} {...(drills ? { drills } : {})} {...(onDrillChange ? { onDrillChange } : {})} />
+  );
+
+  test("each table widget is restored from its own key", async () => {
+    const dataSources = await seed();
+    render(ui(dataSources, { w1: [{ viewId: "history", bindings: { exercise: "Bench" } }], w2: [{ viewId: "history", bindings: { exercise: "Squat" } }] }));
+    await screen.findByRole("heading", { name: "Exercise history: Exercise = Bench" });
+    await screen.findByRole("heading", { name: "Exercise history: Exercise = Squat" });
+  });
+
+  test("a widget with no key reports under its own id and starts at the top", async () => {
+    const dataSources = await seed();
+    const seen: unknown[] = [];
+    render(ui(dataSources, { w1: [{ viewId: "history", bindings: { exercise: "Bench" } }] }, (id, d) => seen.push([id, d])));
+    await screen.findByRole("heading", { name: "Exercise history: Exercise = Bench" });
+    const w2 = within(document.querySelectorAll<HTMLElement>("[data-yadad-grid-item]")[1] as HTMLElement);
+    await w2.findByText("2026-10-01");
+    expect(w2.queryByRole("heading", { name: /^Exercise history/ })).toBeNull();
+    fireEvent.click(w2.getAllByRole("button", { name: /— Bench/ })[0] as HTMLElement);
+    expect(seen).toEqual([["w2", [{ viewId: "history", bindings: { exercise: "Bench" } }]]]);
+  });
+
+  test("a controlled Back returns focus to the row the level came from", async () => {
+    const dataSources = await seed();
+    const step = { viewId: "history", bindings: { exercise: "Bench" } };
+    const r = render(ui(dataSources, { w1: [step] }, () => undefined));
+    await screen.findByRole("heading", { name: "Exercise history: Exercise = Bench" });
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    r.rerender(ui(dataSources, { w1: [] }, () => undefined));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Open Exercise history — Bench (2026-10-02)"));
+  });
+});

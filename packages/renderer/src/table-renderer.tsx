@@ -92,6 +92,8 @@ export interface DrillStep {
 interface RowActionHandle {
   readonly label: (record: DataRecord) => string;
   readonly open: (record: DataRecord) => void;
+  /** The record's bound values as a drill step holds them, to match a restored level to its row. */
+  readonly bindings: (record: DataRecord) => Readonly<Record<string, string>>;
 }
 
 interface TableBodyProps extends Omit<TableRendererProps, "documents" | "viewer"> {
@@ -216,6 +218,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
           const name = target.title ?? target.id;
           return `Open ${name}${bound ? ` — ${bound}` : ""}${here && here !== bound ? ` (${here})` : ""}`;
         },
+        bindings: (record) => Object.fromEntries(action.bind.map((b) => [b.to, text(record, b.field)])),
         open: (record) => {
           const bindings = Object.fromEntries(action.bind.map((b) => [b.to, text(record, b.field)]));
           const opened = levelFromBindings(level, index, { viewId: action.open, bindings }, documents, viewer);
@@ -238,9 +241,36 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
     const index = top - 1;
     if (!closing || index < 0) return;
     const rowId = closing.originRow;
+    const wanted = closing.step?.bindings;
     afterRender.current = () => {
-      const buttons = containerRef.current?.querySelectorAll<HTMLElement>(`[data-yadad-drill-level="${index}"] [data-yadad-row-open="${rowId}"] button`);
-      buttons?.[0]?.focus();
+      const root = containerRef.current;
+      if (!root) return;
+      if (rowId !== undefined) {
+        root.querySelectorAll<HTMLElement>(`[data-yadad-drill-level="${index}"] [data-yadad-row-open="${rowId}"] button`)[0]?.focus();
+        return;
+      }
+      // A restored level has no origin row: find the row whose bound values are the popped step's.
+      if (wanted) {
+        for (const span of root.querySelectorAll<HTMLElement>(`[data-yadad-drill-level="${index}"] [data-yadad-row-open]`)) {
+          let bound: Record<string, string> = {};
+          try {
+            bound = JSON.parse(span.getAttribute("data-yadad-row-bindings") ?? "{}") as Record<string, string>;
+          } catch {
+            continue;
+          }
+          const keys = Object.keys(wanted);
+          if (keys.length > 0 && keys.every((k) => bound[k] === wanted[k])) {
+            const button = span.querySelector<HTMLElement>("button");
+            if (button) {
+              button.focus();
+              return;
+            }
+          }
+        }
+      }
+      // Otherwise the table's heading (a drilled level has one), else the container.
+      const level = root.querySelector<HTMLElement>(`[data-yadad-drill-level="${index}"]`);
+      (level?.querySelector<HTMLElement>("[data-yadad-drill-heading]") ?? root).focus();
     };
     setNotice(false);
     if (!controlled) setPrivateStack((s) => s.slice(0, -1));
@@ -294,7 +324,7 @@ export function TableRenderer({ entity, view, registry, dataSources, entities, r
   const addParts = levels.length === 1 ? addControl() : undefined;
 
   return (
-    <div ref={containerRef} data-yadad-drill={view.id}>
+    <div ref={containerRef} tabIndex={-1} data-yadad-drill={view.id}>
       {notice && <div role="status" data-yadad-drill-notice="">That drill-down is no longer available, so you are back where it stopped being valid.</div>}
       {levels.map((level, i) => (
         <div key={`${i}:${level.view.id}`} data-yadad-drill-level={i} {...(i === top ? {} : { hidden: true })}>
@@ -582,7 +612,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       <>
         {columns.some((c) => c.editable && canEditField(record, c.field.id)) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => openEdit(record)} />}
         {rowAction && (
-          <span data-yadad-row-open={record.id}>
+          <span data-yadad-row-open={record.id} data-yadad-row-bindings={JSON.stringify(rowAction.bindings(record))}>
             <Button label={rowAction.label(record)} type="button" variant="secondary" disabled={saving} onPress={() => rowAction.open(record)} />
           </span>
         )}
