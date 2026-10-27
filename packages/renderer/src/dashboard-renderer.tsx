@@ -29,6 +29,7 @@ import { useReferences } from "./references.js";
 import type { DrillStep } from "./table-renderer.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
+import { useContentStable } from "./use-stable.js";
 
 export interface DashboardRendererProps {
   readonly dashboard: DashboardView;
@@ -110,7 +111,11 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables, counts and stats.
  */
-export function DashboardRenderer({ dashboard, documents, registry, dataSources, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab, tab: tabProp, onTabChange, drills, onDrillChange }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard: dashboardProp, documents: documentsProp, registry, dataSources: dataSourcesProp, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab, tab: tabProp, onTabChange, drills: drillsProp, onDrillChange }: DashboardRendererProps): ReactNode {
+  const dashboard = useContentStable(dashboardProp);
+  const documents = useContentStable(documentsProp);
+  const dataSources = useContentStable(dataSourcesProp);
+  const drills = useContentStable(drillsProp);
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, dashboard, documents);
   const tabs = useMemo(() => visibleTabs(dashboard, viewer), [dashboard, viewer]);
   const [rootRef, width] = useWidth();

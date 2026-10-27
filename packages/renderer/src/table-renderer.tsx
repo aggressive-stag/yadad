@@ -14,6 +14,7 @@ import type { FieldFormatting } from "./fields.js";
 import { useReferenceFilterChoices, useReferences } from "./references.js";
 import type { ReferenceFilterChoicesState } from "./references.js";
 import { useViewerSetup } from "./viewer.js";
+import { useContentStable } from "./use-stable.js";
 import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { replaceSavedRecord } from "./saved-record.js";
 
@@ -150,7 +151,13 @@ type Rows = { readonly status: "loading" } | { readonly status: "loaded"; readon
  * and a Back button. Earlier tables stay mounted (hidden), so Back restores
  * their page, sort and quick filters.
  */
-export function TableRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, viewer: viewerProp, formatting, onChanged, drafts, savedFilter, onSavedFilterChange, drill, onDrillChange }: TableRendererProps): ReactNode {
+export function TableRenderer({ entity: entityProp, view: viewProp, registry, dataSources: dataSourcesProp, entities: entitiesProp, reloadKey, documents: documentsProp, viewer: viewerProp, formatting, onChanged, drafts, savedFilter, onSavedFilterChange, drill: drillProp, onDrillChange }: TableRendererProps): ReactNode {
+  const entity = useContentStable(entityProp);
+  const view = useContentStable(viewProp);
+  const dataSources = useContentStable(dataSourcesProp);
+  const entities = useContentStable(entitiesProp);
+  const documents = useContentStable(documentsProp);
+  const drill = useContentStable(drillProp);
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [privateStack, setPrivateStack] = useState<readonly Level[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);

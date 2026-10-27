@@ -11,6 +11,7 @@ import type { CommonInputProps, FieldFormatting } from "./fields.js";
 import { useReferences } from "./references.js";
 import { SubRecordChecklist } from "./sub-records.js";
 import { useViewerSetup } from "./viewer.js";
+import { useContentStable } from "./use-stable.js";
 
 /** The most rows the batch composer holds; `initialRows` is clamped to it and "+ another" stops there. */
 export const BATCH_ROW_CAP = 50;
@@ -73,7 +74,12 @@ function clampRows(n: number | undefined): number {
   return Math.min(BATCH_ROW_CAP, Math.max(1, Math.floor(n)));
 }
 
-export function FormRenderer({ entity, view, registry, dataSources, entities, onSaved, drafts, viewer: viewerProp, documents, formatting, parent, reloadKey, initialRows }: FormRendererProps): ReactNode {
+export function FormRenderer({ entity: entityProp, view: viewProp, registry, dataSources: dataSourcesProp, entities: entitiesProp, onSaved, drafts, viewer: viewerProp, documents: documentsProp, formatting, parent, reloadKey, initialRows }: FormRendererProps): ReactNode {
+  const entity = useContentStable(entityProp);
+  const view = useContentStable(viewProp);
+  const dataSources = useContentStable(dataSourcesProp);
+  const entities = useContentStable(entitiesProp);
+  const documents = useContentStable(documentsProp);
   const formId = useId();
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const store = drafts?.store;

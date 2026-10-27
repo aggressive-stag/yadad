@@ -15,6 +15,7 @@ import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { replaceSavedRecord } from "./saved-record.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
+import { useContentStable } from "./use-stable.js";
 
 const NUMBER = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const OTHER_COLUMN_DEF: BoardColumnDef = { id: "other", kind: "other", label: BOARD_OTHER_LABEL, value: null };
@@ -98,7 +99,12 @@ interface Opened {
  * container, with the target table filtered by that card and a Back button.
  * The board stays mounted (hidden), so Back returns to the same grouping.
  */
-export function BoardRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, groupBy, initialGroupBy, onGroupByChange, viewer: viewerProp, formatting, onChanged }: BoardRendererProps): ReactNode {
+export function BoardRenderer({ entity: entityProp, view: viewProp, registry, dataSources: dataSourcesProp, entities: entitiesProp, reloadKey, documents: documentsProp, now, groupBy, initialGroupBy, onGroupByChange, viewer: viewerProp, formatting, onChanged }: BoardRendererProps): ReactNode {
+  const entity = useContentStable(entityProp);
+  const view = useContentStable(viewProp);
+  const dataSources = useContentStable(dataSourcesProp);
+  const entities = useContentStable(entitiesProp);
+  const documents = useContentStable(documentsProp);
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);

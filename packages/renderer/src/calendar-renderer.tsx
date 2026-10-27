@@ -15,6 +15,7 @@ import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { replaceSavedRecord } from "./saved-record.js";
 import { TableRenderer } from "./table-renderer.js";
 import { useViewerSetup } from "./viewer.js";
+import { useContentStable } from "./use-stable.js";
 
 export interface CalendarRendererProps {
   readonly entity: EntityDocument;
@@ -83,7 +84,12 @@ interface Opened {
  * container, with the target table filtered by that record and a Back button.
  * The calendar stays mounted (hidden), so Back returns to the same period.
  */
-export function CalendarRenderer({ entity, view, registry, dataSources, entities, reloadKey, documents, now, viewer: viewerProp, initialMode, initialAnchor, formatting, onChanged }: CalendarRendererProps): ReactNode {
+export function CalendarRenderer({ entity: entityProp, view: viewProp, registry, dataSources: dataSourcesProp, entities: entitiesProp, reloadKey, documents: documentsProp, now, viewer: viewerProp, initialMode, initialAnchor, formatting, onChanged }: CalendarRendererProps): ReactNode {
+  const entity = useContentStable(entityProp);
+  const view = useContentStable(viewProp);
+  const dataSources = useContentStable(dataSourcesProp);
+  const entities = useContentStable(entitiesProp);
+  const documents = useContentStable(documentsProp);
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const [opened, setOpened] = useState<Opened | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);

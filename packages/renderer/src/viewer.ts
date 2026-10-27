@@ -2,6 +2,7 @@ import type { DocumentError, ResolvedViewer, ViewDocument } from "@yadad/core";
 import { resolveViewer, viewerLeavesRead } from "@yadad/runtime";
 import { useMemo } from "react";
 import type { DocumentSet } from "./document-set.js";
+import { useContentStable } from "./use-stable.js";
 
 /** The viewer of a view that reads no facts: nothing to resolve. */
 const NO_FACTS: ResolvedViewer = { facts: [] };
@@ -19,7 +20,8 @@ export interface ViewerSetup {
  * viewer fact (its own, the views it embeds, the views its row actions open)
  * gets an error for the summary; a view that reads none needs no viewer.
  */
-export function useViewerSetup(prop: ResolvedViewer | undefined, view: ViewDocument, documents?: DocumentSet): ViewerSetup {
+export function useViewerSetup(propIn: ResolvedViewer | undefined, view: ViewDocument, documents?: DocumentSet): ViewerSetup {
+  const prop = useContentStable(propIn);
   return useMemo(() => {
     if (prop) return { viewer: prop };
     if (documents?.viewer) return { viewer: resolveViewer(documents.viewer).viewer };

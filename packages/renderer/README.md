@@ -164,6 +164,10 @@ A table view's `filters` entries render as a chip row beside the quick filters. 
 - The lit chip's condition is ANDed into the base filter before the quick filters combine, so it rides the adapter query rather than post-filtering rows.
 - Chips are registry `Button`s with the optional `pressed` prop (core): the component draws the pressed look and sets `aria-pressed`. Pressing the lit chip reports `undefined`. An unknown `savedFilter` id filters nothing and lights no chip.
 
+## Props that may change identity
+
+Every renderer compares `entity`, `view`, `dashboard`, `documents`, `entities`, `viewer`, `drill`, `drills` and `dataSources` by content, so a host may rebuild them on every render (parsed again from JSON, a new `Map`, a fresh `documentSet(...)`) without refetching rows or losing a drilled-into level's loaded rows. Only the data adapters inside `dataSources` are compared by identity: create each adapter once (for example at module level or in a memo), not on every render. Callbacks (`onChanged`, `onDrillChange`, `onTabChange`) may change freely.
+
 ## Drill-downs that have a URL
 
 A table's `rowAction` opens its target in the same container. By default the renderer keeps that stack to itself. Pass `drill` and `onDrillChange` (the same controlled-optional shape as `savedFilter`) and the host owns it, so a drill can live in a URL:
