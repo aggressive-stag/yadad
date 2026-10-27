@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { DashboardView, EntityDocument, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
-import { mockRegistry } from "@yadad/testing";
+import { mockRegistry, waitForRows } from "@yadad/testing";
 import { afterEach, describe, expect, test } from "vitest";
 import { DashboardRenderer } from "./dashboard-renderer.js";
 import type { DocumentSet } from "./document-set.js";
@@ -59,7 +59,7 @@ async function seed() {
 async function open(view: TableView = sets) {
   const dataSources = await seed();
   render(<TableRenderer entity={entity} view={view} registry={mockRegistry} dataSources={dataSources} documents={documents} />);
-  await screen.findByText("2026-10-01");
+  await waitForRows(document.body);
 }
 
 const bodyRows = () => screen.getAllByRole("row").slice(1);
@@ -80,7 +80,7 @@ describe("row action", () => {
     const source: TableView = { ...sets, id: "sessions", rowAction: { open: "per-session", bind: [{ field: "exercise", to: "exercise" }] } };
     const docs: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map<string, TableView>([[source.id, source], [target.id, target]]) };
     render(<TableRenderer entity={entity} view={source} registry={mockRegistry} dataSources={await seed()} documents={docs} />);
-    await screen.findByText("2026-10-01");
+    await waitForRows(document.body);
     const names = screen.getAllByRole("button", { name: /^Open / }).map((b) => b.textContent);
     expect(names).toEqual(["Open Sets for session — Squat (2026-10-01)", "Open Sets for session — Bench (2026-10-02)"]);
   });
@@ -164,7 +164,7 @@ describe("row action in a dashboard widget", () => {
       tabs: [{ id: "main", title: "Main", items: [{ id: "w", x: 0, y: 0, w: 12, h: 4, widget: "view", view: "sets" }] }],
     };
     render(<DashboardRenderer dashboard={dashboard} documents={documents} registry={mockRegistry} dataSources={dataSources} />);
-    await screen.findByText("2026-10-01");
+    await waitForRows(document.body);
     fireEvent.click(screen.getByRole("button", { name: /— Bench/ }));
     await screen.findByRole("heading", { name: "Exercise history: Exercise = Bench" });
     expect(document.querySelectorAll("[data-yadad-grid-item]").length).toBe(1);
@@ -302,7 +302,7 @@ describe("the record id as a binding (RFC 0008 item 1)", () => {
     await db.create("log", { session_id: two.id, note: "bench" }, { entityRevision: 1 });
     const seen: unknown[] = [];
     render(<TableRenderer entity={parent} view={sessions} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={docs} onDrillChange={(d) => seen.push(d)} />);
-    await screen.findByText("Monday");
+    await waitForRows(document.body);
     fireEvent.click(screen.getAllByRole("button", { name: /^Open / })[0] as HTMLElement);
     await screen.findByText("squats");
     expect(screen.queryByText("bench")).toBeNull();

@@ -20,6 +20,20 @@ import { mockRegistry } from "@yadad/testing";
 render(<FormRenderer entity={entity} view={form} registry={mockRegistry} dataSources={dataSources} />);
 ```
 
+## Wait for loads
+
+A view loads its rows asynchronously, so an assertion made right after `render` or a save can run before they are drawn. Wait with the helpers instead of a timeout:
+
+```tsx
+import { waitForRows, waitForSettled } from "@yadad/testing";
+
+const { container } = render(<TableRenderer ... />);
+const rows = await waitForRows(container, { view: "log", count: 3 }); // exactly 3 rows, nothing busy
+await waitForSettled(container); // nothing under the container reports busy
+```
+
+`waitForSettled` waits until no element reports `aria-busy="true"`, a loading quick filter or the series loading marker. `waitForRows` also waits for the view's rows (table rows, board cards and calendar entries of the mock registry; pass `rowSelector` for another registry) and resolves with them. `view` limits it to one view's id; `count` makes it wait for exactly that many.
+
 ## Source states
 
 A screen has states that come from the data source: still loading, failed to load, a save refused, a conflict. `createStateAdapter(seed, options)` returns a `DataAdapter` seeded with a view state's records (from `viewStates` in `@yadad/runtime`) or with a list of records, and puts it in one of them.

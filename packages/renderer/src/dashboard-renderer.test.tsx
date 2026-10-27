@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Condition, DashboardView, DataAdapter, EntityDocument, FormView, Registry, SeriesWidgetProps, TableView, ViewDocument } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
-import { mockRegistry } from "@yadad/testing";
+import { mockRegistry, waitForSettled } from "@yadad/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ReactNode } from "react";
 import { DashboardRenderer } from "./dashboard-renderer.js";
@@ -562,9 +562,13 @@ describe("series widgets", () => {
     const { registry } = seriesRegistry();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     show(board([series("by_exercise", { field: "exercise" })]), db, registry, new Map([["set", sets]]));
-    await waitFor(() => expect(groupTexts()).toHaveLength(2));
-    expect(groupTexts()).toEqual(["1|1|2", "2|2|1"]); // target entity never wired: the hook says the raw id and warns
-    expect(warn.mock.calls.some((c) => String(c[0]).includes('points at entity "exercise"'))).toBe(true);
+    // The groups draw one render before the references hook's effect runs and
+    // warns (its wants come from the loaded result), so wait for the warning too.
+    await waitForSettled(document.body);
+    await waitFor(() => {
+      expect(groupTexts()).toEqual(["1|1|2", "2|2|1"]); // target entity never wired: the hook says the raw id and warns
+      expect(warn.mock.calls.some((c) => String(c[0]).includes('points at entity "exercise"'))).toBe(true);
+    });
     warn.mockRestore();
   });
 

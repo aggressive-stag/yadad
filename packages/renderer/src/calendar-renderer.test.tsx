@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ForbiddenError, RecordValidationError } from "@yadad/core";
 import type { CalendarView, DashboardView, DataAdapter, EntityDocument, Query, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
-import { mockRegistry } from "@yadad/testing";
+import { mockRegistry, waitForRows } from "@yadad/testing";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CalendarRenderer } from "./calendar-renderer.js";
@@ -72,7 +72,7 @@ async function open(options: Options = {}) {
       now={NOW}
     />,
   );
-  await screen.findByText("Pay rent");
+  await waitForRows(document.body);
   return seeded;
 }
 
@@ -361,7 +361,7 @@ describe("moving an entry", () => {
     const { db } = await seed();
     const update = vi.fn(db.update);
     render(<CalendarRenderer entity={limited} view={calendar} registry={mockRegistry} dataSources={new Map([["default", { ...db, update }]])} now={NOW} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     moveTo("Pay rent", "2027-01-05");
     await waitFor(() => expect(status()).toBe("Could not move Pay rent: Due cannot be after 2026-12-31"));
     expect(update).not.toHaveBeenCalled();
@@ -455,7 +455,7 @@ describe("in a dashboard", () => {
       ],
     };
     render(<DashboardRenderer dashboard={count} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("2"));
     moveTo("Book flights", "2026-10-15");
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("3"));
@@ -535,7 +535,7 @@ describe("record actions on entries (RFC 0007)", () => {
       recordPermissions: (record) => (record.values.title === "Call Ada" ? { actions: { publish: false } } : undefined),
     });
     render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     expect(entryButton(ids["Pay rent"]!, "publish")).toBeTruthy();
     expect(entryButton(ids["Pay rent"]!, "archive")).toBeTruthy();
     expect(within(screen.getByTestId(`entry-${ids["Call Ada"]}`)).queryByTestId("action-publish")).toBeNull(); // withheld by can.actions
@@ -560,7 +560,7 @@ describe("record actions on entries (RFC 0007)", () => {
       recordPermissions: () => ({ actions: { archive: false } }),
     });
     render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     fireEvent.click(entryButton(ids["Pay rent"]!, "publish"));
     await waitFor(() => expect(document.querySelector("[data-testid='error-summary']")?.textContent).toContain("Only editors may publish."));
     await waitFor(() => expect(screen.getByText("Ada")).toBeTruthy()); // reloaded; the entry is as it was
@@ -572,7 +572,7 @@ describe("record actions on entries (RFC 0007)", () => {
       recordPermissions: () => ({ actions: { publish: false } }),
     });
     render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     fireEvent.click(entryButton(ids["Pay rent"]!, "archive"));
     expect(document.querySelector("[data-testid='dialog']")?.getAttribute("aria-label")).toBe("Archive");
     expect(document.querySelector("[data-testid='dialog']")?.textContent).toContain("Archive it?");
@@ -589,7 +589,7 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     render(
       <CalendarRenderer entity={doneEntity} view={view} registry={mockRegistry} dataSources={new Map([["default", adapter]])} entities={docEntities} documents={{ entities: docEntities, views: documents.views }} now={NOW} />,
     );
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
   }
 
   test("a doneField view gives every entry a checkbox that writes the boolean (item 3)", async () => {
@@ -627,7 +627,7 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     render(
       <CalendarRenderer entity={entity} view={{ ...calendar, maxEntriesPerDay: 2 }} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={documents} now={NOW} />,
     );
-    await screen.findByText("Call Ada");
+    await waitForRows(document.body);
     const today = cell("2026-10-15");
     // Four entries that day, cap 2: two sort first, two wait behind the disclosure.
     const shown = [...today.querySelectorAll("[data-testid^='entry-']")];
@@ -657,7 +657,7 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     render(
       <CalendarRenderer entity={withTeam} view={{ ...calendar, colorField: "team" }} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={docs.entities} documents={docs} now={NOW} />,
     );
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     const entryOf = (title: string): Element | undefined => [...cell("2026-10-15").querySelectorAll("[data-testid^='entry-']")].find((e) => e.textContent?.includes(title));
     await waitFor(() => expect(entryOf("Pay rent")?.getAttribute("data-color")).toBe("#D13438"));
     expect(entryOf("Pay rent")?.getAttribute("data-slot")).not.toBeNull(); // the hash slot stays beside it

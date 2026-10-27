@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ForbiddenError, RecordValidationError } from "@yadad/core";
 import type { BoardView, DashboardView, DataAdapter, EntityDocument, Field, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
-import { mockRegistry } from "@yadad/testing";
+import { mockRegistry, waitForRows } from "@yadad/testing";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { BoardRenderer } from "./board-renderer.js";
@@ -104,7 +104,7 @@ async function open(options: Options = {}) {
     ...(options.reloadKey !== undefined ? { reloadKey: options.reloadKey } : {}),
   };
   const ui = render(<BoardRenderer {...props} />);
-  await screen.findByText("Pay rent");
+  await screen.findByText("Pay rent"); // not waitForRows: a reference grouping leaves the board aria-busy (see report)
   return { ...seeded, rerender: (next: Partial<Options>) => ui.rerender(<BoardRenderer {...props} {...next} />) };
 }
 
@@ -176,7 +176,7 @@ describe("groupings", () => {
     const { db } = await seed();
     await db.create("task", { title: "Odd", list: "Gone" }, { entityRevision: 1 });
     render(<BoardRenderer entity={entity} view={board} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} />);
-    await screen.findByText("Odd");
+    await waitForRows(document.body);
     expect(titles("other")).toEqual(["Odd"]);
     expect(column("other").getAttribute("data-droppable")).toBe("false");
   });
@@ -188,7 +188,7 @@ describe("switching the grouping", () => {
     const find = vi.fn(db.find);
     const changes: string[] = [];
     render(<BoardRenderer entity={entity} view={board} registry={mockRegistry} dataSources={new Map([["default", { ...db, find }]])} entities={documents.entities} onGroupByChange={(f) => changes.push(f)} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     const taskCalls = () => find.mock.calls.filter(([name]) => name === "task").length;
     const before = taskCalls();
     groupBy("done");
@@ -606,7 +606,7 @@ describe("record actions on cards (RFC 0007)", () => {
     render(
       <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
     );
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     expect(cardButton(ids["Pay rent"]!, "publish")).toBeTruthy();
     expect(cardButton(ids["Pay rent"]!, "archive")).toBeTruthy();
     expect(within(screen.getByTestId(`card-${ids["Call Ada"]}`)).queryByTestId("action-publish")).toBeNull(); // withheld by can.actions
@@ -633,7 +633,7 @@ describe("record actions on cards (RFC 0007)", () => {
     render(
       <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
     );
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     fireEvent.click(cardButton(ids["Pay rent"]!, "publish"));
     await waitFor(() => expect(document.querySelector("[data-testid='error-summary']")?.textContent).toContain("Only editors may publish."));
     await waitFor(() => expect(screen.getByText("Due soon")).toBeTruthy()); // reloaded; the card is as it was
@@ -647,7 +647,7 @@ describe("record actions on cards (RFC 0007)", () => {
     render(
       <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
     );
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     fireEvent.click(cardButton(ids["Pay rent"]!, "archive"));
     expect(document.querySelector("[data-testid='dialog']")?.getAttribute("aria-label")).toBe("Archive");
     expect(document.querySelector("[data-testid='dialog']")?.textContent).toContain("Archive it?");
@@ -687,7 +687,7 @@ describe("record actions on cards (RFC 0007)", () => {
     render(
       <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
     );
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     const btn = cardButton(base.ids["Pay rent"]!, "publish");
     btn.focus();
     fireEvent.click(btn);
@@ -731,7 +731,7 @@ describe("record actions on cards (RFC 0007)", () => {
     render(
       <BoardRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} />,
     );
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     const btn = cardButton(base.ids["Book flights"]!, "publish"); // first card of Home
     btn.focus();
     fireEvent.click(btn);
@@ -791,7 +791,7 @@ describe("in a dashboard", () => {
       ],
     };
     render(<DashboardRenderer dashboard={count} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("1"));
     moveTo("Pay rent", "v:Work");
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("2"));
@@ -846,7 +846,7 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     const docs: DocumentSet = { entities: new Map([[lists.id, lists], [person.id, person]]), views: documents.views };
     const { db } = await seed();
     render(<BoardRenderer entity={lists} view={listsBoard} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={docs.entities} documents={docs} />);
-    await screen.findByText("Pay rent");
+    await waitForRows(document.body);
     expect(screen.getByTestId("column-v:Home").getAttribute("data-color")).toBe("#D13438");
     expect(screen.getByTestId("column-v:Home").getAttribute("aria-label")).toContain("Household");
     expect(screen.getByTestId("column-v:Work").hasAttribute("data-color")).toBe(false);

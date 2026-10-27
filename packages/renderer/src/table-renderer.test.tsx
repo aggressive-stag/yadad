@@ -4,7 +4,7 @@ import type { DataAdapter, EntityDocument, FormView, TableView } from "@yadad/co
 import type { DocumentSet } from "./document-set.js";
 import { createDraftStore, createMemoryAdapter } from "@yadad/runtime";
 import type { DraftStorage, DraftStore } from "@yadad/runtime";
-import { mockRegistry } from "@yadad/testing";
+import { mockRegistry, waitForRows } from "@yadad/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TableRenderer } from "./table-renderer.js";
 
@@ -422,7 +422,7 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     render(
       <TableRenderer entity={entity} view={{ ...view, addForm: formView.id }} registry={mockRegistry} dataSources={new Map([["default", { ...db, create }]])} documents={docs} />,
     );
-    await screen.findByText("2026-10-03");
+    await waitForRows(document.body);
     fireEvent.click(screen.getByRole("button", { name: "Add workout_set" }));
     const panel = (await screen.findByText("New set")).closest("form")!;
     fireEvent.input(within(panel).getByTestId("input-day"), { target: { value: "2026-10-05" } });
@@ -440,14 +440,14 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     render(
       <TableRenderer entity={entity} view={{ ...view, addForm: "ghost" }} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={docs} />,
     );
-    await screen.findByText("2026-10-03");
+    await waitForRows(document.body);
     expect((await screen.findByRole("alert")).textContent).toContain('not a form view');
   });
 
   test("the registry's Pager slot drives paging (item 6)", async () => {
     const db = await seedSets();
     render(<TableRenderer entity={entity} view={{ ...view, pageSize: 1 }} registry={mockRegistry} dataSources={new Map([["default", db]])} documents={{ entities: new Map([[entity.id, entity]]), views: new Map() }} />);
-    await screen.findByText("2026-10-03");
+    await waitForRows(document.body);
     const pager = await screen.findByTestId("mock-pager");
     expect(pager.getAttribute("aria-label")).toBe("Sets pages");
     expect(pager.querySelector("span")?.textContent).toBe("Page 1 of 3");
