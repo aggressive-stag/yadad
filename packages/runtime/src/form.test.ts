@@ -235,3 +235,26 @@ describe("a refused save keeps the server's own hint and field", () => {
     }
   });
 });
+
+describe("validateRecord: select options", () => {
+  const withOptions = (values: readonly (string | { value: string; label: string })[]): EntityDocument => ({
+    ...entity,
+    fields: [{ id: "status", type: "select", label: "Status", options: { source: "static", values } } as EntityDocument["fields"][number]],
+  });
+
+  test("accepts the value of a labelled option", () => {
+    const e = withOptions([{ value: "open", label: "Open" }, { value: "done", label: "Done" }]);
+    expect(validateRecord(e, { status: "open" })).toEqual([]);
+  });
+
+  test("accepts a plain option", () => {
+    expect(validateRecord(withOptions(["a", "b"]), { status: "a" })).toEqual([]);
+  });
+
+  test("an unknown value lists the values, not objects", () => {
+    const e = withOptions([{ value: "open", label: "Open" }, { value: "done", label: "Done" }]);
+    const [error] = validateRecord(e, { status: "Open" });
+    expect(error?.code).toBe("invalid-value");
+    expect(error?.hint).toBe("Use one of: open, done.");
+  });
+});

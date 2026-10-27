@@ -1,4 +1,4 @@
-import { isHhMm, isIsoDate, isIsoDatetime, jsonPointer } from "@yadad/core";
+import { isHhMm, isIsoDate, isIsoDatetime, jsonPointer, optionValue } from "@yadad/core";
 import type { DocumentError, EntityDocument, Field, FieldValue, RecordValues } from "@yadad/core";
 
 /**
@@ -87,11 +87,13 @@ function checkValue(field: Field, value: FieldValue): Problem | undefined {
         ? { code: "required", message: `${name} must be checked.`, hint: `Check ${name} to continue.` }
         : undefined;
 
-    case "select":
+    case "select": {
       if (typeof value !== "string") return wrongType(name, "one of its choices");
-      return field.options.values.includes(value)
+      const choices = field.options.values.map(optionValue);
+      return choices.includes(value)
         ? undefined
-        : { code: "invalid-value", message: `${JSON.stringify(value)} is not a choice for ${name}.`, hint: `Use one of: ${field.options.values.join(", ")}.` };
+        : { code: "invalid-value", message: `${JSON.stringify(value)} is not a choice for ${name}.`, hint: `Use one of: ${choices.join(", ")}.` };
+    }
 
     case "reference":
       return typeof value === "string" ? undefined : wrongType(name, "the id of a record");
