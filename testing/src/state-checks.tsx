@@ -700,6 +700,8 @@ function viewerChecks(container: HTMLElement, view: ViewDocument, state: SourceV
         if (item.done.disabled && !expectedDisabled) out.push({ check: "done-missing", message: `"${item.id}" done toggle is disabled although the viewer may write ${view.doneField}` });
         if (!item.done.disabled && expectedDisabled) out.push({ check: "done-offered", message: `"${item.id}" done toggle is enabled but the viewer or the record forbids writing ${view.doneField}` });
       }
+      // A day over `maxEntriesPerDay` draws only `shown` entries behind a "+N more": the hidden ones need no checkbox.
+      if (calendar) wanted = Math.max(0, wanted - calendar.days.reduce((sum, d) => sum + (d.overflow?.hidden ?? 0), 0));
       if (view.doneField !== undefined && boxes.length < wanted) out.push({ check: "done-missing", message: `${boxes.length} checkboxes are drawn for ${wanted} done toggles: the component set drops the completion checkbox` });
     }
     const onMove = calendar ? calendar.onMove : board?.onMove;
