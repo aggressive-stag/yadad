@@ -2,6 +2,16 @@ import { isHhMm, isIsoDate, isIsoDatetime, jsonPointer, optionValue } from "@yad
 import type { DocumentError, EntityDocument, Field, FieldValue, RecordValues } from "@yadad/core";
 
 /**
+ * `"write"` (the default) validates values a client sends: a `readOnly` field
+ * is refused. `"stored"` validates a record as the server holds it: a
+ * `readOnly` value is accepted and a `required` one must be present, as in
+ * `recordJsonSchema(entity, { mode: "stored" })`.
+ */
+export interface ValidateRecordOptions {
+  readonly mode?: "write" | "stored";
+}
+
+/**
  * Checks record values against their entity, for forms and adapters. A backend
  * validates the same records with `recordJsonSchema(entity)` from @yadad/core,
  * a standard JSON Schema. record-schema.test.ts proves the two agree, apart
@@ -9,10 +19,12 @@ import type { DocumentError, EntityDocument, Field, FieldValue, RecordValues } f
  * and there together.
  * Paths are JSON Pointers into the values object ("/weight").
  */
-export function validateRecord(entity: EntityDocument, values: RecordValues): readonly DocumentError[] {
+export function validateRecord(entity: EntityDocument, values: RecordValues, options: ValidateRecordOptions = {}): readonly DocumentError[] {
   const errors: DocumentError[] = [];
+  const stored = options.mode === "stored";
   const known = new Set(entity.fields.map((f) => f.id));
-  const serverSet = new Set(entity.fields.filter((f) => f.readOnly === true).map((f) => f.id));
+  // A stored record carries the server-set values; only a write must leave them out.
+  const serverSet = new Set(stored ? [] : entity.fields.filter((f) => f.readOnly === true).map((f) => f.id));
 
   for (const key of Object.keys(values)) {
     // RFC 0010 item 8: the write schema leaves a readOnly field out, so sending one (even null) is refused.
@@ -38,7 +50,7 @@ export function validateRecord(entity: EntityDocument, values: RecordValues): re
   }
 
   for (const field of entity.fields) {
-    if (field.readOnly === true) continue; // never a form requirement, even with `required`
+    if (field.readOnly === true && !stored) continue; // never a form requirement, even with `required`
     const problem = checkValue(field, values[field.id] ?? null);
     if (problem) errors.push({ path: jsonPointer([field.id]), ...problem });
   }

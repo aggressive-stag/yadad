@@ -219,7 +219,7 @@ const LONG_TEXT = `${"A long line of text that keeps going and wraps onto furthe
 function problemOf(field: Field, value: FieldValue): string | undefined {
   const entity: EntityDocument = { kind: "entity", specVersion: 4, id: "check", revision: 1, fields: [field] };
   const path = jsonPointer([field.id]);
-  return validateRecord(entity, { [field.id]: value }).find((e) => e.path === path)?.message;
+  return validateRecord(entity, { [field.id]: value }, { mode: "stored" }).find((e) => e.path === path)?.message;
 }
 
 const validFor = (field: Field, value: FieldValue): boolean => problemOf(field, value) === undefined;
@@ -812,7 +812,7 @@ function planCollection(view: CollectionView, ctx: Context): Plan {
           ? records
           : records.map((r, i) => (i === 0 ? { ...r, can: { ...r.can, actions: { ...r.can?.actions, ...Object.fromEntries(withheld.map((id) => [id, false])) } } } : r));
       for (const record of marked) {
-        const problem = validateRecord(entity, record.values)[0];
+        const problem = validateRecord(entity, record.values, { mode: "stored" })[0];
         if (problem) return { ok: false, reason: `generated record ${record.id} is not valid: ${problem.message}` };
       }
       const litFilter = savedFilters.find((f) => `filter:${f.id}` === selection[SAVED_FILTER_AXIS]);
@@ -1051,7 +1051,7 @@ function planSeries(widgetId: string, view: TableView, entity: EntityDocument, g
     (value !== null || !field.required) &&
     baseRecords.every((r) => {
       const values: RecordValues = { ...r.values, [fieldId]: value };
-      return (view.filter === undefined || evaluateCondition(view.filter, values, ctx.now)) && validateRecord(entity, values).length === 0;
+      return (view.filter === undefined || evaluateCondition(view.filter, values, ctx.now)) && validateRecord(entity, values, { mode: "stored" }).length === 0;
     });
   const good = candidateGroupValues(field, groupBy.bucket, ctx).filter((v) => usable(v));
   const empty = field.required ? false : usable(null);

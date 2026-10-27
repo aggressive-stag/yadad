@@ -894,3 +894,53 @@ describe("saved filter and doneField axes (RFC 0008/0009)", () => {
     expect(locked?.render.kind === "board" && locked.render.records[0]?.can?.update).toBe(false);
   });
 });
+
+describe("stored records with a server-set field", () => {
+  const logEntity: EntityDocument = {
+    kind: "entity",
+    specVersion: 4,
+    id: "log",
+    revision: 1,
+    fields: [
+      { id: "id", type: "reference", entity: "log", label: "Log id", required: true, readOnly: true },
+      { id: "day", type: "date", label: "Day", required: true },
+      { id: "title", type: "text", label: "Title", required: true },
+      { id: "kind", type: "select", label: "Kind", options: { source: "static", values: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }] } },
+    ],
+  };
+  const logTable: TableView = { ...base, kind: "table", id: "log-table", entity: "log", columns: [{ field: "day" }, { field: "title" }, { field: "kind" }] };
+  const logDash: DashboardView = {
+    ...base,
+    kind: "dashboard",
+    id: "log-dash",
+    tabs: [{ id: "t", title: "T", items: [{ id: "s1", x: 0, y: 0, w: 6, h: 4, widget: "series", label: "By kind", view: "log-table", groupBy: { field: "day", bucket: "week" }, measure: { op: "count" }, display: "bar" }] }],
+  };
+  const logDocs: Document[] = [logEntity, logTable, logDash];
+
+  it("a table with a required readOnly id skips no state", () => {
+    const r = viewStates(logTable, logDocs, { now: NOW, limit: 200 });
+    expect(r.skipped).toEqual([]);
+    expect(r.states.some((s) => s.render.kind === "table" && s.render.records.length > 0)).toBe(true);
+    for (const s of r.states) if (s.render.kind === "table") for (const rec of s.render.records) expect(validateRecord(logEntity, rec.values, { mode: "stored" })).toEqual([]);
+  });
+
+  it("a dashboard with a series widget keeps its widget axis", () => {
+    const r = viewStates(logDash, logDocs, { now: NOW, limit: 200 });
+    expect(r.skipped).toEqual([]);
+    expect(ids(axis(r, "widget:s1")).length).toBeGreaterThan(1);
+  });
+
+  it("validateRecord: write refuses a readOnly value, stored accepts it and requires it", () => {
+    expect(validateRecord(logEntity, { id: "x", day: "2026-10-17", title: "T" })[0]?.message).toContain("set by the server");
+    expect(validateRecord(logEntity, { id: "x", day: "2026-10-17", title: "T" }, { mode: "stored" })).toEqual([]);
+    expect(validateRecord(logEntity, { day: "2026-10-17", title: "T" }, { mode: "stored" })[0]?.code).toBe("required");
+    expect(validateRecord(logEntity, { day: "2026-10-17", title: "T" })).toEqual([]);
+  });
+
+  it("a filter on a readOnly field gets a field axis, with stored values", () => {
+    const filtered: TableView = { ...logTable, id: "log-filtered", filter: eq("id", "rec-9") };
+    const r = viewStates(filtered, [...logDocs, filtered], { now: NOW, limit: 200 });
+    expect(r.skipped).toEqual([]);
+    expect(ids(axis(r, "field:id")).length).toBeGreaterThan(1);
+  });
+});
