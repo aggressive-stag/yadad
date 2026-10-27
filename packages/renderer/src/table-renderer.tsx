@@ -382,6 +382,28 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const [saving, setSaving] = useState(false);
   const [reloads, setReloads] = useState(0);
   const [quick, setQuick] = useState<RecordValues>({});
+  // RFC 0010 item 10: a text quick filter shows what the viewer types at once but commits (and reloads) only after a pause.
+  const [typedQuick, setTypedQuick] = useState<Readonly<RecordValues>>({});
+  const typedTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = typedTimers.current;
+    return () => { for (const t of timers.values()) clearTimeout(t); timers.clear(); };
+  }, []);
+  const changeTextQuick = (id: string, v: FieldValue | undefined): void => {
+    const timers = typedTimers.current;
+    const pending = timers.get(id);
+    if (pending !== undefined) clearTimeout(pending);
+    timers.delete(id);
+    const commit = (): void => {
+      timers.delete(id);
+      setQuick((q) => ({ ...q, [id]: v ?? null }));
+      setTypedQuick(({ [id]: _drop, ...rest }) => rest);
+      setPage(0);
+    };
+    if (v === undefined || v === null || v === "") { commit(); return; } // clearing is immediate
+    setTypedQuick((t) => ({ ...t, [id]: v }));
+    timers.set(id, setTimeout(commit, QUICK_TEXT_DEBOUNCE_MS));
+  };
   const shownColumns = useMemo(() => visibleColumns(view, viewer), [view, viewer]);
 
   const adapter = dataSources.get(view.dataSource);
@@ -700,7 +722,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
             ) : (
               <div key={field.id} data-yadad-filter-field={field.id}>
               <FieldFrame inputId={`${tableId}-filter-${field.id}`} errorId={`${tableId}-filter-${field.id}-errors`} label={field.label} required={false} errors={[]}>
-                {renderInput(registry, filterControl(field), quick[field.id], { inputId: `${tableId}-filter-${field.id}`, invalid: false }, (v) => {
+                {renderInput(registry, filterControl(field), field.id in typedQuick ? typedQuick[field.id] : quick[field.id], { inputId: `${tableId}-filter-${field.id}`, invalid: false }, (v) => {
+                  if (field.type === "text") { changeTextQuick(field.id, v); return; }
                   setQuick((q) => ({ ...q, [field.id]: v ?? null }));
                   setPage(0);
                 }, references)}
@@ -746,6 +769,9 @@ const RANGE_ENDS = [
   { end: "from", word: "from", op: "gte" },
   { end: "to", word: "to", op: "lte" },
 ] as const;
+
+/** How long a text quick filter waits after the last keystroke before it reloads (RFC 0010 item 10). */
+const QUICK_TEXT_DEBOUNCE_MS = 300;
 
 /** Where a range end is kept among the quick values. A colon can never be in a field id, so it cannot collide with one. */
 const rangeKey = (end: "from" | "to", fieldId: string): string => `${end}:${fieldId}`;

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { DataAdapter, EntityDocument, FormView, TableView } from "@yadad/core";
 import type { DocumentSet } from "./document-set.js";
 import { createDraftStore, createMemoryAdapter } from "@yadad/runtime";
@@ -154,6 +154,35 @@ describe("TableRenderer", () => {
     await waitFor(() => expect(bodies().sort()).toEqual(["home only", "urgent one"])); // ANY tag matches
     fireEvent.change(chipInput(), { target: { value: "" } });
     await waitFor(() => expect(bodies().sort()).toEqual(["home only", "no tags", "urgent one"])); // no chips, no filter
+  });
+
+  test("a text quick filter waits 300 ms after the last keystroke, and clearing commits at once", async () => {
+    const noteEntity: EntityDocument = { kind: "entity", specVersion: 8, id: "note", revision: 1, fields: [{ id: "body", type: "text", label: "Body" }] };
+    const noteView: TableView = { kind: "table", specVersion: 8, id: "notes", title: "Notes", entity: "note", revision: 1, dataSource: "default", columns: [{ field: "body" }], quickFilters: [{ field: "body" }] };
+    const db = createMemoryAdapter();
+    await db.create("note", { body: "alpha" }, { entityRevision: 1 });
+    await db.create("note", { body: "beta" }, { entityRevision: 1 });
+    const list = vi.spyOn(db, "find");
+    render(<TableRenderer entity={noteEntity} view={noteView} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    await screen.findAllByRole("row");
+    await waitFor(() => expect(list).toHaveBeenCalled());
+    const bodies = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0]?.textContent);
+    const input = () => screen.getByRole("textbox", { name: "Body" }) as HTMLInputElement;
+    vi.useFakeTimers();
+    try {
+      const before = list.mock.calls.length;
+      for (const v of ["a", "al", "alp"]) { fireEvent.change(input(), { target: { value: v } }); await act(async () => { await vi.advanceTimersByTimeAsync(100); }); }
+      expect(input().value).toBe("alp"); // the box shows what was typed straight away
+      expect(list.mock.calls.length).toBe(before); // no request yet
+      await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+      expect(list.mock.calls.length).toBe(before + 1); // one request for the whole burst
+      fireEvent.change(input(), { target: { value: "" } });
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      expect(list.mock.calls.length).toBe(before + 2); // clearing does not wait
+    } finally {
+      vi.useRealTimers();
+    }
+    await waitFor(() => expect(bodies().sort()).toEqual(["alpha", "beta"]));
   });
 
   test("entering edit mode focuses the row's first editable input", async () => {
