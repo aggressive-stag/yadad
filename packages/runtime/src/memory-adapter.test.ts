@@ -53,3 +53,14 @@ describe("sorting", () => {
     expect(compareFieldValues(false, true, "asc")).toBeLessThan(0);
   });
 });
+
+describe("filters that read the viewer", () => {
+  test.each([
+    ["viewerIn", { op: "viewerIn", fact: "role", values: ["editor"] }],
+    ["fieldEqFact", { op: "fieldEqFact", field: "owner", fact: "me" }],
+    ["fieldEqFact under and", { op: "and", conditions: [{ op: "empty", field: "owner" }, { op: "fieldEqFact", field: "owner", fact: "me" }] }],
+  ] as const)("a query whose filter is a %s leaf is refused, as the server scopes records itself", async (_name, filter) => {
+    const db = createMemoryAdapter();
+    await expect(db.find("hello", { filter })).rejects.toThrow("A filter cannot depend on the viewer.");
+  });
+});

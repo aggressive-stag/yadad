@@ -23,8 +23,6 @@ export const teamViewer: ViewerDocument = {
   facts: [
     { id: "role", label: "Role", type: "select", options: { source: "static", values: [...ROLES] }, default: "viewer" },
     { id: "plan", label: "Plan", type: "select", options: { source: "static", values: ["free", "pro"] }, default: "free" },
-    // RFC 0009 item 1: the record field `fieldEqFact` compares against — the person the viewer is.
-    { id: "me", label: "Me", type: "select", options: { source: "static", values: ["1", "2", "3", "4"] }, default: "1" },
   ],
 };
 

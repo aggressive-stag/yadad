@@ -20,6 +20,7 @@ export function assertPermitted(options: AdapterOptions | undefined, record: Dat
 function readsViewer(condition: Condition): boolean {
   switch (condition.op) {
     case "viewerIn":
+    case "fieldEqFact": // it reads the viewer's fact too (RFC 0009 item 1): a server cannot evaluate it
       return true;
     case "and":
     case "or":
@@ -31,7 +32,7 @@ function readsViewer(condition: Condition): boolean {
   }
 }
 
-/** Rejects a query whose filter has a `viewerIn` leaf: filters go to servers, which scope records themselves. */
+/** Rejects a query whose filter has a `viewerIn` or `fieldEqFact` leaf: filters go to servers, which scope records themselves. */
 export function assertQueryHasNoViewer(query: Query): void {
   if (query.filter !== undefined && readsViewer(query.filter)) {
     throw new RecordValidationError("A filter cannot depend on the viewer.", [

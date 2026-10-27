@@ -96,9 +96,9 @@ const tasksView: BoardView = {
 
 /**
  * The tasks table (card 47h): a tags column with a quick filter over tags,
- * one named saved filter (RFC 0009 item 5) and a `fieldEqFact` filter against
- * the viewer's `me` fact (RFC 0009 item 1), and an addForm the "Add task"
- * control opens (RFC 0008 item 4).
+ * two named saved filters (RFC 0009 item 5) and an addForm the "Add task"
+ * control opens (RFC 0008 item 4). A filter is a server query, so it cannot read
+ * the viewer: `fieldEqFact` is legal in a form item's `visibleWhen`, not here.
  */
 const tasksTable: TableView = {
   kind: "table",
@@ -119,7 +119,7 @@ const tasksTable: TableView = {
   quickFilters: [{ field: "tags" }, { field: "priority" }],
   filters: [
     { id: "open", name: "Open", condition: { op: "neq", field: "status", value: "Done" } },
-    { id: "mine", name: "Mine", condition: { op: "fieldEqFact", field: "owner", fact: "me" } },
+    { id: "high", name: "High priority", condition: { op: "eq", field: "priority", value: "High" } },
   ],
   addForm: "tasks_batch_form",
   sort: [{ field: "title", dir: "asc" }],
@@ -150,7 +150,7 @@ const tasksHome: DashboardView = {
 };
 
 /** Folds the bookings and tasks demo documents into a loaded set, as a host would seed its own data sources. */
-function withBookings(base: DocumentSet): DocumentSet {
+export function withBookings(base: DocumentSet): DocumentSet {
   const entities = new Map(base.entities);
   const views = new Map(base.views);
   entities.set(personEntity.id, personEntity);
