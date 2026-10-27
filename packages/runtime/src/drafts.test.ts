@@ -1,6 +1,6 @@
 import type { EntityDocument } from "@yadad/core";
-import { describe, expect, test } from "vitest";
-import { createDraftStore, restoreDraft } from "./drafts.js";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { clearDrafts, createDraftStore, resetDraftWarning, restoreDraft } from "./drafts.js";
 import type { DraftStorage } from "./drafts.js";
 
 function memoryStorage(): DraftStorage & { readonly data: Map<string, string> } {
@@ -99,5 +99,84 @@ describe("restoreDraft", () => {
     const draft = { values: { name: "Ada" }, entityRevision: 2, savedAt: 5, recordVersion: "v1" };
     expect(restoreDraft(entity, draft, "v1")?.recordChanged).toBe(false);
     expect(restoreDraft(entity, draft, "v2")?.recordChanged).toBe(true);
+  });
+});
+
+describe("drafts scoped to a user", () => {
+  const draft = { values: { name: "x" }, entityRevision: 1, savedAt: 1 };
+  const warnSpy = vi.fn();
+  function listable() {
+    const m = memoryStorage();
+    return {
+      ...m,
+      get length() {
+        return m.data.size;
+      },
+      key: (i: number) => [...m.data.keys()][i] ?? null,
+    };
+  }
+  beforeEach(() => {
+    resetDraftWarning();
+    warnSpy.mockClear();
+    vi.stubGlobal("console", { warn: warnSpy });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  test("scoped stores do not see each other", () => {
+    const s = memoryStorage();
+    const a = createDraftStore(s, { scope: "a" });
+    const b = createDraftStore(s, { scope: "b" });
+    a.save("f", undefined, draft);
+    expect(a.load("f")).not.toBeNull();
+    expect(b.load("f")).toBeNull();
+    expect(createDraftStore(s, { scope: "a:b" }).load("f")).toBeNull();
+  });
+
+  test("clearDrafts with a scope removes only that scope; store.clear() clears its own", () => {
+    const s = listable();
+    const a = createDraftStore(s, { scope: "a" });
+    const b = createDraftStore(s, { scope: "b" });
+    a.save("f", undefined, draft);
+    b.save("f", undefined, draft);
+    clearDrafts(s, { scope: "a" });
+    expect(a.load("f")).toBeNull();
+    expect(b.load("f")).not.toBeNull();
+    b.clear();
+    expect(b.load("f")).toBeNull();
+  });
+
+  test("clearDrafts without a scope removes all drafts, legacy keys too, and leaves other keys", () => {
+    const s = listable();
+    s.setItem("yadad:draft:f:new", JSON.stringify(draft));
+    createDraftStore(s, { scope: "a" }).save("f", "r1", draft);
+    s.setItem("theme", "dark");
+    clearDrafts(s);
+    expect([...s.data.keys()]).toEqual(["theme"]);
+  });
+
+  test("a storage that cannot list keys clears what the stores wrote", () => {
+    const s = memoryStorage();
+    createDraftStore(s, { scope: "a" }).save("f", undefined, draft);
+    clearDrafts(s);
+    expect(s.data.size).toBe(0);
+  });
+
+  test("the old (storage, prefix) signature still works", () => {
+    const s = memoryStorage();
+    const store = createDraftStore(s, "app");
+    store.save("f", undefined, draft);
+    expect([...s.data.keys()]).toEqual(["app:draft:f:new"]);
+    expect(store.load("f")).not.toBeNull();
+    store.clear("f");
+    expect(s.data.size).toBe(0);
+  });
+
+  test("an unscoped store warns once; a scoped one does not", () => {
+    const s = memoryStorage();
+    createDraftStore(s, { scope: "a" });
+    expect(warnSpy).not.toHaveBeenCalled();
+    createDraftStore(s);
+    createDraftStore(s, "p");
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 });

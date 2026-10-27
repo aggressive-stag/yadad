@@ -26,11 +26,86 @@ export interface Draft {
 export interface DraftStore {
   load(formId: string, recordId?: string): Draft | null;
   save(formId: string, recordId: string | undefined, draft: Draft): void;
-  clear(formId: string, recordId?: string): void;
+  /** Removes one draft; with no `formId`, removes every draft in this store's scope. */
+  clear(formId?: string, recordId?: string): void;
 }
 
-export function createDraftStore(storage: DraftStorage, prefix = "yadad"): DraftStore {
-  const key = (formId: string, recordId: string | undefined) => `${prefix}:draft:${formId}:${recordId ?? "new"}`;
+/** Options for `createDraftStore` and `clearDrafts`. */
+export interface DraftOptions {
+  /** Key prefix. Default "yadad". */
+  readonly prefix?: string;
+  /** A user or session id the host supplies. Keeps one user's drafts away from the next user's. */
+  readonly scope?: string;
+}
+
+/** Storage that can list its keys, as localStorage can. */
+interface EnumerableStorage {
+  readonly length: number;
+  key(index: number): string | null;
+}
+
+const DEFAULT_PREFIX = "yadad";
+let warnedUnscoped = false;
+/** Keys written through a store, for storages that cannot list their keys. */
+const tracked = new WeakMap<object, Set<string>>();
+
+/** The runtime has no DOM or Node typings, so reach `console` through globalThis. */
+function warn(message: string): void {
+  (globalThis as { console?: { warn?: (m: string) => void } }).console?.warn?.(message);
+}
+
+function scopePart(scope: string | undefined): string {
+  return scope === undefined ? "" : `${encodeURIComponent(scope)}:`;
+}
+
+function resolveOptions(arg: string | DraftOptions | undefined): { prefix: string; scope?: string } {
+  if (typeof arg === "string") return { prefix: arg };
+  return { prefix: arg?.prefix ?? DEFAULT_PREFIX, ...(arg?.scope !== undefined ? { scope: arg.scope } : {}) };
+}
+
+function isEnumerable(storage: object): storage is EnumerableStorage {
+  const s = storage as Partial<EnumerableStorage>;
+  return typeof s.length === "number" && typeof s.key === "function";
+}
+
+function removeKeys(storage: DraftStorage, startsWith: string): void {
+  try {
+    let keys: string[];
+    if (isEnumerable(storage)) {
+      keys = [];
+      for (let i = 0; i < storage.length; i += 1) {
+        const k = storage.key(i);
+        if (k !== null) keys.push(k);
+      }
+    } else {
+      keys = [...(tracked.get(storage) ?? [])];
+    }
+    for (const k of keys) {
+      if (!k.startsWith(startsWith)) continue;
+      storage.removeItem(k);
+      tracked.get(storage)?.delete(k);
+    }
+  } catch {
+    // Storage disabled: there is nothing to remove.
+  }
+}
+
+/**
+ * Creates a draft store. Pass the signed-in user's id as `scope` so drafts on a
+ * shared browser never reach the next user; without it the store still works
+ * (single-user hosts) but warns once. The second argument may be a prefix string
+ * (the older signature) or `{ prefix, scope }`.
+ */
+export function createDraftStore(storage: DraftStorage, options?: string | DraftOptions): DraftStore {
+  const { prefix, scope } = resolveOptions(options);
+  if (scope === undefined && !warnedUnscoped) {
+    warnedUnscoped = true;
+    warn(
+      "@yadad/runtime: drafts are not scoped to a user. Pass { scope: <user id> } to createDraftStore and call clearDrafts on sign-out (see the runtime README, \"Drafts and shared browsers\").",
+    );
+  }
+  const base = `${prefix}:draft:${scopePart(scope)}`;
+  const key = (formId: string, recordId: string | undefined) => `${base}${formId}:${recordId ?? "new"}`;
   return {
     load(formId, recordId) {
       try {
@@ -42,19 +117,46 @@ export function createDraftStore(storage: DraftStorage, prefix = "yadad"): Draft
     },
     save(formId, recordId, draft) {
       try {
-        storage.setItem(key(formId, recordId), JSON.stringify(draft));
+        const k = key(formId, recordId);
+        storage.setItem(k, JSON.stringify(draft));
+        let set = tracked.get(storage);
+        if (set === undefined) tracked.set(storage, (set = new Set()));
+        set.add(k);
       } catch {
         // Out of quota or storage disabled: the form keeps working without a draft.
       }
     },
     clear(formId, recordId) {
+      if (formId === undefined) {
+        removeKeys(storage, base);
+        return;
+      }
       try {
-        storage.removeItem(key(formId, recordId));
+        const k = key(formId, recordId);
+        storage.removeItem(k);
+        tracked.get(storage)?.delete(k);
       } catch {
         // Storage disabled: there is nothing to remove.
       }
     },
   };
+}
+
+/**
+ * Removes drafts under the prefix: only one scope's with `scope`, every draft
+ * (including unscoped legacy keys) without it. Call it on sign-out. It lists
+ * keys with `storage.key(i)` / `length` (localStorage has them); a storage
+ * without them cannot be enumerated, so only drafts written through
+ * `createDraftStore` in this page session are cleared. Other keys are left alone.
+ */
+export function clearDrafts(storage: DraftStorage, options?: DraftOptions): void {
+  const { prefix, scope } = resolveOptions(options);
+  removeKeys(storage, `${prefix}:draft:${scopePart(scope)}`);
+}
+
+/** Test hook: lets a test see the one-time warning again. */
+export function resetDraftWarning(): void {
+  warnedUnscoped = false;
 }
 
 function isFieldValue(value: unknown): value is FieldValue {

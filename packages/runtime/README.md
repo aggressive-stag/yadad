@@ -116,12 +116,24 @@ States that cannot exist are left out: a locked record when there are no records
 
 ## Drafts
 
-`createDraftStore(storage)` keeps unsaved form input so a reload or navigation does not lose it. `storage` is anything with `getItem`, `setItem` and `removeItem`, so `localStorage` works as-is. Entries live under `yadad:draft:<formViewId>:<recordId or "new">` (change the prefix with the second argument). Storage errors are swallowed; a draft never breaks a form.
+`createDraftStore(storage)` keeps unsaved form input so a reload or navigation does not lose it. `storage` is anything with `getItem`, `setItem` and `removeItem`, so `localStorage` works as-is. Entries live under `yadad:draft:<formViewId>:<recordId or "new">` (change the prefix with `{ prefix }`, or the older second-argument string). Storage errors are swallowed; a draft never breaks a form.
 
 ```ts
 import { createDraftStore } from "@yadad/runtime";
 const drafts = createDraftStore(window.localStorage);
 ```
+
+### Drafts and shared browsers
+
+Drafts live in the browser's storage, so on a shared browser the next person to sign in would see the previous person's unsaved text. Pass the signed-in user's id as `scope` (keys become `yadad:draft:<scope>:<formViewId>:<recordId>`), and clear drafts on sign-out. `clearDrafts(storage)` with no scope removes every draft, including unscoped keys written by older versions, and leaves other keys alone. It lists keys with `storage.key(i)` and `length` (`localStorage` has them); a storage without them cannot be listed, so only drafts written in the current page session are cleared. A store created without `scope` still works for single-user hosts but logs a one-time warning.
+
+```ts
+const drafts = createDraftStore(window.localStorage, { scope: user.id });
+// on sign-out:
+clearDrafts(window.localStorage);
+```
+
+`drafts.clear()` with no arguments clears only that store's scope.
 
 When a draft is loaded, `restoreDraft(entity, draft)` fits it to the entity as it is now: values for fields the entity no longer has are dropped (and listed in `droppedFields`), values the current schema rejects are kept but reported in `invalidFields` (the renderer seeds them into the form's errors, so the field frames invalid instead of the bad value restoring silently), `revisionChanged` says the entity revision moved since the draft was taken, and it returns `null` if nothing is left to restore. The renderer uses this for its `drafts` option.
 
