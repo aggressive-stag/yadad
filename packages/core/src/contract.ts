@@ -315,7 +315,7 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "specVersion", required: true, description: `The engine document format version. Currently ${SPEC_VERSION}; documents of older versions are upgraded with migrate().` },
       { key: "id", required: true, description: "The dashboard's id." },
       { key: "revision", required: true, description: "Bumped whenever this document changes." },
-      { key: "tabs", required: true, description: "An array of { id, title, columns?, visibleWhen?, items: [...] }; at least one. Every grid item may also carry visibleWhen. visibleWhen is a viewer condition (viewerIn, and, or, not): a tab is listed, or a widget rendered, only while it holds for the viewer; a hidden widget leaves its cell empty." },
+      { key: "tabs", required: true, description: "An array of { id, title, columns?, visibleWhen?, items: [...] }; at least one. Every grid item may also carry visibleWhen. visibleWhen is a viewer condition (viewerIn, and, or, not): a tab is listed, or a widget rendered, only while it holds for the viewer; a hidden widget leaves its cell empty. A grid item is { id, x, y, w, h, ... }: x and y count from 0, w and h from 1. w is the number of columns it spans. One row (h = 1) is a fixed height, 4rem unless the host sets --yadad-grid-row-height, so an item h rows high is as tall as h rows plus the gaps between them (--yadad-grid-gap, 1rem by default); below the stack width the renderer stacks the items in reading order and every row sizes to its content." },
       { key: "title", required: false, description: "Caption shown with the dashboard." },
     ],
   },

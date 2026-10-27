@@ -70,6 +70,12 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     description: "Version 9 adds every accepted item of RFC 0010 (consumer feedback round 3). Every item lands optional and additive, so every version 8 document stays valid and this step only stamps the new version.",
     run: (doc) => ({ ...doc, specVersion: 9 }),
   },
+  {
+    from: 9,
+    to: 10,
+    description: "Version 10 adds the accepted items of RFC 0011 (consumer feedback round 4: the confirm subject line and reference quick filters). Every item lands optional and additive, so every version 9 document stays valid and this step only stamps the new version.",
+    run: (doc) => ({ ...doc, specVersion: 10 }),
+  },
 ];
 
 function isObject(value: unknown): value is JsonObject {

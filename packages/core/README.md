@@ -33,12 +33,12 @@ A board shows records as cards in columns, one per value of a select, boolean or
 import type { BoardView, ViewerDocument } from "@yadad/core";
 
 const viewer: ViewerDocument = {
-  kind: "viewer", specVersion: 9, id: "viewer", revision: 1,
+  kind: "viewer", specVersion: 10, id: "viewer", revision: 1,
   facts: [{ id: "role", label: "Role", type: "select", options: { source: "static", values: ["viewer", "editor"] }, default: "viewer" }],
 };
 
 const board: BoardView = {
-  kind: "board", specVersion: 9, id: "task_board", entity: "task", revision: 1, dataSource: "default",
+  kind: "board", specVersion: 10, id: "task_board", entity: "task", revision: 1, dataSource: "default",
   groupBy: [{ field: "status" }, { field: "owner" }], // the viewer picks one; the first is the default
   titleField: "title",
   editable: true, // dragging a card to another column changes the grouping field...
@@ -56,7 +56,7 @@ RFC 0007 adds the document pieces a review screen needs. An entity declares what
 import type { EntityDocument, TableView } from "@yadad/core";
 
 const change: EntityDocument = {
-  kind: "entity", specVersion: 9, id: "change", revision: 1,
+  kind: "entity", specVersion: 10, id: "change", revision: 1,
   fields: [
     { id: "title", type: "text", label: "Title", required: true },
     { id: "body", type: "text", label: "Body" },
@@ -73,7 +73,7 @@ const change: EntityDocument = {
 };
 
 const history: TableView = {
-  kind: "table", specVersion: 9, id: "change_history", entity: "change", revision: 1, dataSource: "default",
+  kind: "table", specVersion: 10, id: "change_history", entity: "change", revision: 1, dataSource: "default",
   columns: [
     { field: "title" },
     { field: "body", compare: { field: "previous" } }, // diffs this cell against another field of the record; { to: "previousRow" } is the other choice
@@ -97,9 +97,13 @@ A select field's `options.values` is part of the document and is validated with 
 - `recordJsonSchema(entity)`: a standard JSON Schema (draft 2020-12) for a record's `values` under an entity, so a backend can validate records with any JSON Schema library. In the repo, `pnpm record-schema <entity.json>` prints it; see `docs/records-protocol.md` for what it cannot express.
 - `describeContract()`: a plain JSON description of everything a document can contain (kinds, field types, condition ops, where each kind of condition may appear, relative dates, widgets, grid limits, the id pattern, error codes), generated from the constants the validator uses. In the repo, `pnpm describe-registry` prints it.
 
+## Upgrading
+
+Documents stamped older still validate; run `migrate()` to restamp them to the current `specVersion`. Each step so far only stamps the new version, so a document keeps its content.
+
 ## Rules worth knowing
 
-- `specVersion` is the document format (currently 9); `revision` counts user edits to a document and is data.
+- `specVersion` is the document format (currently 10); `revision` counts user edits to a document and is data.
 - Ids (documents, fields, sections, tabs, grid items) match `[a-z][a-z0-9_]*`, e.g. `workout_set`; grid-item ids need only be unique within their tab.
 - Conditions are a JSON AST. Date comparisons accept a relative date, `{ "daysFromToday": n }`, and `datetime` comparisons a relative instant, `{ "hoursFromNow": n }`; `viewerIn` tests a viewer fact.
 - A table view or column can set `sortable: false` (a declared `sort` on such a column is a validation error). A field can be `readOnly` (server-set): it is refused as a form item, an editable column and an inline edit. `COLOR_PALETTE` is the eight-colour palette that option and reference colours are checked against (an off-palette hex is a warning).

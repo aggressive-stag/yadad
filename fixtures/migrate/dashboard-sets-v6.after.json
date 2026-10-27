@@ -1,6 +1,6 @@
 {
   "kind": "dashboard",
-  "specVersion": 9,
+  "specVersion": 10,
   "id": "series_board_v6",
   "title": "Series board, written before version 7",
   "revision": 2,

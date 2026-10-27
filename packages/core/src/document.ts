@@ -20,9 +20,9 @@ import type { Condition, ViewerCondition } from "./condition.js";
  * Version 7 adds the dashboard `series` widget (RFC 0001 slice 2); older
  * documents stay valid and `migrate()` stamps them.
  */
-export const SPEC_VERSION = 9;
+export const SPEC_VERSION = 10;
 /** Every version the validator accepts: the current one and older ones that `migrate()` upgrades. */
-export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+export const SUPPORTED_SPEC_VERSIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export type SpecVersion = (typeof SUPPORTED_SPEC_VERSIONS)[number];
 
 /** Field types known to the engine. */

@@ -451,6 +451,7 @@ const expectedSetWarnings: Record<string, { path: string; code: string; document
   // A version-8 document with an off-palette colour stays valid; the colour only warns (card 48g).
   "rfc-0008-9-v8.json": [{ path: "/fields/2/options/values/1/color", code: "empty", document: "chore" }],
   "rfc-0010-v9.json": [],
+  "rfc-0011-v10.json": [],
   "viewer-minimal.json": [],
   "viewer-unread-fact.json": [{ path: "/facts/1", code: "empty", document: "viewer" }],
 };

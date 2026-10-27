@@ -1,0 +1,70 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 10,
+    "id": "note",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "id",
+        "type": "text",
+        "label": "Id",
+        "required": true,
+        "readOnly": true
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "label": "Title",
+        "required": true
+      },
+      {
+        "id": "body",
+        "type": "text",
+        "label": "Body"
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 10,
+    "id": "notes",
+    "title": "Notes",
+    "entity": "note",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "id"
+      },
+      {
+        "field": "title"
+      },
+      {
+        "field": "body"
+      }
+    ],
+    "sortable": false
+  },
+  {
+    "kind": "form",
+    "specVersion": 10,
+    "id": "new_note",
+    "entity": "note",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "title"
+          },
+          {
+            "field": "body"
+          }
+        ]
+      }
+    ]
+  }
+]
