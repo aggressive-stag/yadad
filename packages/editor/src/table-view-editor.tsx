@@ -14,7 +14,8 @@ import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import { ViewerRule } from "./viewer-rule.js";
-import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setPageSize, setQuickFilter, setTableAddForm, setTableFilter, setTableFilters, setTableSort, setTableTitle, tableAddFormTargets, QUICK_FILTER_REASON } from "./views.js";
+import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setColumnSortable, setTableSortable, setPageSize, setQuickFilter, setTableAddForm, setTableFilter, setTableFilters, setTableSort, setTableTitle, tableAddFormTargets, QUICK_FILTER_REASON } from "./views.js";
+import { QuickFiltersPanel } from "./quick-filters-panel.js";
 import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
 
@@ -166,7 +167,7 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
     return { field: other?.id ?? choice };
   };
 
-  const columns = ["Column", "Edit in place", "Quick filter", "Compare", ...(viewer ? ["Viewers"] : []), "Actions"].map((name) => ({ id: name.toLowerCase().replace(/ /g, "_"), headerId: `${base}-col-${name}`, label: name, sortable: false }));
+  const columns = ["Column", "Edit in place", "Sorting", "Quick filter", "Compare", ...(viewer ? ["Viewers"] : []), "Actions"].map((name) => ({ id: name.toLowerCase().replace(/ /g, "_"), headerId: `${base}-col-${name}`, label: name, sortable: false }));
   const rows = current.columns.map((column, i) => {
     const name = label(column.field);
     const editable = column.editable === true;
@@ -195,6 +196,7 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
           {name}
         </span>,
         editable ? "Yes" : "No",
+        current.sortable === false ? "Not sortable (whole table)" : column.sortable === false ? "Not sortable" : "Sortable",
         quick ? "Yes" : canFilter ? "No" : <span key="quick" title={QUICK_FILTER_REASON}>Not available. {QUICK_FILTER_REASON}</span>,
         <span key="compare">
           {propertyInput(
@@ -217,6 +219,15 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
           <Button label={`Move ${name} left`} type="button" variant="secondary" disabled={i === 0} onPress={() => run(moveColumn(current, column.field, -1))} />
           <Button label={`Move ${name} right`} type="button" variant="secondary" disabled={i === current.columns.length - 1} onPress={() => run(moveColumn(current, column.field, 1))} />
           <Button label={editable ? `Make ${name} read-only` : `Make ${name} editable`} type="button" variant="secondary" disabled={false} onPress={() => run(setColumnEditable(current, column.field, !editable))} />
+          {current.sortable !== false && (
+            <Button
+              label={column.sortable === false ? `Make ${name} sortable` : `Make ${name} not sortable`}
+              type="button"
+              variant="secondary"
+              disabled={false}
+              onPress={() => run(setColumnSortable(current, column.field, column.sortable === false), () => announce(`${name}: ${column.sortable === false ? "sortable" : "not sortable"}.`))}
+            />
+          )}
           {(canFilter || quick) && (
             <Button label={quick ? `Remove ${name} filter` : `Filter by ${name}`} type="button" variant="secondary" disabled={false} onPress={() => run(setQuickFilter(current, column.field, !quick))} />
           )}
@@ -308,6 +319,9 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
               setSettings((s) => ({ ...s, sortDir: key ? DIRECTIONS[key] : "asc" }));
             })}
           <Button label="Apply settings" type="button" variant="secondary" disabled={false} onPress={applySettings} />
+          {propertyInput(registry, `${base}-not-sortable`, { id: "not_sortable", type: "boolean", label: "Not sortable (every column)" }, current.sortable === false, (v) =>
+            run(setTableSortable(current, v !== true), () => announce(v === true ? "No column can be sorted." : "Columns can be sorted.")),
+          )}
           {addFormTargets.length > 0 &&
             propertyInput(registry, `${base}-addform`, choiceField("add_form", "Add button opens", [NO_ADD_FORM, ...addFormTargets.map((f) => f.id)]), current.addForm ?? NO_ADD_FORM, (v) => {
               const picked = addFormTargets.find((f) => f.id === v)?.id; // RFC 0008 item 4
@@ -388,6 +402,7 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
         </div>
         {columnIndicatorAfterTable && <DropIndicator />}
       </Section>
+      <QuickFiltersPanel view={current} entity={entity} registry={registry} run={run} announce={announce} base={base} />
       <RecordActionsPanel view={current} entity={entity} registry={registry} run={run} announce={announce} base={base} surface="row" />
       <p aria-live="polite" data-yadad-editor-status="">
         {status}

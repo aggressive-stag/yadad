@@ -4,7 +4,7 @@
 // Anything deeper is shown intact in words and can be replaced, never dropped
 // (ARCHITECTURE.md §6).
 
-import { isRelativeDate } from "@yadad/core";
+import { isRelativeDate, isRelativeInstant } from "@yadad/core";
 import type { ComparisonValue, Condition, FieldType, Scalar, ViewerCondition } from "@yadad/core";
 
 /** One comparison of a field against a value; "not" applies to the comparison itself. */
@@ -75,6 +75,19 @@ export function takesRelativeDate(type: FieldType, op: Comparison["op"]): boolea
   return type === "date" && (op === "eq" || op === "neq" || op === "gt" || op === "gte" || op === "lt" || op === "lte");
 }
 
+/** The ops on a datetime field that can compare with "N hours from now" (RFC 0010 item 2). */
+export function takesRelativeInstant(type: FieldType, op: Comparison["op"]): boolean {
+  return type === "datetime" && (op === "eq" || op === "neq" || op === "gt" || op === "gte" || op === "lt" || op === "lte");
+}
+
+/** A relative instant in words: "now", "in 2 hours", "24 hours ago". */
+export function describeRelativeInstant(hours: number): string {
+  if (hours === 0) return "now";
+  const n = Math.abs(hours);
+  const unit = n === 1 ? "hour" : "hours";
+  return hours < 0 ? `${n} ${unit} ago` : `in ${n} ${unit}`;
+}
+
 /** A relative date in words: "today", "yesterday", "7 days ago", "tomorrow", "in 3 days". */
 export function describeRelativeDate(days: number): string {
   if (days === 0) return "today";
@@ -87,6 +100,7 @@ export function describeRelativeDate(days: number): string {
 export function describeComparisonValue(value: ComparisonValue | undefined): string {
   if (value === undefined) return "…";
   if (isRelativeDate(value)) return Number.isInteger(value.daysFromToday) ? describeRelativeDate(value.daysFromToday) : "…";
+  if (isRelativeInstant(value)) return Number.isInteger(value.hoursFromNow) ? describeRelativeInstant(value.hoursFromNow) : "…";
   return typeof value === "boolean" ? (value ? "yes" : "no") : String(value);
 }
 
@@ -178,6 +192,7 @@ export function compareToCondition(c: Comparison): Condition | undefined {
       if (c.value === undefined) return undefined;
       // A relative date still being typed has no whole number yet.
       if (isRelativeDate(c.value) && !Number.isInteger(c.value.daysFromToday)) return undefined;
+      if (isRelativeInstant(c.value) && !Number.isInteger(c.value.hoursFromNow)) return undefined;
       body = { op: c.op, field: c.field, value: c.value };
       break;
   }
@@ -223,6 +238,7 @@ export function roundTrips(condition: Condition | undefined): boolean {
 export function valueFits(type: FieldType, value: ComparisonValue | readonly Scalar[] | undefined): boolean {
   if (value === undefined) return true;
   if (isRelativeDate(value)) return type === "date" && Number.isInteger(value.daysFromToday);
+  if (isRelativeInstant(value)) return type === "datetime" && Number.isInteger(value.hoursFromNow);
   const list: readonly Scalar[] = Array.isArray(value) ? value : [value as Scalar];
   if (list.some((v) => typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")) return false;
   switch (type) {

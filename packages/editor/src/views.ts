@@ -1,5 +1,5 @@
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, FORM_ITEM_LABEL_MAX, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, NamedFilter, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
+import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, NamedFilter, QuickFilterDefault, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -198,6 +198,24 @@ export function setColumnEditable(view: TableView, fieldId: string, editable: bo
   return ok(has ? [guard, ...narrowed, { op: "remove", path: `/columns/${c}/editable` }] : []);
 }
 
+/** Keeps a column's header from offering a sort (RFC 0010 item 6), or lets it again. A declared sort on the column is refused. */
+export function setColumnSortable(view: TableView, fieldId: string, sortable: boolean): Result {
+  const c = columnIndex(view, fieldId);
+  if (c < 0) return fail(["columns"], `"${fieldId}" is not a column.`, "Add it first.");
+  const guard: PatchOperation = { op: "test", path: `/columns/${c}/field`, value: fieldId };
+  const has = view.columns[c]?.sortable !== undefined;
+  if (sortable) return ok(has ? [guard, { op: "remove", path: `/columns/${c}/sortable` }] : []);
+  if (view.sort?.some((s) => s.field === fieldId)) return fail(["sort"], `The table is sorted by "${fieldId}".`, "Sort by another field or clear the sort first.");
+  return ok(has ? [] : [guard, { op: "add", path: `/columns/${c}/sortable`, value: false }]);
+}
+
+/** Makes every column of the table unsortable (RFC 0010 item 6), or sortable again. Refused while a sort is declared. */
+export function setTableSortable(view: TableView, sortable: boolean): Result {
+  if (sortable) return ok(view.sortable === undefined ? [] : [{ op: "remove", path: "/sortable" }]);
+  if (view.sort !== undefined && view.sort.length > 0) return fail(["sort"], "The table declares a sort.", "Clear the sort first.");
+  return ok(view.sortable === undefined ? [{ op: "add", path: "/sortable", value: false }] : []);
+}
+
 /** Sets or clears the viewer condition that shows a column (RFC 0006). */
 export function setColumnVisibleWhen(view: TableView, fieldId: string, condition: ViewerCondition | undefined): Result {
   const c = columnIndex(view, fieldId);
@@ -383,8 +401,39 @@ export function setQuickFilter(view: TableView, fieldId: string, on: boolean): P
   const filters = view.quickFilters ?? [];
   const has = filters.some((f) => f.field === fieldId);
   if (on === has) return [];
-  const next = (on ? [...filters, { field: fieldId }] : filters.filter((f) => f.field !== fieldId)).map((f) => ({ field: f.field }));
+  const next = (on ? [...filters, { field: fieldId }] : filters.filter((f) => f.field !== fieldId)) as unknown as Json[];
   return setOptional(view.quickFilters !== undefined, "/quickFilters", next.length > 0 ? next : undefined);
+}
+
+/** The quick-filter keys the editor edits (RFC 0010 items 4 and 5). */
+export interface QuickFilterSettings {
+  readonly label?: string | undefined;
+  readonly placeholder?: string | undefined;
+  readonly default?: QuickFilterDefault | undefined;
+}
+
+/**
+ * Sets a quick filter's label, placeholder and default. An undefined or empty
+ * key is removed; a placeholder is kept only on a text field's filter. Fields
+ * not named in `settings` keep their stored value.
+ */
+export function setQuickFilterSettings(view: TableView, fieldId: string, settings: QuickFilterSettings, fieldType: FieldType | undefined): Result {
+  const i = (view.quickFilters ?? []).findIndex((f) => f.field === fieldId);
+  if (i < 0) return fail(["quickFilters"], `"${fieldId}" is not a quick filter.`, "Turn the filter on first.");
+  const current = view.quickFilters![i]!;
+  const text = (v: string | undefined) => (v === undefined || v.trim() === "" ? undefined : v.trim());
+  if (settings.placeholder !== undefined && text(settings.placeholder) !== undefined && QUICK_FILTER_KINDS[fieldType ?? "reference"] !== "contains") {
+    return fail(["quickFilters", i, "placeholder"], "A placeholder is for text filters only.", "Leave it empty.");
+  }
+    const next: Record<string, Json> = { field: fieldId };
+  const label = "label" in settings ? text(settings.label) : current.label;
+  const placeholder = "placeholder" in settings ? text(settings.placeholder) : current.placeholder;
+  const def = "default" in settings ? settings.default : current.default;
+  if (label !== undefined) next["label"] = label;
+  if (placeholder !== undefined) next["placeholder"] = placeholder;
+  if (def !== undefined) next["default"] = def as unknown as Json;
+  const ops: PatchOperation[] = [{ op: "replace", path: `/quickFilters/${i}`, value: next }];
+  return ok([{ op: "test", path: `/quickFilters/${i}/field`, value: fieldId }, ...ops]);
 }
 
 /** The form views a table's "Add" button may open (RFC 0008 item 4): form views over the same entity, never the table itself. */

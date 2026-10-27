@@ -47,6 +47,7 @@ export const COMMON_PROPERTIES: readonly Field[] = [
   { id: "id", type: "text", label: "Id (letters, digits, underscores)", required: true },
   { id: "label", type: "text", label: "Label", required: true },
   { id: "required", type: "boolean", label: "Required" },
+  { id: "readOnly", type: "boolean", label: "Set by the server (read-only)" },
 ];
 
 export const FIELD_TYPE_LABELS: { readonly [K in FieldType]: string } = {
@@ -93,7 +94,7 @@ export function panelFromInstant(instant: string | undefined): string | null {
 
 /** Builds a field definition from property panel values; validation of the result happens in the edit session. */
 export function fieldFromProperties(type: FieldType, v: RecordValues, options?: readonly (string | StaticOptionValue)[]): Field {
-  const base = { id: str(v["id"]) ?? "", label: str(v["label"]) ?? "", ...(v["required"] === true ? { required: true } : {}) };
+  const base = { id: str(v["id"]) ?? "", label: str(v["label"]) ?? "", ...(v["required"] === true ? { required: true } : {}), ...(v["readOnly"] === true ? { readOnly: true as const } : {}) };
   const opt = <K extends string, T>(key: K, value: T | undefined) => (value === undefined ? {} : ({ [key]: value } as { [P in K]: T }));
   switch (type) {
     case "text":
@@ -153,7 +154,7 @@ export function optionValuesFromRows(rows: readonly OptionRowDraft[]): readonly 
 
 /** Property panel values for an existing field. */
 export function propertiesFromField(field: Field): RecordValues {
-  const base: Record<string, FieldValue> = { id: field.id, label: field.label, required: field.required === true };
+  const base: Record<string, FieldValue> = { id: field.id, label: field.label, required: field.required === true, readOnly: field.readOnly === true };
   switch (field.type) {
     case "number":
       return { ...base, min: field.min ?? null, max: field.max ?? null, step: field.step ?? null, unit: field.unit ?? null };

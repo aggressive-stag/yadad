@@ -1,7 +1,7 @@
-import { isRelativeDate, optionValue } from "@yadad/core";
-import type { Condition, EntityDocument, Field, FieldValue, Registry, RelativeDate, ViewerDocument, ViewerFact } from "@yadad/core";
+import { isRelativeDate, isRelativeInstant, optionValue } from "@yadad/core";
+import type { Condition, EntityDocument, Field, FieldValue, Registry, RelativeDate, RelativeInstant, ViewerDocument, ViewerFact } from "@yadad/core";
 import type { ReactNode } from "react";
-import { buildGroup, describeComparisonValue, isViewerComparison, OPERATOR_WORDS, operatorsFor, parseGroup, roundTrips, takesRelativeDate, takesValue } from "./conditions.js";
+import { buildGroup, describeComparisonValue, isViewerComparison, OPERATOR_WORDS, operatorsFor, parseGroup, roundTrips, takesRelativeDate, takesRelativeInstant, takesValue } from "./conditions.js";
 import type { Comparison, Group } from "./conditions.js";
 import { renderInput } from "./inputs.js";
 import { choiceField, describeCondition } from "./ui.js";
@@ -11,6 +11,11 @@ interface DraftRelativeDate {
   readonly daysFromToday: number | undefined;
 }
 
+/** A relative instant still being typed: the number of hours may be empty. */
+interface DraftRelativeInstant {
+  readonly hoursFromNow: number | undefined;
+}
+
 /** A comparison the user is composing: values are optional while being edited. */
 interface DraftComparison {
   readonly not: boolean;
@@ -18,7 +23,7 @@ interface DraftComparison {
   readonly field: string;
   /** Only for "fieldEqFact": the viewer fact id the record field is compared with (RFC 0009 item 1). */
   readonly fact?: string | undefined;
-  readonly value?: FieldValue | RelativeDate | DraftRelativeDate | undefined;
+  readonly value?: FieldValue | RelativeDate | DraftRelativeDate | RelativeInstant | DraftRelativeInstant | undefined;
   readonly values?: readonly FieldValue[] | undefined;
 }
 
@@ -63,6 +68,9 @@ const COMBINE = { all: "All of", any: "Any of" } as const;
 
 const DATE_MODES = { fixed: "A fixed date", relative: "Today plus or minus days" } as const;
 const isRelative = (v: DraftComparison["value"]): v is RelativeDate | DraftRelativeDate => v !== undefined && v !== null && isRelativeDate(v);
+const INSTANT_MODES = { fixed: "A fixed date and time", relative: "Hours from now" } as const;
+const isRelativeNow = (v: DraftComparison["value"]): v is RelativeInstant | DraftRelativeInstant => v !== undefined && v !== null && isRelativeInstant(v);
+const HOURS_FIELD: Field = { id: "hours_from_now", type: "number", label: "Hours from now (negative: ago)", step: 1 };
 const DAYS_FIELD: Field = { id: "days_from_today", type: "number", label: "Days from today (negative: ago)", step: 1 };
 
 interface ConditionBuilderProps {
@@ -135,7 +143,8 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
     const c = draft?.comparisons[i];
     const keep = c !== undefined && isRelative(c.value) && takesRelativeDate("date", op);
     // fieldEqFact needs a fact to compare against: default it to the first declared one (RFC 0009 item 1).
-    setComparison(i, { op, fact: op === "fieldEqFact" ? facts[0]?.id : undefined, value: keep ? c.value : undefined, values: undefined });
+    const keepNow = c !== undefined && isRelativeNow(c.value) && takesRelativeInstant("datetime", op);
+    setComparison(i, { op, fact: op === "fieldEqFact" ? facts[0]?.id : undefined, value: keep || keepNow ? c.value : undefined, values: undefined });
   };
 
   const onSource = (i: number, source: keyof typeof SOURCES) => {
@@ -236,7 +245,16 @@ export function ConditionBuilder({ id, label, registry, entity, viewer, sources,
                           setComparison(i, { value: v === DATE_MODES.relative ? { daysFromToday: 0 } : undefined }),
                         )
                       : null}
-                    {isRelative(c.value)
+                    {takesRelativeInstant(f.type, c.op)
+                      ? renderInput(registry, choiceField("instant_mode", "Compare with", Object.values(INSTANT_MODES)), isRelativeNow(c.value) ? INSTANT_MODES.relative : INSTANT_MODES.fixed, { inputId: `${id}-mode-${i}`, invalid: false }, (v) =>
+                          setComparison(i, { value: v === INSTANT_MODES.relative ? { hoursFromNow: 0 } : undefined }),
+                        )
+                      : null}
+                    {isRelativeNow(c.value)
+                      ? renderInput(registry, HOURS_FIELD, c.value.hoursFromNow, { inputId: `${id}-hours-${i}`, invalid: false }, (v) =>
+                          setComparison(i, { value: { hoursFromNow: typeof v === "number" && Number.isInteger(v) ? v : undefined } }),
+                        )
+                      : isRelative(c.value)
                       ? renderInput(registry, DAYS_FIELD, c.value.daysFromToday, { inputId: `${id}-days-${i}`, invalid: false }, (v) =>
                           setComparison(i, { value: { daysFromToday: typeof v === "number" && Number.isInteger(v) ? v : undefined } }),
                         )
