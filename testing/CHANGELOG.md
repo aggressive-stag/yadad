@@ -2,6 +2,22 @@
 
 > **Upgrade notes (0.12 and 0.13.1).** Hand-written `checkViewStates` drivers must pass `state.render.savedFilter` to `TableRenderer`'s `savedFilter` (and the other `state.render` keys the README lists), or the `saved-filter` check fails. Since runtime 0.14.1, states skipped silently before (labelled select values, entities with a `readOnly` value) are generated and checked, so expect new failures that are real. A `readOnly` field keeps its `field:<id>` axis only when a view condition references it. The calendar `done-missing` check respects `maxEntriesPerDay`. See "Upgrading hand-written drivers" in the README.
 
+## 0.14.0
+
+### Minor Changes
+
+- 9543bfd: The state grid and the contract kit reach the RFC 0011 surfaces. A table with a reference quick filter now gets the `quick` axis (default applied or cleared), and the state's record set carries target records for the picker (one per reference value the generated rows hold, plus the filter's default), so the `quick-default` check covers it. A reference picker is not checked while the source is loading or failed. The action scenarios gain a check that a confirm with `subjectField` shows the record's subject line (`data-yadad-confirm-subject`); a component set or host that drops it is reported.
+
+### Patch Changes
+
+- Updated dependencies [3856559]
+- Updated dependencies [ff70dc0]
+- Updated dependencies [4a7c283]
+- Updated dependencies [8501d2a]
+- Updated dependencies [9543bfd]
+  - @yadad/core@0.17.0
+  - @yadad/runtime@0.15.0
+
 ## 0.13.1
 
 ### Patch Changes

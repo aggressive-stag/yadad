@@ -1,5 +1,19 @@
 # @yadad/runtime
 
+## 0.15.0
+
+### Minor Changes
+
+- 8501d2a: Reference quick filters (RFC 0011 item 3). `initialQuickFilters` seeds a reference `default` as its record-id string. New `loadReferenceFilterChoices(adapter, targetEntity, referenceField, limit?)` loads the picker's choices as `{ value: id, label }` (label by the reference display rule, sorted by it, capped at `REFERENCE_OPTION_LIMIT` = 200 and flagged with `more`); choosing one filters with `{ field, op: "eq", value: id }`.
+
+### Patch Changes
+
+- 9543bfd: The view state grid seeds the target records of a table's reference quick filters, so the picker has options to show in every state.
+- Updated dependencies [3856559]
+- Updated dependencies [ff70dc0]
+- Updated dependencies [4a7c283]
+  - @yadad/core@0.17.0
+
 ## 0.14.1
 
 ### Patch Changes

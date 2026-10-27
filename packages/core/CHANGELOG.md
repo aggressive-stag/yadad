@@ -1,5 +1,13 @@
 # @yadad/core
 
+## 0.17.0
+
+### Minor Changes
+
+- 3856559: `ActionConfirm` gains an optional `subjectField`: a field id of the action's entity. The dialog shows that field's display value as a subject line under the message, so a confirmation can name its record without a template. Any field type is allowed, including read-only ones; an unknown field is an `unknown-reference` error.
+- ff70dc0: A `reference` field may be a quick filter (RFC 0011 item 3). The control is a picker over the target entity's records, the filter matches the stored id with `eq`, and its `default` is a record id (a non-empty string). `placeholder` stays text-only, and a reference field is still refused as a sort key. Use it for a server-backed choice list that is already an entity, instead of a `select` filled at build time.
+- 4a7c283: `specVersion` is now 10. Documents stamped 0 to 9 still validate, and `migrate()` restamps them to 10 with an identity step (the shape of 8 to 9); nothing in a document has to change. The version carries the accepted items of RFC 0011 that later releases add as optional keys. `describeContract` now says what one dashboard grid row (`h`) means on screen: a fixed `--yadad-grid-row-height` (4rem by default), plus the grid gap between rows, and rows size to their content once the grid stacks.
+
 ## 0.16.0
 
 ### Minor Changes

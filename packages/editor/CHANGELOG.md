@@ -1,5 +1,21 @@
 # @yadad/editor
 
+## 0.17.0
+
+### Minor Changes
+
+- 8bbb91d: The action editor has a "Name the record with" picker that writes `confirm.subjectField`, and the table editor offers reference columns as quick filters, with a record id typed as the default (a picker over live records is not offered in the editor).
+
+### Patch Changes
+
+- Updated dependencies [3856559]
+- Updated dependencies [ff70dc0]
+- Updated dependencies [4a7c283]
+- Updated dependencies [8501d2a]
+- Updated dependencies [9543bfd]
+  - @yadad/core@0.17.0
+  - @yadad/runtime@0.15.0
+
 ## 0.16.1
 
 ### Patch Changes

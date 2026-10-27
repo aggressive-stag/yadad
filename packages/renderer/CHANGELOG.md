@@ -1,5 +1,26 @@
 # @yadad/renderer
 
+## 0.17.0
+
+### Minor Changes
+
+- 6c9d461: `DashboardRenderer` takes a controlled-optional `tab` and `onTabChange(tab)`, shaped like `drills` / `onDrillChange`, so the selected tab can live in a URL. Unset, it behaves as before. A supplied tab the viewer cannot see falls back to the first visible tab and is reported through `onTabChange`.
+- af14589: A record action's confirm dialog shows its `subjectField` as a `<p data-yadad-confirm-subject>` under the message, drawn the way a table cell draws that field. A `reference` quick filter renders as a picker over the target entity's records (cut at 200 with a note) and filters on the chosen id.
+
+### Patch Changes
+
+- 2292782: A record action dialog wraps each input in `data-yadad-action-input="<field id>"`, and the README documents how to tell two renders of one view apart.
+- df5dc55: A controlled `drill` keeps the loaded rows of every level whose step did not change. Opening hop 2 no longer refetches hop 1, and Back to hop 1 does not refetch it.
+- 108094a: After a record action, focus returns to a rebuilt control only when its record kept its place in the view (its column, day or position). A record that moved no longer sends focus to the neighbour that took its old spot.
+- 9543bfd: A direct action press returns focus to the record's button even when the view rebuilt the whole card while it reloaded (a board clears its cards during a reload). The new node is found by its place under the nearest surviving ancestor, only while its record is still shown.
+- Updated dependencies [3856559]
+- Updated dependencies [ff70dc0]
+- Updated dependencies [4a7c283]
+- Updated dependencies [8501d2a]
+- Updated dependencies [9543bfd]
+  - @yadad/core@0.17.0
+  - @yadad/runtime@0.15.0
+
 ## 0.16.1
 
 ### Patch Changes
