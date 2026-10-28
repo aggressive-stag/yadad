@@ -469,6 +469,26 @@ describe("in a dashboard", () => {
   });
 });
 
+describe("calendar opens on today", () => {
+  test("scrolls today's cell into view once, and not again on navigation", async () => {
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, ...args: unknown[]) {
+      scroll(this.getAttribute("data-date"), ...args);
+    } as typeof Element.prototype.scrollIntoView;
+    try {
+      render(<CalendarRenderer entity={entity} view={calendar} registry={mockRegistry} dataSources={new Map([["default", createMemoryAdapter()]])} now={NOW} />);
+      await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+      expect(scroll.mock.calls[0]?.[0]).toBe("2026-10-15");
+      fireEvent.click(screen.getByRole("button", { name: /next/i }));
+      await waitFor(() => expect(screen.getByRole("heading", { name: "November 2026" })).toBeTruthy());
+      expect(scroll).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});
+
 describe("calendar starting mode and anchor", () => {
   const show = (extra: Partial<CalendarRendererProps>, view: CalendarView = calendar) =>
     render(<CalendarRenderer entity={entity} view={view} registry={mockRegistry} dataSources={new Map([["default", createMemoryAdapter()]])} now={NOW} {...extra} />);

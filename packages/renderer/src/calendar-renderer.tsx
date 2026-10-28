@@ -480,8 +480,22 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       </p>
     ) : undefined;
 
+  // Opens on today: once, when the first range has loaded, bring today's cell into
+  // view (on a phone the row is often below the fold). The component owns the
+  // scroll container, so the renderer asks the browser to scroll the cell's own
+  // ancestors, and never again: navigation and the viewer's scrolling are left alone.
+  const viewRef = useRef<HTMLDivElement>(null);
+  const scrolledToToday = useRef(false);
+  const firstLoaded = here?.status === "loaded";
+  useEffect(() => {
+    if (!firstLoaded || scrolledToToday.current) return;
+    scrolledToToday.current = true;
+    const todayCell = viewRef.current?.querySelector<HTMLElement>('[aria-current="date"], [data-today="true"]');
+    if (typeof todayCell?.scrollIntoView === "function") todayCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [firstLoaded]);
+
   return (
-    <div data-yadad-calendar-view={view.id} tabIndex={-1}>
+    <div ref={viewRef} data-yadad-calendar-view={view.id} tabIndex={-1}>
       {here?.status === "failed" && (
         <div data-yadad-calendar-load-error="">
           <ErrorSummary errors={[loadFailure(here.message)]} />
