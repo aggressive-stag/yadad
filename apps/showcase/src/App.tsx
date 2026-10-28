@@ -9,6 +9,7 @@ import type { DraftStorage, DraftStore, KeyValueStore } from "@yadad/runtime";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { bookingEntity, bookingsAdapter } from "./bookings";
+import { withLatency } from "./latency";
 import { checklistItemEntity, personEntity, taskEntity, tasksAdapter } from "./tasks";
 import { teamAdapter, teamViewer, teamViews } from "./team";
 import { DECISION_CODES, NOTE_KEYS, reviewDocuments, reviewStore } from "./review";
@@ -28,7 +29,7 @@ import { StatesPage } from "./states";
 export const defaultSources: readonly string[] = [entityWorkoutSet, formLogSet, tableSets, tableExerciseHistory, dashboardTraining, entityHello, formHello];
 
 /** Views rendered at the top level of the page, by id. */
-export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_calendar", "tasks_board", "tasks_table", "tasks_home", "drill_home", "team_home"];
+export const defaultRoots: readonly string[] = ["training", "hello_form", "bookings_board", "bookings_calendar", "tasks_board", "tasks_table", "tasks_home", "drill_home", "team_home"];
 
 /** The review page's sections, in reading order: changes, history, decisions, the join. */
 const REVIEW_ROOTS: readonly string[] = ["review_changes", "review_history", "review_decisions", "review_decision_records"];
@@ -70,7 +71,28 @@ const bookingsView: CalendarView = {
   modes: ["month", "week"],
   weekStartsOn: 1,
   editable: true,
+  recordActions: ["flag", "snooze"],
   rowAction: { open: "booking_history", bind: [{ field: "client", to: "client" }] },
+};
+
+/**
+ * The same bookings as a board by status, shown above the calendar: one record on the page in two views,
+ * as a host's dashboard often has, so focus after a move or an action has to find its own view's copy.
+ */
+const bookingsBoard: BoardView = {
+  kind: "board",
+  specVersion: 9,
+  id: "bookings_board",
+  title: "Bookings by status",
+  entity: "booking",
+  revision: 1,
+  dataSource: "bookings",
+  groupBy: [{ field: "status" }],
+  titleField: "title",
+  cardFields: ["client"],
+  sort: [{ field: "title", dir: "asc" }],
+  editable: true,
+  recordActions: ["flag", "snooze"],
 };
 
 /**
@@ -92,6 +114,7 @@ const tasksView: BoardView = {
   sort: [{ field: "title", dir: "asc" }],
   editable: true,
   doneField: "done",
+  recordActions: ["flag", "snooze"],
 };
 
 /**
@@ -236,6 +259,7 @@ export function withBookings(base: DocumentSet): DocumentSet {
   entities.set(checklistItemEntity.id, checklistItemEntity);
   entities.set(bookingEntity.id, bookingEntity);
   views.set(bookingsView.id, bookingsView);
+  views.set(bookingsBoard.id, bookingsBoard);
   views.set(bookingsTable.id, bookingsTable);
   for (const view of teamViews) views.set(view.id, view);
   for (const doc of reviewDocuments) {
@@ -304,8 +328,8 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const [review] = useState<ReviewStore>(() => reviewStore(() => (roleRef.current === "owner" ? "owner" : "editor")));
   const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => {
     const map = new Map<string, DataAdapter>([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]);
-    map.set("bookings", bookingsAdapter());
-    map.set("tasks", tasksAdapter());
+    map.set("bookings", withLatency(bookingsAdapter()));
+    map.set("tasks", withLatency(tasksAdapter()));
     map.set("team", teamAdapter(() => roleRef.current));
     map.set("review", review.adapter);
     return map;

@@ -23,6 +23,11 @@ export const bookingEntity: EntityDocument = {
     { id: "kind", type: "select", label: "Kind", options: { source: "static", values: ["Call", "Workshop", "Deadline", "Visit"] } },
     { id: "completed", type: "boolean", label: "Completed" },
   ],
+  // Two record actions, so an entry draws "Actions…": one asks to confirm, one asks for input.
+  actions: [
+    { id: "flag", label: "Flag…", confirm: { title: "Flag this booking", message: "Flag this booking?", confirmLabel: "Flag" } },
+    { id: "snooze", label: "Snooze to…", input: [{ id: "until", type: "date", label: "Snooze until", required: true }] },
+  ],
 };
 
 /** "YYYY-MM-DD" of the local today; the seed is relative to this, so the demo is alive on any day. */
@@ -79,7 +84,12 @@ export function bookingSeeds(now: Date = new Date()): readonly Record<string, st
  * move and shows the message.
  */
 export function bookingsAdapter(now: Date = new Date()): DataAdapter {
-  const db = createMemoryAdapter();
+  const db = createMemoryAdapter({
+    actions: {
+      "booking.flag": (record) => ({ values: { status: record.values["status"] === "Pending" ? "Confirmed" : "Pending" } }),
+      "booking.snooze": (record) => ({ values: { kind: record.values["kind"] === "Call" ? "Visit" : "Call" } }),
+    },
+  });
   const today = todayISO(now);
   for (const values of bookingSeeds(now)) void db.create("booking", values, { entityRevision: 1 });
   return {

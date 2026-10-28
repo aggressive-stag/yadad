@@ -39,6 +39,11 @@ export const taskEntity: EntityDocument = {
     { id: "due_time", type: "time", label: "Due time" },
     { id: "done", type: "boolean", label: "Done" },
   ],
+  // Two record actions, so a board card draws "Actions…": one asks to confirm, one asks for input.
+  actions: [
+    { id: "flag", label: "Flag…", confirm: { title: "Flag this task", message: "Flag this task as urgent?", confirmLabel: "Flag" } },
+    { id: "snooze", label: "Snooze to…", input: [{ id: "until", type: "date", label: "Snooze until", required: true }] },
+  ],
 };
 
 /** The child entity of the batch form's sub-record checklist (RFC 0009 item 3). */
@@ -100,7 +105,12 @@ export function taskSeeds(): readonly TaskSeed[] {
  * reverts the move and shows the message.
  */
 export function tasksAdapter(): DataAdapter {
-  const db = createMemoryAdapter();
+  const db = createMemoryAdapter({
+    actions: {
+      "task.flag": (record) => ({ values: { priority: record.values["priority"] === "High" ? "Low" : "High" } }),
+      "task.snooze": (record) => ({ values: { due_time: record.values["due_time"] === "09:00" ? "10:00" : "09:00" } }),
+    },
+  });
   // The memory adapter numbers records from 1 and writes before its first await, so the
   // people created here get the ids "1" to "4" at once; the tasks reference them.
   PEOPLE.forEach((name) => void db.create("person", { name }, { entityRevision: 1 }));
