@@ -345,9 +345,11 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     const next = record.values[doneDef.id] !== true;
     if (!canEditField(record, doneDef.id)) return; // the server withheld this field (can.fields)
     inFlight.current.add(record.id);
+    const endHold = recordActions.holdFocus(record); // the checkbox is disabled while the save runs: give focus back after
     setErrors([]);
     setToggling((t) => new Map(t).set(record.id, next));
     const settle = (): void => {
+      endHold();
       inFlight.current.delete(record.id);
       setToggling((t) => {
         const m = new Map(t);

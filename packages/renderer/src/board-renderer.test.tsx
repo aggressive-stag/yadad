@@ -910,6 +910,60 @@ describe("RFC 0008 surfaces (card 47e)", () => {
     expect(status()).toBe("Book flights marked done");
   });
 
+  // Focus after the done toggle (card 57a): the browser drops focus to body when the checkbox is disabled
+  // for the save (jsdom keeps it), so the wrapped update does the same, and a find that hides done records
+  // stands for a view filter.
+  describe("focus after the done toggle (card 57a)", () => {
+    const browserLike = (db: DataAdapter, options: { hideDone?: boolean; fail?: boolean } = {}): DataAdapter => ({
+      ...db,
+      async update(...args) {
+        (document.activeElement as HTMLElement | null)?.blur();
+        if (options.fail) throw new ForbiddenError("Refused");
+        const saved = await db.update(...args);
+        // A hiding filter only bites on a reload, and only a refused save reloads: the answer is lost after the write.
+        if (options.hideDone) throw new ForbiddenError("Answer lost");
+        return saved;
+      },
+      async find(findEntity, query) {
+        const page = await db.find(findEntity, query);
+        return options.hideDone ? { ...page, items: page.items.filter((r) => r.values.done !== true) } : page;
+      },
+    });
+    const boxOf = (id: string, name: string): HTMLInputElement => within(screen.getByTestId(`card-${id}`)).getByRole("checkbox", { name }) as HTMLInputElement;
+
+    test("a keyboard toggle leaves focus on the same card's checkbox after the reload rebuilt it", async () => {
+      const { db, ids } = await seed();
+      await open({ view: { ...board, doneField: "done" }, adapter: browserLike(db) });
+      const box = boxOf(ids["Book flights"]!, "Done: Book flights");
+      box.focus();
+      fireEvent.click(box);
+      await waitFor(() => expect(status()).toBe("Book flights marked done"));
+      await waitFor(() => expect(document.activeElement).toBe(boxOf(ids["Book flights"]!, "Done: Book flights")));
+    });
+
+    test("a record that is no longer shown leaves focus alone, not on its neighbour", async () => {
+      const { db, ids } = await seed();
+      await open({ view: { ...board, doneField: "done" }, adapter: browserLike(db, { hideDone: true }) });
+      const box = boxOf(ids["Book flights"]!, "Done: Book flights");
+      box.focus();
+      fireEvent.click(box);
+      await waitFor(() => expect(status()).toMatch(/^Could not update Book flights/));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(document.activeElement === document.body || document.activeElement === null).toBe(true);
+    });
+
+    test("a failed save puts focus back on the checkbox", async () => {
+      const { db, ids } = await seed();
+      await open({ view: { ...board, doneField: "done" }, adapter: browserLike(db, { fail: true }) });
+      const box = boxOf(ids["Book flights"]!, "Done: Book flights");
+      box.focus();
+      fireEvent.click(box);
+      await waitFor(() => expect(status()).toMatch(/^Could not update Book flights/));
+      await waitFor(() => expect(document.activeElement).toBe(boxOf(ids["Book flights"]!, "Done: Book flights")));
+      expect((document.activeElement as HTMLInputElement).checked).toBe(false);
+    });
+  });
+
   test("a card whose done field is locked by can.fields has a disabled checkbox (item 9)", async () => {
     const { db, ids } = await seed();
     const withCan: DataAdapter = {

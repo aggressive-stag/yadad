@@ -58,6 +58,13 @@ export interface RecordActions {
   readonly announcement: { readonly seq: number; readonly text: string } | undefined;
   /** The open confirm/input dialog, built for `layout.Dialog`; renders nothing when no dialog is open. */
   readonly dialog: ReactNode;
+  /**
+   * Keep the viewer's place across a save that is not an action (the done checkbox of a board card or a
+   * calendar entry). Call it when the save starts, while the control still has focus; call the returned
+   * function when the save has settled, before the view's own state update. The focus-return effect then
+   * puts focus back on the same record's control in the rebuilt view (or leaves it alone when the record is gone).
+   */
+  readonly holdFocus: (record: DataRecord) => () => void;
 }
 
 /** The open dialog: the record, the action, what has been typed, what was refused, whether act is in flight. */
@@ -126,6 +133,8 @@ export function useRecordActions(options: {
     readonly recordId: string;
     readonly element: HTMLElement;
     readonly parent: Element | null;
+    /** What a control of the same kind as the pressed one looks like, to find it again among the parent's children. */
+    readonly selector: string;
     /** The pressed node and its ancestors up to (not including) body, with each one's index among its parent's children. */
     readonly chain: readonly { readonly node: Element; readonly index: number }[];
     readonly text: string; // the pressed node's text, to recognise its replacement
@@ -183,7 +192,7 @@ export function useRecordActions(options: {
     // cell/row survives an action-set swap; a removed record takes it, leaving no target).
     const live =
       held.parent !== null && held.parent.isConnected
-        ? held.parent.querySelector<HTMLButtonElement>("button:not([disabled])")
+        ? held.parent.querySelector<HTMLButtonElement>(held.selector)
         : null;
     const target: HTMLElement | null = held.element.isConnected ? held.element : (live ?? (samePlace(held.place, shown.current.get(held.recordId)) ? replacement(held.chain, held.text) : null));
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
@@ -192,6 +201,24 @@ export function useRecordActions(options: {
     }
     // No target (or a disabled one): the reload's commit has not landed. The next render retries.
   });
+
+  /** The focused control as a restore target for `record`, or undefined when focus is not on a real control. */
+  const capture = (record: DataRecord): NonNullable<typeof pressed.current> | undefined => {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || el === document.body) return undefined;
+    const selector = el instanceof HTMLInputElement ? `input[type="${el.type}"]:not([disabled])` : `${el.tagName.toLowerCase()}:not([disabled])`;
+    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), focused: undefined, attempts: 0, ended: false };
+  };
+
+  const holdFocus = (record: DataRecord): (() => void) => {
+    const held = capture(record);
+    if (held === undefined) return () => {};
+    pressed.current = held;
+    flights.current.add(record.id);
+    return () => {
+      held.ended = true;
+    };
+  };
 
   const announce = (text: string): void => {
     if (options.announce !== undefined) options.announce(text);
@@ -272,10 +299,7 @@ export function useRecordActions(options: {
       onPress: () => {
         // Only a direct press is remembered for the focus return: the dialog path has its
         // own close-return contract (the modal gives focus back to who opened it).
-        pressed.current =
-          actionNeedsDialog(action) || !(document.activeElement instanceof HTMLElement)
-            ? undefined
-            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, chain: ancestry(document.activeElement), text: document.activeElement.textContent ?? "", place: shown.current.get(record.id), focused: undefined, attempts: 0, ended: false };
+        pressed.current = actionNeedsDialog(action) ? undefined : capture(record);
         if (actionNeedsDialog(action)) openDialog(record, action);
         else run(record, action, undefined, undefined);
       },
@@ -326,7 +350,7 @@ export function useRecordActions(options: {
       </Dialog>
     );
 
-  return { items, failures, announcement, dialog: rendered };
+  return { items, failures, announcement, dialog: rendered, holdFocus };
 }
 
 /**
