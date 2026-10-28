@@ -4,6 +4,7 @@ import { ForbiddenError, RecordValidationError } from "@yadad/core";
 import type { BoardView, DashboardView, DataAdapter, EntityDocument, Field, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry, waitForRows, waitForSettled } from "@yadad/testing";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { BoardRenderer } from "./board-renderer.js";
@@ -78,6 +79,7 @@ async function seed(extraPeople: readonly string[] = []) {
 
 interface Options {
   readonly view?: BoardView;
+  readonly entity?: EntityDocument;
   readonly adapter?: DataAdapter;
   readonly registry?: Registry<ReactNode>;
   readonly groupBy?: string;
@@ -92,7 +94,7 @@ async function open(options: Options = {}) {
   const seeded = await seed(options.extraPeople ?? []);
   const adapter = options.adapter ?? seeded.db;
   const props = {
-    entity,
+    entity: options.entity ?? entity,
     view: options.view ?? board,
     registry: options.registry ?? mockRegistry,
     dataSources: new Map([["default", adapter]]),
@@ -198,6 +200,74 @@ describe("groupings", () => {
     await waitForRows(document.body);
     expect(titles("other")).toEqual(["Odd"]);
     expect(column("other").getAttribute("data-droppable")).toBe("false");
+  });
+});
+
+describe("the hidden empty column stays a move target (56b)", () => {
+  const optionLabels = (): string[] => [...screen.getByRole("combobox", { name: /^Move / }).querySelectorAll("option")].map((o) => o.textContent ?? "");
+  const openMenu = (title: string): void => void fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Move to… ${title}`) }));
+
+  // A board that draws hiddenColumns only while a card is being dragged, as the component set is meant to.
+  function dragRegistry(): Registry<ReactNode> {
+    return {
+      ...mockRegistry,
+      layout: {
+        ...mockRegistry.layout,
+        Board: (props) => {
+          const [dragging, setDragging] = useState(false);
+          const shown = dragging ? [...props.columns, ...(props.hiddenColumns ?? [])] : props.columns;
+          return (
+            <section data-testid="board">
+              <div role="status" data-testid="board-status">{props.announcement?.text}</div>
+              {shown.map((col) => (
+                <div key={col.id} data-testid={`column-${col.id}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const id = e.dataTransfer.getData("text/plain"); setDragging(false); if (col.droppable && id) props.onMove?.(id, col.id); }}>
+                  {col.cards.map((card) => (
+                    <div key={card.id} data-testid={`card-${card.id}`} draggable onDragStart={(e) => { e.dataTransfer.setData("text/plain", card.id); setDragging(true); }} onDragEnd={() => setDragging(false)}>
+                      {card.content}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </section>
+          );
+        },
+      },
+    };
+  }
+  const transfer = (id: string): DataTransfer => ({ types: ["text/plain"], getData: () => id, setData: () => undefined }) as unknown as DataTransfer;
+
+  test("Move to… offers No List while its column is hidden, and the column shows once it has a card", async () => {
+    const { ids } = await open();
+    moveTo("Unsorted", "v:Home");
+    await waitFor(() => expect(status()).toBe("Moved Unsorted to Home"));
+    expect(screen.queryByTestId("column-empty")).toBeNull();
+    openMenu("Call Ada");
+    expect(optionLabels()).toContain("No List");
+    fireEvent.change(screen.getByRole("combobox", { name: /^Move Call Ada/ }), { target: { value: "empty" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(status()).toBe("Moved Call Ada to No List"));
+    expect(titles("empty")).toEqual(["Call Ada"]);
+    expect(ids["Call Ada"]).toBeDefined();
+  });
+
+  test("a required grouping field has no no-value target", async () => {
+    const requiredEntity: EntityDocument = { ...entity, fields: entity.fields.map((f) => (f.id === "list" ? { ...f, required: true } : f)) as EntityDocument["fields"] };
+    await open({ entity: requiredEntity });
+    expect(screen.queryByTestId("column-empty")).toBeNull();
+    openMenu("Call Ada");
+    expect(optionLabels()).not.toContain("No List");
+  });
+
+  test("dragging shows the hidden column as a drop target; the card dropped there fills it", async () => {
+    const { db, ids } = await open({ registry: dragRegistry() });
+    fireEvent.drop(screen.getByTestId("column-v:Home"), { dataTransfer: transfer(ids["Unsorted"]!) });
+    await waitFor(() => expect(titles("v:Home")).toContain("Unsorted"));
+    expect(screen.queryByTestId("column-empty")).toBeNull();
+    fireEvent.dragStart(screen.getByTestId(`card-${ids["Call Ada"]}`), { dataTransfer: transfer(ids["Call Ada"]!) });
+    const target = await screen.findByTestId("column-empty");
+    fireEvent.drop(target, { dataTransfer: transfer(ids["Call Ada"]!) });
+    await waitFor(() => expect(titles("empty")).toEqual(["Call Ada"]));
+    expect((await db.findOne("task", ids["Call Ada"]!))?.values["list"] ?? null).toBeNull();
   });
 });
 

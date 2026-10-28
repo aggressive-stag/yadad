@@ -653,6 +653,7 @@ function MockBoard({
   groupChoices,
   groupField,
   columns,
+  hiddenColumns,
   loading,
   notice,
   announcement,
@@ -755,7 +756,7 @@ function MockBoard({
                           <option value="" disabled>
                             Choose a column
                           </option>
-                          {columns
+                          {[...columns, ...(hiddenColumns ?? [])]
                             .filter((c) => c.droppable && c.id !== currentColumnId(columns, card.id))
                             .map((c) => (
                               <option key={c.id} value={c.id}>

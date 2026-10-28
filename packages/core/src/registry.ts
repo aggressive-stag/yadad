@@ -509,6 +509,14 @@ export interface BoardProps<N> {
   readonly groupField: string;
   /** In display order; empty while columns are loading or failed. */
   readonly columns: readonly BoardColumn<N>[];
+  /**
+   * Columns that are drop targets but have no cards and are not in `columns`
+   * (today: the no-value column while empty). Optional and additive: a
+   * component that ignores it just never offers them. A component that honours
+   * it lists them in "Move to..." and shows them while a card is dragged.
+   * Empty unless `onMove` is set and the grouping field is not required.
+   */
+  readonly hiddenColumns?: readonly BoardColumn<N>[];
   /** Cards are being fetched; columns are still given. */
   readonly loading: boolean;
   /** E.g. an over-cap message; shown above the board and announced politely. */

@@ -460,6 +460,12 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
       : []),
   ];
 
+  // The hidden empty column stays a move target (card 56b): handed over separately so the component can offer it in "Move to…" and while dragging.
+  const shownIds = new Set(shownBoardColumns(columnDefs, grouped).map((d) => d.id));
+  const hiddenColumns: BoardColumn<ReactNode>[] = editable
+    ? columnDefs.filter((def) => !shownIds.has(def.id)).map((def) => ({ id: def.id, label: def.label, count: 0, droppable: true, cards: [] }))
+    : [];
+
   const changeGroup = (fieldId: string): void => {
     const field = entity.fields.find((f) => f.id === fieldId);
     const label = field?.label ?? fieldId;
@@ -560,6 +566,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         })}
         groupField={activeId}
         columns={referenceFailed ? [] : columns}
+        {...(hiddenColumns.length > 0 && !referenceFailed ? { hiddenColumns } : {})}
         loading={loading}
         {...(notice ? { notice } : {})}
         {...(announcement ? { announcement } : {})}
