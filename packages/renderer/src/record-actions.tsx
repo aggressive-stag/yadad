@@ -132,6 +132,7 @@ export function useRecordActions(options: {
     readonly place: Place | undefined; // where the pressed record sat in the view when it was pressed
     focused: HTMLElement | undefined; // the last node this effect focused, awaiting confirmation
     attempts: number; // renders spent retrying; bounds the retry window
+    ended: boolean; // the action's promise has settled; until then an unrelated render must not read the flight as over
   } | undefined>(undefined);
   const flights = useRef(new Set<string>());
   // The records the view asked actions for in this render: a rebuilt control is only the pressed one's
@@ -149,7 +150,10 @@ export function useRecordActions(options: {
   }, []);
   useEffect(() => {
     const held = pressed.current;
-    if (held === undefined || !flights.current.has(held.recordId) || pending.has(held.recordId)) return;
+    // `ended` guards a render that commits between the press and the render carrying `pending`: it sees
+    // the flight as over (no pending yet) and, with focus still on the pressed button, would give up the
+    // restore for good (a flake under load).
+    if (held === undefined || !held.ended || !flights.current.has(held.recordId) || pending.has(held.recordId)) return;
     if (dialog !== undefined) return; // the dialog path owns focus until it closes (its own close-return applies)
     const settle = (): void => {
       pressed.current = undefined;
@@ -226,6 +230,7 @@ export function useRecordActions(options: {
         setFailures(actionFailure(error));
         reload();
       } finally {
+        if (pressed.current?.recordId === record.id) pressed.current.ended = true;
         if (mounted.current) {
           setPending((s) => {
             const next = new Set(s);
@@ -270,7 +275,7 @@ export function useRecordActions(options: {
         pressed.current =
           actionNeedsDialog(action) || !(document.activeElement instanceof HTMLElement)
             ? undefined
-            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, chain: ancestry(document.activeElement), text: document.activeElement.textContent ?? "", place: shown.current.get(record.id), focused: undefined, attempts: 0 };
+            : { recordId: record.id, element: document.activeElement, parent: document.activeElement.parentElement, chain: ancestry(document.activeElement), text: document.activeElement.textContent ?? "", place: shown.current.get(record.id), focused: undefined, attempts: 0, ended: false };
         if (actionNeedsDialog(action)) openDialog(record, action);
         else run(record, action, undefined, undefined);
       },
