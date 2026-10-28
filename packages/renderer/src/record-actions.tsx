@@ -11,6 +11,8 @@ import type { ReferenceSupport, ReferenceWant } from "./references.js";
 
 /** How many renders the focus-return effect retries across after a flight ends (todo-app F14 part B). */
 const RESTORE_ATTEMPTS = 50;
+/** How long a restore that has succeeded stays armed for a LATER rebuild of the control (a sibling widget's reload, a second fetch). */
+const WATCH_MS = 1500;
 
 /** A record's place in a view: its group (a board column id, a calendar day, "" for a table) and its index within the group. */
 interface Place {
@@ -131,15 +133,16 @@ export function useRecordActions(options: {
   // never steal focus much later.
   const pressed = useRef<{
     readonly recordId: string;
-    readonly element: HTMLElement;
-    readonly parent: Element | null;
+    element: HTMLElement;
+    parent: Element | null;
     /** What a control of the same kind as the pressed one looks like, to find it again among the parent's children. */
     readonly selector: string;
     /** The pressed node and its ancestors up to (not including) body, with each one's index among its parent's children. */
-    readonly chain: readonly { readonly node: Element; readonly index: number }[];
-    readonly text: string; // the pressed node's text, to recognise its replacement
+    chain: readonly { readonly node: Element; readonly index: number }[];
+    text: string; // the pressed node's text, to recognise its replacement
     readonly place: Place | undefined; // where the pressed record sat in the view when it was pressed
     focused: HTMLElement | undefined; // the last node this effect focused, awaiting confirmation
+    watchUntil: number | undefined; // set once a restore survived a render: the restore stays armed until then, for a later rebuild
     attempts: number; // renders spent retrying; bounds the retry window
     ended: boolean; // the action's promise has settled; until then an unrelated render must not read the flight as over
   } | undefined>(undefined);
@@ -158,6 +161,22 @@ export function useRecordActions(options: {
     };
   }, []);
   useEffect(() => {
+    // Once a restore is confirmed it stays armed for a late rebuild (card 57b); any key or pointer press by
+    // the viewer ends it, so a click on empty page (focus on body) is never "repaired" afterwards.
+    const disarm = (): void => {
+      const held = pressed.current;
+      if (held?.watchUntil === undefined) return;
+      pressed.current = undefined;
+      flights.current.delete(held.recordId);
+    };
+    document.addEventListener("keydown", disarm, true);
+    document.addEventListener("pointerdown", disarm, true);
+    return () => {
+      document.removeEventListener("keydown", disarm, true);
+      document.removeEventListener("pointerdown", disarm, true);
+    };
+  }, []);
+  useEffect(() => {
     const held = pressed.current;
     // `ended` guards a render that commits between the press and the render carrying `pending`: it sees
     // the flight as over (no pending yet) and, with focus still on the pressed button, would give up the
@@ -168,16 +187,26 @@ export function useRecordActions(options: {
       pressed.current = undefined;
       flights.current.delete(held.recordId);
     };
-    // A previous attempt that SURVIVED the commits is the whole point: one render after
-    // focusing, focus is still on the node we gave it — done, and it can never come back
-    // to steal focus later (todo-app F14 part B: the first restore runs before the reload
-    // commits, onto a button that is about to be replaced).
-    if (held.focused !== undefined && held.focused.isConnected && document.activeElement === held.focused) {
+    // A previous attempt that SURVIVED a commit is confirmed — but not finished: a reload that
+    // started from the same action (a sibling widget's, or a second fetch of this view) can land
+    // later and rebuild the control again, dropping focus to body a second time (card 57b). So
+    // the restore stays armed for a short window, tracking the control it last focused, and
+    // ends early the moment the viewer acts (see `disarm`) or focus is spoken for elsewhere.
+    if (held.watchUntil !== undefined && Date.now() > held.watchUntil) {
       settle();
       return;
     }
+    if (held.focused !== undefined && held.focused.isConnected && document.activeElement === held.focused) {
+      held.watchUntil ??= Date.now() + WATCH_MS;
+      held.element = held.focused;
+      held.parent = held.focused.parentElement;
+      held.chain = ancestry(held.focused);
+      held.text = held.focused.textContent ?? "";
+      held.attempts = 0;
+      return;
+    }
     const active = document.activeElement;
-    if (active !== null && active !== document.body && active !== held.focused) {
+    if (active !== null && active !== document.body && active !== held.focused && active !== held.element) {
       settle(); // focus is spoken for by someone else: leave it alone (the never-steal rule)
       return;
     }
@@ -198,6 +227,7 @@ export function useRecordActions(options: {
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;
+      if (held.watchUntil !== undefined) held.watchUntil = Date.now() + WATCH_MS;
     }
     // No target (or a disabled one): the reload's commit has not landed. The next render retries.
   });
@@ -207,7 +237,7 @@ export function useRecordActions(options: {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || el === document.body) return undefined;
     const selector = el instanceof HTMLInputElement ? `input[type="${el.type}"]:not([disabled])` : `${el.tagName.toLowerCase()}:not([disabled])`;
-    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), focused: undefined, attempts: 0, ended: false };
+    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
   };
 
   const holdFocus = (record: DataRecord): (() => void) => {
