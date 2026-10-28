@@ -438,7 +438,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         id: record.id,
         content: (
           <>
-            <span data-yadad-board-title="">{title}</span>
+            <span data-yadad-board-title="" data-yadad-record={record.id}>{title}</span>
             {details.map((field) => (
               <small key={field.id} data-yadad-board-detail={field.id}>
                 {renderDisplay(registry, field, record.values[field.id], references, formatting)}
@@ -505,7 +505,9 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     inFlight.current.add(recordId);
     setErrors([]);
     setPending((p) => new Map(p).set(recordId, def.value));
+    const endHold = recordActions.holdFocus(record, { moved: true }); // a deliberate move: focus follows the card to its new place
     const settle = (): void => {
+      endHold();
       inFlight.current.delete(recordId);
       setPending((p) => {
         const next = new Map(p);

@@ -384,7 +384,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       id: record.id,
       content: (
         <>
-          <span data-yadad-calendar-title="">{title}</span>
+          <span data-yadad-calendar-title="" data-yadad-record={record.id}>{title}</span>
           {details.map((field) => (
             // RFC 0008 item 7: detail lines are labelled by default ("Assignee: Dana").
             <small key={field.id} data-yadad-calendar-detail={field.id}>
@@ -450,7 +450,9 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     inFlight.current.add(recordId);
     setErrors([]);
     setPending((p) => new Map(p).set(recordId, day));
+    const endHold = recordActions.holdFocus(record, { moved: true }); // a deliberate move: focus follows the entry to its new day
     const settle = (): void => {
+      endHold();
       inFlight.current.delete(recordId);
       setPending((p) => {
         const next = new Map(p);

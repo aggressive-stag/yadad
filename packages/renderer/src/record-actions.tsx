@@ -50,6 +50,43 @@ function replacement(chain: readonly { readonly node: Element; readonly index: n
   return cur instanceof HTMLElement && (cur as HTMLButtonElement).disabled !== true && (cur.textContent ?? "") === text ? cur : null;
 }
 
+/** The attribute the renderer puts on a record's title: it names the record in the DOM, so a rebuilt record can be found again. */
+const RECORD_ATTR = "data-yadad-record";
+/** The attribute a component puts on the control that opens a record's menu or panel, and (same value) on that panel: focus returns to the trigger when the panel closed with the press. */
+const TRIGGER_ATTR = "data-yadad-focus-return";
+const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** The element that holds one record (a card, an entry): the nearest ancestor of `control` that also holds the record's title, `up` levels above it. */
+function recordScope(recordId: string, control: Element): { readonly up: number } | undefined {
+  const marks = document.querySelectorAll(`[${RECORD_ATTR}="${CSS.escape(recordId)}"]`);
+  const mark = marks[0];
+  if (mark === undefined) return undefined;
+  let up = 0;
+  let scope: Element | null = mark;
+  while (scope !== null && scope !== document.body && !scope.contains(control)) {
+    scope = scope.parentElement;
+    up += 1;
+  }
+  if (scope === null || scope === document.body || scope === mark || scope === control) return undefined;
+  return scope.querySelectorAll(`[${RECORD_ATTR}]`).length === 1 ? { up } : undefined;
+}
+
+/** The record's element now, found from its title the same number of levels up. */
+function scopeNow(recordId: string, up: number): Element | null {
+  let scope: Element | null = document.querySelector(`[${RECORD_ATTR}="${CSS.escape(recordId)}"]`);
+  for (let k = 0; k < up && scope !== null; k += 1) scope = scope.parentElement;
+  return scope !== null && scope.querySelectorAll(`[${RECORD_ATTR}]`).length === 1 ? scope : null;
+}
+
+/** Where focus goes when the pressed control lived in a panel that closed: the record's menu trigger, else its first focusable control. */
+function panelReturn(recordId: string, up: number, token: string | undefined): HTMLElement | null {
+  const scope = scopeNow(recordId, up);
+  if (scope === null) return null;
+  // A record can have several triggers (actions, move): the panel and its trigger share one token.
+  const triggers = [...scope.querySelectorAll<HTMLElement>(`[${TRIGGER_ATTR}]:not([disabled])`)];
+  return triggers.find((t) => token !== undefined && t.getAttribute(TRIGGER_ATTR) === token) ?? triggers[0] ?? scope.querySelector<HTMLElement>(FOCUSABLE);
+}
+
 /** What `useRecordActions` gives a view: the row's buttons, the failure summary, the announcement, and the open dialog. */
 export interface RecordActions {
   /** The record's available actions as ready-to-draw buttons (empty when the view offers none). */
@@ -66,7 +103,7 @@ export interface RecordActions {
    * function when the save has settled, before the view's own state update. The focus-return effect then
    * puts focus back on the same record's control in the rebuilt view (or leaves it alone when the record is gone).
    */
-  readonly holdFocus: (record: DataRecord) => () => void;
+  readonly holdFocus: (record: DataRecord, options?: { readonly moved?: boolean }) => () => void;
 }
 
 /** The open dialog: the record, the action, what has been typed, what was refused, whether act is in flight. */
@@ -141,6 +178,9 @@ export function useRecordActions(options: {
     chain: readonly { readonly node: Element; readonly index: number }[];
     text: string; // the pressed node's text, to recognise its replacement
     readonly place: Place | undefined; // where the pressed record sat in the view when it was pressed
+    readonly scopeUp: number | undefined; // levels from the record's title up to the element holding the record and the pressed control
+    readonly panelToken: string | undefined; // the pressed control sat in a panel marked with this token; its trigger carries the same one
+    readonly moved: boolean; // the viewer moved the record on purpose: focus follows it to its new place
     focused: HTMLElement | undefined; // the last node this effect focused, awaiting confirmation
     watchUntil: number | undefined; // set once a restore survived a render: the restore stays armed until then, for a later rebuild
     attempts: number; // renders spent retrying; bounds the retry window
@@ -206,6 +246,20 @@ export function useRecordActions(options: {
       return;
     }
     const active = document.activeElement;
+    // The pressed control lived in a panel that closed with the press. The set refocuses the panel's trigger,
+    // then the reload rebuilds the record: that trigger is ours to track, as long as it is in this record.
+    if (!held.element.isConnected && held.focused === undefined && held.scopeUp !== undefined && active instanceof HTMLElement && active !== document.body) {
+      const scope = scopeNow(held.recordId, held.scopeUp);
+      if (scope !== null && scope.contains(active)) {
+        held.focused = active;
+        held.element = active;
+        held.parent = active.parentElement;
+        held.chain = ancestry(active);
+        held.text = active.textContent ?? "";
+        held.watchUntil ??= Date.now() + WATCH_MS;
+        return;
+      }
+    }
     if (active !== null && active !== document.body && active !== held.focused && active !== held.element) {
       settle(); // focus is spoken for by someone else: leave it alone (the never-steal rule)
       return;
@@ -223,7 +277,10 @@ export function useRecordActions(options: {
       held.parent !== null && held.parent.isConnected
         ? held.parent.querySelector<HTMLButtonElement>(held.selector)
         : null;
-    const target: HTMLElement | null = held.element.isConnected ? held.element : (live ?? (samePlace(held.place, shown.current.get(held.recordId)) ? replacement(held.chain, held.text) : null));
+    const keptPlace = held.moved || samePlace(held.place, shown.current.get(held.recordId));
+    const target: HTMLElement | null = held.element.isConnected
+      ? held.element
+      : (live ?? (keptPlace ? (held.moved ? null : replacement(held.chain, held.text)) ?? (held.scopeUp === undefined ? null : panelReturn(held.recordId, held.scopeUp, held.panelToken)) : null));
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;
@@ -233,15 +290,15 @@ export function useRecordActions(options: {
   });
 
   /** The focused control as a restore target for `record`, or undefined when focus is not on a real control. */
-  const capture = (record: DataRecord): NonNullable<typeof pressed.current> | undefined => {
+  const capture = (record: DataRecord, moved = false): NonNullable<typeof pressed.current> | undefined => {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || el === document.body) return undefined;
     const selector = el instanceof HTMLInputElement ? `input[type="${el.type}"]:not([disabled])` : `${el.tagName.toLowerCase()}:not([disabled])`;
-    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
+    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), scopeUp: recordScope(record.id, el)?.up, moved, panelToken: el.closest(`[${TRIGGER_ATTR}]`)?.getAttribute(TRIGGER_ATTR) ?? undefined, focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
   };
 
-  const holdFocus = (record: DataRecord): (() => void) => {
-    const held = capture(record);
+  const holdFocus = (record: DataRecord, options?: { readonly moved?: boolean }): (() => void) => {
+    const held = capture(record, options?.moved === true);
     if (held === undefined) return () => {};
     pressed.current = held;
     flights.current.add(record.id);
