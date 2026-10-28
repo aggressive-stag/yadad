@@ -2,7 +2,7 @@ import { ForbiddenError, RecordConflictError, RecordNotFoundError, RecordValidat
 import type { DataAdapter, DataRecord, DocumentError, EntityDocument, Field, RecordAction, RecordActionItem, RecordValues, Registry, ResolvedViewer } from "@yadad/core";
 import { actionNeedsDialog, availableActions, serverValidationIssues, validateActionInput } from "@yadad/runtime";
 import type { ActionsView } from "@yadad/runtime";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { renderDisplay, renderInput } from "./fields.js";
 import type { FieldFormatting } from "./fields.js";
@@ -52,13 +52,17 @@ function replacement(chain: readonly { readonly node: Element; readonly index: n
 
 /** The attribute the renderer puts on a record's title: it names the record in the DOM, so a rebuilt record can be found again. */
 const RECORD_ATTR = "data-yadad-record";
+/** The attribute the renderer puts beside RECORD_ATTR: one value per view on the page, so the same record shown by two views is never confused (card 57d). */
+const VIEW_ATTR = "data-yadad-record-view";
+/** The selector for one record's title in one view. */
+const markOf = (view: string, recordId: string): string => `[${RECORD_ATTR}="${CSS.escape(recordId)}"][${VIEW_ATTR}="${CSS.escape(view)}"]`;
 /** The attribute a component puts on the control that opens a record's menu or panel, and (same value) on that panel: focus returns to the trigger when the panel closed with the press. */
 const TRIGGER_ATTR = "data-yadad-focus-return";
 const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** The element that holds one record (a card, an entry): the nearest ancestor of `control` that also holds the record's title, `up` levels above it. */
-function recordScope(recordId: string, control: Element): { readonly up: number } | undefined {
-  const marks = document.querySelectorAll(`[${RECORD_ATTR}="${CSS.escape(recordId)}"]`);
+function recordScope(view: string, recordId: string, control: Element): { readonly up: number } | undefined {
+  const marks = document.querySelectorAll(markOf(view, recordId));
   const mark = marks[0];
   if (mark === undefined) return undefined;
   let up = 0;
@@ -72,15 +76,15 @@ function recordScope(recordId: string, control: Element): { readonly up: number 
 }
 
 /** The record's element now, found from its title the same number of levels up. */
-function scopeNow(recordId: string, up: number): Element | null {
-  let scope: Element | null = document.querySelector(`[${RECORD_ATTR}="${CSS.escape(recordId)}"]`);
+function scopeNow(view: string, recordId: string, up: number): Element | null {
+  let scope: Element | null = document.querySelector(markOf(view, recordId));
   for (let k = 0; k < up && scope !== null; k += 1) scope = scope.parentElement;
   return scope !== null && scope.querySelectorAll(`[${RECORD_ATTR}]`).length === 1 ? scope : null;
 }
 
 /** Where focus goes when the pressed control lived in a panel that closed: the record's menu trigger, else its first focusable control. */
-function panelReturn(recordId: string, up: number, token: string | undefined): HTMLElement | null {
-  const scope = scopeNow(recordId, up);
+function panelReturn(view: string, recordId: string, up: number, token: string | undefined): HTMLElement | null {
+  const scope = scopeNow(view, recordId, up);
   if (scope === null) return null;
   // A record can have several triggers (actions, move): the panel and its trigger share one token.
   const triggers = [...scope.querySelectorAll<HTMLElement>(`[${TRIGGER_ATTR}]:not([disabled])`)];
@@ -97,6 +101,8 @@ export interface RecordActions {
   readonly announcement: { readonly seq: number; readonly text: string } | undefined;
   /** The open confirm/input dialog, built for `layout.Dialog`; renders nothing when no dialog is open. */
   readonly dialog: ReactNode;
+  /** One value per view instance: the view puts it on each record title (`data-yadad-record-view`) so a record shown twice on the page is found in the right view. */
+  readonly viewKey: string;
   /**
    * Keep the viewer's place across a save that is not an action (the done checkbox of a board card or a
    * calendar entry). Call it when the save starts, while the control still has focus; call the returned
@@ -154,6 +160,7 @@ export function useRecordActions(options: {
   const [announcement, setAnnouncement] = useState<{ readonly seq: number; readonly text: string } | undefined>(undefined);
   const [dialog, setDialog] = useState<OpenDialog | undefined>(undefined);
   const mounted = useRef(true);
+  const viewKey = useId();
   // Focus return after a press (todo-app F9:227, F11 row 7): a browser takes focus away the
   // moment `pending` disables the pressed button, and nothing gives it back when the flight
   // ends — Tab then restarts from the nav. The press records the focused control and `act`
@@ -249,7 +256,7 @@ export function useRecordActions(options: {
     // The pressed control lived in a panel that closed with the press. The set refocuses the panel's trigger,
     // then the reload rebuilds the record: that trigger is ours to track, as long as it is in this record.
     if (!held.element.isConnected && held.focused === undefined && held.scopeUp !== undefined && active instanceof HTMLElement && active !== document.body) {
-      const scope = scopeNow(held.recordId, held.scopeUp);
+      const scope = scopeNow(viewKey, held.recordId, held.scopeUp);
       if (scope !== null && scope.contains(active)) {
         held.focused = active;
         held.element = active;
@@ -280,7 +287,7 @@ export function useRecordActions(options: {
     const keptPlace = held.moved || samePlace(held.place, shown.current.get(held.recordId));
     const target: HTMLElement | null = held.element.isConnected
       ? held.element
-      : (live ?? (keptPlace ? (held.moved ? null : replacement(held.chain, held.text)) ?? (held.scopeUp === undefined ? null : panelReturn(held.recordId, held.scopeUp, held.panelToken)) : null));
+      : (live ?? (keptPlace ? (held.moved ? null : replacement(held.chain, held.text)) ?? (held.scopeUp === undefined ? null : panelReturn(viewKey, held.recordId, held.scopeUp, held.panelToken)) : null));
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;
@@ -294,7 +301,7 @@ export function useRecordActions(options: {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || el === document.body) return undefined;
     const selector = el instanceof HTMLInputElement ? `input[type="${el.type}"]:not([disabled])` : `${el.tagName.toLowerCase()}:not([disabled])`;
-    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), scopeUp: recordScope(record.id, el)?.up, moved, panelToken: el.closest(`[${TRIGGER_ATTR}]`)?.getAttribute(TRIGGER_ATTR) ?? undefined, focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
+    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), scopeUp: recordScope(viewKey, record.id, el)?.up, moved, panelToken: el.closest(`[${TRIGGER_ATTR}]`)?.getAttribute(TRIGGER_ATTR) ?? undefined, focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
   };
 
   const holdFocus = (record: DataRecord, options?: { readonly moved?: boolean }): (() => void) => {
@@ -356,6 +363,13 @@ export function useRecordActions(options: {
     })();
   };
 
+  /** Cancel, Escape or the close button: the dialog's own close-return applies, so the remembered press is dropped (unless an action is already running). */
+  const closeDialog = (): void => {
+    const held = pressed.current;
+    if (held !== undefined && !flights.current.has(held.recordId)) pressed.current = undefined;
+    setDialog(undefined);
+  };
+
   const openDialog = (record: DataRecord, action: RecordAction): void => {
     setFailures(undefined);
     setDialog({ record, action, values: {}, errors: [], working: false });
@@ -384,9 +398,10 @@ export function useRecordActions(options: {
       tone: action.confirm?.tone ?? "neutral",
       pending: pending.has(record.id),
       onPress: () => {
-        // Only a direct press is remembered for the focus return: the dialog path has its
-        // own close-return contract (the modal gives focus back to who opened it).
-        pressed.current = actionNeedsDialog(action) ? undefined : capture(record);
+        // The press is remembered for the focus return, a dialog action too (card 57d): the dialog's own
+        // close-return goes to the pressed button, which lives in a panel that closed and was rebuilt. A
+        // cancelled dialog forgets it again (closeDialog), so its own close-return stays as it is.
+        pressed.current = capture(record);
         if (actionNeedsDialog(action)) openDialog(record, action);
         else run(record, action, undefined, undefined);
       },
@@ -404,7 +419,7 @@ export function useRecordActions(options: {
   const summaryErrors = (open?.errors ?? []).filter((e) => !open!.action.input?.some((f) => e.path === jsonPointer(["input", f.id])));
   const rendered: ReactNode =
     open === undefined || Dialog === undefined ? null : (
-      <Dialog label={open.action.confirm?.title ?? open.action.label} onClose={() => setDialog(undefined)}>
+      <Dialog label={open.action.confirm?.title ?? open.action.label} onClose={closeDialog}>
         {open.action.confirm !== undefined && <p>{open.action.confirm.message}</p>}
         {subjectField !== undefined && (
           <p data-yadad-confirm-subject="">{renderDisplay(registry, subjectField, open.record.values[subjectField.id], subjectReferences, formatting)}</p>
@@ -425,7 +440,7 @@ export function useRecordActions(options: {
           );
         })}
         {summaryErrors.length > 0 && <ErrorSummary errors={summaryErrors} />}
-        <Button label="Cancel" type="button" variant="secondary" disabled={open.working} onPress={() => setDialog(undefined)} />
+        <Button label="Cancel" type="button" variant="secondary" disabled={open.working} onPress={closeDialog} />
         <Button
           label={open.action.confirm?.confirmLabel ?? open.action.label}
           type="button"
@@ -437,7 +452,7 @@ export function useRecordActions(options: {
       </Dialog>
     );
 
-  return { items, failures, announcement, dialog: rendered, holdFocus };
+  return { items, failures, announcement, dialog: rendered, holdFocus, viewKey };
 }
 
 /**

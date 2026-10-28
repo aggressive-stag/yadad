@@ -108,14 +108,20 @@ const entity: EntityDocument = {
     { id: "due", type: "date", label: "Due" },
     { id: "notes", type: "text", label: "Notes" },
   ],
-  actions: [{ id: "publish", label: "Publish" }, { id: "flag", label: "Flag" }],
+  actions: [
+    { id: "publish", label: "Publish" },
+    { id: "flag", label: "Flag" },
+    { id: "sure", label: "Sure…", confirm: { title: "Be sure", message: "Really?", confirmLabel: "Yes" } },
+    { id: "ask", label: "Ask…", input: [{ id: "note", type: "text", label: "Note" }] },
+  ],
 };
 const board: BoardView = { kind: "board", specVersion: 4, id: "b", title: "Tasks", entity: "task", revision: 1, dataSource: "default", groupBy: [{ field: "list" }], titleField: "title", editable: true, recordActions: ["publish", "flag"] };
+const boardDialog: BoardView = { ...board, id: "bd", recordActions: ["publish", "sure", "ask"] };
 const calendar: CalendarView = { kind: "calendar", specVersion: 4, id: "c", title: "Plan", entity: "task", revision: 1, dataSource: "default", dateField: "due", editable: true, recordActions: ["publish", "flag"] };
 const documents: DocumentSet = { entities: new Map([[entity.id, entity]]), views: new Map() };
 
 async function seed() {
-  const db = createMemoryAdapter({ actions: { "task.flag": () => ({ values: { notes: "flagged" } }), "task.publish": () => ({ values: { notes: "published" } }) } });
+  const db = createMemoryAdapter({ actions: { "task.sure": () => ({ values: { notes: "sure" } }), "task.ask": (_record, input) => (input["note"] === "remove" ? { remove: true } : { values: { notes: "asked" } }), "task.flag": () => ({ values: { notes: "flagged" } }), "task.publish": () => ({ values: { notes: "published" } }) } });
   const ids: Record<string, string> = {};
   for (const values of [
     { title: "Book flights", list: "Home", due: "2026-10-15" },
@@ -228,5 +234,104 @@ describe("focus after a move from a panel, on a calendar (card 57c)", () => {
     await waitFor(() => expect(screen.getByTestId("calendar-status").textContent).toMatch(/^Moved Pay rent/));
     await waitFor(() => expect(document.querySelector(`[data-date="2026-10-20"] [data-testid="entry-${ids["Pay rent"]}"]`)).toBeTruthy());
     await waitFor(() => expect(document.activeElement?.getAttribute("data-testid")).toBe(`move-trigger-${ids["Pay rent"]}`));
+  });
+});
+
+describe("focus after a dialog action run from a panel (card 57d)", () => {
+  async function openDialogBoard() {
+    const { db, ids } = await seed();
+    const g = gated(db);
+    render(<BoardRenderer entity={entity} view={boardDialog} registry={registry} dataSources={new Map([["default", g.adapter]])} entities={documents.entities} documents={documents} />);
+    await waitForRows(document.body);
+    const open = (label: string): void => {
+      fireEvent.click(screen.getByTestId(`actions-trigger-${ids["Pay rent"]}`));
+      const item = within(screen.getByTestId(`actions-panel-${ids["Pay rent"]}`)).getByRole("button", { name: label });
+      item.focus();
+      fireEvent.click(item);
+    };
+    return { g, ids, open };
+  }
+  const trigger = (id: string | undefined): HTMLElement => screen.getByTestId(`actions-trigger-${id}`);
+
+  test("a confirm dialog leaves focus on the record's Actions… trigger after the reload", async () => {
+    const { g, ids, open } = await openDialogBoard();
+    open("Sure…");
+    const dialog = await screen.findByTestId("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(busy()).toBe("true"));
+    g.release();
+    await waitFor(() => expect(busy()).toBe("false"));
+    await waitFor(() => expect(document.activeElement).toBe(trigger(ids["Pay rent"])));
+  });
+
+  test("an input dialog leaves focus on the record's Actions… trigger after the reload", async () => {
+    const { g, ids, open } = await openDialogBoard();
+    open("Ask…");
+    const dialog = await screen.findByTestId("dialog");
+    fireEvent.change(within(dialog).getByTestId("input-note"), { target: { value: "hello" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Ask…" }));
+    await waitFor(() => expect(busy()).toBe("true"));
+    g.release();
+    await waitFor(() => expect(busy()).toBe("false"));
+    await waitFor(() => expect(document.activeElement).toBe(trigger(ids["Pay rent"])));
+  });
+
+  test("Cancel and Escape leave focus to the dialog's own close-return, and nothing is repaired later", async () => {
+    const { ids, open } = await openDialogBoard();
+    open("Sure…");
+    fireEvent.click(within(await screen.findByTestId("dialog")).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByTestId("dialog")).toBeNull());
+    const afterCancel = document.activeElement;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(document.activeElement).toBe(afterCancel);
+    // a later reload of the same record (a sibling's press) must not pull focus to this record
+    const other = screen.getByTestId(`move-trigger-${ids["Call Ada"]}`);
+    other.focus();
+    open("Ask…");
+    fireEvent.keyDown(await screen.findByTestId("dialog"), { key: "Escape" });
+    other.focus();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(document.activeElement).toBe(other);
+  });
+
+  test("a dialog action whose record is gone afterwards leaves focus alone", async () => {
+    const { db, ids } = await seed();
+    const g = gated(db);
+    render(<BoardRenderer entity={entity} view={boardDialog} registry={registry} dataSources={new Map([["default", g.adapter]])} entities={documents.entities} documents={documents} />);
+    await waitForRows(document.body);
+    fireEvent.click(screen.getByTestId(`actions-trigger-${ids["Pay rent"]}`));
+    const item = within(screen.getByTestId(`actions-panel-${ids["Pay rent"]}`)).getByRole("button", { name: "Ask…" });
+    item.focus();
+    fireEvent.click(item);
+    const dialog = await screen.findByTestId("dialog");
+    fireEvent.change(within(dialog).getByTestId("input-note"), { target: { value: "remove" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Ask…" }));
+    await waitFor(() => expect(busy()).toBe("true"));
+    g.release();
+    await waitFor(() => expect(busy()).toBe("false"));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(screen.queryByTestId(`actions-trigger-${ids["Pay rent"]}`)).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe("focus after a move when another view of the same entity precedes it (card 57d)", () => {
+  test("a calendar move keeps focus on the entry's trigger though a board earlier on the page shows the same record", async () => {
+    const { db, ids } = await seed();
+    const sources = new Map([["default", db]]);
+    render(
+      <div>
+        <BoardRenderer entity={entity} view={board} registry={registry} dataSources={sources} entities={documents.entities} documents={documents} />
+        <CalendarRenderer entity={entity} view={calendar} registry={registry} dataSources={sources} documents={documents} now={new Date(2026, 9, 15, 10, 0, 0)} />
+      </div>,
+    );
+    await waitFor(() => expect(document.querySelectorAll(`[data-testid="entry-${ids["Pay rent"]}"]`).length).toBe(1));
+    const entry = (): HTMLElement => document.querySelector<HTMLElement>(`[data-testid="entry-${ids["Pay rent"]}"]`)!;
+    fireEvent.click(within(entry()).getByTestId(`move-trigger-${ids["Pay rent"]}`));
+    const move = within(entry()).getByRole("button", { name: "Move" });
+    move.focus();
+    fireEvent.click(move);
+    await waitFor(() => expect(document.querySelector(`[data-date="2026-10-20"] [data-testid="entry-${ids["Pay rent"]}"]`)).toBeTruthy());
+    await waitFor(() => expect(document.activeElement).toBe(within(entry()).getByTestId(`move-trigger-${ids["Pay rent"]}`)));
   });
 });

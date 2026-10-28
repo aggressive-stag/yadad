@@ -384,7 +384,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       id: record.id,
       content: (
         <>
-          <span data-yadad-calendar-title="" data-yadad-record={record.id}>{title}</span>
+          <span data-yadad-calendar-title="" data-yadad-record={record.id} data-yadad-record-view={recordActions.viewKey}>{title}</span>
           {details.map((field) => (
             // RFC 0008 item 7: detail lines are labelled by default ("Assignee: Dana").
             <small key={field.id} data-yadad-calendar-detail={field.id}>
