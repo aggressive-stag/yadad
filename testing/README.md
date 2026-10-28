@@ -2,6 +2,8 @@
 
 Test support for yadad: a mock registry and the registry contract test kit. Use it to test code that renders yadad documents without a real component set, or to prove that your own component set satisfies the `Registry` contract.
 
+A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
+
 ```sh
 npm install --save-dev @yadad/testing
 ```

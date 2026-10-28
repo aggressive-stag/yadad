@@ -2,6 +2,8 @@
 
 React renderers that turn entity and view documents, a registry and data adapters into working pages: `FormRenderer`, `TableRenderer`, `CalendarRenderer`, `BoardRenderer` and `DashboardRenderer`. Components are looked up in the registry by exact key; the renderer never imports one.
 
+A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
+
 ```sh
 npm install @yadad/renderer @yadad/runtime @yadad/core react
 ```

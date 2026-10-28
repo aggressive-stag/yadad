@@ -2,6 +2,8 @@
 
 Design tokens for yadad: the token names, light and dark values, and a CSS-variable emitter. Components read tokens only as CSS variables, so any host can restyle them. No dependencies.
 
+A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
+
 ```sh
 npm install @yadad/theme
 ```

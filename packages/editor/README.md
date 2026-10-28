@@ -2,6 +2,8 @@
 
 Visual editors for yadad documents. Every change is a JSON Patch against an entity or view document, with undo and redo from the patch log; saving hands back the edited document with its `revision` bumped. The editor writes documents, never records.
 
+A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
+
 ```sh
 npm install @yadad/editor @yadad/core @yadad/runtime react
 ```

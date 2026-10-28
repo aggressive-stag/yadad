@@ -2,6 +2,8 @@
 
 The yadad contract: document types, document validation, spec migrations, and the `Registry` and `DataAdapter` interfaces that hosts implement. Headless: no React, no I/O, no runtime dependencies on other yadad packages.
 
+A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
+
 ```sh
 npm install @yadad/core
 ```
