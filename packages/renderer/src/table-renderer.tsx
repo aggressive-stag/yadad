@@ -674,7 +674,16 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const rowActions = items.map((record) => recordActions.items(record));
   const tableRows: TableRow<ReactNode>[] = items.map((record, rowIndex) => ({
     id: record.id,
-    cells: [...columns.map(({ field, editable }, colIndex) => renderCell(record, field, editable, columnDiffs[colIndex]?.[rowIndex])), ...(hasActions ? [renderActions(record)] : [])],
+    cells: [...columns.map(({ field, editable }, colIndex) => {
+      const cell = renderCell(record, field, editable, columnDiffs[colIndex]?.[rowIndex]);
+      // A row with actions names its record in the DOM (an empty marker in its first cell), so a pressed action's focus return finds the row again after a re-sort.
+      return colIndex === 0 && rowActions[rowIndex]!.length > 0 ? (
+        <>
+          <span hidden data-yadad-record={record.id} data-yadad-record-view={recordActions.viewKey} />
+          {cell}
+        </>
+      ) : cell;
+    }), ...(hasActions ? [renderActions(record)] : [])],
     ...(rowActions[rowIndex]!.length > 0 ? { actions: rowActions[rowIndex] } : {}),
   }));
   // A server that returns neither total nor next cannot say "there is more": its page is the last (RFC 0007).

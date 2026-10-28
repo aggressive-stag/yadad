@@ -566,6 +566,44 @@ describe("record actions on entries (RFC 0007)", () => {
     await waitFor(() => expect(screen.getByText("published:Pay rent")).toBeTruthy()); // reloaded with the new assignee
   });
 
+  // 57f: a direct press whose action moves the entry to another day follows the entry, never its neighbour.
+  test("focus follows an entry the action moved and never lands on the neighbour that took its place", async () => {
+    const { db: base, ids } = await seeded({ actions: { "task.publish": () => ({ values: { due: "2026-10-16" } }) } });
+    const inner = base.act!.bind(base);
+    let gated = false;
+    let finish: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const db = {
+      ...base,
+      act: async (e: string, id: string, a: string, request: Parameters<NonNullable<typeof inner>>[3]) => {
+        const done = await inner(e, id, a, request);
+        gated = true;
+        return done;
+      },
+      find: async (...args: Parameters<typeof base.find>) => {
+        if (gated) await gate;
+        return base.find(...args);
+      },
+    };
+    render(<CalendarRenderer entity={actionsEntity} view={withActions} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} documents={documents} now={NOW} />);
+    await waitForRows(document.body);
+    const btn = entryButton(ids["Pay rent"]!, "publish");
+    btn.focus();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.disabled).toBe(true));
+    btn.disabled = false; // jsdom keeps focus on a disabled button; the browser drops it to body
+    btn.blur();
+    btn.disabled = true;
+    await waitFor(() => expect(status()).toBe("Publish done"));
+    finish();
+    await waitFor(() => expect(screen.getByTestId(`entry-${ids["Pay rent"]}`).closest("[data-date]")?.getAttribute("data-date") ?? "x").not.toBe("2026-10-15"));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(document.activeElement).not.toBe(entryButton(ids["Call Ada"]!, "publish"));
+    expect(document.activeElement).toBe(entryButton(ids["Pay rent"]!, "publish"));
+  });
+
   test("a press with no act: the data source replaced the calendar with an ErrorSummary", async () => {
     const db = createMemoryAdapter();
     await db.create("task", { title: "Pay rent", due: "2026-10-15", list: "Home" }, { entityRevision: 1 });

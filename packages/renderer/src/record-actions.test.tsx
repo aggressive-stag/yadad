@@ -152,7 +152,7 @@ describe("record actions on tables (RFC 0007)", () => {
   });
 
   // 51g: a sort moves the pressed row, so another record sits at its old path with a same-text button.
-  test("focus does not land on the row that took the pressed row's place after a sort", async () => {
+  test("focus follows the pressed row after a sort and never lands on the row that took its place", async () => {
     const base = await seeded({ actions: { "doc.publish": () => ({ values: { n: 99 } }) } });
     const inner = base.act!.bind(base);
     let reloadGated = false;
@@ -180,7 +180,7 @@ describe("record actions on tables (RFC 0007)", () => {
     await waitFor(() => expect(btn.disabled).toBe(true));
     btn.disabled = false; // jsdom keeps focus on a disabled button; the browser drops it to body
     btn.blur();
-    btn.disabled = true;
+    // (React re-enables it by itself when the press settles; leaving it disabled by hand would pin it that way)
     await waitFor(() => expect(statusText()).toBe("Publish done"));
     finishReload();
     await waitFor(() => expect(tagOf(99)).toBe("draft")); // the row moved to the end
@@ -188,7 +188,7 @@ describe("record actions on tables (RFC 0007)", () => {
     const rows = screen.getAllByRole("row");
     const active = document.activeElement;
     expect(rows.some((r) => r.querySelector("[data-testid='display-n']")?.textContent === "2" && r.contains(active))).toBe(false);
-    expect(document.activeElement === document.body || rows.some((r) => r.querySelector("[data-testid='display-n']")?.textContent === "99" && r.contains(active))).toBe(true);
+    expect(rows.some((r) => r.querySelector("[data-testid='display-n']")?.textContent === "99" && r.contains(active))).toBe(true); // 57f: it follows the re-sorted row
   });
 
   test("a view with no recordActions gets no actions column and no errors", async () => {

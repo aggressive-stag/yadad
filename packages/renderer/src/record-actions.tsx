@@ -309,9 +309,18 @@ export function useRecordActions(options: {
         ? held.parent.querySelector<HTMLButtonElement>(held.selector)
         : null;
     const keptPlace = held.moved || samePlace(held.place, shown.current.get(held.recordId));
+    // The pressed record, found by its id: a rebuilt view keeps the record's title mark, so a record that moved is still found, and a
+    // neighbour that took its old place never is. Same kind of control first (the pressed action's button), else the panel trigger.
+    const byId = (): HTMLElement | null => {
+      if (held.scopeUp === undefined || !shown.current.has(held.recordId)) return null;
+      const scope = scopeNow(viewKey, held.recordId, held.scopeUp);
+      if (scope === null) return null;
+      const same = held.panelToken === undefined ? [...scope.querySelectorAll<HTMLElement>(held.selector)].find((el) => (el.textContent ?? "") === held.text) : undefined;
+      return same ?? panelReturn(viewKey, held.recordId, held.scopeUp, held.panelToken);
+    };
     const target: HTMLElement | null = held.element.isConnected
       ? held.element
-      : (live ?? (keptPlace && !held.moved ? replacement(held.chain, held.text) : null) ?? (held.scopeUp === undefined || (!keptPlace && held.panelToken === undefined) || !shown.current.has(held.recordId) ? null : panelReturn(viewKey, held.recordId, held.scopeUp, held.panelToken)));
+      : (live ?? (keptPlace && !held.moved ? replacement(held.chain, held.text) : null) ?? byId());
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;

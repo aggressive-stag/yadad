@@ -798,7 +798,7 @@ describe("record actions on cards (RFC 0007)", () => {
 
   // 51g: a board action that moves its card leaves a neighbour at the card's old path, with a button of the
   // same text. Focus must not land on it.
-  test("focus does not land on a neighbour that took the moved card's place", async () => {
+  test("focus follows the moved card and never lands on a neighbour that took its place", async () => {
     const base = await seeded({ actions: { "task.publish": () => ({ values: { list: "Work" } }) } });
     const inner = base.db.act!.bind(base.db);
     let reloadGated = false;
@@ -838,7 +838,8 @@ describe("record actions on cards (RFC 0007)", () => {
     await new Promise((resolve) => setTimeout(resolve, 50)); // let the focus-return effect run its retries
     const neighbour = cardButton(base.ids["Pay rent"]!, "publish");
     expect(document.activeElement).not.toBe(neighbour);
-    expect(document.activeElement).toBe(document.body);
+    // 57f: the same record, found by its id in its new column, gets focus (the same action's button).
+    expect(document.activeElement).toBe(cardButton(base.ids["Book flights"]!, "publish"));
   });
 });
 
