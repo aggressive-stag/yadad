@@ -13,6 +13,8 @@ import type { ReferenceSupport, ReferenceWant } from "./references.js";
 const RESTORE_ATTEMPTS = 50;
 /** How long a restore that has succeeded stays armed for a LATER rebuild of the control (a sibling widget's reload, a second fetch). */
 const WATCH_MS = 1500;
+/** The longest a restore stays armed for a reload that has not landed. */
+const RELOAD_CAP_MS = 60_000;
 
 /** A record's place in a view: its group (a board column id, a calendar day, "" for a table) and its index within the group. */
 interface Place {
@@ -109,7 +111,7 @@ export interface RecordActions {
    * function when the save has settled, before the view's own state update. The focus-return effect then
    * puts focus back on the same record's control in the rebuilt view (or leaves it alone when the record is gone).
    */
-  readonly holdFocus: (record: DataRecord, options?: { readonly moved?: boolean }) => () => void;
+  readonly holdFocus: (record: DataRecord, options?: { readonly moved?: boolean }) => (saved?: DataRecord) => void;
 }
 
 /** The open dialog: the record, the action, what has been typed, what was refused, whether act is in flight. */
@@ -153,6 +155,11 @@ export function useRecordActions(options: {
   readonly entities?: ReadonlyMap<string, EntityDocument>;
   /** How dates and times in the confirm subject line are formatted, as in a table cell. */
   readonly formatting?: FieldFormatting;
+  /**
+   * What the view last loaded (the records array, or undefined while it loads). A fresh value means a reload landed: the
+   * focus return stays armed until then, however long the host's adapter takes, and its short window runs from the landing.
+   */
+  readonly data?: unknown;
 }): RecordActions {
   const { entity, view, viewer, registry, adapter, reload, entities, formatting } = options;
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
@@ -176,7 +183,7 @@ export function useRecordActions(options: {
   // stays put — and an unsettled attempt gives up after the window so an old action can
   // never steal focus much later.
   const pressed = useRef<{
-    readonly recordId: string;
+    recordId: string; // follows the record by the id the adapter answered with, when a save changes it
     element: HTMLElement;
     parent: Element | null;
     /** What a control of the same kind as the pressed one looks like, to find it again among the parent's children. */
@@ -194,6 +201,12 @@ export function useRecordActions(options: {
     ended: boolean; // the action's promise has settled; until then an unrelated render must not read the flight as over
   } | undefined>(undefined);
   const flights = useRef(new Set<string>());
+  // The action (or move) has ended and its reload is on the way: set when the flight ends with what the view showed then, and
+  // cleared when the view shows something newer. A slow adapter lands the rebuild late (card 57e); until it does, no clock runs.
+  const reloadBase = useRef<{ readonly data: unknown; readonly since: number } | undefined>(undefined);
+  const dataNow = options.data;
+  const dataRef = useRef<unknown>(dataNow);
+  dataRef.current = dataNow;
   // The records the view asked actions for in this render: a rebuilt control is only the pressed one's
   // replacement while its record is still shown (a removed record's neighbour slides into its place).
   // It also records each record's place (its group and its index within the group, in render order): a
@@ -239,6 +252,17 @@ export function useRecordActions(options: {
     // later and rebuild the control again, dropping focus to body a second time (card 57b). So
     // the restore stays armed for a short window, tracking the control it last focused, and
     // ends early the moment the viewer acts (see `disarm`) or focus is spoken for elsewhere.
+    const awaiting = reloadBase.current;
+    if (awaiting !== undefined) {
+      if (dataNow !== undefined && dataNow !== awaiting.data) {
+        reloadBase.current = undefined; // the reload landed: the short window starts now
+        if (held.watchUntil !== undefined) held.watchUntil = Date.now() + WATCH_MS;
+      } else if (Date.now() - awaiting.since > RELOAD_CAP_MS) {
+        reloadBase.current = undefined; // a reload that never lands (it failed) does not keep the restore armed forever
+      } else if (held.watchUntil !== undefined) {
+        held.watchUntil = Date.now() + WATCH_MS; // still waiting for the reload
+      }
+    }
     if (held.watchUntil !== undefined && Date.now() > held.watchUntil) {
       settle();
       return;
@@ -287,7 +311,7 @@ export function useRecordActions(options: {
     const keptPlace = held.moved || samePlace(held.place, shown.current.get(held.recordId));
     const target: HTMLElement | null = held.element.isConnected
       ? held.element
-      : (live ?? (keptPlace ? (held.moved ? null : replacement(held.chain, held.text)) ?? (held.scopeUp === undefined ? null : panelReturn(viewKey, held.recordId, held.scopeUp, held.panelToken)) : null));
+      : (live ?? (keptPlace && !held.moved ? replacement(held.chain, held.text) : null) ?? (held.scopeUp === undefined || (!keptPlace && held.panelToken === undefined) || !shown.current.has(held.recordId) ? null : panelReturn(viewKey, held.recordId, held.scopeUp, held.panelToken)));
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;
@@ -304,13 +328,23 @@ export function useRecordActions(options: {
     return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), scopeUp: recordScope(viewKey, record.id, el)?.up, moved, panelToken: el.closest(`[${TRIGGER_ATTR}]`)?.getAttribute(TRIGGER_ATTR) ?? undefined, focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
   };
 
-  const holdFocus = (record: DataRecord, options?: { readonly moved?: boolean }): (() => void) => {
+  /** An id is opaque: a save may answer with the record under a new id (a derived record whose id holds the moved value). Focus follows that id, and only that one. */
+  const follow = (held: NonNullable<typeof pressed.current>, saved: DataRecord | null | undefined): void => {
+    if (saved === undefined || saved === null || saved.id === held.recordId) return;
+    flights.current.delete(held.recordId);
+    held.recordId = saved.id;
+    flights.current.add(saved.id);
+  };
+
+  const holdFocus = (record: DataRecord, options?: { readonly moved?: boolean }): ((saved?: DataRecord) => void) => {
     const held = capture(record, options?.moved === true);
     if (held === undefined) return () => {};
     pressed.current = held;
     flights.current.add(record.id);
-    return () => {
+    return (saved) => {
+      follow(held, saved);
       held.ended = true;
+      reloadBase.current = { data: dataRef.current, since: Date.now() };
     };
   };
 
@@ -323,6 +357,7 @@ export function useRecordActions(options: {
   const run = (record: DataRecord, action: RecordAction, input: RecordValues | undefined, fromDialog: OpenDialog | undefined): void => {
     if (adapter === undefined || adapter.act === undefined || pending.has(record.id)) return;
     const act = adapter.act.bind(adapter);
+    const mine = pressed.current?.recordId === record.id ? pressed.current : undefined; // the press this run belongs to
     flights.current.add(record.id); // a press started this flight; the focus-return effect waits for it to end
     setFailures(undefined);
     setPending((s) => new Set(s).add(record.id));
@@ -333,8 +368,9 @@ export function useRecordActions(options: {
     void (async () => {
       try {
         // The guard is the version the client last read: a stale action is a conflict (RFC 0007).
-        await act(entity.id, record.id, action.id, { ...(input === undefined ? {} : { input }), meta: { entityRevision: entity.revision, baseVersion: record.version } });
+        const saved = await act(entity.id, record.id, action.id, { ...(input === undefined ? {} : { input }), meta: { entityRevision: entity.revision, baseVersion: record.version } });
         if (!mounted.current) return;
+        if (mine !== undefined && pressed.current === mine) follow(mine, saved);
         setDialog(undefined);
         announce(`${action.label} done`);
         reload();
@@ -351,7 +387,10 @@ export function useRecordActions(options: {
         setFailures(actionFailure(error));
         reload();
       } finally {
-        if (pressed.current?.recordId === record.id) pressed.current.ended = true;
+        if (pressed.current !== undefined && pressed.current === mine) {
+          pressed.current.ended = true;
+          reloadBase.current = { data: dataRef.current, since: Date.now() };
+        }
         if (mounted.current) {
           setPending((s) => {
             const next = new Set(s);

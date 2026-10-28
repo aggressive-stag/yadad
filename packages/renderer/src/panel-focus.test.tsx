@@ -335,3 +335,110 @@ describe("focus after a move when another view of the same entity precedes it (c
     await waitFor(() => expect(document.activeElement).toBe(within(entry()).getByTestId(`move-trigger-${ids["Pay rent"]}`)));
   });
 });
+
+// Card 57e: a host's adapter answers over HTTP, so every call takes a while and a reload is several calls.
+// A wrapper that waits before each call stands in for the network: the renderer cannot tell the difference.
+function slow(db: DataAdapter, delays: { readonly act?: number; readonly find?: number; readonly findOne?: number }): DataAdapter {
+  const wait = (ms: number | undefined): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms ?? 0));
+  return {
+    ...db,
+    act: async (...args: Parameters<NonNullable<DataAdapter["act"]>>) => {
+      await wait(delays.act);
+      return db.act!(...args);
+    },
+    find: async (...args: Parameters<DataAdapter["find"]>) => {
+      await wait(delays.find);
+      return db.find(...args);
+    },
+    findOne: async (...args: Parameters<DataAdapter["findOne"]>) => {
+      await wait(delays.findOne);
+      return db.findOne(...args);
+    },
+  };
+}
+
+describe("focus over a slow adapter (card 57e)", () => {
+  const sorted: BoardView = { ...boardDialog, id: "bs", sort: [{ field: "due", dir: "asc" }], recordActions: ["later", "sure"] };
+  const sortedEntity: EntityDocument = { ...entity, actions: [...(entity.actions ?? []), { id: "later", label: "Later", input: [{ id: "day", type: "date", label: "Day" }] }] };
+  const sortedDocs: DocumentSet = { entities: new Map([[sortedEntity.id, sortedEntity]]), views: new Map() };
+
+  async function openSorted(delays: { act?: number; find?: number; findOne?: number }) {
+    const db = createMemoryAdapter({ actions: { "task.sure": () => ({ values: { notes: "sure" } }), "task.later": (_record, input) => ({ values: { due: String(input["day"]) } }) } });
+    const ids: Record<string, string> = {};
+    for (const values of [
+      { title: "Book flights", list: "Home", due: "2026-10-15" },
+      { title: "Pay rent", list: "Home", due: "2026-10-16" },
+      { title: "Call Ada", list: "Home", due: "2026-10-17" },
+    ]) ids[values.title] = (await db.create("task", values, { entityRevision: 1 })).id;
+    render(<BoardRenderer entity={sortedEntity} view={sorted} registry={registry} dataSources={new Map([["default", slow(db, delays)]])} entities={sortedDocs.entities} documents={sortedDocs} />);
+    await screen.findByTestId(`actions-trigger-${ids["Pay rent"]}`, undefined, { timeout: 8000 });
+    return ids;
+  }
+  const trigger = (id: string | undefined): HTMLElement => screen.getByTestId(`actions-trigger-${id}`);
+  async function openAction(id: string | undefined, label: string): Promise<HTMLElement> {
+    fireEvent.click(trigger(id));
+    const item = within(screen.getByTestId(`actions-panel-${id}`)).getByRole("button", { name: label });
+    item.focus();
+    fireEvent.click(item);
+    return screen.findByTestId("dialog");
+  }
+
+  test("an action that moves its record to another place in the order still gets focus back, after a slow reload", async () => {
+    const ids = await openSorted({ act: 300, find: 800, findOne: 400 });
+    const dialog = await openAction(ids["Book flights"], "Later");
+    fireEvent.change(within(dialog).getByTestId("input-day"), { target: { value: "2026-10-30" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Later" }));
+    await waitFor(() => expect(trigger(ids["Book flights"]).compareDocumentPosition(trigger(ids["Call Ada"])) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy(), { timeout: 8000 });
+    await waitFor(() => expect(document.activeElement).toBe(trigger(ids["Book flights"])), { timeout: 8000 });
+  }, 20000);
+
+  test("a confirm dialog's focus return survives a rebuild that lands later than the re-arm window", async () => {
+    const ids = await openSorted({ act: 50, find: 2200, findOne: 50 });
+    const dialog = await openAction(ids["Pay rent"], "Sure…");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(busy()).toBe("false"), { timeout: 10000 });
+    await waitFor(() => expect(document.activeElement).toBe(trigger(ids["Pay rent"])), { timeout: 8000 });
+  }, 20000);
+
+  test("a viewer who moves focus during a slow reload keeps it", async () => {
+    const ids = await openSorted({ act: 50, find: 2200, findOne: 50 });
+    const dialog = await openAction(ids["Pay rent"], "Sure…");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(busy()).toBe("true"));
+    const other = document.body.appendChild(document.createElement("button"));
+    other.focus();
+    await waitFor(() => expect(busy()).toBe("false"), { timeout: 10000 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(document.activeElement).toBe(other);
+    other.remove();
+  }, 20000);
+
+  test("a calendar move whose answer carries a new record id leaves focus on the entry under that id", async () => {
+    const { db, ids } = await seed();
+    const renamed = new Map<string, string>();
+    const adapter: DataAdapter = {
+      ...slow(db, { find: 500, findOne: 300 }),
+      update: async (entityId, id, patch, meta) => {
+        const saved = await db.update(entityId, id, patch, meta);
+        const next = `${id}:${String(patch["due"])}`;
+        renamed.set(id, next);
+        return { ...saved, id: next };
+      },
+    };
+    const { find } = slow(db, { find: 500 });
+    adapter.find = async (...args) => {
+      const page = await find(...args);
+      return { ...page, items: page.items.map((r) => (renamed.has(r.id) ? { ...r, id: renamed.get(r.id) as string } : r)) };
+    };
+    render(<CalendarRenderer entity={entity} view={calendar} registry={registry} dataSources={new Map([["default", adapter]])} documents={documents} now={new Date(2026, 9, 15, 10, 0, 0)} />);
+    await screen.findByTestId(`move-trigger-${ids["Pay rent"]}`, undefined, { timeout: 8000 });
+    fireEvent.click(screen.getByTestId(`move-trigger-${ids["Pay rent"]}`));
+    const move = within(screen.getByTestId(`move-panel-${ids["Pay rent"]}`)).getByRole("button", { name: "Move" });
+    move.focus();
+    fireEvent.click(move);
+    const newId = `${ids["Pay rent"]}:2026-10-20`;
+    await waitFor(() => expect(screen.getByTestId("calendar-status").textContent).toMatch(/^Moved Pay rent/), { timeout: 8000 });
+    await waitFor(() => expect(document.querySelector(`[data-date="2026-10-20"] [data-testid="entry-${newId}"]`)).toBeTruthy(), { timeout: 8000 });
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-testid")).toBe(`move-trigger-${newId}`), { timeout: 8000 });
+  }, 20000);
+});

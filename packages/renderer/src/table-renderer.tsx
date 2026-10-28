@@ -430,7 +430,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const adapter = dataSources.get(view.dataSource);
   const pageSize = view.pageSize ?? DEFAULT_PAGE_SIZE;
   // Record actions (RFC 0007): buttons the component draws from TableRow.actions.
-  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(entities ? { entities } : {}), ...(formatting ? { formatting } : {}), ...(onChanged ? { onChanged } : {}) });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(entities ? { entities } : {}), ...(formatting ? { formatting } : {}), ...(onChanged ? { onChanged } : {}), data: rows.status === "loaded" ? rows.items : undefined });
   const zone = viewerZone(formatting);
   // RFC 0009 item 5: the lit named filter joins the base before the quick filters do —
   // one `and` over the view's fixed filter and the saved condition, then combineFilters as-is.

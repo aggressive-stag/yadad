@@ -302,7 +302,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     });
   }
   const announce = (text: string): void => setAnnouncement((a) => ({ seq: (a?.seq ?? 0) + 1, text }));
-  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(entities ? { entities } : {}), ...(formatting ? { formatting } : {}), announce, ...(onChanged ? { onChanged } : {}) });
+  const recordActions = useRecordActions({ entity, view, viewer, registry, adapter, reload: () => setReloads((n) => n + 1), ...(entities ? { entities } : {}), ...(formatting ? { formatting } : {}), announce, ...(onChanged ? { onChanged } : {}), data: loadedRecords });
   if (setupErrors.length > 0 || !Calendar) return <ErrorSummary errors={setupErrors} />;
 
   const navigate = (next: () => void): void => {
@@ -348,8 +348,8 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     const endHold = recordActions.holdFocus(record); // the checkbox is disabled while the save runs: give focus back after
     setErrors([]);
     setToggling((t) => new Map(t).set(record.id, next));
-    const settle = (): void => {
-      endHold();
+    const settle = (saved?: DataRecord): void => {
+      endHold(saved);
       inFlight.current.delete(record.id);
       setToggling((t) => {
         const m = new Map(t);
@@ -451,8 +451,8 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     setErrors([]);
     setPending((p) => new Map(p).set(recordId, day));
     const endHold = recordActions.holdFocus(record, { moved: true }); // a deliberate move: focus follows the entry to its new day
-    const settle = (): void => {
-      endHold();
+    const settle = (saved?: DataRecord): void => {
+      endHold(saved);
       inFlight.current.delete(recordId);
       setPending((p) => {
         const next = new Map(p);
@@ -463,7 +463,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     adapter.update(plan.entity, plan.id, plan.patch, plan.meta).then(
       (saved) => {
         setState((s) => (s?.status === "loaded" ? { ...s, records: replaceSavedRecord(s.records, recordId, saved) } : s));
-        settle();
+        settle(saved);
         announce(`Moved ${title} to ${dayLabel(day)}`);
         onChanged?.(); // neighbours (a dashboard's counts and stats) refresh too
       },
