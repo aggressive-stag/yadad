@@ -155,7 +155,7 @@ describe("groupings", () => {
     expect(titles(`v:${ids["Bo"]}`)).toEqual(["Book flights"]);
     expect(titles("empty").sort()).toEqual(["Call Ada", "Unsorted"]);
     const headings = screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
-    expect(headings).toEqual(["No Assignee (2)", "Ada (1)", "Bo (1)", "Cy (0)"]);
+    expect(headings).toEqual(["Ada (1)", "Bo (1)", "Cy (0)", "No Assignee (2)"]);
   });
 
   test("the default records grouping has no column for a person with no cards, and pays no target fetch", async () => {
@@ -167,7 +167,7 @@ describe("groupings", () => {
     render(<BoardRenderer entity={entity} view={{ ...board, groupBy: [{ field: "assignee" }] }} registry={mockRegistry} dataSources={new Map([["default", db]])} entities={documents.entities} />);
     await waitForSettled(document.body);
     const headings = await screen.findAllByRole("heading", { level: 4 });
-    expect(headings.map((h) => h.textContent)).toEqual(["No Assignee (0)", "Ada (1)"]);
+    expect(headings.map((h) => h.textContent)).toEqual(["Ada (1)"]);
     // only the card find ran — no query against the target entity (the cap and the latency both stand down)
     expect(find.mock.calls.filter(([e]) => e === "person")).toHaveLength(0);
   });

@@ -12,6 +12,7 @@ import {
   boardGroupField,
   boardQuery,
   boardRecordColumns,
+  shownBoardColumns,
   groupByColumn,
   loadBoardCards,
   loadBoardTargets,
@@ -99,9 +100,9 @@ describe("boardRecordColumns (columnsFrom: records, RFC 0008 item 10)", () => {
   test("one column per present value in first-appearance order, plus the empty column when not required", () => {
     const cols = boardRecordColumns(assigneeField, cards, (id) => `label:${id}`);
     expect(cols.map((c) => [c.id, c.kind, c.label, c.value])).toEqual([
-      ["empty", "empty", "No Assignee", null],
       ["v:p2", "value", "label:p2", "p2"],
       ["v:p1", "value", "label:p1", "p1"],
+      ["empty", "empty", "No Assignee", null],
     ]);
   });
   test("a required reference field has no empty column; a card missing the value lands in other", () => {
@@ -119,18 +120,18 @@ describe("boardRecordColumns (columnsFrom: records, RFC 0008 item 10)", () => {
       id: `c${i}`, entityId: "task", entityRevision: 1, version: "1", values: { assignee: `p${i}` },
     }));
     const cols = boardRecordColumns(assigneeField, many, (id) => id);
-    expect(cols).toHaveLength(BOARD_MAX_COLUMNS + 1); // empty + capped
-    expect(cols.at(-1)?.value).toBe(`p${BOARD_MAX_COLUMNS - 1}`);
+    expect(cols).toHaveLength(BOARD_MAX_COLUMNS + 1); // capped + empty
+    expect(cols.at(-2)?.value).toBe(`p${BOARD_MAX_COLUMNS - 1}`);
   });
 });
 
 describe("boardColumns: select", () => {
-  test("one column per option, in option order, plus an empty column first when not required", () => {
+  test("one column per option, in option order, plus an empty column last when not required", () => {
     expect(boardColumns(statusField)).toEqual([
-      { id: "empty", kind: "empty", label: "No Status", value: null },
       { id: "v:Todo", kind: "value", label: "Todo", value: "Todo" },
       { id: "v:In progress", kind: "value", label: "In progress", value: "In progress" },
       { id: "v:Done", kind: "value", label: "Done", value: "Done" },
+      { id: "empty", kind: "empty", label: "No Status", value: null },
     ]);
   });
   test("an option's colour and label ride the column (RFC 0008 item 5)", () => {
@@ -172,11 +173,11 @@ describe("boardColumns: reference", () => {
   test("without loaded targets, no columns (not loaded yet)", () => {
     expect(boardColumns(assigneeField)).toEqual([]);
   });
-  test("one column per loaded target record, in given order, plus empty first when not required", () => {
+  test("one column per loaded target record, in given order, plus empty last when not required", () => {
     expect(boardColumns(assigneeField, targets)).toEqual([
-      { id: "empty", kind: "empty", label: "No Assignee", value: null },
       { id: "v:p1", kind: "value", label: "Ann", value: "p1" },
       { id: "v:p2", kind: "value", label: "Bo", value: "p2" },
+      { id: "empty", kind: "empty", label: "No Assignee", value: null },
     ]);
   });
   test("a required reference field gets no empty column", () => {
@@ -233,15 +234,33 @@ describe("groupByColumn", () => {
   });
 });
 
+describe("shownBoardColumns", () => {
+  const columns = boardColumns(statusField);
+  test("the empty column is hidden while it has no cards", () => {
+    const grouped = groupByColumn(statusField, columns, [record("a", { status: "Todo" })]);
+    expect(shownBoardColumns(columns, grouped).map((c) => c.id)).toEqual(["v:Todo", "v:In progress", "v:Done"]);
+  });
+  test("a non-empty empty column is shown, last", () => {
+    const grouped = groupByColumn(statusField, columns, [record("a", {}), record("b", { status: "Done" })]);
+    expect(shownBoardColumns(columns, grouped).map((c) => c.id)).toEqual(["v:Todo", "v:In progress", "v:Done", "empty"]);
+  });
+  test("option-based columns keep their order", () => {
+    const targets = [{ id: "p1", label: "Ann" }, { id: "p2", label: "Bo" }];
+    const refs = boardColumns(assigneeField, targets);
+    const grouped = groupByColumn(assigneeField, refs, []);
+    expect(shownBoardColumns(refs, grouped).map((c) => c.id)).toEqual(refs.filter((c) => c.kind !== "empty").map((c) => c.id));
+  });
+});
+
 describe("boardColumnCounts", () => {
   test("every column's count, then other last only when present", () => {
     const columns = boardColumns(statusField);
     const grouped = groupByColumn(statusField, columns, [record("a", { status: "Todo" }), record("b", { status: "Weird" })]);
     expect(boardColumnCounts(columns, grouped)).toEqual([
-      { id: "empty", count: 0 },
       { id: "v:Todo", count: 1 },
       { id: "v:In progress", count: 0 },
       { id: "v:Done", count: 0 },
+      { id: "empty", count: 0 },
       { id: "other", count: 1 },
     ]);
   });

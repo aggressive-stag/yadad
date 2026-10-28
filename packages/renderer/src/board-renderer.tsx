@@ -1,6 +1,6 @@
 import { AdapterError, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
 import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { BOARD_OTHER_LABEL, bindFilter, bindingValues, boardColumns, boardGroupField, boardRecordColumns, canEditField, canMoveColumn, groupByColumn, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
+import { BOARD_OTHER_LABEL, bindFilter, bindingValues, boardColumns, boardGroupField, boardRecordColumns, canEditField, canMoveColumn, groupByColumn, shownBoardColumns, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
 import type { BoardColumnDef, BoardLoad } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -454,7 +454,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
       };
     });
   const columns: BoardColumn<ReactNode>[] = [
-    ...columnDefs.map((def): BoardColumn<ReactNode> => ({ id: def.id, label: def.label, ...(def.color === undefined ? {} : { color: def.color }), count: grouped.get(def.id)?.length ?? 0, droppable: true, cards: cardsOf(def.id) })),
+    ...shownBoardColumns(columnDefs, grouped).map((def): BoardColumn<ReactNode> => ({ id: def.id, label: def.label, ...(def.color === undefined ? {} : { color: def.color }), count: grouped.get(def.id)?.length ?? 0, droppable: true, cards: cardsOf(def.id) })),
     ...(hasOther
       ? [{ id: OTHER_COLUMN_DEF.id, label: OTHER_COLUMN_DEF.label, count: grouped.get(OTHER_COLUMN_DEF.id)?.length ?? 0, droppable: false, cards: cardsOf(OTHER_COLUMN_DEF.id) }]
       : []),

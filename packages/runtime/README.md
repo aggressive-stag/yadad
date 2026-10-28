@@ -2,6 +2,8 @@
 
 Headless state and logic for yadad: form state and submission, condition evaluation, record validation, JSON Patch, drafts, and the `DataAdapter` implementations. No React, no DOM; it depends only on `@yadad/core`, so the same logic runs in tests or on a server.
 
+A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
+
 ```sh
 npm install @yadad/runtime @yadad/core
 ```

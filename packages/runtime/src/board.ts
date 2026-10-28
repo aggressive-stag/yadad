@@ -85,7 +85,7 @@ export function boardColumns(field: Field, targets?: readonly ReferenceOption[])
   if (field.type === "select") {
     // RFC 0008 item 5: columns carry the option's label (defaulting to its value) and its swatch colour.
     const columns = field.options.values.map((o): BoardColumnDef => { const value = optionValue(o); const color = optionColor(o); return { id: `v:${value}`, kind: "value", label: optionLabel(o), value, ...(color === undefined ? {} : { color }) }; });
-    return field.required === true ? columns : [emptyColumn(field), ...columns];
+    return field.required === true ? columns : [...columns, emptyColumn(field)];
   }
   if (field.type === "boolean") {
     return [
@@ -96,7 +96,7 @@ export function boardColumns(field: Field, targets?: readonly ReferenceOption[])
   if (field.type === "reference") {
     if (!targets) return [];
     const columns = targets.map((option): BoardColumnDef => ({ id: `v:${option.id}`, kind: "value", label: option.label, value: option.id }));
-    return field.required === true ? columns : [emptyColumn(field), ...columns];
+    return field.required === true ? columns : [...columns, emptyColumn(field)];
   }
   return [];
 }
@@ -121,6 +121,15 @@ export function groupByColumn(field: Field, columns: readonly BoardColumnDef[], 
   }
   if (other.length > 0) map.set(OTHER_COLUMN.id, other);
   return map;
+}
+
+/**
+ * The columns to show: the "empty" (no value) column is last and hidden while it
+ * has no cards. It stays a column of the grouping, so `groupByColumn` and the
+ * drop targets are unchanged; only the display drops it.
+ */
+export function shownBoardColumns(columns: readonly BoardColumnDef[], grouped: ReadonlyMap<string, readonly DataRecord[]>): BoardColumnDef[] {
+  return columns.filter((c) => c.kind !== "empty" || (grouped.get(c.id)?.length ?? 0) > 0);
 }
 
 /** The number of loaded cards in each column: every given column, then "other" last when present. */
@@ -250,7 +259,7 @@ export function boardRecordColumns(field: ReferenceField, records: readonly Data
     if (seen.length >= BOARD_MAX_COLUMNS) break;
   }
   const columns = seen.map((id): BoardColumnDef => ({ id: `v:${id}`, kind: "value", label: label(id), value: id }));
-  return field.required === true ? columns : [emptyColumn(field), ...columns];
+  return field.required === true ? columns : [...columns, emptyColumn(field)];
 }
 
 // --- moving a card ---
