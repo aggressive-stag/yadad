@@ -2,6 +2,15 @@
 
 > **Upgrade notes (0.12 and 0.13.1).** Hand-written `checkViewStates` drivers must pass `state.render.savedFilter` to `TableRenderer`'s `savedFilter` (and the other `state.render` keys the README lists), or the `saved-filter` check fails. Since runtime 0.14.1, states skipped silently before (labelled select values, entities with a `readOnly` value) are generated and checked, so expect new failures that are real. A `readOnly` field keeps its `field:<id>` axis only when a view condition references it. The calendar `done-missing` check respects `maxEntriesPerDay`. See "Upgrading hand-written drivers" in the README.
 
+## 0.15.3
+
+### Patch Changes
+
+- 38a8b74: The board's hidden empty no-value column stays reachable. The renderer now passes it as the new optional `BoardProps.hiddenColumns` (editable boards with a non-required grouping field only). A component that honours it lists it in "Move to…" and shows it as a drop target while a card is dragged; one that ignores it behaves as before. `@yadad/testing`'s mock board lists it in "Move to…".
+- Updated dependencies [38a8b74]
+  - @yadad/core@0.17.1
+  - @yadad/runtime@0.18.1
+
 ## 0.15.2
 
 ### Patch Changes
