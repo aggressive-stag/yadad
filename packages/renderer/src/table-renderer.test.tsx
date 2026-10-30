@@ -4,7 +4,7 @@ import type { DataAdapter, EntityDocument, FormView, TableView } from "@yadad/co
 import type { DocumentSet } from "./document-set.js";
 import { createDraftStore, createMemoryAdapter } from "@yadad/runtime";
 import type { DraftStorage, DraftStore } from "@yadad/runtime";
-import { mockRegistry, waitForRows } from "@yadad/testing";
+import { mockRegistry, waitForRows, waitForSettled } from "@yadad/testing";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TableRenderer } from "./table-renderer.js";
 
@@ -316,6 +316,7 @@ describe("table drafts", () => {
     await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeTruthy());
     fireEvent.click(within(firstRow()).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(storage.data.get(`yadad:draft:sets:${id}`)).toBeUndefined());
+    await waitForSettled(); // the Save fires a reload; let it land before remounting or its commit races the Edit click
 
     await remount();
     fireEvent.click(within(firstRow()).getByRole("button", { name: "Edit" }));
