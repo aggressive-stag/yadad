@@ -111,7 +111,7 @@ export interface RecordActions {
    * function when the save has settled, before the view's own state update. The focus-return effect then
    * puts focus back on the same record's control in the rebuilt view (or leaves it alone when the record is gone).
    */
-  readonly holdFocus: (record: DataRecord, options?: { readonly moved?: boolean }) => (saved?: DataRecord) => void;
+  readonly holdFocus: (record: DataRecord, options?: { readonly moved?: boolean; readonly landing?: () => HTMLElement | null }) => (saved?: DataRecord) => void;
 }
 
 /** The open dialog: the record, the action, what has been typed, what was refused, whether act is in flight. */
@@ -195,6 +195,8 @@ export function useRecordActions(options: {
     readonly scopeUp: number | undefined; // levels from the record's title up to the element holding the record and the pressed control
     readonly panelToken: string | undefined; // the pressed control sat in a panel marked with this token; its trigger carries the same one
     readonly moved: boolean; // the viewer moved the record on purpose: focus follows it to its new place
+    /** The view's landing spot for a record that moved out of sight (card 58b item 7, a calendar behind "+N more"): re-asked each retry, returns a control to focus, or null for none. */
+    readonly landing: (() => HTMLElement | null) | undefined;
     focused: HTMLElement | undefined; // the last node this effect focused, awaiting confirmation
     watchUntil: number | undefined; // set once a restore survived a render: the restore stays armed until then, for a later rebuild
     attempts: number; // renders spent retrying; bounds the retry window
@@ -320,7 +322,7 @@ export function useRecordActions(options: {
     };
     const target: HTMLElement | null = held.element.isConnected
       ? held.element
-      : (live ?? (keptPlace && !held.moved ? replacement(held.chain, held.text) : null) ?? byId());
+      : (live ?? (keptPlace && !held.moved ? replacement(held.chain, held.text) : null) ?? byId() ?? held.landing?.() ?? null);
     if (target !== null && (target as HTMLButtonElement).disabled !== true) {
       target.focus();
       held.focused = target;
@@ -330,11 +332,11 @@ export function useRecordActions(options: {
   });
 
   /** The focused control as a restore target for `record`, or undefined when focus is not on a real control. */
-  const capture = (record: DataRecord, moved = false): NonNullable<typeof pressed.current> | undefined => {
+  const capture = (record: DataRecord, moved = false, landing?: () => HTMLElement | null): NonNullable<typeof pressed.current> | undefined => {
     const el = document.activeElement;
     if (!(el instanceof HTMLElement) || el === document.body) return undefined;
     const selector = el instanceof HTMLInputElement ? `input[type="${el.type}"]:not([disabled])` : `${el.tagName.toLowerCase()}:not([disabled])`;
-    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), scopeUp: recordScope(viewKey, record.id, el)?.up, moved, panelToken: el.closest(`[${TRIGGER_ATTR}]`)?.getAttribute(TRIGGER_ATTR) ?? undefined, focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
+    return { recordId: record.id, element: el, parent: el.parentElement, selector, chain: ancestry(el), text: el.textContent ?? "", place: shown.current.get(record.id), scopeUp: recordScope(viewKey, record.id, el)?.up, moved, landing, panelToken: el.closest(`[${TRIGGER_ATTR}]`)?.getAttribute(TRIGGER_ATTR) ?? undefined, focused: undefined, watchUntil: undefined, attempts: 0, ended: false };
   };
 
   /** An id is opaque: a save may answer with the record under a new id (a derived record whose id holds the moved value). Focus follows that id, and only that one. */
@@ -345,8 +347,8 @@ export function useRecordActions(options: {
     flights.current.add(saved.id);
   };
 
-  const holdFocus = (record: DataRecord, options?: { readonly moved?: boolean }): ((saved?: DataRecord) => void) => {
-    const held = capture(record, options?.moved === true);
+  const holdFocus = (record: DataRecord, options?: { readonly moved?: boolean; readonly landing?: () => HTMLElement | null }): ((saved?: DataRecord) => void) => {
+    const held = capture(record, options?.moved === true, options?.landing);
     if (held === undefined) return () => {};
     pressed.current = held;
     flights.current.add(record.id);

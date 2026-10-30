@@ -450,7 +450,18 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     inFlight.current.add(recordId);
     setErrors([]);
     setPending((p) => new Map(p).set(recordId, day));
-    const endHold = recordActions.holdFocus(record, { moved: true }); // a deliberate move: focus follows the entry to its new day
+    const endHold = recordActions.holdFocus(record, {
+      moved: true, // a deliberate move: focus follows the entry to its new day
+      // Card 58b item 7: a day at `maxEntriesPerDay` hides the moved entry behind "+N more", so no control of
+      // it survives the reload and focus would drop to body. The overflow button of the target day is the
+      // useful landing spot (it reveals the entry); the day cell itself is the fallback. The component marks
+      // both (`data-part="day"` / `data-part="overflow"`); a registry whose calendar marks neither is left alone.
+      landing: () => {
+        const cell = viewRef.current?.querySelector<HTMLElement>(`[data-part="day"][data-date="${day}"]`);
+        if (cell === null || cell === undefined) return null;
+        return cell.querySelector<HTMLElement>('[data-part="overflow"]') ?? (cell.tabIndex >= 0 ? cell : null);
+      },
+    }); // a deliberate move: focus follows the entry to its new day
     const settle = (saved?: DataRecord): void => {
       endHold(saved);
       inFlight.current.delete(recordId);

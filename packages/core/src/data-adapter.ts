@@ -183,6 +183,15 @@ export class ForbiddenError extends AdapterError {
 /** Injected by the host and looked up by a view's `dataSource` key. */
 export interface DataAdapter {
   find(entity: string, query: Query): Promise<Page<DataRecord>>;
+  /**
+   * Read one record by id. This is **the label path for reference fields**: the
+   * renderer resolves a reference cell's label with one `findOne` per distinct
+   * id (runtime's `resolveReferenceLabels`), because the query model filters on
+   * field values, never on record ids — `find` with a condition cannot express
+   * "the record whose id is X". An adapter that leaves this out shows
+   * "Unknown" in every reference cell; implement it even when the backing store
+   * only has a list route (fetch the page and pick the id).
+   */
   findOne(entity: string, id: string): Promise<DataRecord | null>;
   create(entity: string, values: RecordValues, meta: WriteMeta): Promise<DataRecord>;
   /**

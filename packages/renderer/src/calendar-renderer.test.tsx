@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ForbiddenError, RecordValidationError } from "@yadad/core";
-import type { CalendarView, DashboardView, DataAdapter, EntityDocument, Query, Registry, TableView } from "@yadad/core";
+import type { CalendarProps, CalendarView, DashboardView, DataAdapter, EntityDocument, Query, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry, waitForRows } from "@yadad/testing";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CalendarRenderer } from "./calendar-renderer.js";
 import type { CalendarRendererProps } from "./calendar-renderer.js";
@@ -714,6 +715,121 @@ describe("RFC 0008 surfaces (card 47e)", () => {
       await waitFor(() => expect(status()).toMatch(/^Could not update Pay rent/));
       await waitFor(() => expect(document.activeElement).toBe(boxOf()));
       expect((document.activeElement as HTMLInputElement).checked).toBe(false);
+    });
+  });
+
+  // Card 58b item 7: a move into a day that is at `maxEntriesPerDay` hides the moved entry behind
+  // "+N more" — no control of it survives the reload, and focus used to land on body (a consumer found
+  // this on renderer 0.18.7 / components 0.37.1). The renderer now lands focus on the target day's
+  // overflow button. The mock registry's Calendar has no day-cell marks, so this describe uses one that
+  // mirrors the published component 0.37.1: `data-part="day"` + `tabIndex={-1}` on the gridcell and
+  // `data-part="overflow"` on the "+N more" button.
+  describe("a move into a full day (card 58b item 7)", () => {
+    function OverflowCalendar(props: CalendarProps<ReactNode>): ReactNode {
+      const [moving, setMoving] = useState<string | undefined>(undefined);
+      const [target, setTarget] = useState("");
+      return (
+        <div data-yadad="calendar" role="grid">
+          <div role="row">
+            {props.days.map((day) => (
+              <div key={day.date} role="gridcell" aria-label={day.label} data-part="day" data-date={day.date} tabIndex={-1}>
+                <ul>
+                  {(day.overflow === undefined ? day.entries : day.entries.slice(0, day.overflow.shown)).map((entry) => (
+                    <li key={entry.id} data-testid={`entry-${entry.id}`} data-pending={entry.pending}>
+                      {entry.content}
+                      {props.onMove !== undefined && entry.movable && (
+                        <button type="button" aria-label={`Move to day… ${entry.label}`} onClick={() => { setTarget(day.date); setMoving(entry.id); }}>
+                          Move to day…
+                        </button>
+                      )}
+                      {props.onMove !== undefined && moving === entry.id && (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (target !== "") props.onMove?.(entry.id, target);
+                            setMoving(undefined);
+                          }}
+                        >
+                          <input type="date" autoFocus value={target} onChange={(e) => setTarget(e.target.value)} />
+                          <button type="submit">Move</button>
+                        </form>
+                      )}
+                    </li>
+                  ))}
+                  {day.overflow !== undefined && (
+                    <li>
+                      <button type="button" data-part="overflow">{`+${day.overflow.hidden} more`}</button>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <div role="status" aria-live="polite" data-testid="calendar-status">{props.announcement?.text}</div>
+        </div>
+      );
+    }
+
+    test("focus lands on the target day's \"+N more\" instead of dropping to body", async () => {
+      // 2026-10-20 already holds Book flights + three fillers (cap 3). The moved entry is the fifth; the
+      // server's order keeps it last on the day (a consumer's sort — the memory adapter surfaces a fresh
+      // save first), so it sits behind the overflow with no focusable control of its own.
+      const seeded = await seed([
+        { title: "Filler one", due: "2026-10-20", list: "Home" },
+        { title: "Filler two", due: "2026-10-20", list: "Home" },
+        { title: "Filler three", due: "2026-10-20", list: "Home" },
+        { title: "Late one", due: "2026-10-15", list: "Work" },
+      ]);
+      const lateId = seeded.ids["Late one"]!;
+      const adapter: DataAdapter = {
+        ...seeded.db,
+        async find(findEntity, query) {
+          const page = await seeded.db.find(findEntity, query);
+          return { ...page, items: [...page.items].sort((a, b) => (a.id === lateId ? 1 : 0) - (b.id === lateId ? 1 : 0)) };
+        },
+      };
+      const view = { ...calendar, maxEntriesPerDay: 3 };
+      render(
+        <CalendarRenderer
+          entity={entity}
+          view={view}
+          registry={{ ...mockRegistry, layout: { ...mockRegistry.layout, Calendar: OverflowCalendar } }}
+          dataSources={new Map([["default", adapter]])}
+          documents={{ entities: new Map([[entity.id, entity]]), views: new Map<string, CalendarView>([[view.id, view]]) }}
+          now={NOW}
+        />,
+      );
+      await waitForRows(document.body);
+      fireEvent.click(screen.getByRole("button", { name: /^Move to day… Late one/ }));
+      fireEvent.change(document.querySelector<HTMLInputElement>('input[type="date"]')!, { target: { value: "2026-10-20" } });
+      fireEvent.click(screen.getByRole("button", { name: "Move" }));
+      await waitFor(() => expect(status()).toMatch(/^Moved Late one/));
+      // The entry is hidden behind the overflow (no control of it on the day): before card 58b, focus dropped to body here.
+      await waitFor(() => expect(screen.queryByRole("button", { name: /^Move to day… Late one/ })).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(document.querySelector('[data-date="2026-10-20"] [data-part="overflow"]')));
+    });
+
+    test("a move to a day with room still returns focus to the moved entry, not the overflow", async () => {
+      const seeded = await seed();
+      const view = { ...calendar, maxEntriesPerDay: 3 };
+      render(
+        <CalendarRenderer
+          entity={entity}
+          view={view}
+          registry={{ ...mockRegistry, layout: { ...mockRegistry.layout, Calendar: OverflowCalendar } }}
+          dataSources={new Map([["default", seeded.db]])}
+          documents={{ entities: new Map([[entity.id, entity]]), views: new Map<string, CalendarView>([[view.id, view]]) }}
+          now={NOW}
+        />,
+      );
+      await waitForRows(document.body);
+      fireEvent.click(screen.getByRole("button", { name: /^Move to day… Book flights/ }));
+      fireEvent.change(document.querySelector<HTMLInputElement>('input[type="date"]')!, { target: { value: "2026-10-16" } });
+      fireEvent.click(screen.getByRole("button", { name: "Move" }));
+      await waitFor(() => expect(status()).toMatch(/^Moved Book flights/));
+      // The entry landed in the open: focus follows it (its own control), and the overflow of that day — there is none — is not involved.
+      await waitFor(() => expect(document.activeElement?.closest('[data-date="2026-10-16"]')).toBeTruthy());
+      expect(document.querySelector('[data-date="2026-10-16"] [data-part="overflow"]')).toBeNull();
     });
   });
 
