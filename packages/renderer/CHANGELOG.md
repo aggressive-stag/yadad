@@ -1,5 +1,12 @@
 # @yadad/renderer
 
+## 0.18.10
+
+### Patch Changes
+
+- Updated dependencies [2b914a0]
+  - @yadad/runtime@0.19.0
+
 ## 0.18.9
 
 ### Patch Changes
