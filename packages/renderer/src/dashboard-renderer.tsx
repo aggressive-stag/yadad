@@ -52,6 +52,14 @@ export interface DashboardRendererProps {
   /** The viewer's locale and zone for datetime fields (RFC 0007), passed to every embedded view; absent, the environment's. */
   readonly formatting?: FieldFormatting;
   /**
+   * The clock for "today" and relative dates, passed unchanged to every embedded
+   * view that reads one (calendar, board). Absent, each view uses the current
+   * time. A host that renders a saved document at a fixed moment — a states
+   * preview, a test with dated fixtures — pins it here so "today" cannot drift
+   * under the document.
+   */
+  readonly now?: Date;
+  /**
    * The tab selected on the first render. Only the first render reads it:
    * after that the viewer's choice wins. An id that names no tab, or a tab
    * this viewer may not see, falls back to the first visible tab. This is
@@ -111,7 +119,7 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number | undefined] {
  * full-width column in reading order. Saving a form anywhere on the
  * dashboard reloads its tables, counts and stats.
  */
-export function DashboardRenderer({ dashboard: dashboardProp, documents: documentsProp, registry, dataSources: dataSourcesProp, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, initialTab, tab: tabProp, onTabChange, drills: drillsProp, onDrillChange }: DashboardRendererProps): ReactNode {
+export function DashboardRenderer({ dashboard: dashboardProp, documents: documentsProp, registry, dataSources: dataSourcesProp, stackBelow = DEFAULT_STACK_BELOW, drafts, viewer: viewerProp, formatting, now, initialTab, tab: tabProp, onTabChange, drills: drillsProp, onDrillChange }: DashboardRendererProps): ReactNode {
   const dashboard = useContentStable(dashboardProp);
   const documents = useContentStable(documentsProp);
   const dataSources = useContentStable(dataSourcesProp);
@@ -172,11 +180,11 @@ export function DashboardRenderer({ dashboard: dashboardProp, documents: documen
       return <TableRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} {...(drafts !== undefined ? { drafts } : {})} {...drillProps(item.id)} />;
     }
     if (view.kind === "calendar") {
-      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;
+      return <CalendarRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} {...(now ? { now } : {})} onChanged={bump} />;
     }
     if (view.kind === "board") {
       // The group-by choice is uncontrolled inside a cell (RFC 0005).
-      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} onChanged={bump} />;
+      return <BoardRenderer entity={entity} view={view} registry={registry} dataSources={dataSources} entities={documents.entities} documents={documents} reloadKey={reloadKey} viewer={viewer} {...(formatting ? { formatting } : {})} {...(now ? { now } : {})} onChanged={bump} />;
     }
     return null;
   };

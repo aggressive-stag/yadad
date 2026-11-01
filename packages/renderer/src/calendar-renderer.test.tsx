@@ -430,7 +430,9 @@ describe("in a dashboard", () => {
 
   test("the view widget embeds a calendar", async () => {
     const { db } = await seed();
-    render(<DashboardRenderer dashboard={dashboard} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    // The fixtures are dated October 2026 and the calendar opens on "today", so the
+    // clock is pinned: unpinned, a real-November render shows an empty grid.
+    render(<DashboardRenderer dashboard={dashboard} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} now={NOW} />);
     expect(await screen.findByRole("region", { name: "Tasks" })).toBeTruthy();
     expect(screen.getAllByRole("gridcell")).toHaveLength(42);
   });
@@ -456,7 +458,7 @@ describe("in a dashboard", () => {
         },
       ],
     };
-    render(<DashboardRenderer dashboard={count} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} />);
+    render(<DashboardRenderer dashboard={count} documents={documents} registry={mockRegistry} dataSources={new Map([["default", db]])} now={NOW} />);
     await waitForRows(document.body);
     await waitFor(() => expect(screen.getByTestId("count").textContent).toContain("2"));
     moveTo("Book flights", "2026-10-15");
