@@ -1,5 +1,0 @@
----
-"@yadad/testing": minor
----
-
-New published surface: `@yadad/testing/focus-kit` — the record-action focus contract the harness never had. Five interaction shapes (direct action, panel action, dialog-from-panel, view-scoped lookup, id-changing move) plus the armed-until-data-lands / no-steal timing pair, each a `ContractCheck` whose problems read like `focus shape 2 (panel action): …`, mirroring `contract-kit`'s two-layer shape (`describeFocusContract` for vitest, `focusContractChecks` for any runner). Capability-gated like the registry contract: no panel in the registry yields zero panel checks, no `layout.Dialog` yields zero dialog checks — never a false failure. Host-injected `mount` keeps `testing` renderer-blind (depcruise-enforced); `withJsdomRemovalShim` ships the drop-to-body truth jsdom lacks so hosts never paste the shim themselves. The renderer's `focus-contract.test.tsx` is the first host (mock + two stub registries + an inert negative-control host that fails every shape it can). F18's ask, verbatim: "even a documented 'render, press, wait, read activeElement' helper in @yadad/testing would move most of this round's cost from adopter to vendor."

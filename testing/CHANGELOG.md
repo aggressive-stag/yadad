@@ -2,6 +2,12 @@
 
 > **Upgrade notes (0.12 and 0.13.1).** Hand-written `checkViewStates` drivers must pass `state.render.savedFilter` to `TableRenderer`'s `savedFilter` (and the other `state.render` keys the README lists), or the `saved-filter` check fails. Since runtime 0.14.1, states skipped silently before (labelled select values, entities with a `readOnly` value) are generated and checked, so expect new failures that are real. A `readOnly` field keeps its `field:<id>` axis only when a view condition references it. The calendar `done-missing` check respects `maxEntriesPerDay`. See "Upgrading hand-written drivers" in the README.
 
+## 0.16.0
+
+### Minor Changes
+
+- 22fc799: New published surface: `@yadad/testing/focus-kit` — the record-action focus contract the harness never had. Five interaction shapes (direct action, panel action, dialog-from-panel, view-scoped lookup, id-changing move) plus the armed-until-data-lands / no-steal timing pair, each a `ContractCheck` whose problems read like `focus shape 2 (panel action): …`, mirroring `contract-kit`'s two-layer shape (`describeFocusContract` for vitest, `focusContractChecks` for any runner). Capability-gated like the registry contract: no panel in the registry yields zero panel checks, no `layout.Dialog` yields zero dialog checks — never a false failure. Host-injected `mount` keeps `testing` renderer-blind (depcruise-enforced); `withJsdomRemovalShim` ships the drop-to-body truth jsdom lacks so hosts never paste the shim themselves. The renderer's `focus-contract.test.tsx` is the first host (mock + two stub registries + an inert negative-control host that fails every shape it can). F18's ask, verbatim: "even a documented 'render, press, wait, read activeElement' helper in @yadad/testing would move most of this round's cost from adopter to vendor."
+
 ## 0.15.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @yadad/renderer
 
+## 0.18.8
+
+### Patch Changes
+
+- c8f250f: A calendar move into a day that is at `maxEntriesPerDay` now lands focus on that day's "+N more" button (or its day cell) instead of dropping it to `<body>`: the entry sits behind the overflow, so the restore had no control of the record left to hold.
+
 ## 0.18.7
 
 ### Patch Changes
