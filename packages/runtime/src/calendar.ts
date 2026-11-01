@@ -86,42 +86,59 @@ function weekStart(date: Ymd, weekStartsOn: number): Ymd {
 }
 
 function periodFirst(anchor: Ymd, mode: CalendarMode, weekStartsOn: number): Ymd {
-  return mode === "month" ? weekStart({ y: anchor.y, m: anchor.m, d: 1 }, weekStartsOn) : weekStart(anchor, weekStartsOn);
+  if (mode === "month") return weekStart({ y: anchor.y, m: anchor.m, d: 1 }, weekStartsOn);
+  if (mode === "week") return weekStart(anchor, weekStartsOn);
+  // RFC 0004 amendment: a rolling "<n>day" period starts at the anchor.
+  return anchor;
+}
+
+/**
+ * The number of days (grid columns) a mode shows: 42 for a month, 7 for a
+ * week, n for a rolling "<n>day" (RFC 0004 amendment, 2026-10-31).
+ */
+export function periodLength(mode: CalendarMode): number {
+  if (mode === "month") return 42;
+  if (mode === "week") return 7;
+  return Number(mode.slice(0, -3));
 }
 
 /**
  * The days a grid shows. Month: always 42 days (six whole weeks) from the
  * `weekStartsOn` day on or before the 1st of the anchor's month, so the grid
  * keeps its height; days outside the month have `inMonth: false`. Week: the 7
- * days from the `weekStartsOn` day on or before the anchor. `today` is a
- * "YYYY-MM-DD" (see `calendarToday`).
+ * days from the `weekStartsOn` day on or before the anchor. A rolling
+ * "<n>day" (RFC 0004 amendment): n consecutive days from the anchor, all
+ * `inMonth: true`. `today` is a "YYYY-MM-DD" (see `calendarToday`).
  */
 export function visibleDays(anchor: string, mode: CalendarMode, weekStartsOn: number, today: string): CalendarDay[] {
   checkWeekStart(weekStartsOn);
   const a = parseDate(anchor);
   parseDate(today);
-  const count = mode === "month" ? 42 : 7;
+  const count = periodLength(mode);
   const first = periodFirst(a, mode, weekStartsOn);
   const days: CalendarDay[] = [];
   for (let i = 0; i < count; i++) {
     const day = addDays(first, i);
     const date = format(day);
-    days.push({ date, dayOfMonth: day.d, weekday: weekdayOf(day), inMonth: mode === "week" || (day.y === a.y && day.m === a.m), isToday: date === today });
+    // RFC 0004 amendment: a rolling period is not a window into a month — inMonth is always true, as for week.
+    days.push({ date, dayOfMonth: day.d, weekday: weekdayOf(day), inMonth: mode !== "month" || (day.y === a.y && day.m === a.m), isToday: date === today });
   }
   return days;
 }
 
-/** The first and last of the visible days. A month range includes the leading and trailing days. */
+/** The first and last of the visible days. A month range includes the leading and trailing days; a rolling period spans exactly n. */
 export function visibleRange(anchor: string, mode: CalendarMode, weekStartsOn: number): DateRange {
   checkWeekStart(weekStartsOn);
   const first = periodFirst(parseDate(anchor), mode, weekStartsOn);
-  return { first: format(first), last: format(addDays(first, (mode === "month" ? 42 : 7) - 1)) };
+  return { first: format(first), last: format(addDays(first, periodLength(mode) - 1)) };
 }
 
-/** Month: the 1st of the previous or next month. Week: 7 days earlier or later. */
+/** Month: the 1st of the previous or next month. Week: 7 days earlier or later. A rolling "<n>day": n days earlier or later (RFC 0004 amendment). */
 export function shiftAnchor(anchor: string, mode: CalendarMode, direction: -1 | 1): string {
   const a = parseDate(anchor);
   if (mode === "week") return format(addDays(a, direction * 7));
+  // RFC 0004 amendment: a rolling period steps by its own length.
+  if (mode !== "month") return format(addDays(a, direction * periodLength(mode)));
   const index = a.y * 12 + (a.m - 1) + direction;
   return format({ y: Math.floor(index / 12), m: (index % 12) + 1, d: 1 });
 }
@@ -137,28 +154,35 @@ const part = (date: Ymd, locale: string | undefined, options: Intl.DateTimeForma
   new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" }).format(new Date(utcMs(date)));
 
 /**
- * The heading for a period: "October 2026" for a month; for a week
- * "5 to 11 October 2026", naming both months (and both years) when it spans them.
+ * The heading for a period: "October 2026" for a month; for a week or a
+ * rolling "<n>day" the range label — "5 to 11 October 2026", "3 to 5
+ * November 2026" — naming both months (and both years) when it spans them.
  */
 export function periodTitle(anchor: string, mode: CalendarMode, weekStartsOn: number, locale?: string): string {
   checkWeekStart(weekStartsOn);
   const a = parseDate(anchor);
   if (mode === "month") return `${part(a, locale, { month: "long" })} ${part(a, locale, { year: "numeric" })}`;
-  const first = periodFirst(a, "week", weekStartsOn);
-  const last = addDays(first, 6);
+  // RFC 0004 amendment: a rolling period is titled with the same range label as a week ("3 to 5 November 2026").
+  const first = periodFirst(a, mode, weekStartsOn);
+  const last = addDays(first, periodLength(mode) - 1);
   const day = (d: Ymd): string => part(d, locale, { day: "numeric" });
   const month = (d: Ymd): string => part(d, locale, { month: "long" });
   const year = (d: Ymd): string => part(d, locale, { year: "numeric" });
+  if (first.y === last.y && first.m === last.m && first.d === last.d) return `${day(first)} ${month(last)} ${year(last)}`; // a "1day" period is one date, not a span
   if (first.y !== last.y) return `${day(first)} ${month(first)} ${year(first)} to ${day(last)} ${month(last)} ${year(last)}`;
   if (first.m !== last.m) return `${day(first)} ${month(first)} to ${day(last)} ${month(last)} ${year(last)}`;
   return `${day(first)} to ${day(last)} ${month(last)} ${year(last)}`;
 }
 
 /** Column headings starting at `weekStartsOn`: a short ("Mon") and a long ("Monday") form. */
-export function weekdayLabels(weekStartsOn: number, locale?: string): { short: string; long: string }[] {
+export function weekdayLabels(weekStartsOn: number, locale?: string, days?: number): { short: string; long: string }[] {
   checkWeekStart(weekStartsOn);
+  // RFC 0004 amendment: `days` labels one grid column each (a rolling "<n>day" shows n);
+  // absent means the seven columns of month/week, starting at weekStartsOn.
+  const count = days ?? 7;
+  if (!Number.isInteger(count) || count < 1 || count > 42) throw new RangeError(`days must be an integer from 1 to 42, got ${days}`);
   const sunday = { y: 2023, m: 1, d: 1 }; // a Sunday
-  return Array.from({ length: 7 }, (_, i) => {
+  return Array.from({ length: count }, (_, i) => {
     const day = addDays(sunday, (weekStartsOn + i) % 7);
     return { short: part(day, locale, { weekday: "short" }), long: part(day, locale, { weekday: "long" }) };
   });

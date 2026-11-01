@@ -117,6 +117,48 @@ describe("visibleDays and visibleRange", () => {
     ]);
   });
 
+  test("rolling <n>day (RFC 0004 amendment): n consecutive days from the anchor, all inMonth", () => {
+    // 2026-11-05 is a Thursday; a 3-day period is Thu-Fri-Sat, no week alignment.
+    expect(dates(visibleDays("2026-11-05", "3day", 1, "2026-11-05"))).toEqual(["2026-11-05", "2026-11-06", "2026-11-07"]);
+    expect(dates(visibleDays("2026-11-05", "5day", 0, "2026-11-05"))).toEqual(["2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"]);
+    expect(dates(visibleDays("2026-11-05", "1day", 1, "2026-11-06"))).toEqual(["2026-11-05"]);
+    expect(dates(visibleDays("2026-11-05", "6day", 1, "2026-11-05"))).toHaveLength(6);
+    // inMonth is true for every day even when the period leaves the anchor's month,
+    // exactly as for week — a rolling period is not a window into a month.
+    const crossing = visibleDays("2026-10-30", "3day", 1, "2026-11-01");
+    expect(dates(crossing)).toEqual(["2026-10-30", "2026-10-31", "2026-11-01"]);
+    expect(crossing.every((d) => d.inMonth)).toBe(true);
+    expect(crossing.find((d) => d.date === "2026-11-01")?.isToday).toBe(true);
+    expect(visibleDays("2026-11-05", "3day", 1, "2026-11-05").every((d) => d.inMonth)).toBe(true);
+  });
+
+  test("rolling <n>day: range and shift (prev/next by n, Today re-anchors via the caller)", () => {
+    expect(visibleRange("2026-11-05", "3day", 1)).toEqual({ first: "2026-11-05", last: "2026-11-07" });
+    expect(visibleRange("2026-12-30", "5day", 1)).toEqual({ first: "2026-12-30", last: "2027-01-03" }); // across the year
+    expect(shiftAnchor("2026-11-05", "3day", 1)).toBe("2026-11-08");
+    expect(shiftAnchor("2026-11-08", "3day", -1)).toBe("2026-11-05"); // stepping back returns to the anchor
+    expect(shiftAnchor("2026-11-05", "5day", 1)).toBe("2026-11-10");
+    expect(shiftAnchor("2026-11-01", "1day", 1)).toBe("2026-11-02");
+    // month and week are untouched
+    expect(shiftAnchor("2026-10-15", "month", 1)).toBe("2026-11-01");
+    expect(shiftAnchor("2026-10-15", "week", 1)).toBe("2026-10-22");
+  });
+
+  test("the math supports what the renderer's anchor does (card 45c): Today re-anchors, switching modes keeps the anchor", () => {
+    // Today re-anchors: the renderer sets the anchor to calendarToday() and the
+    // family starts the period on that date (1day shows only today).
+    const today = calendarToday(new Date(2026, 10, 5)); // "2026-11-05", a Thursday
+    expect(dates(visibleDays(today, "1day", 1, today))).toEqual(["2026-11-05"]);
+    // Switching modes keeps the anchor: the same anchor string produces each
+    // mode's own period; nothing in the math stores or shifts it.
+    const anchor = "2026-11-05";
+    expect(dates(visibleDays(anchor, "3day", 1, today))).toEqual(["2026-11-05", "2026-11-06", "2026-11-07"]);
+    expect(visibleRange(anchor, "week", 1)).toEqual({ first: "2026-11-02", last: "2026-11-08" });
+    expect(visibleRange(anchor, "5day", 1)).toEqual({ first: "2026-11-05", last: "2026-11-09" });
+    // and stepping back from wherever prev went returns the anchor unchanged
+    expect(shiftAnchor(shiftAnchor(anchor, "3day", 1), "3day", -1)).toBe(anchor);
+  });
+
   test("a month grid crosses the year boundary", () => {
     expect(visibleRange("2026-12-10", "month", 1)).toEqual({ first: "2026-11-30", last: "2027-01-10" });
     expect(visibleRange("2027-01-10", "month", 1)).toEqual({ first: "2026-12-28", last: "2027-02-07" });
@@ -157,9 +199,21 @@ describe("today, titles and labels", () => {
     expect(periodTitle("2026-10-07", "week", 1, "en-GB")).toBe("5 to 11 October 2026");
     expect(periodTitle("2026-10-30", "week", 1, "en-GB")).toBe("26 October to 1 November 2026");
     expect(periodTitle("2026-12-31", "week", 1, "en-GB")).toBe("28 December 2026 to 3 January 2027");
+    // RFC 0004 amendment: a rolling period uses the same range label as a week.
+    expect(periodTitle("2026-11-03", "3day", 1, "en-GB")).toBe("3 to 5 November 2026");
+    expect(periodTitle("2026-10-30", "3day", 1, "en-GB")).toBe("30 October to 1 November 2026");
+    expect(periodTitle("2026-12-30", "5day", 1, "en-GB")).toBe("30 December 2026 to 3 January 2027");
+    expect(periodTitle("2026-11-05", "1day", 1, "en-GB")).toBe("5 November 2026");
   });
   test("weekdayLabels start at weekStartsOn", () => {
     expect(weekdayLabels(1, "en-GB").map((d) => d.short)).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+    // RFC 0004 amendment: `days` labels one grid column each — a rolling "3day"
+    // anchored on a Thursday gets three labels, Thu Fri Sat (weekStartsOn 4 = Thursday).
+    expect(weekdayLabels(4, "en-GB", 3).map((d) => d.short)).toEqual(["Thu", "Fri", "Sat"]);
+    expect(weekdayLabels(4, "en-GB", 3).map((d) => d.long)).toEqual(["Thursday", "Friday", "Saturday"]);
+    expect(weekdayLabels(0, "en-GB", 1).map((d) => d.short)).toEqual(["Sun"]);
+    expect(() => weekdayLabels(1, "en-GB", 0)).toThrow(RangeError);
+    expect(() => weekdayLabels(1, "en-GB", 43)).toThrow(RangeError);
     expect(weekdayLabels(0, "en-GB")[0]).toEqual({ short: "Sun", long: "Sunday" });
   });
   test("dayLabel", () => {
@@ -218,6 +272,15 @@ describe("loadCalendarRange", () => {
     expect(load.records).toHaveLength(10);
     const days = load.records.map((r) => r.values["due"] as string);
     expect(days).toEqual([...days].sort());
+  });
+
+  test("a rolling <n>day range loads exactly its period (RFC 0004 amendment)", async () => {
+    // 2026-11-04 (Wed) through 11 seeded, one per day; the period is the three days 05-07.
+    const db = createMemoryAdapter({ fields: { task: ["title", "due", "list"] } });
+    for (let d = 4; d <= 11; d++) await db.create("task", { title: `t${d}`, due: `2026-11-${String(d).padStart(2, "0")}` }, { entityRevision: 4 });
+    const range = visibleRange("2026-11-05", "3day", 1);
+    const load = await loadCalendarRange(db, view, range);
+    expect(load.records.map((r) => r.values["due"])).toEqual(["2026-11-05", "2026-11-06", "2026-11-07"]);
   });
 
   test("the view filter narrows the range", async () => {
