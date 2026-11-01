@@ -16,6 +16,7 @@ import {
   setCalendarDefaultMode,
   setCalendarEditable,
   setCalendarFilter,
+  setCalendarListStart,
   setCalendarRowAction,
   setCalendarSort,
   setCalendarTitle,
@@ -148,6 +149,28 @@ describe("calendar modes", () => {
     expect(defaulted.ok).toBe(true);
     if (defaulted.ok) s = apply(s, defaulted);
     expect(s.current.modes).toEqual(["week", "month"]);
+  });
+
+  test("a rolling mode can be turned on and made the default (RFC 0004 amendment)", () => {
+    let s = startSession(view);
+    const on = toggleCalendarMode(s.current, "5day", true);
+    expect(on.ok).toBe(true);
+    if (on.ok) s = apply(s, on);
+    expect(s.current.modes).toEqual(["month", "week", "5day"]);
+    const defaulted = setCalendarDefaultMode(s.current, "5day");
+    expect(defaulted.ok).toBe(true);
+    if (defaulted.ok) s = apply(s, defaulted);
+    expect(s.current.modes).toEqual(["5day", "month", "week"]);
+  });
+});
+
+describe("calendar listStart (RFC 0004 amendment)", () => {
+  test("choosing today records the key; choosing the default removes it byte-identically", () => {
+    let s = startSession(view);
+    s = apply(s, setCalendarListStart(s.current, "today"));
+    expect(s.current.listStart).toBe("today");
+    s = apply(s, setCalendarListStart(s.current, "period"));
+    expect("listStart" in s.current).toBe(false);
   });
 });
 

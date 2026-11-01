@@ -1,5 +1,5 @@
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES_DEFAULT, FORM_ITEM_LABEL_MAX, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, NamedFilter, QuickFilterDefault, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_LIST_START_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES_DEFAULT, FORM_ITEM_LABEL_MAX, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
+import type { BoardView, CalendarListStart, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, NamedFilter, QuickFilterDefault, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
 // Patches for form and table views. Views are layout only: they reference
@@ -853,6 +853,15 @@ export function setCalendarFilter(view: CalendarView, condition: Condition | und
 /** Sets the entry order within a day to one key, or clears it (falls back to the title field, ascending). */
 export function setCalendarSort(view: CalendarView, sort: SortSpec | undefined): PatchOperation[] {
   return [guardCalendar(view), ...setOptional(view.sort !== undefined, "/sort", sort ? [{ field: sort.field, dir: sort.dir }] : undefined)];
+}
+
+/**
+ * Where the phone list starts (RFC 0004 amendment, card 61c). "period" is the
+ * default, so choosing it removes the key and leaves the document byte-identical
+ * to one that never set it.
+ */
+export function setCalendarListStart(view: CalendarView, listStart: CalendarListStart): PatchOperation[] {
+  return [guardCalendar(view), ...setOptional(view.listStart !== undefined, "/listStart", listStart === CALENDAR_LIST_START_DEFAULT ? undefined : (listStart as unknown as Json))];
 }
 
 /** Turns a period on or off in the viewer's switcher. Refuses to turn off the last one. (RFC 0004 amendment: card 61c — the absent-key default is month/week.) */

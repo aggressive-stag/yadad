@@ -1,5 +1,5 @@
-import type { CalendarMode, CalendarView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
-import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES_DEFAULT, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
+import type { CalendarListStart, CalendarMode, CalendarView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
+import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_LIST_START_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES_DEFAULT, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -28,6 +28,7 @@ import {
   setCalendarDoneField,
   setCalendarEditable,
   setCalendarFilter,
+  setCalendarListStart,
   setCalendarMaxEntriesPerDay,
   setCalendarRowAction,
   setCalendarEditableWhen,
@@ -68,6 +69,10 @@ const NO_COLOR = "(none)";
 const NO_DONE = "(none)";
 const DIRECTIONS = { Ascending: "asc", Descending: "desc" } as const;
 type DirectionLabel = keyof typeof DIRECTIONS;
+
+// RFC 0004 amendment (card 61c): the two-option listStart control. The labels
+// are what the select shows; the document stores "period" | "today".
+const LIST_START_LABELS: Record<CalendarListStart, string> = { period: "Start of period", today: "Today" };
 
 interface Settings {
   readonly title: string;
@@ -254,9 +259,12 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
   };
 
   // Modes: a non-empty subset of CALENDAR_MODES, in order; the first is the default.
-  // RFC 0004 amendment: card 61c — the absent-key default is month/week; the
-  // checkbox list grows to the <n>day family when the editor offers it.
+  // RFC 0004 amendment (card 61c): the checkbox list offers month/week plus the
+  // three rolling periods the owner asked for; the absent-key default stays
+  // month/week, so an untouched document is byte-identical.
   const modes = current.modes ?? CALENDAR_MODES_DEFAULT;
+  const MODE_CHOICES: readonly CalendarMode[] = [...CALENDAR_MODES_DEFAULT, "3day", "5day", "1day"];
+  const listStart = current.listStart ?? CALENDAR_LIST_START_DEFAULT;
   const toggleMode = (mode: CalendarMode) => run(toggleCalendarMode(current, mode, !modes.includes(mode)), () => announce(`${mode} ${modes.includes(mode) ? "turned off" : "turned on"}.`));
   const makeDefaultMode = (mode: CalendarMode) => run(setCalendarDefaultMode(current, mode), () => announce(`${mode} is now the default period.`));
 
@@ -369,7 +377,7 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
       <Section id={`${base}-modes`} title="Modes">
         <p>The periods the viewer can switch between; {modes[0]} is the default.</p>
         <div data-yadad-editor-toolbar="" style={toolbarStyle}>
-          {CALENDAR_MODES_DEFAULT.map((mode) => {
+          {MODE_CHOICES.map((mode) => {
             const on = modes.includes(mode);
             return (
               <span key={mode} style={{ display: "inline-flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>
@@ -378,6 +386,15 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
               </span>
             );
           })}
+        </div>
+        <div data-yadad-editor-toolbar="" style={toolbarStyle}>
+          {propertyInput(
+            registry,
+            `${base}-list-start`,
+            choiceField("list_start", "Phone list starts at", Object.values(LIST_START_LABELS)),
+            listStart === "period" ? LIST_START_LABELS.period : LIST_START_LABELS.today,
+            (v) => run(setCalendarListStart(current, v === LIST_START_LABELS.today ? "today" : "period"), () => announce(v === LIST_START_LABELS.today ? "Phone list starts at today." : "Phone list starts at the period.")),
+          )}
         </div>
       </Section>
       {context && (

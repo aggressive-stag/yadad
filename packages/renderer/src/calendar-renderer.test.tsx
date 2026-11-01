@@ -4,8 +4,9 @@ import { ForbiddenError, RecordValidationError } from "@yadad/core";
 import type { CalendarProps, CalendarView, DashboardView, DataAdapter, EntityDocument, Query, Registry, TableView } from "@yadad/core";
 import { createMemoryAdapter } from "@yadad/runtime";
 import { mockRegistry, waitForRows } from "@yadad/testing";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { useState } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CalendarRenderer } from "./calendar-renderer.js";
 import type { CalendarRendererProps } from "./calendar-renderer.js";
@@ -513,6 +514,148 @@ describe("calendar starting mode and anchor", () => {
     show({ initialMode: "week", initialAnchor: "not-a-date" }, { ...calendar, modes: ["month"] });
     await waitFor(() => expect(screen.getByRole("heading", { name: "October 2026" })).toBeTruthy());
     expect(screen.getAllByRole("gridcell")).toHaveLength(42);
+  });
+});
+
+describe("rolling N-day modes and listStart (RFC 0004 amendment, card 61c)", () => {
+  const fourModes: CalendarView = { ...calendar, modes: ["month", "week", "5day", "3day"] };
+
+  test("the switcher lists exactly the view's modes, in order, and switches through all four", async () => {
+    await open({ view: fourModes });
+    const group = screen.getByRole("group", { name: /navigation/i });
+    const switcher = [...group.querySelectorAll("button[aria-pressed]")].map((b) => b.textContent);
+    expect(switcher).toEqual(["Month", "Week", "5 days", "3 days"]);
+
+    // month: the October grid (42 cells), anchored on today
+    expect(document.querySelector<HTMLElement>("[data-mode]")?.dataset["mode"]).toBe("month");
+    expect(screen.getAllByRole("gridcell")).toHaveLength(42);
+
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    await waitFor(() => expect(document.querySelector<HTMLElement>("[data-mode]")?.dataset["mode"]).toBe("week"));
+    expect(screen.getAllByRole("gridcell")).toHaveLength(7);
+
+    fireEvent.click(screen.getByRole("button", { name: "3 days" }));
+    await waitFor(() => expect(document.querySelector<HTMLElement>("[data-mode]")?.dataset["mode"]).toBe("3day"));
+    // the anchor survives the mode switch: today (Thu 15) starts a rolling Thu-Fri-Sat
+    expect(screen.getAllByRole("gridcell")).toHaveLength(3);
+    expect(cell("2026-10-15") && cell("2026-10-16") && cell("2026-10-17")).toBeTruthy();
+    expect(cell("2026-10-18")).toBeNull();
+    expect(screen.getByRole("heading", { name: "15 to 17 October 2026" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "5 days" }));
+    await waitFor(() => expect(document.querySelector<HTMLElement>("[data-mode]")?.dataset["mode"]).toBe("5day"));
+    expect(screen.getAllByRole("gridcell")).toHaveLength(5);
+    expect(screen.getByRole("heading", { name: "15 to 19 October 2026" })).toBeTruthy();
+  });
+
+  test("each mode loads exactly its visible range through the adapter", async () => {
+    const seen: { gte?: string | undefined; lte?: string | undefined }[] = [];
+    const seeded = await seed();
+    const spy: DataAdapter = {
+      ...seeded.db,
+      find: (e, q) => {
+        const bounds = (c: unknown): { gte?: string | undefined; lte?: string | undefined } => {
+          const conds = (c as { conditions?: { op: string; value?: unknown }[] }).conditions ?? [];
+          return {
+            gte: conds.find((x) => x.op === "gte")?.value as string | undefined,
+            lte: conds.find((x) => x.op === "lte")?.value as string | undefined,
+          };
+        };
+        seen.push(bounds(q.filter));
+        return seeded.db.find(e, q);
+      },
+    };
+    await open({ view: fourModes, adapter: spy });
+    const last = () => seen[seen.length - 1];
+    expect(last()).toEqual({ gte: "2026-09-28", lte: "2026-11-08" }); // the month grid: 42 days from Mon 28 Sep (weekStartsOn 1)
+
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    await waitFor(() => expect(last()).toEqual({ gte: "2026-10-12", lte: "2026-10-18" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "3 days" }));
+    await waitFor(() => expect(last()).toEqual({ gte: "2026-10-15", lte: "2026-10-17" }));
+    // the rolling period shows only its own entries
+    expect(screen.getByText("Pay rent")).toBeTruthy();
+    expect(screen.queryByText("Book flights")).toBeNull(); // due 2026-10-20 is outside
+
+    fireEvent.click(screen.getByRole("button", { name: "5 days" }));
+    await waitFor(() => expect(last()).toEqual({ gte: "2026-10-15", lte: "2026-10-19" }));
+  });
+
+  test("prev/next step by n and Today re-anchors, per the RFC", async () => {
+    await open({ view: { ...calendar, modes: ["3day"] } });
+    expect(screen.getAllByRole("gridcell")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => expect(cell("2026-10-18")).toBeTruthy());
+    expect(cell("2026-10-20")).toBeTruthy(); // next period is 18-20
+    fireEvent.click(screen.getByRole("button", { name: /previous/i }));
+    fireEvent.click(screen.getByRole("button", { name: /previous/i }));
+    await waitFor(() => expect(cell("2026-10-12")).toBeTruthy()); // 15 -> 12
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    await waitFor(() => expect(cell("2026-10-15")).toBeTruthy()); // back to today's period
+  });
+
+  test("initialMode accepts any declared mode; weekdays are one per column", async () => {
+    render(<CalendarRenderer entity={entity} view={fourModes} registry={mockRegistry} dataSources={new Map([["default", createMemoryAdapter()]])} now={NOW} initialMode="5day" />);
+    await waitFor(() => expect(screen.getAllByRole("gridcell")).toHaveLength(5));
+    expect(document.querySelector<HTMLElement>("[data-mode]")?.dataset["mode"]).toBe("5day");
+  });
+
+  test("an untouched document renders identically to one declaring the defaults (RFC 0004 backwards compatibility)", async () => {
+    // `calendar` has neither `modes` nor `listStart`. The set must receive exactly what a
+    // month/week, period-started calendar receives — the component is a pure function of these
+    // props, so prop-equality is DOM-equality. (The untouched document itself is additionally
+    // covered, unchanged, by the state-checks suite in testing/.)
+    const capture: { props?: CalendarProps<ReactNode> } = {};
+    const RecordingCalendar = (props: CalendarProps<ReactNode>): ReactNode => {
+      capture.props = props;
+      const Calendar = mockRegistry.layout.Calendar!;
+      return <Calendar {...props} />;
+    };
+    const registry = { ...mockRegistry, layout: { ...mockRegistry.layout, Calendar: RecordingCalendar } };
+    // Everything the set receives except `listStart`, as comparable text: entry content rendered
+    // to markup, React's mount-varying useId counter folded away. Functions (the callbacks) are
+    // not document-derived and drop out of JSON.
+    const snapshot = (): string => {
+      const { listStart: dropped, ...rest } = { ...capture.props } as Record<string, unknown> & { listStart?: unknown };
+      void dropped;
+      const days = ((rest["days"] ?? []) as { entries?: { content?: ReactNode }[] }[]).map((d) => ({
+        ...d,
+        entries: (d.entries ?? []).map((e) => ({ ...e, content: e.content === undefined ? e.content : renderToStaticMarkup(e.content as ReactElement) })),
+      }));
+      return JSON.stringify({ ...rest, days }).replace(/_r_\d+_/g, "_r__");
+    };
+    await open({ view: calendar, registry });
+    const untouched = snapshot();
+    expect("listStart" in (capture.props ?? {})).toBe(false); // the absent key stayed absent
+    cleanup();
+    await open({ view: { ...calendar, modes: ["month", "week"], listStart: "period" } as CalendarView, registry });
+    // Declaring the defaults must not change anything the set sees, beyond listStart itself:
+    // an explicit value is forwarded as written, and the set treats "period" as its own default.
+    expect(capture.props?.listStart).toBe("period");
+    expect(snapshot()).toBe(untouched);
+  });
+
+  test("view.listStart reaches the set's props; absent means the key is not forwarded", async () => {
+    const captured: { props?: CalendarProps<ReactNode> } = {};
+    const RecordingCalendar = (props: CalendarProps<ReactNode>): ReactNode => {
+      captured.props = props;
+      const Calendar = mockRegistry.layout.Calendar!;
+      return <Calendar {...props} />;
+    };
+    const registry = { ...mockRegistry, layout: { ...mockRegistry.layout, Calendar: RecordingCalendar } };
+    await open({ view: { ...calendar, modes: ["month", "3day"] }, registry });
+    expect(captured.props?.listStart).toBeUndefined();
+    expect("listStart" in (captured.props ?? {})).toBe(false);
+    expect(captured.props?.weekdays).toHaveLength(7); // month: seven column labels
+
+    fireEvent.click(screen.getByRole("button", { name: "3 days" }));
+    await waitFor(() => expect(captured.props?.mode).toBe("3day"));
+    expect(captured.props?.weekdays.map((w) => w.short)).toEqual(["Thu", "Fri", "Sat"]); // one per column (weekStartsOn 1, the anchor is a Thursday)
+
+    const withToday = { ...calendar, listStart: "today" } as CalendarView;
+    render(<CalendarRenderer entity={entity} view={withToday} registry={registry} dataSources={new Map([["default", createMemoryAdapter()]])} now={NOW} />);
+    await waitFor(() => expect(captured.props?.listStart).toBe("today"));
   });
 });
 

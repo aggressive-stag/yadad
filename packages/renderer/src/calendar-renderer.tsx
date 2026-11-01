@@ -1,6 +1,6 @@
 import { AdapterError, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
 import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { bindFilter, bindingValues, calendarToday, canEditField, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
+import { bindFilter, bindingValues, calendarToday, canEditField, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodLength, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -522,13 +522,15 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
         </div>
       )}
       {errors.length > 0 && <ErrorSummary errors={[...errors]} />}
+      {/* One label per grid column, in column order (RFC 0004 amendment): the first column is the first day's weekday — for month/week that is weekStartsOn (unchanged output), for a rolling period it is the anchor's own weekday (a Thursday-anchored 3day reads Thu, Fri, Sat). */}
       <Calendar
         label={view.title ?? entity.id}
         title={periodTitle(anchor, mode, weekStartsOn)}
         mode={mode}
         modes={modes.map((m) => ({ mode: m, label: MODE_LABELS[m] }))}
-        weekdays={weekdayLabels(weekStartsOn)}
+        weekdays={weekdayLabels(days[0]?.weekday ?? weekStartsOn, undefined, mode === "month" ? 7 : periodLength(mode))}
         days={days}
+        {...(view.listStart ? { listStart: view.listStart } : {})}
         legend={legend.map(({ slot, label, color }) => (color === undefined ? { slot, label } : { slot, label, color }))}
         loading={here === undefined}
         {...(notice ? { notice } : {})}

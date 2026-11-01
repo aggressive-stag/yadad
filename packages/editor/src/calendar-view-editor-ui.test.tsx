@@ -47,6 +47,32 @@ describe("CalendarViewEditor", () => {
     expect((button("Save calendar")).disabled).toBe(true);
   });
 
+  test("the phone list starts at control round-trips listStart (RFC 0004 amendment)", () => {
+    const saved = setup();
+    const select = screen.getByLabelText("Phone list starts at") as HTMLSelectElement;
+    expect(select.value).toBe("Start of period"); // absent key == the default
+    fireEvent.change(select, { target: { value: "Today" } });
+    press("Apply settings");
+    press("Save calendar");
+    expect(saved[0]).toMatchObject({ listStart: "today" });
+
+    const saved2: CalendarView[] = [];
+    cleanup();
+    render(<CalendarViewEditor view={{ ...view, listStart: "today" }} entity={entity} registry={mockRegistry} onSave={(v) => saved2.push(v)} onCancel={() => {}} />);
+    const back = screen.getByLabelText("Phone list starts at") as HTMLSelectElement;
+    expect(back.value).toBe("Today");
+    fireEvent.change(back, { target: { value: "Start of period" } });
+    press("Apply settings");
+    press("Save calendar");
+    expect(saved2[0] && "listStart" in saved2[0]).toBe(false); // back to the default drops the key
+  });
+
+  test("the mode list offers the rolling periods (RFC 0004 amendment)", () => {
+    setup();
+    const labels = [...document.querySelectorAll("label")].map((l) => (l.textContent ?? "").trim());
+    for (const mode of ["3day", "5day", "1day"]) expect(labels).toContain(mode);
+  });
+
   test("adds, reorders and removes detail fields", () => {
     const saved = setup();
     press("Add detail field");
