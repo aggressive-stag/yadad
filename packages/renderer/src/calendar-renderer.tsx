@@ -58,7 +58,11 @@ export interface CalendarRendererProps {
 }
 
 const DEFAULT_MODES: readonly CalendarMode[] = ["month", "week"];
-const MODE_LABELS: Record<CalendarMode, string> = { month: "Month", week: "Week" };
+// RFC 0004 amendment: card 61c — the <n>day labels (and the mode switcher that
+// offers them) are the renderer card's job. For now a document that lists one
+// renders like `week` (the runtime gives it `days` and `weekdays` either way),
+// which is the smallest change that preserves today's behaviour.
+const MODE_LABELS: Record<CalendarMode, string> = { month: "Month", week: "Week", "1day": "1 day", "2day": "2 days", "3day": "3 days", "4day": "4 days", "5day": "5 days", "6day": "6 days" };
 const UNTITLED = "(untitled)";
 
 type Loaded = { readonly status: "loaded"; readonly records: readonly DataRecord[]; readonly total: number; readonly truncated: boolean };

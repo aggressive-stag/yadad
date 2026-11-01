@@ -4,8 +4,8 @@
 
 import type { ConditionOp } from "./condition.js";
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, MAX_RELATIVE_HOURS, RELATIVE_DATE_OPS } from "./condition.js";
-import type { CalendarMode, Document, FieldType, MeasureOp, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, ViewerFactType, WidgetType } from "./document.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
+import type { CalendarListStart, CalendarMode, Document, FieldType, MeasureOp, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, ViewerFactType, WidgetType } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_LIST_START_DEFAULT, CALENDAR_LIST_STARTS, CALENDAR_MODES, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, VIEWER_FACT_TYPES, WIDGET_TYPES } from "./document.js";
 
 /** Document kinds, discriminated on `kind`. */
 export const DOCUMENT_KINDS = ["entity", "form", "table", "calendar", "board", "dashboard", "viewer"] as const;
@@ -41,7 +41,7 @@ export const MAX_ROW_ACTION_DEPTH = 3;
 /** A calendar shows at most this many detail fields under an entry's title. */
 export const CALENDAR_DETAIL_FIELDS_MAX = 3;
 /** Calendar defaults: the modes offered (first is the default period) and the first day of the week (1 = Monday). */
-export const CALENDAR_MODES_DEFAULT: readonly CalendarMode[] = CALENDAR_MODES;
+export const CALENDAR_MODES_DEFAULT: readonly CalendarMode[] = ["month", "week"];
 export const CALENDAR_WEEK_STARTS_ON_DEFAULT = 1;
 /** Field types a calendar's title, colour and date fields may have. */
 export const CALENDAR_TITLE_FIELD_TYPES: readonly FieldType[] = ["text", "select"];
@@ -147,6 +147,8 @@ export interface ContractDescription {
     readonly modes: readonly CalendarMode[];
     readonly defaultModes: readonly CalendarMode[];
     readonly weekStartsOn: { readonly default: number; readonly min: number; readonly max: number };
+    /** Where the phone list starts (RFC 0004 amendment, 2026-10-31); the laptop grid ignores it. */
+    readonly listStart: { readonly default: CalendarListStart; readonly values: readonly CalendarListStart[] };
     readonly detailFieldsMax: number;
     readonly dateFieldTypes: readonly FieldType[];
     readonly titleFieldTypes: readonly FieldType[];
@@ -275,8 +277,9 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "doneField", required: false, description: "The id of a boolean field of the entity (RFC 0008 item 3): each entry renders a completion toggle that patches just that field through the adapter's normal save, disabled without can.update. Not the dateField." },
       { key: "filter", required: false, description: "A condition every entry must always match (relative dates allowed)." },
       { key: "sort", required: false, description: "Order of entries within a day: an array of { field, dir }. Defaults to the title field, ascending." },
-      { key: "modes", required: false, description: `The periods the viewer can switch between, from ${CALENDAR_MODES.join(", ")}; non-empty, no duplicates, the first is the default. Defaults to [${CALENDAR_MODES_DEFAULT.map((m) => JSON.stringify(m)).join(", ")}].` },
+      { key: "modes", required: false, description: `The periods the viewer can switch between, from ${CALENDAR_MODES.join(", ")}; non-empty, no duplicates, the first is the default. Defaults to [${CALENDAR_MODES_DEFAULT.map((m) => JSON.stringify(m)).join(", ")}]. An "<n>day" period is rolling: it starts at the anchor and covers n consecutive days, prev/next move by n, Today re-anchors (RFC 0004 amendment, 2026-10-31). "7day" is refused — it is confusable with "week", which aligns to weekStartsOn.` },
       { key: "weekStartsOn", required: false, description: `First day of the week: a whole number from 0 (Sunday) to 6. Defaults to ${CALENDAR_WEEK_STARTS_ON_DEFAULT} (Monday).` },
+      { key: "listStart", required: false, description: `Where the phone list starts: ${CALENDAR_LIST_STARTS.join(" or ")}. Defaults to ${JSON.stringify(CALENDAR_LIST_START_DEFAULT)}. "today" folds days strictly before today that are in the period into a collapsed "Earlier (N)" group (the list starts at today; past days with no entries are not listed); when today is outside the period it behaves as "period", and the laptop grid ignores it (RFC 0004 amendment, 2026-10-31). It is a rendering option, not a period — that is why it is not a mode.` },
       { key: "editable", required: false, description: "Whether moving an entry to another day changes its date field. Defaults to false." },
       { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from an entry, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A calendar can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
@@ -583,6 +586,7 @@ export function describeContract(): ContractDescription {
       modes: [...CALENDAR_MODES],
       defaultModes: [...CALENDAR_MODES_DEFAULT],
       weekStartsOn: { default: CALENDAR_WEEK_STARTS_ON_DEFAULT, min: 0, max: 6 },
+    listStart: { default: CALENDAR_LIST_START_DEFAULT, values: [...CALENDAR_LIST_STARTS] },
       detailFieldsMax: CALENDAR_DETAIL_FIELDS_MAX,
       dateFieldTypes: ["date"],
       titleFieldTypes: [...CALENDAR_TITLE_FIELD_TYPES],

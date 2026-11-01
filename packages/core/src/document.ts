@@ -378,9 +378,34 @@ export interface RowAction {
   readonly visibleWhen?: ViewerCondition;
 }
 
-/** The periods a calendar can show. A phone-width agenda is a rendering choice, not a mode. */
-export const CALENDAR_MODES = ["month", "week"] as const;
-export type CalendarMode = (typeof CALENDAR_MODES)[number];
+/**
+ * The periods a calendar can show (RFC 0004, widened by the 2026-10-31
+ * amendment): `month`, `week`, and the rolling family `"1day"`..`"6day"` —
+ * the period starts at the anchor and covers n days, prev/next move by n,
+ * Today re-anchors. `"7day"` is refused (confusable with the weekStartsOn-
+ * aligned `week`); a Mon-Fri work week would be its own future `workweek`.
+ * A phone-width agenda is a rendering choice, not a mode.
+ */
+export type CalendarMode = "month" | "week" | `${1 | 2 | 3 | 4 | 5 | 6}day`;
+
+/** Every mode in contract order; `CALENDAR_MODES_DEFAULT` is what a document without `modes` gets. */
+export const CALENDAR_MODES: readonly CalendarMode[] = ["month", "week", "1day", "2day", "3day", "4day", "5day", "6day"];
+
+/** The guard for values coming from documents: true for exactly the members of `CALENDAR_MODES`. */
+export function isCalendarMode(value: unknown): value is CalendarMode {
+  return typeof value === "string" && (CALENDAR_MODES as readonly string[]).includes(value);
+}
+
+/**
+ * Where the phone list starts (RFC 0004 amendment, 2026-10-31). A phone-list
+ * rendering option, not a period (so not a mode): `"period"` starts the list
+ * at the period's first day; `"today"` folds days strictly before today that
+ * are in the period into a collapsed "Earlier (N)" group, and behaves as
+ * `"period"` when today is outside the period. The laptop grid ignores it.
+ */
+export const CALENDAR_LIST_STARTS = ["period", "today"] as const;
+export type CalendarListStart = (typeof CALENDAR_LIST_STARTS)[number];
+export const CALENDAR_LIST_START_DEFAULT: CalendarListStart = "period";
 
 /**
  * Records of one entity placed on the days of a month or week by one `date`
@@ -424,6 +449,8 @@ export interface CalendarView {
   readonly modes?: readonly CalendarMode[];
   /** First day of the week, 0 (Sunday) to 6. Defaults to 1 (Monday). */
   readonly weekStartsOn?: number;
+  /** Where the phone list starts (RFC 0004 amendment). A rendering option, not a period; the laptop grid ignores it. Defaults to "period". */
+  readonly listStart?: CalendarListStart;
   /** Moving an entry changes `dateField`. Defaults to false. */
   readonly editable?: boolean;
   /** Moving is offered only while this holds for the viewer. Needs `editable: true`; can only narrow it (RFC 0006). */

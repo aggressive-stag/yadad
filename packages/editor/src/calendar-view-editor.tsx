@@ -1,5 +1,5 @@
 import type { CalendarMode, CalendarView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
-import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
+import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES_DEFAULT, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -254,7 +254,9 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
   };
 
   // Modes: a non-empty subset of CALENDAR_MODES, in order; the first is the default.
-  const modes = current.modes ?? CALENDAR_MODES;
+  // RFC 0004 amendment: card 61c — the absent-key default is month/week; the
+  // checkbox list grows to the <n>day family when the editor offers it.
+  const modes = current.modes ?? CALENDAR_MODES_DEFAULT;
   const toggleMode = (mode: CalendarMode) => run(toggleCalendarMode(current, mode, !modes.includes(mode)), () => announce(`${mode} ${modes.includes(mode) ? "turned off" : "turned on"}.`));
   const makeDefaultMode = (mode: CalendarMode) => run(setCalendarDefaultMode(current, mode), () => announce(`${mode} is now the default period.`));
 
@@ -367,7 +369,7 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
       <Section id={`${base}-modes`} title="Modes">
         <p>The periods the viewer can switch between; {modes[0]} is the default.</p>
         <div data-yadad-editor-toolbar="" style={toolbarStyle}>
-          {CALENDAR_MODES.map((mode) => {
+          {CALENDAR_MODES_DEFAULT.map((mode) => {
             const on = modes.includes(mode);
             return (
               <span key={mode} style={{ display: "inline-flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)" }}>

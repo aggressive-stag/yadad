@@ -452,6 +452,7 @@ describe("calendar view", () => {
       sort: [{ field: "name", dir: "desc" }],
       modes: ["week"],
       weekStartsOn: 0,
+      listStart: "today",
       editable: false,
       rowAction: { open: "t", bind: [{ field: "a", to: "a" }] },
     };
@@ -484,11 +485,40 @@ describe("calendar view", () => {
     expect(problems({ ...calendar, detailFields: ["a", "b", "a"] })).toEqual([["/detailFields/2", "invalid-value"]]);
   });
 
-  test("modes: an array, non-empty, month or week, no duplicates", () => {
+  test("modes: an array, non-empty, no duplicates (RFC 0004 amendment: the <n>day family is accepted)", () => {
     expect(problems({ ...calendar, modes: "month" })).toEqual([["/modes", "type"]]);
     expect(problems({ ...calendar, modes: [] })).toEqual([["/modes", "invalid-value"]]);
-    expect(problems({ ...calendar, modes: ["month", "day"] })).toEqual([["/modes/1", "invalid-value"]]);
     expect(problems({ ...calendar, modes: ["month", "month"] })).toEqual([["/modes/1", "invalid-value"]]);
+    for (const n of [1, 2, 3, 4, 5, 6]) expect(problems({ ...calendar, modes: [`${n}day`] })).toEqual([]);
+    expect(problems({ ...calendar, modes: ["month", "week", "5day", "3day"] })).toEqual([]);
+  });
+
+  test("modes: the refusals around the <n>day family each say why (RFC 0004 amendment)", () => {
+    const of = (m: unknown) => {
+      const result = validateDocument({ ...calendar, modes: [m] });
+      return result.ok ? [] : result.errors.map((e) => ({ path: e.path, message: e.message, hint: e.hint }));
+    };
+    for (const bad of ["0day", "7day", "10day", "day"]) {
+      const [e] = of(bad);
+      expect(e?.path).toBe("/modes/0");
+      expect(e?.message).toBe(`Unknown calendar mode ${JSON.stringify(bad)}.`);
+      // each of these looks like the family, so the hint names the family and the 7day trap
+      expect(e?.hint).toContain('"1day" through "6day"');
+      expect(e?.hint).toContain("7day");
+    }
+    // a word that is not the family at all gets the plain list
+    const [plain] = of("fortnight");
+    expect(plain?.hint).toContain("month, week, 1day");
+    expect(plain?.hint).not.toContain("7day");
+  });
+
+  test("listStart: period or today, absent allowed (RFC 0004 amendment)", () => {
+    expect(problems({ ...calendar, listStart: "period" })).toEqual([]);
+    expect(problems({ ...calendar, listStart: "today" })).toEqual([]);
+    const bad = validateDocument({ ...calendar, listStart: "earliest" });
+    expect(bad.ok ? [] : bad.errors.map((e) => [e.path, e.code])).toEqual([["/listStart", "invalid-value"]]);
+    expect(bad.ok ? "" : bad.errors[0]?.hint).toContain('"period"');
+    expect(problems({ ...calendar, listStart: 0 })).toEqual([["/listStart", "invalid-value"]]);
   });
 
   test("weekStartsOn: a whole number from 0 to 6", () => {

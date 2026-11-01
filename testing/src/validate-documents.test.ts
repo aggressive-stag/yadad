@@ -162,7 +162,7 @@ const expected: Record<string, Picked[]> = {
   "row-action-too-deep.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a" }],
   "row-action-form-target.json": [{ path: "/rowAction/open", code: "invalid-value", document: "a", allowed: ["a"] }],
   "calendar-unknown-property.json": [{ path: "/color", code: "unknown-property", document: "cal" }],
-  "calendar-empty-modes.json": [{ path: "/modes", code: "invalid-value", document: "cal", allowed: ["month", "week"] }],
+  "calendar-empty-modes.json": [{ path: "/modes", code: "invalid-value", document: "cal", allowed: ["month", "week", "1day", "2day", "3day", "4day", "5day", "6day"] }],
   "calendar-duplicate-mode.json": [{ path: "/modes/2", code: "invalid-value", document: "cal" }],
   "calendar-bad-week-start.json": [{ path: "/weekStartsOn", code: "invalid-value", document: "cal" }],
   "calendar-too-many-detail-fields.json": [{ path: "/detailFields", code: "invalid-value", document: "cal" }],

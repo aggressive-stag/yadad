@@ -8,7 +8,7 @@
 import { CONDITION_OPS, MAX_RELATIVE_DAYS, MAX_RELATIVE_HOURS, RELATIVE_DATE_OPS, isRelativeDate, isRelativeInstant } from "./condition.js";
 import type { Condition, ConditionOp, ViewerCondition } from "./condition.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_COLOR_FIELD_TYPES, CALENDAR_TITLE_FIELD_TYPES, DOCUMENT_KINDS, GRID_COLUMNS_DEFAULT, GRID_ITEM_KEYS, GRID_ITEM_MAX, ID_HINT, ID_PATTERN, MAX_CONDITION_DEPTH, MAX_GRID_COLUMNS, MAX_ROW_ACTION_DEPTH, MEASURE_FIELD_TYPES, MEASURE_PRODUCT_OPS, PAGE_SIZE_MAX, SERIES_GROUP_FIELD_TYPES, TEXT_MAX_LENGTH_CEILING, VIEWER_FACTS_MAX, VIEWER_FACT_VALUES_MAX, VIEWER_FACT_VALUES_MIN } from "./contract.js";
-import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, COMPARE_NEIGHBOURS, FORM_ITEM_LABEL_MAX, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField, optionValue } from "./document.js";
+import { ACTIONS_MAX, ACTION_CONFIRM_TONES, ACTION_INPUT_FIELD_TYPES, ACTION_INPUT_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, CALENDAR_LIST_STARTS, COMPARE_NEIGHBOURS, FORM_ITEM_LABEL_MAX, RECORD_ACTIONS_MAX, FIELD_TYPES, MEASURE_OPS, ROW_ACTION_MODES, SERIES_BUCKETS, SERIES_DISPLAYS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, SPEC_VERSION, SUPPORTED_SPEC_VERSIONS, VIEWER_FACT_TYPES, WIDGET_TYPES, defaultTitleField, isCalendarMode, optionValue } from "./document.js";
 import type { BoardView, CalendarView, QuickFilter, Document, DashboardView, EntityDocument, Field, FieldType, FormView, Measure, SeriesWidget, TableView, ViewerDocument, ViewerFact } from "./document.js";
 import { COLOR_PALETTE, isPaletteColor } from "./palette.js";
 import { jsonPointer } from "./errors.js";
@@ -456,7 +456,7 @@ function checkSort(errors: Errors, doc: JsonObject, scope: string): void {
 const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField", "doneField"] as const;
 
 function validateCalendar(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "maxEntriesPerDay", "doneField", "filter", "sort", "modes", "weekStartsOn", "editable", "editableWhen", "rowAction", "recordActions"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "maxEntriesPerDay", "doneField", "filter", "sort", "modes", "weekStartsOn", "listStart", "editable", "editableWhen", "rowAction", "recordActions"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -496,8 +496,20 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
     if (modes.length === 0) errors.add(["modes"], "invalid-value", "A calendar needs at least one mode.", `Use e.g. ["month", "week"]. Allowed: ${CALENDAR_MODES.join(", ")}.`, [...CALENDAR_MODES]);
     const seen = new Set<unknown>();
     modes.forEach((m, i) => {
-      if (!CALENDAR_MODES.some((x) => x === m)) {
-        errors.add(["modes", i], "invalid-value", `Unknown calendar mode ${JSON.stringify(m)}.`, `Use one of: ${CALENDAR_MODES.join(", ")}.`, [...CALENDAR_MODES]);
+      if (!isCalendarMode(m)) {
+        // The N-day family is spelled "<n>day"; a bare "day" or an n outside
+        // 1-6 is a typo of it, so the hint names the family rather than
+        // claiming it is an unknown word (RFC 0004 amendment, 2026-10-31).
+        const looksLikeNDay = typeof m === "string" && /^\d*day$/.test(m);
+        errors.add(
+          ["modes", i],
+          "invalid-value",
+          `Unknown calendar mode ${JSON.stringify(m)}.`,
+          looksLikeNDay
+            ? 'The rolling periods are "1day" through "6day" (n consecutive days from the anchor). "7day" is refused as confusable with "week", which aligns to weekStartsOn.'
+            : `Use one of: ${CALENDAR_MODES.join(", ")}.`,
+          [...CALENDAR_MODES],
+        );
       } else if (seen.has(m)) {
         errors.add(["modes", i], "invalid-value", `Mode ${JSON.stringify(m)} is listed twice.`, "Remove the duplicate.");
       } else seen.add(m);
@@ -508,6 +520,13 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
   if (weekStartsOn !== undefined) {
     if (typeof weekStartsOn !== "number") errors.add(["weekStartsOn"], "type", '"weekStartsOn" must be a number.', "Use 0 (Sunday) to 6 (Saturday); 1 is Monday.");
     else if (!isWhole(weekStartsOn, 0, 6)) errors.add(["weekStartsOn"], "invalid-value", `weekStartsOn ${weekStartsOn} is not a whole number from 0 to 6.`, "Use 0 (Sunday) to 6 (Saturday); 1 is Monday.");
+  }
+
+  // RFC 0004 amendment (2026-10-31): where the phone list starts. Absent
+  // means "period", which is byte-identical to the pre-amendment behaviour.
+  const listStart = doc["listStart"];
+  if (listStart !== undefined && !CALENDAR_LIST_STARTS.some((s) => s === listStart)) {
+    errors.add(["listStart"], "invalid-value", `Unknown listStart ${JSON.stringify(listStart)}.`, `Use one of: ${CALENDAR_LIST_STARTS.join(", ")} — or remove the key to get "period".`, [...CALENDAR_LIST_STARTS]);
   }
 }
 

@@ -38,7 +38,15 @@ describe("contract lists", () => {
     const kind = contract.documentKinds.find((k) => k.kind === "calendar");
     expect(kind?.properties.filter((p) => p.required).map((p) => p.key)).toEqual(["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"]);
     expect(kind?.properties.map((p) => p.key)).toEqual(expect.arrayContaining(["titleField", "detailFields", "colorField", "filter", "sort", "modes", "weekStartsOn", "editable", "rowAction"]));
-    expect(contract.calendar).toMatchObject({ modes: ["month", "week"], defaultModes: ["month", "week"], weekStartsOn: { default: 1, min: 0, max: 6 }, detailFieldsMax: 3 });
+    expect(contract.calendar).toMatchObject({
+      modes: ["month", "week", "1day", "2day", "3day", "4day", "5day", "6day"],
+      defaultModes: ["month", "week"],
+      weekStartsOn: { default: 1, min: 0, max: 6 },
+      listStart: { default: "period", values: ["period", "today"] },
+      detailFieldsMax: 3,
+    });
+    // RFC 0004 amendment (2026-10-31): the new optional key is described for generateView.
+    expect(kind?.properties.map((p) => p.key)).toContain("listStart");
     expect(contract.optionalRegistryKeys.map((k) => k.key)).toEqual(["layout.Calendar", "layout.Board", "fields.datetime", "layout.Dialog", "widgets.series"]);
   });
   test("the series widget, its limits and its optional registry key are described (RFC 0001 slice 2)", () => {

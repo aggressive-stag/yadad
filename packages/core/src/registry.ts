@@ -2,7 +2,7 @@
 // (FieldFrame, Section, Button, Table, ErrorSummary, Tabs, Panel) and widgets.
 // CellEditor and optionsSchema come later.
 
-import type { BooleanField, CalendarMode, DateField, DatetimeField, Field, FieldType, Measure, NumberField, ReferenceField, SelectField, SeriesDisplay, TagsField, TextField, TimeField } from "./document.js";
+import type { BooleanField, CalendarListStart, CalendarMode, DateField, DatetimeField, Field, FieldType, Measure, NumberField, ReferenceField, SelectField, SeriesDisplay, TagsField, TextField, TimeField } from "./document.js";
 import type { DocumentError } from "./errors.js";
 
 /**
@@ -431,10 +431,12 @@ export interface CalendarProps<N> {
   readonly mode: CalendarMode;
   /** The modes the viewer can switch between; one entry means no switcher. */
   readonly modes: readonly { readonly mode: CalendarMode; readonly label: string }[];
-  /** Seven, in weekStartsOn order. */
+  /** One per grid column, in column order (RFC 0004 amendment): the seven column labels for `month`, the seven days from `weekStartsOn` for `week`, and for a rolling `"3day"` starting on a Thursday the three labels Thu, Fri, Sat. */
   readonly weekdays: readonly { readonly short: string; readonly long: string }[];
-  /** 42 (month) or 7 (week), in order, in rows of 7. */
+  /** 42 (month) or 7 (week) or n ("<n>day"), in order, in rows of one per column. */
   readonly days: readonly CalendarDayProps<N>[];
+  /** Forwarded from the view (RFC 0004 amendment): where the phone list starts. The laptop grid ignores it; absent means "period". */
+  readonly listStart?: CalendarListStart;
   /** Colour slots present in the range, with their texts. */
   readonly legend: readonly { readonly slot: number; readonly label: string; /** The `#RRGGBB` the entries of this slot receive, when they have one. */ readonly color?: string }[];
   /** Entries are being fetched; days are still given. */

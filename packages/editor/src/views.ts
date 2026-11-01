@@ -1,4 +1,4 @@
-import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES, FORM_ITEM_LABEL_MAX, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
+import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX, BOARD_GROUP_FIELD_TYPES, BOARD_TITLE_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES_DEFAULT, FORM_ITEM_LABEL_MAX, MEASURE_FIELD_TYPES, RECORD_ACTIONS_MAX, SERIES_DISPLAYS, SERIES_GROUP_FIELD_TYPES, SERIES_LIMIT_MAX, SERIES_SORT_BYS, SERIES_SORT_DIRS, jsonPointer, sectionItems, validateDocuments } from "@yadad/core";
 import type { BoardView, CalendarMode, CalendarView, ColumnCompare, Condition, DashboardView, DocumentError, EntityDocument, FieldType, FormView, GridItem, Measure, MeasureOp, NamedFilter, QuickFilterDefault, RowAction, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, SeriesWidget, SortSpec, TableView, ViewerCondition } from "@yadad/core";
 import type { Json, PatchOperation } from "@yadad/runtime";
 
@@ -855,9 +855,9 @@ export function setCalendarSort(view: CalendarView, sort: SortSpec | undefined):
   return [guardCalendar(view), ...setOptional(view.sort !== undefined, "/sort", sort ? [{ field: sort.field, dir: sort.dir }] : undefined)];
 }
 
-/** Turns a period on or off in the viewer's switcher. Refuses to turn off the last one. */
+/** Turns a period on or off in the viewer's switcher. Refuses to turn off the last one. (RFC 0004 amendment: card 61c — the absent-key default is month/week.) */
 export function toggleCalendarMode(view: CalendarView, mode: CalendarMode, on: boolean): Result {
-  const current = view.modes ?? CALENDAR_MODES;
+  const current = view.modes ?? CALENDAR_MODES_DEFAULT;
   const has = current.includes(mode);
   if (on === has) return ok([]);
   if (!on && current.length === 1) return fail(["modes"], "A calendar needs at least one mode.", "Turn on another mode before turning this one off.");
@@ -867,7 +867,7 @@ export function toggleCalendarMode(view: CalendarView, mode: CalendarMode, on: b
 
 /** Makes `mode` the default (first) period, keeping the other modes in their relative order. */
 export function setCalendarDefaultMode(view: CalendarView, mode: CalendarMode): Result {
-  const current = view.modes ?? CALENDAR_MODES;
+  const current = view.modes ?? CALENDAR_MODES_DEFAULT;
   if (!current.includes(mode)) return fail(["modes"], `"${mode}" is not one of this calendar's modes.`, "Turn it on first.");
   if (current[0] === mode) return ok([]);
   const next = [mode, ...current.filter((m) => m !== mode)];
