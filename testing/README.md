@@ -169,6 +169,28 @@ describeRegistryContract(myRegistry);
 - `defaultSamples` is the fixture per field type; pass your own `FieldSamples` to override them.
 - The `layout.Calendar`, `layout.Board` and `layout.Dialog` keys, the `widgets.series` key and the `fields.datetime` key are optional, so their checks only run when the registry has them. `layout.Dialog` is checked for the modal behaviour RFC 0007 needs: named by its label, focus taken on open and returned on close, Escape closes. `fields.datetime` is checked for a `<time>` element whose `dateTime` is the stored instant, showing the formatted `text` it was given. `widgets.series` is checked the way a chart must be: reachable by its label as an accessible name, every group's label and formatted text present as text in the accessible tree (an SVG of bars is decoration, not data), the `measureLabel` shown, and no throwing or self-unmounting on `groups: []` or a gap bucket whose `value` is undefined. The mock registry ships all of them (a plain board with a "Move to…" action and no drag, a datetime input over `datetime-local`, a minimal dialog, a series as a plain table of groups) and passes the kit.
 
+## Focus contract kit
+
+Import it from `@yadad/testing/focus-kit` in a Vitest file with `// @vitest-environment jsdom`. The action scenarios prove what a press DOES; this kit proves where focus LANDS after it — the property F18 found by hand, six times, reading `document.activeElement` after every press. The kit seeds two records (Publish mutates in place; Archive confirms with a required Reason), presses record-action controls and asserts where focus ends up. It never imports a renderer: the host injects `mount`, exactly as in `describeActionScenarios`.
+
+```tsx
+// @vitest-environment jsdom
+import { describeFocusContract } from "@yadad/testing/focus-kit";
+
+describeFocusContract({
+  registry: myRegistry,
+  mount: (ctx) => <TableRenderer entity={ctx.entity} view={ctx.view} registry={ctx.registry} dataSources={new Map([["default", ctx.adapter]])} />,
+});
+```
+
+The five interaction shapes it asserts, and the timing pair, are listed on `describeFocusContract`'s JSDoc: direct action, panel action, dialog from panel, view-scoped lookup (the same record mounted twice), id-changing move, plus armed-until-data-lands and no-steal with a deliberately slow reload.
+
+- `focusContractChecks(options)` returns the checks as `{ name, run() }` objects, for use outside Vitest. Run them one at a time — like the contract checks, they share `document`.
+- jsdom truth this kit is built around: `fireEvent.click` does not focus its target, so every press calls `control.focus()` first; and jsdom does not drop focus when the focused node is removed (a browser blurs it to `<body>`), so every check runs under the kit's own `withJsdomRemovalShim` — host test files never install it. Without it the drop-to-body half of the property is simply not tested, and an inert host passes the negative control vacuously.
+- Capability gates, the way the optional registry keys gate the contract kit: a registry with no panel (nothing marked `data-yadad-focus-return`) yields ZERO panel checks, and no `layout.Dialog` key yields zero dialog checks — never a false failure. Pass `capabilities` to state a capability the probe cannot see; the kit's own tests assert both directions.
+- The reserved attributes it reads (`data-yadad-record`, `data-yadad-record-view`, `data-yadad-focus-return`) are the renderer's own: any component set that wants the panel and view-scoped shapes must carry them.
+- Negative control (Do step 5): `packages/renderer/src/focus-contract.test.tsx` mounts an inert host that never restores focus; every shape check must go red against it, so a check that only ever sees passing hosts cannot pass CI quietly. One honest exception: `focus timing (no-steal)` stays green — a host that never restores focus also never *steals* it, so only a restoring host can fail that check.
+
 ## How it fits
 
 `testing` imports `core` and `runtime` only, so `renderer` and `editor` can use it in their tests without a cycle; `checkViewStates` takes the host's `render` function (see the [dependency graph](../ARCHITECTURE.md#4-dependency-rules) and the [state grid](../ARCHITECTURE.md#13-the-state-grid)).

@@ -74,11 +74,11 @@ const config: IConfiguration = {
     },
     {
       name: "no-deep-imports",
-      comment: "Import other workspace packages through their public entry points only (the package index, and testing's contract-kit and state-checks).",
+      comment: "Import other workspace packages through their public entry points only (the package index, and testing's contract-kit, state-checks and focus-kit).",
       severity: "error",
       from: { path: "^(packages/[^/]+|testing|apps/[^/]+)/" },
       to: {
-        path: "^(packages/[^/]+|testing)/(?!src/(index\\.ts|contract-kit\\.tsx|state-checks\\.tsx)$)|^@yadad/[^/]+/",
+        path: "^(packages/[^/]+|testing)/(?!src/(index\\.ts|contract-kit\\.tsx|state-checks\\.tsx|focus-kit\\.tsx)$)|^@yadad/[^/]+/",
         pathNot: "^$1/",
       },
     },

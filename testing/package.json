@@ -19,6 +19,11 @@
       "@yadad/source": "./src/state-checks.tsx",
       "types": "./dist/state-checks.d.ts",
       "default": "./dist/state-checks.js"
+    },
+    "./focus-kit": {
+      "@yadad/source": "./src/focus-kit.tsx",
+      "types": "./dist/focus-kit.d.ts",
+      "default": "./dist/focus-kit.js"
     }
   },
   "files": [
