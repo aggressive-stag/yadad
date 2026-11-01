@@ -1,6 +1,6 @@
 # RFC 0004: Calendar view
 
-- Status: Accepted (2026-10-15); Slice 1 implemented (2026-10-16) — `core`, `runtime`, `renderer`/`testing`, `showcase` and `editor` (the calendar panel) are all done. Only item 6, the components-repo `layout.Calendar` component, remains outside this repo.
+- Status: Accepted (2026-10-15); Slice 1 implemented (2026-10-16) — `core`, `runtime`, `renderer`/`testing`, `showcase` and `editor` (the calendar panel) are all done. Only item 6, the components-repo `layout.Calendar` component, remains outside this repo. Amendment (N-day periods, `listStart`) accepted 2026-10-31 — see the last section.
 - Touches: `core` (new view kind, validator, `describeContract`, registry types), `runtime` (range math, range queries, move), `renderer` (calendar renderer, dashboard `view` widget), `testing` (mock registry and contract kit), `editor` (calendar panel), `apps/showcase`, registry contract (one optional `layout` key); the components repo (the component itself)
 - Bumps `specVersion` from 2 to **3** with an identity `migrate()` step (additive) and a before/after fixture pair.
 
@@ -324,3 +324,56 @@ Calls made where this RFC was silent; none changes the design.
 - `count` and `stat` pointing at a calendar get a message that names the calendar; the code and path are unchanged.
 - `describeContract()` gains `calendar` (modes, defaults, limits, allowed field types) and `optionalRegistryKeys` (`layout.Calendar`), which `pnpm describe-registry` prints.
 - Adding `calendar` to `ViewDocument` forced a calendar case in the editor's field-reference lookup (so a field a calendar uses cannot be removed) and a placeholder in the showcase; the real editor panel and showcase view stay with their own cards.
+
+## Amendment: N-day periods and `listStart` (2026-10-31)
+
+- Status: **Accepted** (2026-10-31). The owner approved the design below on 2026-10-31, before it was written — rolling N-day periods (1–6), "5 day" meaning a rolling five days rather than a work week, and `listStart` with `"period"` / `"today"`. This section records that approval; nothing here departs from it.
+- Touches: `core` (`CalendarMode`, `CalendarView.listStart`, validator, `describeContract`, registry types), `runtime` (range math per-mode helpers), `renderer` (mode switcher, `initialMode`, forwarding), `editor` (mode checkboxes, `listStart` control), the components repo (N-column grid, the "Earlier (N)" fold — outside this repo, covered by the plan's M33/M35).
+- Bumps `specVersion`: **no**. Both changes are additive (a wider value set for an existing key, one new optional key); by AGENTS.md rule 8 (D52) only a change that needs a `migrate()` step bumps the version, and no existing document changes meaning.
+
+### N-day periods
+
+`CalendarMode` widens to `"month" | "week" | "<n>day"` with `n` in 1–6 — the strings `"1day"` through `"6day"`. A view opts in through its existing `modes` list: `modes: ["month", "week", "5day", "3day"]`. The default stays `["month", "week"]`, so no existing document changes behaviour.
+
+Semantics, all **rolling**:
+
+- The period starts at the anchor and covers `n` consecutive days (an anchor on a Thursday with `3day` shows Thu–Sat). It does not align to any calendar boundary.
+- Prev/next move the anchor by `n`; "Today" re-anchors to today. Switching mode keeps the anchor, as for month/week.
+- `inMonth` is always `true`, exactly as for `week` — an N-day period is not a window into a month.
+- The title is the existing range label: the runtime already formats spans ("3 to 5 November 2026"), so a 3-day period needs no new formatting.
+- The laptop grid is `n` columns. The phone list inherits the period without design work (it renders any `days`), and the phone navigator stays hidden for N-day periods (plan D4) — a period that short does not need a month map.
+
+**Why 1–6 and not 7 or a `workweek`:** `7day` would be confusable with `week`, which aligns to `weekStartsOn` while a rolling seven would not — two spellings of "seven days" that mean different things is a trap. A Mon–Fri work week is a different period (aligned, not rolling) and would be its own future `workweek` mode; the owner's 2026-10-31 decision was explicitly that "5 day" means rolling five, not a work week. The range 1–6 costs nothing to widen later if a host asks for `8day`; it is one validation constant.
+
+**Validation.** `modes` accepts `"month"`, `"week"`, and any of `"1day"`…`"6day"`; duplicates stay `invalid-value` as today. Refusals, in the same style as the neighbouring calendar checks (`{ path, code: "invalid-value", message, hint, allowed }`):
+
+| Value | Why refused |
+| --- | --- |
+| `0day` | an empty period |
+| `7day` | confusable with `week`; see above |
+| `10day` | outside the accepted range; a host that needs it should ask for the range widened |
+| `day` | the family is spelled `<n>day`; a bare `day` is a typo of one of them (hint lists the family) |
+
+`describeContract()` lists the widened mode set and the rolling semantics.
+
+### `weekdays` contract
+
+`CalendarProps.weekdays` changes wording from "Seven, in weekStartsOn order" to **"one per grid column, in column order"**. For `month` that is the seven column labels, from `weekStartsOn` (the 42 days run in rows of 7 beneath them); for `week` it is the seven days from `weekStartsOn`; for `"3day"` starting on a Thursday it is three labels: Thu, Fri, Sat. Identical output for `month`/`week`, so every existing registry keeps working unchanged; correct for a rolling period, which "seven, in weekStartsOn order" could not describe.
+
+### `listStart`
+
+`CalendarView` gains `listStart?: "period" | "today"`, default `"period"`; `CalendarProps` forwards it. It is a phone-list rendering option, not a period, so it is deliberately **not** a mode (plan D3: modes are periods; renderings are not).
+
+- `"period"` — today's behaviour: the phone list starts at the first day of the period. Byte-identical output to today when the key is absent.
+- `"today"` — days strictly before today that are in the period fold into a collapsed "Earlier (N)" group ahead of today; the list starts at today. Past days without entries are not listed at all. The group is collapsed by default and opens through the component's `earlier-toggle` (components repo, plan M35).
+- If today is **outside** the period, `"today"` behaves as `"period"` — there is no today to start at, and inventing one would misrepresent the range.
+- The laptop grid ignores `listStart` entirely; folding days out of a grid would change the grid's shape, which is not what this key is for.
+
+### Compatibility
+
+- Component sets on older cores: an absent `listStart` means `"period"`, and a set that does not know a mode renders it like `week` (it receives `days` and `weekdays` either way) — nothing already shipped breaks.
+- `SPEC_VERSION` stays **10**: additive per rule 8 / D52, no `migrate()` step, no before/after fixture pair (those exist for migrations; new valid documents get ordinary validator fixtures).
+
+## Owner questions (amendment)
+
+None. Q6 (rolling vs work week) and Q7 (which periods to ship first — `3day` + `5day`) were decided by the owner on 2026-10-31 and are recorded above.
