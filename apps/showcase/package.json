@@ -20,6 +20,7 @@
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@yadad/components": "0.48.1",
     "vite": "^8.3.2"
   }
 }

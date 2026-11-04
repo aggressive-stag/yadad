@@ -236,6 +236,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      '@yadad/components':
+        specifier: 0.48.1
+        version: 0.48.1(@yadad/core@packages+core)(react@19.3.0)
       vite:
         specifier: ^8.3.2
         version: 8.3.2(@types/node@22.20.5)(yaml@2.9.1)
@@ -941,6 +944,13 @@ packages:
 
   '@vitest/spy@5.0.3':
     resolution: {integrity: sha512-XhFysQTB8AZ+P4gMi+Lpo99vg2AZi0qKpaB9yXQl37+CaMEAPO3iH/wGVnSyL5MPERiLezpqTVtrR6UZH5GCXg==}
+
+  '@yadad/components@0.48.1':
+    resolution: {integrity: sha1-FEZa52KIZUU3B4tK5JUdSm2sEN8=, tarball: https://gitlab.base-camp.dev/api/v4/projects/10/packages/npm/@yadad/components/-/@yadad/components-0.48.1.tgz}
+    engines: {node: '>=22.18'}
+    peerDependencies:
+      '@yadad/core': '>=0.10.0 <1.0.0'
+      react: ^19.3.0
 
   acorn-jsx-walk@2.0.0:
     resolution: {integrity: sha512-uuo6iJj4D4ygkdzd6jPtcxs8vZgDX9YFIkqczGImoypX2fQ4dVImmu3UzA4ynixCIMTrEOWW+95M2HuBaCEOVA==}
@@ -2341,6 +2351,11 @@ snapshots:
       vite: 8.3.2(@types/node@22.20.5)(yaml@2.9.1)
 
   '@vitest/spy@5.0.3': {}
+
+  '@yadad/components@0.48.1(@yadad/core@packages+core)(react@19.3.0)':
+    dependencies:
+      '@yadad/core': link:packages/core
+      react: 19.3.0
 
   acorn-jsx-walk@2.0.0: {}
 
