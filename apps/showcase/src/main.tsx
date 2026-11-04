@@ -2,7 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registry } from "virtual:yadad-registry";
 import { applySystemTheme, lightTheme, themeToCss } from "@yadad/theme";
-import { App } from "./App";
+import { App, defaultRoots } from "./App";
+import { STRESS_ROOTS } from "./stress";
 
 // Theme tokens (--yadad-*) that component stylesheets read.
 const tokens = document.createElement("style");
@@ -44,9 +45,19 @@ applySystemTheme();
 
 const root = document.getElementById("root");
 if (!root) throw new Error('index.html is missing <div id="root">.');
+// The visual audit's URL modes (?plan 2026-11-03 §2): `?stress=1` shows the V11
+// long-content documents and `?empty=1` empties every demo data source.
+const params = new URLSearchParams(window.location.search);
 createRoot(root).render(
   <StrictMode>
-    <App registry={registry} initialPage={window.location.hash === "#states" ? "states" : window.location.hash === "#review" ? "review" : "views"} {...persistence()} />
+    <App
+      registry={registry}
+      initialPage={window.location.hash === "#states" ? "states" : window.location.hash === "#review" ? "review" : "views"}
+      stress={params.get("stress") === "1"}
+      empty={params.get("empty") === "1"}
+      {...(params.get("stress") === "1" ? { roots: [...defaultRoots, ...STRESS_ROOTS] } : {})}
+      {...persistence()}
+    />
   </StrictMode>,
 );
 

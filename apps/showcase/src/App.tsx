@@ -22,6 +22,7 @@ import formLogSet from "../../../fixtures/valid/form-log-set.json?raw";
 import tableExerciseHistory from "../../../fixtures/valid/table-exercise-history.json?raw";
 import tableSets from "../../../fixtures/valid/table-sets.json?raw";
 import { loadDocumentSet } from "./documents";
+import { STRESS_ROOTS, stressAdapter, stressDocuments } from "./stress";
 import { WithStatesPreview } from "./editor-preview";
 import { StatesPage } from "./states";
 
@@ -269,6 +270,17 @@ export function withBookings(base: DocumentSet): DocumentSet {
   return { ...base, entities, views, viewer: base.viewer ?? teamViewer };
 }
 
+/** Folds the stress audit documents into a loaded set (V11 fixtures, `?stress=1`). */
+export function withStress(base: DocumentSet): DocumentSet {
+  const entities = new Map(base.entities);
+  const views = new Map(base.views);
+  for (const doc of stressDocuments) {
+    if (doc.kind === "entity") entities.set(doc.id, doc);
+    else views.set(doc.id, doc);
+  }
+  return { ...base, entities, views };
+}
+
 export interface AppProps {
   /** Injected by the host: the mock registry, or a real component set. */
   readonly registry: Registry<ReactNode>;
@@ -282,6 +294,10 @@ export interface AppProps {
   readonly initialPage?: Page;
   /** The view the States page starts on. */
   readonly initialStatesView?: string;
+  /** The visual audit's stress mode (V11): the long-content demo documents and their roots. */
+  readonly stress?: boolean;
+  /** The visual audit's empty mode: every demo data source holds zero records. */
+  readonly empty?: boolean;
 }
 
 export type Page = "views" | "states" | "review";
@@ -320,18 +336,20 @@ type Mode =
   | { readonly kind: "calendar"; readonly id: string }
   | { readonly kind: "board"; readonly id: string };
 
-export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset, initialPage = "views", initialStatesView }: AppProps): ReactNode {
+export function App({ registry, sources = defaultSources, roots = defaultRoots, storage, onReset, initialPage = "views", initialStatesView, stress = false, empty = false }: AppProps): ReactNode {
   // The host decides which adapter backs each dataSource key. The calendar demo keeps its own
   // seeded bookings on a dedicated data source, with a wrapper that refuses moves into the past.
+  // The audit's empty mode zeroes every demo source; its stress mode adds the long-content source.
   const roleRef = useRef("viewer");
   // The review demo reads the same "View as" role; only the owner may apply decisions.
   const [review] = useState<ReviewStore>(() => reviewStore(() => (roleRef.current === "owner" ? "owner" : "editor")));
   const [dataSources] = useState<ReadonlyMap<string, DataAdapter>>(() => {
     const map = new Map<string, DataAdapter>([["default", storage ? createKeyValueAdapter(storage, PREFIX) : createMemoryAdapter()]]);
-    map.set("bookings", withLatency(bookingsAdapter()));
-    map.set("tasks", withLatency(tasksAdapter()));
+    map.set("bookings", withLatency(empty ? createMemoryAdapter() : bookingsAdapter()));
+    map.set("tasks", withLatency(empty ? createMemoryAdapter() : tasksAdapter()));
     map.set("team", teamAdapter(() => roleRef.current));
     map.set("review", review.adapter);
+    if (stress) map.set("stress", withLatency(empty ? createMemoryAdapter() : stressAdapter()));
     return map;
   });
   // Documents saved from the editors replace the loaded ones, and persist when storage is given.
@@ -342,7 +360,7 @@ export function App({ registry, sources = defaultSources, roots = defaultRoots, 
   const [mode, setMode] = useState<Mode>({ kind: "view" });
   const [page, setPage] = useState<Page>(initialPage);
   const loaded = loadDocumentSet(sources);
-  const documents = overlay(withBookings(loaded.documents), edited);
+  const documents = overlay(stress ? withStress(withBookings(loaded.documents)) : withBookings(loaded.documents), edited);
   const [appName, setAppName] = useState("");
   // What the review page's "Simulate another editor" button will bump.
   const [simTarget, setSimTarget] = useState("v|note_1|2");
