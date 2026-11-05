@@ -10,13 +10,20 @@ set -eu
 : "${CI_PROJECT_ID:?run this in GitLab CI}"
 : "${CI_JOB_TOKEN:?run this in GitLab CI}"
 
-# Publishing goes to the project-level endpoint; consumers read through the
-# instance-level one (/api/v4/packages/npm/), which works because the group
-# name matches the @yadad scope.
-registry="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
+# Reads and publishes do NOT share an endpoint, and pinning both to the
+# project level is what killed job 12126: @yadad/components is published by
+# the yadad-components project, so projects/9/... 404s its metadata and
+# pnpm dies on "ERR_PNPM_RESOLVING_NPM_RESOLVER_NETWORK_ERROR ...
+# @yadad%2Fcomponents: HTTP status client error (404 Not Found)". The
+# instance-level endpoint (/api/v4/packages/npm/) serves every @yadad
+# package across the group, so it is the read path; publishes still go to
+# this project's endpoint explicitly via --registry, which also keeps them
+# from landing in whatever project owns the package name first.
+publish_registry="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
 cat > "${HOME}/.npmrc" <<EOF
-@yadad:registry=${registry}
-${registry#https:}:_authToken=${CI_JOB_TOKEN}
+@yadad:registry=${CI_API_V4_URL}/packages/npm/
+${CI_API_V4_URL#https:}/packages/npm/:_authToken=${CI_JOB_TOKEN}
+${publish_registry#https:}:_authToken=${CI_JOB_TOKEN}
 EOF
 
 pending=$(find .changeset -name '*.md' ! -name README.md | wc -l)
@@ -65,7 +72,10 @@ pnpm test
 # One at a time: concurrent uploads that share dependencies have deadlocked
 # GitLab's package processing. Already-published versions are skipped. The
 # checkout is a detached HEAD, which pnpm's branch check would reject.
-pnpm -r --workspace-concurrency=1 publish --no-git-checks
+# --registry is load-bearing: @yadad:registry now names the (read-only)
+# instance endpoint for installs, so publishing must name this project's
+# endpoint explicitly or the uploads 405.
+pnpm -r --workspace-concurrency=1 publish --no-git-checks --registry="${publish_registry}"
 
 # GitLab processes uploads in the background, so a failure there still looks
 # like a successful publish to npm. Confirm every version is installable.
