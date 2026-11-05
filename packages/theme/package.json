@@ -1,6 +1,6 @@
 {
   "name": "@yadad/theme",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "yadad theme tokens and CSS variable emitter.",
   "type": "module",
   "sideEffects": false,

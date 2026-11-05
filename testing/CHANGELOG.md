@@ -2,6 +2,15 @@
 
 > **Upgrade notes (0.12 and 0.13.1).** Hand-written `checkViewStates` drivers must pass `state.render.savedFilter` to `TableRenderer`'s `savedFilter` (and the other `state.render` keys the README lists), or the `saved-filter` check fails. Since runtime 0.14.1, states skipped silently before (labelled select values, entities with a `readOnly` value) are generated and checked, so expect new failures that are real. A `readOnly` field keeps its `field:<id>` axis only when a view condition references it. The calendar `done-missing` check respects `maxEntriesPerDay`. See "Upgrading hand-written drivers" in the README.
 
+## 0.16.3
+
+### Patch Changes
+
+- 1b09bda: Visual docs (card 62b): each package README gained the picture or diagram of what that package does — the five renderers drawn from the showcase over the real component set, the editor mid-reorder with numbered call-outs and a three-frame reorder, the theme's light/dark pair on one document, core's document path and the state grid's axis flow as diagrams, and the state-check run's coverage. READMEs ship in the npm tarball, so the published pages change.
+- Updated dependencies [1b09bda]
+  - @yadad/core@0.18.1
+  - @yadad/runtime@0.19.1
+
 ## 0.16.2
 
 ### Patch Changes
