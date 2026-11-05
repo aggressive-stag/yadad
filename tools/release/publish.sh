@@ -10,18 +10,24 @@ set -eu
 : "${CI_PROJECT_ID:?run this in GitLab CI}"
 : "${CI_JOB_TOKEN:?run this in GitLab CI}"
 
-# Reads and publishes do NOT share an endpoint, and pinning both to the
-# project level is what killed job 12126: @yadad/components is published by
-# the yadad-components project, so projects/9/... 404s its metadata and
-# pnpm dies on "ERR_PNPM_RESOLVING_NPM_RESOLVER_NETWORK_ERROR ...
-# @yadad%2Fcomponents: HTTP status client error (404 Not Found)". The
-# instance-level endpoint (/api/v4/packages/npm/) serves every @yadad
-# package across the group, so it is the read path; publishes still go to
-# this project's endpoint explicitly via --registry, which also keeps them
-# from landing in whatever project owns the package name first.
+# Reads and publishes do NOT share an endpoint, and pinning both to one is
+# what killed jobs 12126 and 12130. Pinning the @yadad scope to
+# projects/9/... 404s @yadad/components (published by the yadad-components
+# project) on the metadata fetch pnpm does even under --frozen-lockfile:
+# "ERR_PNPM_RESOLVING_NPM_RESOLVER_NETWORK_ERROR ... @yadad%2Fcomponents:
+# HTTP status client error (404 Not Found)" (12126). Pinning the scope to
+# the instance endpoint instead fixes reads but hijacks publishes: pnpm's
+# scope entry beats `publish --registry`, so the upload went to the
+# read-only instance endpoint and died 404 (12130, see the
+# "📦 @yadad/core@0.18.1 -> /api/v4/packages/npm/" line in the trace).
+# So: NO @yadad scope entry at all. The default registry is the
+# instance-level endpoint, which serves every @yadad package in the group
+# (engine packages live here, components in yadad-components); publishing
+# names this project's endpoint with --registry, which pnpm only honours
+# when no scope claims the package.
 publish_registry="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
 cat > "${HOME}/.npmrc" <<EOF
-@yadad:registry=${CI_API_V4_URL}/packages/npm/
+registry=${CI_API_V4_URL}/packages/npm/
 ${CI_API_V4_URL#https:}/packages/npm/:_authToken=${CI_JOB_TOKEN}
 ${publish_registry#https:}:_authToken=${CI_JOB_TOKEN}
 EOF
