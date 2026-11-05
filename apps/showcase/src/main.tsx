@@ -13,6 +13,43 @@ body { margin: 0 auto; max-width: 75rem; padding: var(--yadad-space-4); font-fam
 main > section { overflow-x: auto; }
 main > section + section { margin-block-start: var(--yadad-space-4); }
 [data-showcase-toolbar] { align-items: center; display: flex; flex-wrap: wrap; gap: var(--yadad-space-2); margin-block-end: var(--yadad-space-3); }
+/* Card 62a (V7): the toolbar's own buttons are host chrome, not the component set —
+   under a coarse pointer they gave a 54x21px tap target. Bring them to the 44px floor. */
+@media (pointer: coarse) {
+  [data-showcase-toolbar] button { min-block-size: 2.75rem; min-inline-size: 2.75rem; padding-inline: var(--yadad-space-3); }
+  /* Same floor for the demo's own selects and their labels (View as, simulate-editor,
+     state filters): native selects rendered 19px tall and 13px font — iOS zooms the page. */
+  [data-showcase-toolbar] select,
+  [data-view-as] select,
+  [data-state-filters] select { min-block-size: 2.75rem; font-size: 1rem; }
+  [data-view-as] label,
+  [data-state-filters] label { min-block-size: 2.75rem; align-items: center; }
+  [data-showcase-toolbar] label { min-block-size: 2.75rem; display: inline-flex; align-items: center; gap: var(--yadad-space-1); }
+  /* State-kit tile openers are bare text buttons (padding:0) — 36px tall on a phone. */
+  [data-state-open] { min-block-size: 2.75rem; }
+  /* The state detail page is showcase chrome too: back button 134x21, radio labels 20px. */
+  [data-state-detail] > button { min-block-size: 2.75rem; display: inline-flex; align-items: center; }
+  [data-state-detail] fieldset label { min-block-size: 2.75rem; display: inline-flex; align-items: center; gap: var(--yadad-space-1); }
+  /* field-frame labels are component-owned (@yadad/components): tap targets render
+     35px wide on a phone. Host-layer mirror of the 44px floor; proper fix upstream
+     (label min-inline-size under pointer:coarse), noted in the card Report. */
+  [data-yadad="field-frame"][data-part="root"] > [data-part="label"] { min-inline-size: 2.75rem; }
+}
+
+/* Card 62a (V3): tags chips set overflow-wrap:anywhere (component-owned,
+   yadad-components sets/base/tags/v1/tags.css:122), which collapses their
+   min-content width to ~one character — so the table squeezes chip cells to
+   36px and the text breaks mid-letter while the root never scrolls. Mirrored
+   here at the host layer (break-word keeps min-content and keeps wrapping as
+   the last resort); the proper fix is the one-word change upstream, noted in
+   the card Report. Verified: 43/43 chips whole at 1280 and 320, no page overflow. */
+[data-yadad="tags"][data-part="display"] > [data-part="chip"] { overflow-wrap: break-word; }
+/* Same family (V3): editor row buttons (Move … up/down, Stop offering) sit in a
+   flex actions span and were shrinking to 49px wide — the ellipsised label then
+   broke one letter per line (11–16 lines). Button chrome must not squash; the
+   label truncates at the ellipsis it already has. Verified: 22/22 whole at 390,
+   no page overflow. */
+td[data-part="cell"] button[data-yadad="button"] { flex: none; white-space: nowrap; }
 nav button[aria-current="page"] { font-weight: 700; text-decoration: underline; }
 [data-view-as] { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yadad-space-3); margin: 0 0 var(--yadad-space-3); padding: var(--yadad-space-2); border: 1px solid var(--yadad-color-border, #ccc); border-radius: 0.5rem; }
 [data-state-filters] { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr)); gap: var(--yadad-space-2) var(--yadad-space-3); margin: 0 0 var(--yadad-space-3); padding: 0; border: 0; min-width: 0; }
