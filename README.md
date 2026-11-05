@@ -2,6 +2,121 @@
 
 Yet another drag and drop: a schema-driven React engine for data-bound apps. You describe an app as small, strictly validated JSON documents (entities that own fields, and views that show them), and a renderer turns those documents plus live records into working forms, record tables, calendars, kanban-style boards and dashboards. Documents can be stored in a database and edited visually, so changing an app needs no redeploy.
 
+![The showcase at laptop width: a workout log's dashboard with its form, count widgets and tabs, drawn by the reference component set](docs/assets/screens/hero-1280-light.png)
+
+*The showcase at laptop width — one generated app: a form, its count widgets, tabs and the editing toolbar, all from documents.* The same page on a phone:
+
+![The same showcase page at phone width, controls stacked for touch](docs/assets/screens/hero-390-light.png)
+
+*Same documents, 390 px wide: the chrome adapts, nothing else changes.* Every picture here ships from [docs/assets/screens/](docs/assets/screens/) with the URL, state and command that produced it.
+
+## What you write, what you get
+
+Each section is the smallest document that produces the screen, followed by the screen itself. All of these render against one entity — a task list, in this shape:
+
+```jsonc
+{ "kind": "entity", "specVersion": 10, "id": "task", "revision": 1, "fields": [
+  { "id": "title", "type": "text", "label": "Title", "required": true },
+  { "id": "status", "type": "select", "label": "Status", "options": { "source": "static", "values": ["To do", "In progress", "Done"] } },
+  { "id": "owner", "type": "select", "label": "Owner", "options": { "source": "static", "values": ["Ada", "Sam"] } },
+  { "id": "priority", "type": "select", "label": "Priority", "options": { "source": "static", "values": ["High", "Low"] } },
+  { "id": "due", "type": "date", "label": "Due" } ] }
+```
+
+The pictures come from the showcase rendering these documents with the
+[`@yadad/components`](https://github.com/aggressive-stag/yadad-components) registry — the links under
+each picture go to that component's page.
+
+### A form
+
+```jsonc
+{ "kind": "form", "specVersion": 10, "id": "new_task", "entity": "task", "revision": 1, "dataSource": "default",
+  "sections": [{ "id": "main", "title": "New task",
+    "items": [{ "field": "title" }, { "field": "status" }, { "field": "due" }] }] }
+```
+
+![The form above rendered: a titled section with a text field, a select and a date field, each with its label and error plumbing](docs/assets/screens/form-hello-1280-light.png)
+
+*The smallest form document: one section, three fields — labelled inputs, required markers and error frames come from the registry's [FieldFrame](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/field-frame.md), [Text](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/text.md), [Select](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/select.md) and [Date](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/date.md).* (The picture shows the showcase's `hello_form`, same shape.)
+
+### A table
+
+```jsonc
+{ "kind": "table", "specVersion": 10, "id": "tasks_table", "entity": "task", "revision": 1, "dataSource": "tasks",
+  "title": "All tasks",
+  "columns": [{ "field": "title" }, { "field": "status" }, { "field": "owner" }, { "field": "priority" }],
+  "quickFilters": [{ "field": "status" }, { "field": "owner" }],
+  "sort": [{ "field": "title", "dir": "asc" }] }
+```
+
+![The table document rendered: sortable columns, quick-filter chips and a pager over seeded rows](docs/assets/screens/table-tasks-1280-light.png)
+
+*Sortable headers, quick-filter chips, a pager: [the Table component's page](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/table.md) covers the cell anatomy; sorting and filtering semantics live in the document and adapter, not the component.*
+
+### A board
+
+```jsonc
+{ "kind": "board", "specVersion": 10, "id": "tasks_board", "entity": "task", "revision": 1, "dataSource": "tasks",
+  "groupBy": [{ "field": "status" }, { "field": "owner" }], "titleField": "title",
+  "cardFields": ["owner", "priority"], "editable": true }
+```
+
+![The board document rendered: task cards in columns per status, with a group-by picker](docs/assets/screens/board-bookings-1280-light.png)
+
+*One column per value of the picked `groupBy` field; drag a card — or use the keyboard — and the field changes through the adapter. [Board component page](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/board.md).*
+
+### A calendar
+
+```jsonc
+{ "kind": "calendar", "specVersion": 10, "id": "tasks_calendar", "entity": "task", "revision": 1, "dataSource": "tasks",
+  "dateField": "due", "titleField": "title", "modes": ["month", "week"], "editable": true }
+```
+
+![The calendar document rendered: a month grid with entries on their due days and a week toggle](docs/assets/screens/calendar-month-1280-light.png)
+
+*Records land on the days of their `dateField`; drag an entry to another day to change it. Week mode beside month mode: [Calendar component page](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/calendar.md).*
+
+### A dashboard
+
+```jsonc
+{ "kind": "dashboard", "specVersion": 10, "id": "tasks_home", "title": "Team home", "revision": 1,
+  "tabs": [{ "id": "work", "title": "Work", "items": [
+    { "id": "board", "x": 0, "y": 0, "w": 12, "h": 10, "widget": "view", "view": "tasks_board" }]}] }
+```
+
+![The dashboard document rendered: a tab holding the board above on a 12-column grid](docs/assets/screens/dashboard-tasks-1280-light.png)
+
+*Widgets sit on a 12-column grid (`x, y, w, h`): `view` embeds a form/table/calendar/board, `count` and `stat` show numbers, `series` charts a grouped measure. The editor's layout mode drags and resizes them (from the keyboard too).*
+
+### A drill-down
+
+Any table can open another view bound to the clicked row:
+
+```jsonc
+// on tasks_by_owner (a table of tasks):
+"rowAction": { "open": "tasks_for_owner", "bind": [{ "field": "owner", "to": "owner" }] }
+```
+
+![The drill dashboard rendered: a row of one table opens the same view scoped to that row's value](docs/assets/screens/detail-drill-1280-light.png)
+
+*Click a task and its owner's tasks open beside it, with the drill kept in the URL so a reload restores it. RFC [0003](rfcs/0003-row-drill-down.md) and [0010](rfcs/0010-consumer-feedback.md) define the contract.*
+
+### A review screen
+
+A review screen is not a special kind: it is a table over a versions entity with a `compare` column and record actions.
+
+```jsonc
+// on a versions entity that declares actions: { "id": "apply", "label": "Apply", "confirm": { "message": "Apply this change?" } }
+{ "kind": "table", "specVersion": 10, "id": "review_changes", "entity": "record_version", "revision": 1, "dataSource": "review",
+  "title": "Changes",
+  "columns": [{ "field": "changed_at" }, { "field": "author" }, { "field": "body", "compare": { "field": "previous_body" } }],
+  "recordActions": ["apply", "reject"] }
+```
+
+![The review table rendered: a word diff in the body column and per-row Apply / Reject actions](docs/assets/screens/review-changes-1280-light.png)
+
+*The `compare` column shows what changed as marked-up words; the entity's actions ride each row through [the Dialog component](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/dialog.md). [RFC 0007](rfcs/0007-review-screens.md) is the contract.*
+
 ## What you get
 
 - **Documents as the contract.** Entities, forms, tables, calendars, boards, dashboards and a viewer document are plain JSON with a JSON-Schema-backed validator that reports errors by JSON Pointer, with a hint for each.
