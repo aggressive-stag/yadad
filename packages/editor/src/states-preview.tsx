@@ -1,6 +1,7 @@
 import type { Document, FormView, ViewDocument } from "@yadad/core";
 import { sectionItems, validateDocuments } from "@yadad/core";
 import { evaluateCondition, viewStates } from "@yadad/runtime";
+import { coarsePointer } from "./reorder.js";
 import type { ViewState, ViewStatesResult } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -228,7 +229,7 @@ export function StatesPreview({ view, saved, documents, now, renderState, checkS
   return (
     <section aria-label="States preview" data-yadad-states-preview="">
       <h3 id={`${base}-title`}>States preview</h3>
-      <label>
+      <label style={coarsePointer() ? { display: "inline-flex", alignItems: "center", gap: "var(--yadad-space-1, 0.25rem)", minBlockSize: 44 } : undefined}>
         <input type="checkbox" checked={changedOnly} onChange={(e) => setChangedOnly(e.target.checked)} /> Only new and changed states
       </label>
       <p role="status" data-yadad-states-status="">
@@ -316,7 +317,7 @@ function StateTile({ state, change, problems, checked, open, onToggle, content, 
   }, []);
   return (
     <li data-yadad-state={state.id} data-change={change} data-problems={problems.length} style={{ border: "1px solid var(--yadad-border, #c9c9c9)", padding: "var(--yadad-space-2, 0.5rem)", minWidth: 0 }}>
-      <button type="button" aria-expanded={open} aria-describedby={problems.length > 0 ? `${tileId}-problems` : undefined} onClick={onToggle}>
+      <button type="button" aria-expanded={open} aria-describedby={problems.length > 0 ? `${tileId}-problems` : undefined} onClick={onToggle} style={coarsePointer() ? { minBlockSize: 44, minInlineSize: 44 } : undefined}>
         {state.label}
       </button>
       {change !== "unchanged" && (

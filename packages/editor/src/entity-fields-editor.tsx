@@ -442,7 +442,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
       action.label,
       action.id,
       action.confirm === undefined ? "Runs on press" : action.confirm.tone === "danger" ? `Danger: ${action.confirm.message}` : action.confirm.message,
-      <span key="actions" style={{ display: "inline-flex", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
+      <span key="actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)" }}>
         <Button label={`Edit ${action.label}`} type="button" variant="secondary" disabled={false} onPress={() => setActionPanel(panelFromAction(action, current.fields))} />
         <Button label={`Move ${action.label} up`} type="button" variant="secondary" disabled={i === 0} onPress={() => moveActionRow(action, -1)} />
         <Button label={`Move ${action.label} down`} type="button" variant="secondary" disabled={i === (current.actions ?? []).length - 1} onPress={() => moveActionRow(action, 1)} />

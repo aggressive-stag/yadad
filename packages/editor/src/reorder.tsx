@@ -129,6 +129,15 @@ const gripStyle: CSSProperties = {
 
 const draggingGripStyle: CSSProperties = { ...gripStyle, cursor: "grabbing", opacity: 0.4 };
 
+/** Card 62a (V7): under a coarse pointer a bare 10x13px glyph is not a tap target.
+ *  The grip is inline-styled (no stylesheet to hang a media query on), so the
+ *  coarse-pointer check happens here; fine pointers keep the compact grip.
+ *  Shared by the states-preview tiles (same reason). Exported for reuse. */
+export const coarsePointer = (): boolean =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+
+const touchGripStyle: CSSProperties = { minBlockSize: 44, minInlineSize: 44, display: "inline-flex", alignItems: "center", justifyContent: "center" };
+
 interface ReorderGripProps {
   /** Accessible name, e.g. "Drag the field Title". */
   readonly label: string;
@@ -159,7 +168,7 @@ export function ReorderGrip({ label, dragging, onPointerDown, onPointerMove, onP
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onKeyDown={onKeyDown}
-      style={dragging ? draggingGripStyle : gripStyle}
+      style={{ ...(dragging ? draggingGripStyle : gripStyle), ...(coarsePointer() ? touchGripStyle : null) }}
     >
       ⠿
     </button>

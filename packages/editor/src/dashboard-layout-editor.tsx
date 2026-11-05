@@ -42,7 +42,7 @@ interface PaletteEntry {
 }
 
 function palette(views: readonly ViewDocument[], describeView: (viewId: string) => string, entities: ReadonlyMap<string, EntityDocument> | undefined): PaletteEntry[] {
-  return views.flatMap((v): PaletteEntry[] => {
+  const raw = views.flatMap((v): PaletteEntry[] => {
     if (v.kind === "form" || v.kind === "calendar" || v.kind === "board") return [{ label: describeView(v.id), base: v.id, widget: { widget: "view", view: v.id }, w: 6, h: 5 }];
     if (v.kind === "table") {
       const entity = entities?.get(v.entity);
@@ -77,6 +77,20 @@ function palette(views: readonly ViewDocument[], describeView: (viewId: string) 
       ];
     }
     return [];
+  });
+  // Card 62a: labels are the picker's identity (option value and the entry lookup), so a
+  // host with two views sharing a title produced duplicate options — duplicate React keys
+  // and an unreachable second view. Disambiguate the collision with the entry's base id.
+  const used = new Set<string>();
+  return raw.map((e) => {
+    if (!used.has(e.label)) {
+      used.add(e.label);
+      return e;
+    }
+    let label = `${e.label} (${e.base})`;
+    for (let n = 2; used.has(label); n++) label = `${e.label} (${e.base} ${n})`;
+    used.add(label);
+    return { ...e, label };
   });
 }
 
@@ -356,6 +370,12 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
   };
 
   const helpId = `${base}-help`;
+  // Card 62a: the card asks what the editor should do at phone width — "usable, or an
+  // honest 'use a larger screen' message, not a broken layout". A 12-column drag canvas
+  // cannot be usable at 320-390px: each cell renders ~85px, row buttons break one letter
+  // per line and the widget panel becomes an 85px scroller. So narrow viewports get the
+  // honest message; desktop and tablet keep the full editor.
+  const narrowScreen = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 40rem)").matches;
   const grid = (
     <div
       ref={gridRef}
@@ -556,7 +576,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
       <Tabs label={`Edit ${dashboard.title ?? dashboard.id}`} tabs={current.tabs.map((t) => ({ id: t.id, title: t.title }))} selected={tab.id} onSelect={(id) => {
           setSelected(id);
           setTabTitle("");
-        }} panel={grid} />
+        }} panel={narrowScreen ? <p data-yadad-editor-narrow-note="">The dashboard layout grid needs a larger screen — drag-rearrange a {columns}-column canvas on a tablet or desktop. The {tab.title} tab keeps its current layout on this device.</p> : grid} />
     </div>
   );
 }
