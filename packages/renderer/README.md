@@ -43,19 +43,19 @@ One document per renderer, all five from the showcase over the reference compone
 | | |
 | --- | --- |
 | `FormRenderer` | `TableRenderer` |
-| ![A form: a titled section with labelled text, select and date fields](../docs/assets/screens/form-hello-1280-light.png) | ![A table: sortable columns, quick-filter chips, pager over seeded rows](../docs/assets/screens/table-tasks-1280-light.png) |
+| ![A form: a titled section with labelled text, select and date fields](../../docs/assets/screens/form-hello-1280-light.png) | ![A table: sortable columns, quick-filter chips, pager over seeded rows](../../docs/assets/screens/table-tasks-1280-light.png) |
 | `BoardRenderer` | `CalendarRenderer` |
-| ![A board: cards in columns per grouping value with a group-by picker](../docs/assets/screens/board-bookings-1280-light.png) | ![A calendar: entries placed on their days in a month grid](../docs/assets/screens/calendar-month-1280-light.png) |
+| ![A board: cards in columns per grouping value with a group-by picker](../../docs/assets/screens/board-bookings-1280-light.png) | ![A calendar: entries placed on their days in a month grid](../../docs/assets/screens/calendar-month-1280-light.png) |
 | `DashboardRenderer` (one tab, two drillable table widgets; a row opens the matching rows of the other) | A review table: `compare` shows the change as words, entity actions ride each row |
-| ![A dashboard: tables on a 12-column grid, one drilled into the other](../docs/assets/screens/detail-drill-1280-light.png) | ![A review table with a word diff and per-row actions](../docs/assets/screens/review-changes-1280-light.png) |
+| ![A dashboard: tables on a 12-column grid, one drilled into the other](../../docs/assets/screens/detail-drill-1280-light.png) | ![A review table with a word diff and per-row actions](../../docs/assets/screens/review-changes-1280-light.png) |
 
 The week mode of the same calendar, after the viewer clicks Week:
 
-![The calendar in week mode: one column per day of the week](../docs/assets/screens/calendar-week-1280-light.png)
+![The calendar in week mode: one column per day of the week](../../docs/assets/screens/calendar-week-1280-light.png)
 
 *Week mode is the same renderer with `modes: ["month", "week"]`.* Same view, the dark token set — `themeToCss(darkTheme)` is all the host changed:
 
-![The tasks table under the dark theme](../docs/assets/screens/theming-table-1280-dark.png)
+![The tasks table under the dark theme](../../docs/assets/screens/theming-table-1280-dark.png)
 
 *Theming is in [`@yadad/theme`](../theme); the components read nothing but CSS variables ([their Table page](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/table.md) has the anatomy).*
 

@@ -61,7 +61,7 @@ adapter.configure({ source: "ready" }); // switch while the test runs
 
 `checkViewStates` is `viewStates` plus the adapter's side of life, rendered with *your* components. The showcase's States page is the same machinery on screen — every state of `tasks_table`, the data-source states included, checks reported beside each tile:
 
-![The States page: every state of a table view as tiles, loading, failed and conflict states included, with the checks beside them](../../docs/assets/screens/states-table-1280-light.png)
+![The States page: every state of a table view as tiles, loading, failed and conflict states included, with the checks beside them](../docs/assets/screens/states-table-1280-light.png)
 
 *Each tile renders one state through the host's own `render`; a tile that throws, logs an error, shows a field the conditions hide, lacks an accessible name or offers a forbidden edit is reported by name, not silently passed. A run of the grid — named files: `testing/src/state-checks.ts` for the checks, `packages/runtime/src/view-states.ts` for the states.*
 
