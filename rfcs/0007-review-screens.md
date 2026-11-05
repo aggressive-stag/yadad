@@ -415,6 +415,23 @@ Accepted. The owner pre-accepted the direction to keep the queue moving; the des
 9. Read-only needs no new key. Nested data is join entities plus drill-down; evidence is pre-joined text in slice 1.
 10. `specVersion` 5 to 6 with an identity `migrate()`.
 
+## What shipped (2026-11-05)
+
+All ten decisions shipped; `specVersion` is 10 today (this RFC carried it 5 → 6).
+
+1. **Actions on the entity, offered by views** — `checkRecordActions` (`packages/core/src/validate.ts:133`) checks `id`, `label`, optional `confirm` (`ActionConfirm`, `ActionInputField`, tones), optional typed `input`, `visibleWhen`; `recordActions` ride tables, boards and calendars (`validate.ts:366,469,545`). Forms still do not offer them — owner answer 1 kept every new surface optional, and nothing has asked since.
+2. **Hide, not disable** — one `visibleWhen` (record and viewer leaves via `containsViewerLeaf`, `validate.ts:1010`) plus `can.actions[id] === false` (`adapter-guards.ts:53`); no `enabledWhen` exists anywhere.
+3. **The protocol endpoint is exactly as specified** — `POST {base}/{entity}/{id}/actions/{action}` with `input`, `entityRevision`, required `baseVersion` (`packages/runtime/src/http-adapter.ts:204`); `403`/`409` share the write paths' handling. `records-protocol.md` documents the `notice` page key that RFC 0010 later added.
+4. **`act` optional everywhere** — the renderer's missing `act` gives an `ErrorSummary`; the memory and key-value adapters take the `actions` option (`memory-adapter.ts:39`, handlers in `actions.ts`) and keep the memory adapter's guard order, refused actions included.
+5. **`layout.Dialog` shipped and stayed optional** — `registry.ts:583`; board and calendar action dialogs are built by the renderer and asserted by their tests (`board-renderer.test.tsx:732`).
+6. **`datetime` as decided** — one canonical stored form (`isIsoDatetime`, `validate.ts:1290`), displayed in the viewer's zone, ordered as a string, range quick filter; not a calendar/board field type. `fields.datetime` remains optional in the registry with an `ErrorSummary` where used (owner answer 1).
+7. **`compare` as decided** — `packages/runtime/src/compare.ts` computes the word diff (previous row, next row, or another text field; `COMPARE_NEIGHBOURS` in core) and hands the text `Display` the optional `diff` prop (`registry.ts:143`). Rendered proof: `docs/assets/screens/review-changes-1280-light.png`.
+8. **Cursor paging as decided** — optional `total`, opaque `next`, Previous/Next with no count (`cursor-pager.tsx`); counts walk to the cap.
+9. **No new read-only key; joins via drill-down; evidence as pre-joined text** — as decided, with RFC 0010/0011 later giving the drill a controlled `drills` prop on tables *and* dashboard widgets, so a drilled table can live at a URL.
+10. **`specVersion` 6 with identity `migrate()`** — done; the ladder has run to 10 since.
+
+Owner answer 2 ("dashboard drill target stays in slice 2") still holds: `levelFromBindings` (`table-renderer.tsx`) accepts only `kind === "table"` targets, and no host has reported the pre-joined evidence text as too limited.
+
 ## Owner answers
 
 The owner leans toward **allowing** rather than forbidding: optional registry keys and optional adapter methods, with a clear error where something is missing, rather than requirements that break existing component sets or adapters.

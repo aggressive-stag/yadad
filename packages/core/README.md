@@ -92,6 +92,22 @@ A `datetime` quick filter is a from/to range on the viewer's clock (gte/lte, eit
 
 A select field's `options.values` is part of the document and is validated with it. When the choices live on the server, fill them into the document at host build time and validate after filling. The committed document may carry a placeholder only if your loader replaces it before validation. A dynamic option source is not part of the contract; a `reference` field is the in-contract way to point at server records. See `docs/records-protocol.md`.
 
+## The document path
+
+`core` is the turnstile every document passes through before anything renders. Named files: `migrate.ts` (the version ladder), `validate.ts` (shape), `describe-contract.ts` (the machine-readable catalog).
+
+```mermaid
+flowchart LR
+  raw["Untrusted JSON: a database row, an agent's edit"] --> mig["migrate(doc): step older specVersion to the current one"]
+  mig --> shape["validateDocument: shape, per document kind"]
+  shape --> set["validateDocuments: across a set — a view's entity exists, field ids exist, widgets point at views"]
+  set -- "errors: path, code, message, hint" --> fix["Nothing renders; the editor shows the problem list"]
+  set -- "warnings (code empty)" --> ok["Valid but odd: a form with no fields, an empty tab"]
+  set --> out["Valid documents: the renderer may draw them"]
+```
+
+`migrate()` is pure and every historical fixture migrates to the current `specVersion` (the fixture corpus under `fixtures/migrate/` asserts it); `validateDocuments` refuses a set still carrying an un-migrated version. `describeContract()` is generated from the same constants the validator uses, so the description cannot drift from the rules — `pnpm describe-registry` prints it. See [the render pipeline](../../ARCHITECTURE.md#the-render-pipeline) and [section 7](../../ARCHITECTURE.md#7-validation-two-kinds-one-owner-each).
+
 ## Exports
 
 - Document types: `EntityDocument`, `FormView`, `TableView`, `CalendarView`, `BoardView`, `DashboardView`, `ViewerDocument` (with `ViewerFact`, `ResolvedViewer`), `Field`, `Condition` and `ViewerCondition` (the `viewerIn` subset for viewer-only places) and friends; `SPEC_VERSION`. RFC 0007 adds `RecordAction` (with `ActionConfirm`, `ActionInputField`, `ActionConfirmTone`), `ColumnCompare` and `CompareNeighbour` (`COMPARE_NEIGHBOURS`), the grid limits `ACTIONS_MAX`, `ACTION_INPUT_MAX`, `RECORD_ACTIONS_MAX`, and `isIsoDatetime` (the one canonical stored form a `datetime` value takes). RFC 0008/0009 add `TimeField`, `TagsField`, `SubRecordSection`, `NamedFilter`, the `fieldEqFact` leaf in `Condition`/`CONDITION_OPS`, `PagerProps`, and the board `columnsFrom`/calendar `doneField`/table `addForm` keys.

@@ -143,6 +143,23 @@ flowchart LR
 
 A document the host loads goes through `migrate()` (an older `specVersion` is upgraded; `validateDocuments` itself refuses one that was not), then `validateDocuments`. Only a valid set reaches the renderer, which sorts it with `documentSet`, evaluates conditions, quick filters and viewer predicates through `runtime`, and asks the registry for a component by key. It never names a component. `viewStates` reads the same documents to list the states the state grid (section 13) checks. Checked against `packages/core/src/migrate.ts`, `validate.ts`, `packages/renderer/src/document-set.ts` and `packages/runtime/src/view-states.ts` at 99c6244 (2026-10-27).
 
+### The author's pipeline
+
+The same documents, authored: a drag or a keystroke in an editor becomes one checked patch, and the preview redraws from the patched document. Named files: `packages/editor/src/reorder.tsx` (grip drag and keyboard move), `session.ts` (the patch log behind undo/redo), `save-result.ts` (a patch the validator rejects never reaches the session), and the property panels built per field type in `packages/editor/src/ui.ts`.
+
+```mermaid
+flowchart LR
+  pal["Editor panels: field types, columns, grid cells"] -- "one action" --> chk{"Would the patched document validate?"}
+  grip["Grip drag, resize, or keyboard move"] -- "one action" --> chk
+  chk -- no --> prob["Problem list: path, message, hint — nothing applied"]
+  chk -- yes --> patch["One JSON Patch through the session's patch log"]
+  patch -- "undo / redo walk the log" --> patch
+  patch --> doc["Document with revision bumped on save"]
+  doc --> preview["States preview and renderer redraw"]
+```
+
+A save hands back the edited document with its `revision` bumped; the editor writes documents, never records. The keyboard path is first-class: focus a grip and arrows move the row, Esc cancels a drag (`reorder.tsx`, `arrowStep`). Checked against `packages/editor/src/session.ts`, `reorder.tsx` and `save-result.ts` at 45716f7 (2026-11-05).
+
 ## 6. Document model: entities and views
 
 An **entity** owns fields, types and validation. A **view** owns layout and references field ids. One entity can have many views.

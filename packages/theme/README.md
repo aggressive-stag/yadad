@@ -15,6 +15,18 @@ style.textContent = themeToCss(lightTheme) + themeToCss(darkTheme, "[data-theme=
 cssVar("color-accent"); // "var(--yadad-color-accent)"
 ```
 
+The same table document, the same component set, the two token sets — nothing else changed:
+
+![The tasks table under the light theme](../../docs/assets/screens/theming-table-1280-light.png)
+
+*`themeToCss(lightTheme)`: the light values.*
+
+![The same tasks table under the dark theme](../../docs/assets/screens/theming-table-1280-dark.png)
+
+*`themeToCss(darkTheme, "[data-theme=dark]")`: only the tokens differ — text, surfaces, borders, accent. A component that hard-codes a colour is the bug this pair catches.* And a denser surface to check contrast against, a calendar in dark:
+
+![A bookings calendar in dark mode](../../docs/assets/screens/theming-calendar-1280-dark.png)
+
 `themeToCss(theme, selector = ":root")` emits one `--yadad-<name>` variable per token inside `@layer yadad.tokens`, so any unlayered host CSS overrides it. To customize, spread a theme and change values: `{ ...lightTheme, "color-accent": "#0a7d4f" }`.
 
 ## Following the system theme

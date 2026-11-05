@@ -374,6 +374,18 @@ Semantics, all **rolling**:
 - Component sets on older cores: an absent `listStart` means `"period"`, and a set that does not know a mode renders it like `week` (it receives `days` and `weekdays` either way) — nothing already shipped breaks.
 - `SPEC_VERSION` stays **10**: additive per rule 8 / D52, no `migrate()` step, no before/after fixture pair (those exist for migrations; new valid documents get ordinary validator fixtures).
 
+## What shipped (2026-11-05)
+
+The calendar shipped as decided, plus the 2026-10-31 amendment. `specVersion` is 10 today; the amendment itself needed no `migrate()` step, as it predicted.
+
+- **Dates only, six-week month, one `find` per range** — `visibleRange`/`visibleDays` give 42 days for `month` (`packages/runtime/src/calendar.ts:100`), `CALENDAR_MAX_RECORDS = 2000` (`calendar.ts:10`) with the notice path, `loadCalendarRange` pages through `find`. Undated records fall out of every range.
+- **Move is an optimistic `update`** — `moveDay` plans it, the renderer applies it and reverts plus reloads on failure; the renderer holds no drag code, the component does (`calendar-renderer.tsx:83`), and "Move to day…" is the required non-drag path.
+- **`rowAction` reused**; a calendar starts chains and is refused as a target by the validator.
+- **Owner answers all hold**: fixed six weeks, the 2,000 constant untouched, "Move to day…" accepts any date.
+- **Amendment shipped as approved**: `CalendarMode` widened to `"1day"`…`"6day"` (`validate.ts:509` — `"7day"` refused with the confusability hint), rolling semantics, `listStart: "period" | "today"` forwarded to the component (`calendar-renderer.tsx:533`), `initialMode` on the renderer.
+- **The one item that has not happened**: the 2026-10-15 answer 2 promised `layout.Calendar` becomes required once the reference set ships a calendar. The set has one (and a Board), yet `layout.Calendar` is still optional (`packages/core/src/registry.ts:423`) — same state as RFC 0005's `layout.Board`. The required-in-a-minor step is still owed; it is a one-line contract change, deliberately not taken by this docs card.
+- Screens: `docs/assets/screens/calendar-month-1280-light.png`, `calendar-week-1280-light.png` (month and week of the same document), and the dark pair in `packages/theme/README.md`.
+
 ## Owner questions (amendment)
 
 None. Q6 (rolling vs work week) and Q7 (which periods to ship first — `3day` + `5day`) were decided by the owner on 2026-10-31 and are recorded above.

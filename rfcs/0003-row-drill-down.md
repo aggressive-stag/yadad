@@ -98,6 +98,19 @@ Accepted; slice 1 is implemented.
 4. Form-edit is a separate feature, not part of this RFC's slice 1.
 5. Depth cap of 3 and no revisits.
 
+## What shipped (2026-11-05)
+
+Slice 1 shipped as decided; `specVersion` is 10 today (later RFCs carried it from 5, so decision item 2's slice-1 world is long behind us).
+
+- **Binding-based scoping, depth cap 3, no revisits** — exactly as decided. `MAX_ROW_ACTION_DEPTH = 3` in `packages/core/src/contract.ts`; the validator walks every chain in `validate.ts` (no revisits, depth cap), and `table-renderer.tsx` re-checks both at run time (`levelFromBindings`) so a hand-edited document cannot nest deeper.
+- **`replace` with Back in one container** — the in-container back stack decision item 2 chose: earlier levels stay mounted and hidden, a single **Back** button restores them (`table-renderer.tsx`). No breadcrumb trail shipped; a deep chain is Back per hop.
+- **The engine owns the stack** — decision item 3 landed the other way from the proposed host hook: `drill` / `onDrillChange` are renderer props (RFC 0010 item 1), so a host can hold the stack in a URL and deep-link hop 2. A supplied `drill` and a click go through the same `levelFromBindings` check, and a stale URL cuts back to its valid prefix.
+- **`dialog` shipped anyway**, shared with RFC 0007: `layout.Dialog` is an optional registry key (`packages/core/src/registry.ts`) and the renderer builds the dialog content — see RFC 0007.
+- **Form-edit stayed out**; it arrived later through RFC 0008's add-form and editable surfaces, not this RFC.
+- Visual proof of a two-level chain, the ledger table drilled into from the bookings table: `docs/assets/screens/detail-drill-1280-light.png` (also in the repo README's renderer table).
+
+Open questions 1–5 are all answered by the shipped code as listed; none remains open.
+
 ## Open questions for the owner
 
 1. Is binding-based scoping enough, or do you want general parameterized views now (and relative-date condition values redesigned alongside)?

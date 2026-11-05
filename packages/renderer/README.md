@@ -36,6 +36,29 @@ const documents: DocumentSet = documentSet([entity, form, table]);
 - **Dashboard options.** `initialTab` opens the dashboard on a named tab (a states preview's choice); only the first render reads it, the viewer's own click wins from then on, and an id naming no tab — or a tab this viewer may not see — falls back to the first visible one.
 - **Writes.** `TableRenderer`, `BoardRenderer` and `CalendarRenderer` take an optional `onChanged`, called once after each successful user-initiated write inside them (an edit, a move, a record action) — never on a load or a reload, so a dashboard can pass a reload bump down without looping.
 
+## What each renderer draws
+
+One document per renderer, all five from the showcase over the reference component set — the same documents the [repo README](../../README.md#what-you-write-what-you-get) shows in JSON.
+
+| | |
+| --- | --- |
+| `FormRenderer` | `TableRenderer` |
+| ![A form: a titled section with labelled text, select and date fields](../docs/assets/screens/form-hello-1280-light.png) | ![A table: sortable columns, quick-filter chips, pager over seeded rows](../docs/assets/screens/table-tasks-1280-light.png) |
+| `BoardRenderer` | `CalendarRenderer` |
+| ![A board: cards in columns per grouping value with a group-by picker](../docs/assets/screens/board-bookings-1280-light.png) | ![A calendar: entries placed on their days in a month grid](../docs/assets/screens/calendar-month-1280-light.png) |
+| `DashboardRenderer` (one tab, two drillable table widgets; a row opens the matching rows of the other) | A review table: `compare` shows the change as words, entity actions ride each row |
+| ![A dashboard: tables on a 12-column grid, one drilled into the other](../docs/assets/screens/detail-drill-1280-light.png) | ![A review table with a word diff and per-row actions](../docs/assets/screens/review-changes-1280-light.png) |
+
+The week mode of the same calendar, after the viewer clicks Week:
+
+![The calendar in week mode: one column per day of the week](../docs/assets/screens/calendar-week-1280-light.png)
+
+*Week mode is the same renderer with `modes: ["month", "week"]`.* Same view, the dark token set — `themeToCss(darkTheme)` is all the host changed:
+
+![The tasks table under the dark theme](../docs/assets/screens/theming-table-1280-dark.png)
+
+*Theming is in [`@yadad/theme`](../theme); the components read nothing but CSS variables ([their Table page](https://github.com/aggressive-stag/yadad-components/blob/main/docs/components/table.md) has the anatomy).*
+
 ## Who is viewing
 
 Every renderer takes an optional `viewer` prop, built by `resolveViewer` in `@yadad/runtime` from the set's viewer document and what your app knows about the user. The renderer then leaves out what that viewer may not use (RFC 0006): form items, table columns, dashboard tabs and widgets whose `visibleWhen` is false are not rendered; in-place editing, drag and "Move to…" are withheld when `editableWhen` is false or the record's `can.update` is `false`; a `rowAction` is withheld while its `visibleWhen` is false. A dashboard passes the viewer on to the views it embeds and to the views a row action opens.

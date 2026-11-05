@@ -329,6 +329,19 @@ Accepted. The owner accepted the direction; the design calls were made while wri
 8. Drag is the component's; "Move to…" is the required non-drag path (the primary one on a phone, with column snap).
 9. `rowAction` is reused unchanged; a board can start a chain, never be a target. `quickFilters` and `colorField` wait for slice 2.
 
+## What shipped (2026-11-05)
+
+The board shipped as decided and answered; `specVersion` is 10 today.
+
+- **`groupBy` 1–5, first is default** — validated against `BOARD_GROUP_BY_MAX` / `BOARD_GROUP_FIELD_TYPES` (`packages/core/src/contract.ts`, used in `validate.ts`). Columns: select options in order; boolean exactly "Yes"/"No" with never an empty column (`board.ts:80`); reference records display-ascending capped at 50 with cards past it in "Other" (`board.ts:13`), one `find`; `BOARD_OTHER_LABEL` column is refused as a drop target by `moveCard` itself (`board.ts` — `{ kind: "blocked", reason: "other" }`).
+- **One `find`, 500 per page, 1,000 cap with notice** — `BOARD_PAGE_SIZE = 500`, `BOARD_MAX_CARDS = 1000` (`packages/runtime/src/board.ts:10,12`); switching the grouping is client-side (`boardQuery` refetches only per query change).
+- **Move is the decided optimistic `update`** — `moveCard` plans `{ [groupField]: value }` (null for empty) with `baseVersion`; the renderer applies it, keeps the card in place among the sorted-loaded set while pending (`board-renderer.tsx:239` `pending` map rewrites the group value), reloads on completion, reverts and reloads on failure.
+- **Group-by choice is renderer state**, uncontrolled, with the optional `groupBy` / `onGroupByChange` pair (`board-renderer.tsx:43,53`) — never in the document.
+- **Drag is the component's; "Move to…" is the required path** (`board-renderer.tsx:94`), and card 56b kept the *hidden* empty column a live "Move to…" target (`board-renderer.tsx:465`).
+- **Slice 2 items stayed out**: no `quickFilters`, no `colorField`, no `hideEmpty` — `validate.ts:534`'s key list carries none of them. What arrived later instead, from RFC 0008: `columnsFrom: "options"` (reference columns from the target's options, refused without a reference groupBy at `validate.ts:1627`) and `doneField`.
+- **Q4 is still owed**: answer 4 promised `layout.Board` becomes required alongside `layout.Calendar` in one minor once the reference set ships both. Both shipped in the set; `layout.Board` remains optional (`packages/core/src/registry.ts:581`). Same owed step as RFC 0004's calendar — one contract change, not taken here.
+- Screens: `docs/assets/screens/board-bookings-1280-light.png` (with the group-by picker), plus the editor's grip-reorder trio under `packages/editor/README.md`.
+
 ## Open questions for the owner
 
 1. Is hiding no columns acceptable for large reference sets (50 mostly empty columns), or should `hideEmpty` be in slice 1?

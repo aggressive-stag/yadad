@@ -60,6 +60,8 @@ screenshot of the named showcase section unless the row says "viewport".
 | `theming-table-1280-light.png` | `/` | light color scheme | element: section `tasks_table` |
 | `theming-table-1280-dark.png` | `/` | dark color scheme | element: section `tasks_table` |
 | `theming-calendar-1280-dark.png` | `/` | dark color scheme | element: section `bookings_calendar` |
+| `viewer-team-1280-role-owner.png` | `/` | "View as" Role set to **owner** | element: section `team_home` |
+| `viewer-team-1280-role-viewer.png` | `/` | "View as" Role set to **viewer** | element: section `team_home` |
 | `states-table-1280-light.png` | `/#states` | states page, tasks_table selected in the picker | element: `[data-states-page]` |
 
 The drag frames move the **Day** column of the logged-sets table editor with the

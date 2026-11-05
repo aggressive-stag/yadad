@@ -395,6 +395,24 @@ Accepted. The owner pre-accepted the direction; the design calls were made while
 8. The state grid gets one axis per viewer fact the view actually reads (select values reduced to named values plus one "everyone else"), a `permission` axis, and a "viewer not provided" state.
 9. `specVersion` 4 to 5, identity `migrate()`, no per-version gating of the new keys.
 
+## What shipped (2026-11-05)
+
+All nine decisions shipped; `specVersion` is 10 today (this RFC carried it 4 → 5; the `migrate()` step for 4 is in `packages/core/src/migrate.ts`).
+
+1. **Facts as a document kind** — one `viewer` document per set (`VIEWER_FACTS_MAX`, `VIEWER_FACT_VALUES_MIN`/`MAX` in `packages/core/src/contract.ts`), `select` (2–8 values) or `boolean`, required `default`; `ViewerPanel` in `@yadad/editor` edits it and refuses removals that conditions still read.
+2. **Array input, defaults on garbage** — `resolveViewer(document, input)` (`packages/runtime/src/viewer.ts:39`): never throws, every declared fact once in declaration order, invalid or unknown entries reported in `issues` with JSON Pointers into `input` (an unknown fact id comes back `code: "unknown-reference"` with the declared ids as `allowed`), the fact keeping its default. A duplicate fact is reported and the first entry wins.
+3. **Missing viewer renders defaults; a bare renderer that reads a facts document and cannot find it shows `ErrorSummary`** — `board-renderer.tsx:155`, `calendar-renderer.tsx:145`, `table-renderer.tsx:305` (`required`, `/viewer`); sets without viewer documents are untouched.
+4. **`viewerIn` in the validator** — the mixed and viewer-only languages are checked in `validate.ts` with the `ViewerCondition` subset (`viewerIn` rejected inside `filter`, enforced at check time, not by convention).
+5. **`editableWhen` only tightens; `clearWhenHidden` refused** — column and view key lists in `validate.ts` carry `editableWhen` beside `editable`; a `clearWhenHidden` paired with a viewer `visibleWhen` is an error.
+6. **Per-record `can`** — `adapter-guards.ts:53` validates `can.actions` (and the RFC 0007 sibling `can.fields`); the memory and key-value adapters take `recordPermissions` and answer a refused write with a real `ForbiddenError`.
+7. **Removed, not disabled; gaps stay** — `visibleTabs`/`visibleItems` (`packages/runtime/src/viewer.ts:132`) drop what the viewer may not see, and the dashboard grid places surviving items by their own `x/y/w/h` (`dashboard-renderer.tsx:204`), so a hidden widget leaves its cell empty — open question 3 (reflow) is still open; nothing reflows.
+8. **The grid got its axes** — one `viewer:<factId>` axis per fact the view reads (select values reduced to named values plus one nobody-names), the `permission` axis for edit surfaces, and `VIEWER_NOT_PROVIDED_STATE` (`packages/runtime/src/view-states.ts:933`, `omitViewer: true`, counted against `limit`).
+9. **`specVersion` 4 → 5 with identity `migrate()`** — done, and later RFCs continued the ladder to 10.
+
+The owner's two live open questions, current state: 1 (a second map input) — not added, the array is still the only input. 2 (bare renderer, no viewer, no documents) — as decided: the `ErrorSummary` path above. 3 (gap reflow) — still a gap, above.
+
+Evidence pair: `docs/assets/screens/viewer-team-1280-role-owner.png` and `viewer-team-1280-role-viewer.png` — the same team dashboard, Role fact `owner` versus `viewer`: the owner's cards carry "Move to…" and the New task tab; the viewer's carry neither.
+
 ## Open questions for the owner
 
 1. Is the array form of the viewer input acceptable, or should core allow a second deliberate map next to `RecordValues` for `viewer={{ role: "editor" }}`?

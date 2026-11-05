@@ -88,6 +88,24 @@ const plan = moveCard(board, entity, statusField, record, columns[1]); // what t
 - **Calendar.** `visibleDays`, `visibleRange`, `shiftAnchor`, `calendarToday`, `periodTitle`, `weekdayLabels`, `dayLabel`; `rangeCondition`, `calendarQuery` and `loadCalendarRange` (pages through `find`, capped at `CALENDAR_MAX_RECORDS`); `groupByDay`, `moveDay` and `colorSlot`. Invalid dates or `weekStartsOn` throw `RangeError`.
 - **Board.** `boardColumns`, `groupByColumn`, `boardColumnCounts`, `boardQuery`, `loadBoardCards` (capped at `BOARD_MAX_CARDS`), `loadBoardTargets` (reference columns) and `moveCard`.
 
+## The state grid from the inside
+
+`viewStates` reads a view and says every picture it can be — the engine behind the showcase's States page, the editor's preview and `checkViewStates`. Named files: `view-states.ts` (axes and pruning), `combine-axes.ts` (the deterministic cover).
+
+```mermaid
+flowchart LR
+  cond["Conditions the view uses: field boundary values by type"] --> axes["Axes: one per compared field, plus the kind's own (records, mode, group, tab, paging, done, actions, viewer facts, permission)"]
+  kind["The view kind: form, table, calendar, board, dashboard"] --> axes
+  axes --> comb{"Do all combinations fit in the limit (24)?"}
+  comb -- yes --> full["Every combination"]
+  comb -- no --> cover["Deterministic pairwise cover: every pair of values appears in some state"]
+  full --> prune["Prune impossible states: locked record with no records, a tab this viewer cannot see"]
+  cover --> prune
+  prune --> out["States: id, label, values, render — stable order from the same input"]
+```
+
+*The same view, the same `now`, always lists the same states in the same order — that is what makes a grid diffable across commits. See [section 13](../../ARCHITECTURE.md#13-the-state-grid).*
+
 ## View states
 
 `viewStates(view, documents, { now, limit })` lists the states a view can be in, read from its documents instead of guessed. It is a pure function of the view, the entities and views it needs, and `now`, so the same input always gives the same states in the same order. Use it to check a changed document in every state that matters, or to render a grid of them.

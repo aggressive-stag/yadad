@@ -57,6 +57,14 @@ adapter.configure({ source: "ready" }); // switch while the test runs
 
 `sourceStates(viewStates(view, documents, { now }), documents)` adds a `source` axis to the view's data states. Every data state stays once with `source: "ready"`; each other source that makes sense for the view (a save can only be refused or conflict where the view writes) gets one state. Each state has `adapter()`, a fresh adapter seeded with its records and put in its source state.
 
+## What a state-check run covers
+
+`checkViewStates` is `viewStates` plus the adapter's side of life, rendered with *your* components. The showcase's States page is the same machinery on screen — every state of `tasks_table`, the data-source states included, checks reported beside each tile:
+
+![The States page: every state of a table view as tiles, loading, failed and conflict states included, with the checks beside them](../../docs/assets/screens/states-table-1280-light.png)
+
+*Each tile renders one state through the host's own `render`; a tile that throws, logs an error, shows a field the conditions hide, lacks an accessible name or offers a forbidden edit is reported by name, not silently passed. A run of the grid — named files: `testing/src/state-checks.ts` for the checks, `packages/runtime/src/view-states.ts` for the states.*
+
 ## Check every state of your views
 
 One browser check covers one state. `checkViewStates` from `@yadad/testing/state-checks` renders **every** state of a view (its data states, then the source states above) and reports the ones that break. It needs a DOM and Vitest: use it in a test file with `// @vitest-environment jsdom`.

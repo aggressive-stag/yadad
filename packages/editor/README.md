@@ -22,6 +22,29 @@ Each takes the document, an injected `Registry<ReactNode>`, and `onSave` / `onCa
 - `ViewerPanel`: declare the facts of a `viewer` document: add, remove, reorder and relabel facts, edit a select fact's values and each default. A fact's id and type are fixed once created, and a value is removed and re-added rather than renamed. Given `documents`, removing a fact or value that a condition still reads is refused and the places that read it are listed.
 - `DashboardLayoutEditor`: tabs and a 12-column grid of form, table, calendar, board, count, stat and series widgets. Drag and resize are hand-written over CSS grid with pointer and full keyboard support. A series widget is added and edited with pickers the validator itself feeds — table view, groupBy field (only the groupable types), date bucket, display, measure (the stat's picker, shared), sort and limit — so no pick can leave an invalid widget. Optional `views`, `entities` and `describeView` supply the widget palette and readable names.
 
+## The editor at work
+
+The table editor at 1280 px, opened on the logged-sets table — what an author sees between "Save" presses:
+
+![The table editor: a columns list with grips on the left, the table settings panel, and the states preview as an inspector on the right](../../docs/assets/screens/editor-table-1280-light.png)
+
+1. **The columns list**, each row led by a grip (`⠿`): drag to reorder, or focus a grip and press the arrow keys; a drop indicator marks where it lands and every move is one patch (one Undo).
+2. **Table settings**: title, rows per page, initial sort and direction, applied as one patch through **Apply settings**.
+3. **Undo / Redo**, walking the session's patch log. **Save** stays disabled while the document would not validate; refusals land in the problem list with the validator's `path`, `message` and `hint`.
+4. **The states preview** as an inspector (below): every state the view can be in, beside the editor, marked new-or-changed against the saved revision.
+
+The board editor, same machinery over a different document — grouping pick, card fields with grips, and the shared condition builder for filters:
+
+![The board editor: group-by fields, card fields, and the settings panel](../../docs/assets/screens/editor-board-1280-light.png)
+
+A reorder, three frames (keyboard on the grip; the pointer drag is identical for a human):
+
+| Before | One step | Two steps |
+| --- | --- | --- |
+| ![Day is the first column](../../docs/assets/screens/editor-drag-1-before-1280-light.png) | ![Day has moved right past Exercise](../../docs/assets/screens/editor-drag-2-mid-1280-light.png) | ![Day now sits third](../../docs/assets/screens/editor-drag-3-after-1280-light.png) |
+
+*The Day column moves right one column per keypress; each frame is a separate patch in the undo log.*
+
 ```tsx
 import { FormViewEditor } from "@yadad/editor";
 
