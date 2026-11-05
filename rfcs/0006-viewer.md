@@ -411,7 +411,13 @@ All nine decisions shipped; `specVersion` is 10 today (this RFC carried it 4 →
 
 The owner's two live open questions, current state: 1 (a second map input) — not added, the array is still the only input. 2 (bare renderer, no viewer, no documents) — as decided: the `ErrorSummary` path above. 3 (gap reflow) — still a gap, above.
 
-Evidence pair: `docs/assets/screens/viewer-team-1280-role-owner.png` and `viewer-team-1280-role-viewer.png` — the same team dashboard, Role fact `owner` versus `viewer`: the owner's cards carry "Move to…" and the New task tab; the viewer's carry neither.
+Evidence pair — the same team dashboard, Role fact `owner` versus `viewer`:
+
+![The team dashboard as owner: cards carry "Move to…" and the New task tab is present](../docs/assets/screens/viewer-team-1280-role-owner.png)
+
+![The same dashboard as viewer: no "Move to…" on the cards, no New task tab](../docs/assets/screens/viewer-team-1280-role-viewer.png)
+
+*The owner's cards carry "Move to…" and the New task tab; the viewer's carry neither — removed, not disabled, gaps left in place.*
 
 ## Open questions for the owner
 

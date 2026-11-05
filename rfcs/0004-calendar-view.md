@@ -384,7 +384,19 @@ The calendar shipped as decided, plus the 2026-10-31 amendment. `specVersion` is
 - **Owner answers all hold**: fixed six weeks, the 2,000 constant untouched, "Move to day…" accepts any date.
 - **Amendment shipped as approved**: `CalendarMode` widened to `"1day"`…`"6day"` (`validate.ts:509` — `"7day"` refused with the confusability hint), rolling semantics, `listStart: "period" | "today"` forwarded to the component (`calendar-renderer.tsx:533`), `initialMode` on the renderer.
 - **The one item that has not happened**: the 2026-10-15 answer 2 promised `layout.Calendar` becomes required once the reference set ships a calendar. The set has one (and a Board), yet `layout.Calendar` is still optional (`packages/core/src/registry.ts:423`) — same state as RFC 0005's `layout.Board`. The required-in-a-minor step is still owed; it is a one-line contract change, deliberately not taken by this docs card.
-- Screens: `docs/assets/screens/calendar-month-1280-light.png`, `calendar-week-1280-light.png` (month and week of the same document), and the dark pair in `packages/theme/README.md`.
+- Screens — the same calendar document in month and week, and the stress calendar's rolling 3-day period:
+
+![A bookings calendar in month mode: entries on their days](../docs/assets/screens/calendar-month-1280-light.png)
+
+*`modes` includes both; this is the default month.*
+
+![The same calendar in week mode: one column per day](../docs/assets/screens/calendar-week-1280-light.png)
+
+*Week after the viewer clicks Week.*
+
+![A 3-day rolling period: three day columns, the anchor day carrying its entries](../docs/assets/screens/calendar-3day-1280-light.png)
+
+*An N-day period, captured from the stress calendar (`modes: ["month", "week", "3day"]`, fictional parcel fixtures — the bookings calendar's own modes list is month and week). Three columns, the anchor day first, entries under it; `3day` covers `n` rolling days from the anchor, as the amendment above specifies.*
 
 ## Owner questions (amendment)
 

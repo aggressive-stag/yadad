@@ -340,7 +340,11 @@ The board shipped as decided and answered; `specVersion` is 10 today.
 - **Drag is the component's; "Move to…" is the required path** (`board-renderer.tsx:94`), and card 56b kept the *hidden* empty column a live "Move to…" target (`board-renderer.tsx:465`).
 - **Slice 2 items stayed out**: no `quickFilters`, no `colorField`, no `hideEmpty` — `validate.ts:534`'s key list carries none of them. What arrived later instead, from RFC 0008: `columnsFrom: "options"` (reference columns from the target's options, refused without a reference groupBy at `validate.ts:1627`) and `doneField`.
 - **Q4 is still owed**: answer 4 promised `layout.Board` becomes required alongside `layout.Calendar` in one minor once the reference set ships both. Both shipped in the set; `layout.Board` remains optional (`packages/core/src/registry.ts:581`). Same owed step as RFC 0004's calendar — one contract change, not taken here.
-- Screens: `docs/assets/screens/board-bookings-1280-light.png` (with the group-by picker), plus the editor's grip-reorder trio under `packages/editor/README.md`.
+- Screens — the board with its group-by picker:
+
+![A bookings board grouped by status: cards in status columns](../docs/assets/screens/board-bookings-1280-light.png)
+
+*The group-by control is renderer state, never in the document. The grip-reorder trio lives under `packages/editor/README.md`.*
 
 ## Open questions for the owner
 

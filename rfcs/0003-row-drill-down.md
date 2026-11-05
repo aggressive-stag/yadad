@@ -107,7 +107,11 @@ Slice 1 shipped as decided; `specVersion` is 10 today (later RFCs carried it fro
 - **The engine owns the stack** — decision item 3 landed the other way from the proposed host hook: `drill` / `onDrillChange` are renderer props (RFC 0010 item 1), so a host can hold the stack in a URL and deep-link hop 2. A supplied `drill` and a click go through the same `levelFromBindings` check, and a stale URL cuts back to its valid prefix.
 - **`dialog` shipped anyway**, shared with RFC 0007: `layout.Dialog` is an optional registry key (`packages/core/src/registry.ts`) and the renderer builds the dialog content — see RFC 0007.
 - **Form-edit stayed out**; it arrived later through RFC 0008's add-form and editable surfaces, not this RFC.
-- Visual proof of a two-level chain, the ledger table drilled into from the bookings table: `docs/assets/screens/detail-drill-1280-light.png` (also in the repo README's renderer table).
+- Visual proof of a two-level chain, the ledger table drilled into from the bookings table:
+
+![A table drilled into from another table: a Back button above the drilled rows](../docs/assets/screens/detail-drill-1280-light.png)
+
+*One `rowAction` with `bind` — the same documents the repo README shows in JSON.*
 
 Open questions 1–5 are all answered by the shipped code as listed; none remains open.
 

@@ -425,7 +425,10 @@ All ten decisions shipped; `specVersion` is 10 today (this RFC carried it 5 → 
 4. **`act` optional everywhere** — the renderer's missing `act` gives an `ErrorSummary`; the memory and key-value adapters take the `actions` option (`memory-adapter.ts:39`, handlers in `actions.ts`) and keep the memory adapter's guard order, refused actions included.
 5. **`layout.Dialog` shipped and stayed optional** — `registry.ts:583`; board and calendar action dialogs are built by the renderer and asserted by their tests (`board-renderer.test.tsx:732`).
 6. **`datetime` as decided** — one canonical stored form (`isIsoDatetime`, `validate.ts:1290`), displayed in the viewer's zone, ordered as a string, range quick filter; not a calendar/board field type. `fields.datetime` remains optional in the registry with an `ErrorSummary` where used (owner answer 1).
-7. **`compare` as decided** — `packages/runtime/src/compare.ts` computes the word diff (previous row, next row, or another text field; `COMPARE_NEIGHBOURS` in core) and hands the text `Display` the optional `diff` prop (`registry.ts:143`). Rendered proof: `docs/assets/screens/review-changes-1280-light.png`.
+7. **`compare` as decided** — `packages/runtime/src/compare.ts` computes the word diff (previous row, next row, or another text field; `COMPARE_NEIGHBOURS` in core) and hands the text `Display` the optional `diff` prop (`registry.ts:143`). Rendered proof:
+
+   ![The review screen's change log: the Body column carries the word diff — added words underlined, removed words struck through](../docs/assets/screens/review-changes-1280-light.png)
+
 8. **Cursor paging as decided** — optional `total`, opaque `next`, Previous/Next with no count (`cursor-pager.tsx`); counts walk to the cap.
 9. **No new read-only key; joins via drill-down; evidence as pre-joined text** — as decided, with RFC 0010/0011 later giving the drill a controlled `drills` prop on tables *and* dashboard widgets, so a drilled table can live at a URL.
 10. **`specVersion` 6 with identity `migrate()`** — done; the ladder has run to 10 since.

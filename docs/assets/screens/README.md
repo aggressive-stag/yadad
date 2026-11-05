@@ -50,6 +50,7 @@ screenshot of the named showcase section unless the row says "viewport".
 | `board-tasks-1280-light.png` | `/` | — | element: section `tasks_board` |
 | `calendar-month-1280-light.png` | `/` | — | element: section `bookings_calendar` |
 | `calendar-week-1280-light.png` | `/` | click Week in the calendar toolbar | element: section `bookings_calendar` |
+| `calendar-3day-1280-light.png` | `/?stress=1` | click "3 days" then "Next 3 days" in the Depot desk calendar | element: grid item `calendar` (fictional parcel fixtures) |
 | `detail-drill-1280-light.png` | `/` | open the first row of the drill-down table | element: section `drill_home` |
 | `review-changes-1280-light.png` | `/#review` | — | element: section `review_changes` |
 | `editor-table-1280-light.png` | `/` | click "Edit table: logged sets" | 1280x800 viewport |
