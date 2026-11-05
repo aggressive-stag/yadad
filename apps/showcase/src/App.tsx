@@ -22,7 +22,7 @@ import formLogSet from "../../../fixtures/valid/form-log-set.json?raw";
 import tableExerciseHistory from "../../../fixtures/valid/table-exercise-history.json?raw";
 import tableSets from "../../../fixtures/valid/table-sets.json?raw";
 import { loadDocumentSet } from "./documents";
-import { STRESS_ROOTS, stressAdapter, stressDocuments } from "./stress";
+import { stressAdapter, stressDocuments } from "./stress";
 import { WithStatesPreview } from "./editor-preview";
 import { StatesPage } from "./states";
 
