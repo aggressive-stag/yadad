@@ -10,9 +10,10 @@ them with).
 
 ## Regenerating
 
-The Playwright driver lives outside the repo (working rules: no Playwright
-dependency here): `~/.hermes/evidence/ui-polish-2026-11/yadad/driver/` —
-`docs-shots.js` (the stills) and `drag-frames3.js` (the editor drag sequence).
+The Playwright drivers live next to the images in [`drivers/`](drivers/):
+`docs-shots.cjs` (the stills) and `drag-frames3.cjs` (the editor drag sequence).
+The repo carries no Playwright dependency (working rules), so they resolve
+`playwright-core` from `NODE_PATH`, and lint skips the folder.
 
 ```sh
 # 1. Build the components CSS the showcase imports, from the components repo checkout:
@@ -23,9 +24,11 @@ YADAD_REGISTRY_MODULE=<yadad-components>/registry/base.ts \
 YADAD_REGISTRY_EXPORT=baseRegistry \
 YADAD_REGISTRY_CSS=<yadad-components>/dist/yadad-components.css \
   pnpm exec vite --port 5331
-# 3. Capture (needs a playwright-core install and its chromium-headless-shell elsewhere):
-node ~/.hermes/evidence/ui-polish-2026-11/yadad/driver/docs-shots.js http://127.0.0.1:5331 docs/assets/screens
-node ~/.hermes/evidence/ui-polish-2026-11/yadad/driver/drag-frames3.js http://127.0.0.1:5331 docs/assets/screens
+# 3. Capture (needs a playwright-core install elsewhere, e.g. `npm i playwright-core` in /tmp/pw;
+#    CHROME_EXE overrides the chromium-headless-shell path baked into the drivers):
+export NODE_PATH=/tmp/pw/node_modules
+node docs/assets/screens/drivers/docs-shots.cjs http://127.0.0.1:5331 docs/assets/screens
+node docs/assets/screens/drivers/drag-frames3.cjs http://127.0.0.1:5331 docs/assets/screens
 # 4. Compress before committing (keeps every file under 200 KB):
 pngquant --quality=70-90 --ext=.png --force --skip-if-larger docs/assets/screens/*.png
 ```
