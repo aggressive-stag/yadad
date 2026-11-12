@@ -1,5 +1,12 @@
 # @yadad/runtime
 
+## 0.19.3
+
+### Patch Changes
+
+- Updated dependencies [e97af54]
+  - @yadad/core@0.18.3
+
 ## 0.19.2
 
 ### Patch Changes
