@@ -9,7 +9,7 @@ Use the pnpm version pinned in `packageManager` (plain `pnpm` works when it is o
 ```sh
 pnpm install
 pnpm --filter @yadad/showcase dev   # the showcase, on a random dev-server port
-pnpm describe-registry              # the document contract, as readable text (--json for machines)
+pnpm describe-registry              # the document contract, as readable text (--json for machines; --kind <kind> for one part; --example <kind> for a complete valid example)
 ```
 
 ## Before you start a task
