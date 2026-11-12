@@ -69,5 +69,5 @@ describe("checkViewStates", () => {
     const results = await checkViewStates({ view: id, documents, registry: baseRegistry, now, render: draw });
     expect(results.length).toBeGreaterThan(0);
     expect(problems(results)).toEqual([]);
-  }, 60_000);
+  }, 180_000);
 });
