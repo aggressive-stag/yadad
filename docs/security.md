@@ -82,7 +82,7 @@ These are the protocol's server obligations (`docs/records-protocol.md`):
 | --- | --- | --- | --- |
 | Documents (entities, views) | No by design; they describe shape | The host's document store | Whoever the host lets load them |
 | Records | Whatever the host's fields hold | The host's records store, behind the server | The server's authorisation rules |
-| Unsent form drafts | Can hold anything typed into a form | Browser storage under `yadad:draft:<view>:<record or "new">` (`createDraftStore`) | Scripts and users of that browser profile; not cleared on sign-out by the engine |
+| Unsent form drafts | Can hold anything typed into a form | Browser storage under `yadad:draft:<user>:<view>:<record or "new">` (`createDraftStore(storage, { scope })`; the key has no user part if the host passes no `scope`) | Scripts and users of that browser profile. The host clears them on sign-out with `clearDrafts` |
 | Showcase records | Sample data | Memory, or `localStorage` under the showcase prefix | The local browser |
 | Viewer facts | A role or plan label | Host memory, passed as a prop | The page |
 
@@ -111,7 +111,7 @@ Hosts and their records servers keep their own secrets (session keys, database c
 | Tampering | A write sets a server-owned field | `validateRecord` refuses `readOnly`; the server must too | Mitigated if the server follows the protocol |
 | Tampering | Cross-site request forgery against cookie-authenticated writes | Same-origin requests, JSON bodies | **open**: the protocol does not state the server's CSRF duty (for example SameSite cookies or a content-type check) |
 | Information disclosure | Hidden fields or rows still sent to the browser | `can` and viewer predicates only hide | **open** by design: the server must not send what the viewer may not read; the protocol says so only for `can` |
-| Information disclosure | Another user's draft left in browser storage | Drafts are keyed by view and record only | **open**: not keyed by user, not cleared on sign-out |
+| Information disclosure | Another user's draft left in browser storage | Drafts are keyed by user (`createDraftStore` `scope`, since runtime 0.17.0) and the host calls `clearDrafts` on sign-out | Mitigated if the host passes `scope` and calls `clearDrafts`; without `scope` the engine warns once |
 | Information disclosure | Script injection reads data | Text is rendered as text; no `innerHTML` in the engine | Mitigated in the engine; the component set is a separate repo |
 | Denial of service | A huge page or filter | `limit` max 500, `400` on bad paging; the server whitelists ops | Server-owned |
 | Denial of service | A hostile document with deep nesting | `validateDocuments` runs before render | **open**: no documented depth or size limit |
