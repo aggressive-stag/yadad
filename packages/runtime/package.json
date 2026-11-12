@@ -2,6 +2,7 @@
   "name": "@yadad/runtime",
   "version": "0.19.1",
   "description": "yadad headless runtime: form state, conditions, record validation, JSON Patch and data adapters.",
+  "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "exports": {

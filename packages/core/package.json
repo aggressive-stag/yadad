@@ -2,6 +2,7 @@
   "name": "@yadad/core",
   "version": "0.18.1",
   "description": "yadad contract: document types, validation and the registry and data adapter interfaces.",
+  "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "exports": {

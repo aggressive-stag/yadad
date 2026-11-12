@@ -2,6 +2,7 @@
   "name": "@yadad/renderer",
   "version": "0.19.2",
   "description": "yadad React renderer: forms, tables and dashboards from JSON documents.",
+  "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "exports": {
