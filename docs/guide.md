@@ -2,7 +2,7 @@
 
 This guide builds a small team-tasks app one document at a time. You end with a form, a table you can add to and edit, a board, a calendar, a dashboard and one rule that depends on who is looking. It uses an in-memory data source, so there is no backend yet. Part 2 puts a server behind the same app.
 
-The app is the starter in [`examples/starter`](../examples/starter). Every file in this guide is quoted from it, and a test (`examples/starter/tests/guide.test.ts`) fails when the guide and the starter drift apart. The only exceptions are the two files in step 6, which the starter does not have; the test checks those too.
+The app is the starter in [`examples/starter`](../examples/starter). Every file in this guide is quoted from it, and a test (`examples/starter/tests/guide.test.tsx`) fails when the guide and the starter drift apart. The only exceptions are the two files in step 6, which the starter does not have; the test checks those too.
 
 You need Node 22.18 or newer and a checkout of this repository. The [toolchain table](../README.md#tested-with) lists what is tested.
 
@@ -346,9 +346,438 @@ The first part is the file, the second is a JSON Pointer to the exact place (the
 
 Two more checks are worth adding when the app grows. `validateDocuments` checks one set at a time, so run it on everything. And `checkViewStates` from `@yadad/testing/state-checks` renders every view in every state it can be in (empty, full, loading, failed, refused, as each viewer) and names what breaks. The starter's `tests/views.test.tsx` shows both.
 
+# Guide, part 2: put a backend behind the app
+
+Part 1 kept records in the browser. Here the same app talks to a server. The server is the starter's `server/index.ts`, about 240 lines of Node with SQLite. It implements the [records protocol](records-protocol.md), the HTTP contract that yadad's data adapter speaks. Any language works: a backend that answers the requests below gets the form, tables, board, calendar and dashboard with no more UI code.
+
+Every request and response in this part is real. A test (`examples/starter/tests/guide.test.tsx`) starts the starter's server, drives it with yadad's own HTTP adapter and compares the traffic with the text here, so a change in the adapter, the server or the protocol fails the test until the guide is updated.
+
+## Step 8: swap the adapter
+
+Restore the finished documents if you were building them up (`rm -r documents && mv documents.final documents`), then start the app with its server:
+
+```sh
+pnpm --filter @yadad/example-starter dev
+```
+
+That starts the server on port 8787 (a SQLite file, seeded once) and Vite, which sends `/api` to it. The only host change from part 1 is the adapter. The starter picks it in `src/adapter.ts`:
+
+<!-- excerpt: src/adapter.ts -->
+```ts
+export const createAdapter = () =>
+  import.meta.env["VITE_DATA"] === "memory" ? createSeededAdapter() : createHttpAdapter({ baseUrl: "/api/records" });
+```
+
+The base URL is host configuration. It is never part of a document, and documents never contain a URL. The adapter calls `fetch` with `credentials: "same-origin"`, so session cookies work and no CORS is needed.
+
+## What every request looks like
+
+- The entity is the first part of the path: `/api/records/{entity}` where `{entity}` is the entity document's `id` (`task`, `person`). A record is `/api/records/{entity}/{id}`.
+- Bodies are JSON in both directions.
+- **Ids are opaque strings** that the server picks. The client never parses or builds one, and an id is never reused for another record, even after a delete (the starter uses SQLite `AUTOINCREMENT`).
+- Every record has a `version`, also an opaque string. It must change on every write to the record. The client sends it back to say "I edited the record I loaded", and the server uses it to refuse a write to a record that changed since.
+- Every non-2xx answer has the same body: `{ "errors": [{ "path", "code", "message", "hint" }] }`. `path` is a JSON Pointer into the request body, `code` is one of `type`, `required`, `unknown-property`, `invalid-value`, `not-found`, `conflict`, `unauthorized` or `forbidden`, and `message` and `hint` are for a person.
+
+## Create
+
+The form sends the values it collected and the entity revision it was built against. The server validates, picks an id, sets the version and answers `201` with the whole record:
+
+<!-- exchange: create-person -->
+```http
+POST /api/records/person
+Content-Type: application/json
+
+{
+  "values": {
+    "name": "Ada"
+  },
+  "entityRevision": 1
+}
+
+HTTP/1.1 201
+Content-Type: application/json
+
+{
+  "id": "1",
+  "entityId": "person",
+  "entityRevision": 1,
+  "version": "1",
+  "values": {
+    "name": "Ada"
+  }
+}
+```
+
+<!-- exchange: create-task -->
+```http
+POST /api/records/task
+Content-Type: application/json
+
+{
+  "values": {
+    "title": "Write the release notes",
+    "status": "In progress",
+    "assignee": "1",
+    "due": "2026-11-20"
+  },
+  "entityRevision": 1
+}
+
+HTTP/1.1 201
+Content-Type: application/json
+
+{
+  "id": "2",
+  "entityId": "task",
+  "entityRevision": 1,
+  "version": "1",
+  "values": {
+    "title": "Write the release notes",
+    "status": "In progress",
+    "assignee": "1",
+    "due": "2026-11-20"
+  }
+}
+```
+
+A second task, which the list below shows:
+
+<!-- exchange: create-task-2 -->
+```http
+POST /api/records/task
+Content-Type: application/json
+
+{
+  "values": {
+    "title": "Plan the offsite",
+    "status": "To do",
+    "due": "2026-12-01"
+  },
+  "entityRevision": 1
+}
+
+HTTP/1.1 201
+Content-Type: application/json
+
+{
+  "id": "3",
+  "entityId": "task",
+  "entityRevision": 1,
+  "version": "1",
+  "values": {
+    "title": "Plan the offsite",
+    "status": "To do",
+    "due": "2026-12-01"
+  }
+}
+```
+
+Nothing else is needed from the server for this to work: the form closes, the table reloads, the new row is there. The `entityRevision` is a stamp. The server stores it on the record and never rejects a write because it is old or new.
+
+**When the values are wrong**, the answer is `400` with one error per problem. The adapter turns the `path` into the field, so the form shows each message under its field:
+
+<!-- exchange: create-invalid -->
+```http
+POST /api/records/task
+Content-Type: application/json
+
+{
+  "values": {
+    "title": "Fix the login redirect",
+    "status": "Someday",
+    "assignee": "99"
+  },
+  "entityRevision": 1
+}
+
+HTTP/1.1 400
+Content-Type: application/json
+
+{
+  "errors": [
+    {
+      "path": "/values/status",
+      "code": "invalid-value",
+      "message": "\"Someday\" is not a choice for \"Status\".",
+      "hint": "Use one of: To do, In progress, Blocked, Done."
+    },
+    {
+      "path": "/values/assignee",
+      "code": "invalid-value",
+      "message": "Assignee points at a person that does not exist.",
+      "hint": "Pick an existing one."
+    }
+  ]
+}
+```
+
+Both errors point into the request body: `/values/status` and `/values/assignee`. The client checks the rules before it sends, so a `400` for a value the entity allows means the server is stricter, or it checks something the client cannot, such as the second error here: a reference to a record that does not exist.
+
+## Read one record
+
+<!-- exchange: find-one -->
+```http
+GET /api/records/task/2
+
+HTTP/1.1 200
+Content-Type: application/json
+
+{
+  "id": "2",
+  "entityId": "task",
+  "entityRevision": 1,
+  "version": "1",
+  "values": {
+    "title": "Write the release notes",
+    "status": "In progress",
+    "assignee": "1",
+    "due": "2026-11-20"
+  }
+}
+```
+
+A record that does not exist is `404`, and so is a record that belongs to another user:
+
+<!-- exchange: find-missing -->
+```http
+GET /api/records/task/99
+
+HTTP/1.1 404
+Content-Type: application/json
+
+{
+  "errors": [
+    {
+      "path": "",
+      "code": "not-found",
+      "message": "No such task.",
+      "hint": "Reload the list."
+    }
+  ]
+}
+```
+
+## List: paging, sort and filter
+
+A table asks for a page, sorted and filtered. The query string carries three things:
+
+- `offset` and `limit`: where the page starts and how many records. `limit` defaults to 50 and is at most 500; more than 500, or anything that is not a whole number, is `400`.
+- `sort`: URL-encoded JSON, an array of `{ "field", "dir" }`, first key first. Records with an empty value sort last in both directions.
+- `filter`: URL-encoded JSON, one condition from the document language: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`, `empty`, `notEmpty`, and `and`, `or`, `not` around them. The condition is data, never a string of code.
+
+The answer is `{ "items": [...], "total": n }`. `total` counts every record that matches the filter, ignoring the page, so the table can show how many pages there are.
+
+<!-- exchange: list -->
+```http
+GET /api/records/task?sort=%5B%7B%22field%22%3A%22due%22%2C%22dir%22%3A%22asc%22%7D%5D&offset=0&limit=10
+
+HTTP/1.1 200
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "id": "2",
+      "entityId": "task",
+      "entityRevision": 1,
+      "version": "1",
+      "values": {
+        "title": "Write the release notes",
+        "status": "In progress",
+        "assignee": "1",
+        "due": "2026-11-20"
+      }
+    },
+    {
+      "id": "3",
+      "entityId": "task",
+      "entityRevision": 1,
+      "version": "1",
+      "values": {
+        "title": "Plan the offsite",
+        "status": "To do",
+        "due": "2026-12-01"
+      }
+    }
+  ],
+  "total": 2
+}
+```
+
+The `sort` here decodes to `[{"field":"due","dir":"asc"}]`. A filter, on top of that, decodes to `{"op":"eq","field":"status","value":"To do"}`:
+
+<!-- exchange: list-filtered -->
+```http
+GET /api/records/task?filter=%7B%22op%22%3A%22eq%22%2C%22field%22%3A%22status%22%2C%22value%22%3A%22To%20do%22%7D&sort=%5B%7B%22field%22%3A%22due%22%2C%22dir%22%3A%22asc%22%7D%5D&offset=0&limit=10
+
+HTTP/1.1 200
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "id": "3",
+      "entityId": "task",
+      "entityRevision": 1,
+      "version": "1",
+      "values": {
+        "title": "Plan the offsite",
+        "status": "To do",
+        "due": "2026-12-01"
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+**Translate filters by whitelist.** For every operator and field id in the filter, check that you know it and map it to your storage yourself (the starter's `toSql` does this). Never build a query from the strings in the request. An unknown operator or field is `400`. Relative dates such as "7 days ago" never reach the server: the client turns them into a concrete date first. A `viewerIn` condition is for documents, not for the wire, and is also `400`.
+
+## Update
+
+An edit sends only the fields that changed, and the version of the record it loaded as `baseVersion`:
+
+<!-- exchange: update -->
+```http
+PATCH /api/records/task/2
+Content-Type: application/json
+
+{
+  "values": {
+    "status": "Done"
+  },
+  "entityRevision": 1,
+  "baseVersion": "1"
+}
+
+HTTP/1.1 200
+Content-Type: application/json
+
+{
+  "id": "2",
+  "entityId": "task",
+  "entityRevision": 1,
+  "version": "2",
+  "values": {
+    "title": "Write the release notes",
+    "status": "Done",
+    "assignee": "1",
+    "due": "2026-11-20"
+  }
+}
+```
+
+The server applies the patch, writes a new version and answers with the whole record. An omitted field is unchanged, and an explicit `null` clears one. `baseVersion` is required on an update.
+
+**When the record changed since it was loaded**, the server answers `409` and includes the record as it is now, in `current`. The client shows the conflict and reloads. Here a second edit still carries version `1`, but the first one made it `2`:
+
+<!-- exchange: update-stale -->
+```http
+PATCH /api/records/task/2
+Content-Type: application/json
+
+{
+  "values": {
+    "status": "Blocked"
+  },
+  "entityRevision": 1,
+  "baseVersion": "1"
+}
+
+HTTP/1.1 409
+Content-Type: application/json
+
+{
+  "errors": [
+    {
+      "path": "/baseVersion",
+      "code": "conflict",
+      "message": "This task was changed since you loaded it.",
+      "hint": "Reload it and try again."
+    }
+  ],
+  "current": {
+    "id": "2",
+    "entityId": "task",
+    "entityRevision": 1,
+    "version": "2",
+    "values": {
+      "title": "Write the release notes",
+      "status": "Done",
+      "assignee": "1",
+      "due": "2026-11-20"
+    }
+  }
+}
+```
+
+Check `baseVersion` before anything else. A write with a stale `baseVersion` is a `409` even when its values are also invalid, because the values were built against a record that no longer exists in that form. Only a write with a current `baseVersion` gets a `400` for bad values.
+
+## Delete
+
+`baseVersion` goes in the query string and is optional. When it is there and stale, the answer is `409` as for an update. A successful delete answers `204` with no body:
+
+<!-- exchange: delete -->
+```http
+DELETE /api/records/task/3?baseVersion=1
+
+HTTP/1.1 204
+```
+
+## What the server must enforce itself
+
+The client's checks are a convenience that saves a round trip. The server is the only authority.
+
+- **Validate every write.** Do not rewrite the field rules. Generate a JSON Schema from the entity document with `recordJsonSchema(entity, { mode: "write" })` from `@yadad/core`, or call `validateRecord` from `@yadad/runtime` as the starter does:
+
+<!-- excerpt: server/index.ts -->
+```ts
+    const errors: Err[] = validateRecord(entity, values, { mode: "write" }).map((e) => ({ path: prefix + e.path, code: e.code, message: e.message, hint: e.hint ?? "" }));
+```
+
+- **Check references.** A schema cannot tell whether the referenced record exists. The second error in the invalid create above came from the starter's own check.
+- **Refuse unknown fields.** An unknown field id in `values` is `400`, never silently dropped.
+- **Own the rules the document does not know.** The server may be stricter than the entity (a date that must be near the server's today). The server is the authority on "today".
+- **Permissions.** Who may read or write which record is the server's alone. Documents never say it.
+
+## What each record can say about the viewer: `can`
+
+A record may carry `can`, what the person making the request may do with it. The UI then offers only what is allowed:
+
+<!-- record-with-can -->
+```json
+{
+  "id": "2",
+  "entityId": "task",
+  "entityRevision": 1,
+  "version": "2",
+  "values": { "title": "Write the release notes", "status": "Done" },
+  "can": { "update": false, "delete": false, "fields": { "status": false } }
+}
+```
+
+With this record the table offers no edit, and a board does not let the status be moved. `can` only restricts: a missing `can`, or a missing key in it, means "not stated", the UI offers the action and the server decides on the write. The starter does not send `can`. `update`, `delete`, `actions` and `fields` are the keys. A server that sends it must still refuse the write with `403`.
+
+## What you may skip at first
+
+| Skip | What the app does without it |
+| --- | --- |
+| `total` in a list answer | A page with neither `total` nor `next` is treated as the last page, so a table cannot tell there is more, and a count widget has nothing to read. Send it as soon as you can |
+| `limit=0` support | A count widget asks for `limit=0` to read the total. A server that refuses it leaves the widget saying it could not load. `limit=0` is legal: empty `items`, and the real `total` |
+| `can` on records | The UI offers every edit; the server refuses what is not allowed |
+| `POST /{entity}/_batch` | A form with `repeat: "batch"` fails to save its rows with the server's `404` message. Everything else works |
+| `POST /{entity}/{id}/actions/{action}` | An entity's record actions (a Done or Archive button) fail with the server's `404` message when pressed. Tables, forms and boards work |
+| Cursor paging | Only needed for a server that cannot count. Offset and limit are enough |
+
+The starter implements create, read, list, update and delete, with `total`, and skips the rest. Read the [records protocol](records-protocol.md) when you need batches or actions.
+
+## Sign-in, scoping and CSRF
+
+**The starter server has no authentication.** Anyone who can reach the port can read and change every record. A real backend identifies the person from its own session, never from anything the client says: the client sends no user id. It scopes every query to what that person may see (another person's record is a `404`), and it protects cookie-authenticated writes against cross-site requests (for example `SameSite` cookies, or checking the content type). The adapter has an `onUnauthorized` hook for a `401`, which is the place to send a person to a sign-in page. [docs/security.md](security.md) lists what the engine does and what the server must do.
+
+
 ## Where to go next
 
 - Put your own documents in a copy of the starter: its README has the steps to take it out of the repository.
 - [Document reference](reference.md): everything a document can contain, with an example of each kind.
-- Part 2 (a backend behind the app) follows in this guide.
 - [ARCHITECTURE.md](../ARCHITECTURE.md): the design, section by section.

@@ -9,10 +9,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { validateDocuments } from "@yadad/core";
 import type { Document } from "@yadad/core";
 import { TableRenderer } from "@yadad/renderer";
-import { findViewerDocument, resolveViewer } from "@yadad/runtime";
+import { createHttpAdapter, findViewerDocument, resolveViewer } from "@yadad/runtime";
 import { mockRegistry } from "@yadad/testing";
 import { createSeededAdapter } from "../src/adapter";
 import { documents as starterDocuments, entities } from "../src/documents";
+import { captureExchanges, format } from "./exchanges";
 
 afterEach(cleanup);
 
@@ -104,5 +105,26 @@ describe("step 6: the Notes column is for leads", () => {
     expect((await headers(undefined)).join("|")).not.toContain("Notes");
     cleanup();
     expect((await headers("lead")).join("|")).toContain("Notes");
+  });
+});
+
+// Part 2 shows real HTTP traffic. The starter's server and yadad's HTTP adapter produce it here.
+describe("guide part 2: the HTTP exchanges", () => {
+  const shown = new Map([...guide.matchAll(/<!-- exchange: ([\w-]+) -->\n```http\n([\s\S]*?)\n```/g)].map((m) => [m[1]!, m[2]!]));
+
+  it("shows every exchange exactly as the adapter and the server produce it", async () => {
+    const real = await captureExchanges();
+    expect([...shown.keys()].sort()).toEqual(real.map((e) => e.name).sort());
+    for (const e of real) expect(shown.get(e.name), `exchange ${e.name}`).toBe(format(e));
+  }, 60_000);
+
+  it("shows a record with can as the adapter reads it", async () => {
+    const m = /<!-- record-with-can -->\n```json\n([\s\S]*?)\n```/.exec(guide);
+    const record = JSON.parse(m![1]!) as { id: string };
+    const adapter = createHttpAdapter({
+      baseUrl: "/api/records",
+      fetch: async () => ({ status: 200, json: async () => record }),
+    });
+    expect(await adapter.findOne("task", record.id)).toEqual(record);
   });
 });
