@@ -5,6 +5,8 @@ Package rules on top of the root `AGENTS.md`. Published as `@yadad/testing` for 
 - **Owns:**
   - The contract test kit. Every registry entry must render with fixture options, emit the right JSON type on change, show a given error and pass axe.
   - The mock registry: stub components with `data-testid`.
+  - The state checks (`@yadad/testing/state-checks`): `checkViewStates`, the source states and the state adapter.
+  - The action scenarios (in the contract kit) and the focus kit (`@yadad/testing/focus-kit`).
   - The fixture loader.
 - **Imports:** `@yadad/core` and `@yadad/runtime`. Never `renderer` or `editor`: their tests import this package, so that would be an import cycle.
 - **Stability:** the components repo runs this kit against every component, so changing what the kit checks is a contract change. Treat it like `core`: change it only when your task card says so, then release it so the components repo can follow.

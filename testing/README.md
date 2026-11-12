@@ -10,6 +10,15 @@ npm install --save-dev @yadad/testing
 
 Peer dependencies: React 19, `react-dom`, `vitest` and `jsdom`.
 
+The package has four entry points. Import only the one you need:
+
+| Entry point | Who needs it | What it needs |
+| --- | --- | --- |
+| `@yadad/testing` | An app or a renderer: the mock registry, source states, `createStateAdapter`, `waitForSettled` | Nothing beyond React; no DOM of its own |
+| `@yadad/testing/state-checks` | An app that wants every state of its views checked (`checkViewStates`) | A DOM (jsdom) and Vitest |
+| `@yadad/testing/contract-kit` | A component set: proves it satisfies the `Registry` contract, and runs the record-action scenarios | A DOM (jsdom) and Vitest |
+| `@yadad/testing/focus-kit` | A component set or renderer: proves focus lands in the right place after a record action | A DOM (jsdom) and Vitest |
+
 ## Mock registry
 
 `mockRegistry` (a `Registry<ReactNode>`) has an unstyled stub component for every field type, layout piece and widget, each with a `data-testid` hook.
@@ -38,7 +47,7 @@ await waitForSettled(container); // nothing under the container reports busy
 
 ## Source states
 
-A screen has states that come from the data source: still loading, failed to load, a save refused, a conflict. `createStateAdapter(seed, options)` returns a `DataAdapter` seeded with a view state's records (from `viewStates` in `@yadad/runtime`) or with a list of records, and puts it in one of them.
+A screen has states that come from the data source: still loading, failed to load, a save refused, a conflict, a notice from the server. `createStateAdapter(seed, options)` returns a `DataAdapter` seeded with a view state's records (from `viewStates` in `@yadad/runtime`) or with a list of records, and puts it in one of them.
 
 ```ts
 import { createStateAdapter } from "@yadad/testing";
@@ -52,6 +61,7 @@ adapter.configure({ source: "ready" }); // switch while the test runs
 - `"error"`: reads reject with an `Error` carrying `message`.
 - `"refused"`: writes throw a `RecordValidationError` with one field error (400, the default, pointing at `field`) or a `ForbiddenError` (`status: 403`).
 - `"conflict"`: writes throw a `RecordConflictError` (409) carrying the stored record.
+- `"notice-info"` and `"notice-warning"`: a working source whose list answers carry a `notice` (`{ tone: "info" | "warning", text }`), the text being `message`. Writes work as normal. A server uses a notice to say something about one answer, for example that it was served without search. Every view that lists records gets these two states. The `notice-missing` check reads them: it fails when the text is not in a `role="status"` region, or the region shows another tone.
 
 `act` works on every source: the same guard order as the memory adapter (unknown record, then stale `baseVersion`, then the source's refusal), then a no-op — the record comes back unchanged. A confirm dialog and its failure states are testable without a server.
 
@@ -64,9 +74,9 @@ adapter.configure({ source: "ready" }); // switch while the test runs
 ```mermaid
 flowchart LR
   view["Your view + documents"] --> grid["viewStates: every picture the view can be"]
-  grid --> src["sourceStates: each data state once with source ready; each failing source (loading, failed, refused, conflict) that the view can actually reach, once, with adapter() seeded for it"]
+  grid --> src["sourceStates: each data state once with source ready; each failing source (loading, failed, refused, conflict, notice) that the view can actually reach, once, with adapter() seeded for it"]
   src --> mount["render(state) — YOUR render function, YOUR component set, jsdom"]
-  mount --> checks["The checks, per tile (29 named kinds in state-checks.tsx): render-threw, console-error, accessible-name, field-shown-but-hidden, viewer-visibility, editable-offered, can-fields-offered, done-offered, action-offered, notice-missing, saved-filter, and the rest of the taxonomy"]
+  mount --> checks["The checks, per tile (the table below lists every kind): render-threw, console-error, accessible-name, field-shown-but-hidden, viewer-visibility, editable-offered, can-fields-offered, done-offered, action-offered, notice-missing, saved-filter, and the rest of the taxonomy"]
   checks --> report["Report: pass, or the tile's state id plus the named problems — never a silent pass"]
 ```
 
@@ -169,7 +179,18 @@ Checks per state, each a named problem:
 | `action-missing` | the reverse: an action `availableActions` allows is not offered |
 | `diff-offered` | a text column's Display was given a `diff` although the column does not compare |
 | `diff-missing` | a comparing column's Display got no `diff` while its comparator is present |
+| `can-fields-offered` | a calendar entry or board card can be moved although the record's `can.fields` withholds the field the move writes (or the record is locked) |
+| `can-fields-missing` | the reverse: the record's `can.fields` leaves that field open, but the entry or card cannot be moved |
+| `done-offered` | a card or entry shows a completion toggle but the view has no `doneField`, or the toggle's checked or disabled state disagrees with the stored value and the viewer's rights |
+| `done-missing` | the view declares `doneField` but a card or entry got no toggle, a toggle is disabled although the viewer may write the field, or fewer checkboxes are drawn than toggles wanted |
+| `saved-filter` | a saved filter (the view's `filters`) has no chip, or its chip's `aria-pressed` disagrees with whether the state lit it |
+| `sort-offered` | a column declared unsortable (`sortable: false` on the column or the view) has a header that offers sorting |
+| `sort-missing` | the reverse: a sortable column's header does not offer sorting (reference columns never sort) |
+| `quick-default` | a quick filter's `default` is not what its control shows when defaults are applied, or the control still shows it after the state cleared it |
+| `notice-missing` | in a `notice-info` or `notice-warning` state, the server's text is in no `role="status"` region, or its tone differs from `data-tone` |
 | `axis-missing` | an id in `expectAxes` is absent from the grid (added to the first result, not per state) |
+| `grid-fault` | the grid itself could not build a state because of a bug (for example a generated record fails validation). Report it rather than skipping the check |
+| `too-many-skipped` | more states were skipped by a declared limit than `maxSkipped` allows (added to the report, not per state) |
 
 `problems(results)` flattens the results into one line per problem, `"<state label> [<state id>]: <check>: <message>"`, so a failing `expect(problems(...)).toEqual([])` lists every failing state. Pass `timeZone` to have generated `datetime` values rendered in a zone other than UTC (it goes to `viewStates`; a datetime quick-filter state then compares against 09:30 in that zone). `skip: ["accessible-name"]` leaves a check out. `limit` caps the data states (24 by default); lower `manyRecords` to keep the "many records" states fast.
 
@@ -187,6 +208,33 @@ describeRegistryContract(myRegistry);
 - `registryContractChecks(registry, samples?)` returns the checks as `{ name, run() }` objects, for use outside Vitest. Run them one at a time.
 - `defaultSamples` is the fixture per field type; pass your own `FieldSamples` to override them.
 - The `layout.Calendar`, `layout.Board` and `layout.Dialog` keys, the `widgets.series` key and the `fields.datetime` key are optional, so their checks only run when the registry has them. `layout.Dialog` is checked for the modal behaviour RFC 0007 needs: named by its label, focus taken on open and returned on close, Escape closes. `fields.datetime` is checked for a `<time>` element whose `dateTime` is the stored instant, showing the formatted `text` it was given. `widgets.series` is checked the way a chart must be: reachable by its label as an accessible name, every group's label and formatted text present as text in the accessible tree (an SVG of bars is decoration, not data), the `measureLabel` shown, and no throwing or self-unmounting on `groups: []` or a gap bucket whose `value` is undefined. The mock registry ships all of them (a plain board with a "Move to…" action and no drag, a datetime input over `datetime-local`, a minimal dialog, a series as a plain table of groups) and passes the kit.
+
+## Action scenarios
+
+The contract kit also runs scenarios for record actions, through the one line of wiring you give it. An action is a command a record can run (a Publish button, an Archive that asks first). The scenarios prove what a press does:
+
+- pressing an action runs it, announces it and reloads the row, and only that record changes;
+- a confirm is asked before the action runs, and Cancel closes the dialog without running it;
+- a confirm with `subjectField` names the record it acts on;
+- the dialog validates its input, keeps itself open when the input is wrong, then answers the action with the input;
+- a refused action (403) closes the dialog and reports through the view;
+- acting on a stale record (409) reports the conflict and reloads.
+
+You pass `mount`, which renders the host's table over the adapter the kit gives you, and the `registry` under test. The kit never imports a renderer. This sample is copied from `packages/renderer/src/action-scenarios.test.tsx`, which runs in the engine's own tests:
+
+```tsx
+// @vitest-environment jsdom
+import { mockRegistry } from "@yadad/testing";
+import { describeActionScenarios } from "@yadad/testing/contract-kit";
+import { TableRenderer } from "./table-renderer.js";
+
+describeActionScenarios({
+  registry: mockRegistry,
+  mount: ({ entity, view, registry, adapter }) => <TableRenderer entity={entity} view={view} registry={registry} dataSources={new Map([["default", adapter]])} />,
+});
+```
+
+`actionScenarioChecks({ mount, registry })` returns the same scenarios as `{ name, run() }` objects, for use outside Vitest. Run them one at a time.
 
 ## Focus contract kit
 
