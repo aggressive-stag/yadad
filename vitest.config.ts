@@ -9,7 +9,7 @@ export default defineConfig({
   resolve: { conditions: [source, ...defaultClientConditions] },
   ssr: { resolve: { conditions: [source, ...defaultServerConditions] } },
   test: {
-    include: ["{packages/*,testing,apps/*}/src/**/*.test.{ts,tsx}"],
+    include: ["{packages/*,testing,apps/*}/src/**/*.test.{ts,tsx}", "examples/*/tests/**/*.test.{ts,tsx}"],
     exclude: ["**/node_modules/**", "**/dist/**", ".worktrees/**"],
     passWithNoTests: true,
   },

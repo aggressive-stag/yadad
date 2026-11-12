@@ -1,0 +1,13 @@
+{
+  "kind": "dashboard", "specVersion": 10, "id": "overview", "title": "Overview", "revision": 1,
+  "tabs": [{ "id": "main", "title": "Overview", "columns": 12, "items": [
+    { "id": "open_count", "widget": "count", "label": "Open tasks", "view": "tasks",
+      "filter": { "op": "neq", "field": "status", "value": "Done" }, "x": 0, "y": 0, "w": 4, "h": 2 },
+    { "id": "blocked_count", "widget": "count", "label": "Blocked", "view": "tasks",
+      "filter": { "op": "eq", "field": "status", "value": "Blocked" }, "x": 4, "y": 0, "w": 4, "h": 2 },
+    { "id": "all_count", "widget": "count", "label": "All tasks", "view": "tasks", "x": 8, "y": 0, "w": 4, "h": 2 },
+    { "id": "by_status", "widget": "series", "label": "Tasks by status", "view": "tasks",
+      "groupBy": { "field": "status" }, "measure": { "op": "count" }, "display": "bar", "x": 0, "y": 2, "w": 6, "h": 8 },
+    { "id": "tasks_view", "widget": "view", "view": "tasks", "x": 6, "y": 2, "w": 6, "h": 8 }
+  ] }]
+}

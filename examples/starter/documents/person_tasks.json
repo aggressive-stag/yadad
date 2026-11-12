@@ -1,0 +1,5 @@
+{
+  "kind": "table", "specVersion": 10, "id": "person_tasks", "title": "Tasks of one person", "entity": "task", "revision": 1, "dataSource": "default",
+  "columns": [{ "field": "title" }, { "field": "status" }, { "field": "due" }],
+  "sort": [{ "field": "due", "dir": "asc" }]
+}

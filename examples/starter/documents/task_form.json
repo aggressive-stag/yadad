@@ -1,0 +1,14 @@
+{
+  "kind": "form", "specVersion": 10, "id": "task_form", "entity": "task", "revision": 1, "dataSource": "default",
+  "sections": [
+    { "id": "details", "title": "Task", "items": [
+      { "field": "title" },
+      { "field": "assignee" },
+      { "field": "status" },
+      { "field": "due" },
+      { "field": "notes", "requiredWhen": { "op": "eq", "field": "status", "value": "Blocked" } }
+    ] },
+    { "id": "checklist", "title": "Checklist",
+      "subRecords": { "entity": "subtask", "via": "task", "titleField": "title", "doneField": "done", "orderField": "position", "addLabel": "Add step" } }
+  ]
+}

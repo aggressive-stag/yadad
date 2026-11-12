@@ -243,6 +243,58 @@ importers:
         specifier: ^8.3.2
         version: 8.3.2(@types/node@22.20.5)(yaml@2.9.1)
 
+  examples/starter:
+    dependencies:
+      '@yadad/components':
+        specifier: 0.48.1
+        version: 0.48.1(@yadad/core@packages+core)(react@19.3.0)
+      '@yadad/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@yadad/renderer':
+        specifier: workspace:*
+        version: link:../../packages/renderer
+      '@yadad/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@yadad/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+    devDependencies:
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@types/node':
+        specifier: ^22.20.5
+        version: 22.20.5
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: 6.1.2
+        version: 6.1.2(vite@8.3.2(@types/node@22.20.5)(yaml@2.9.1))
+      '@yadad/testing':
+        specifier: workspace:*
+        version: link:../../testing
+      jsdom:
+        specifier: ~30.1.1
+        version: 30.1.1
+      vite:
+        specifier: ^8.3.2
+        version: 8.3.2(@types/node@22.20.5)(yaml@2.9.1)
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@22.20.5)(jsdom@30.1.1)(vite@8.3.2(@types/node@22.20.5)(yaml@2.9.1))
+
   packages/core: {}
 
   packages/editor:
@@ -930,6 +982,22 @@ packages:
   '@typescript/typescript6@6.0.2':
     resolution: {integrity: sha512-mbCddXd+jm7hfx7w2YU64/Av4/NqqeG3GoRZgxPcgoTxYjhrcfJRw9ULch71SS4G+Q3bOXFhRvPqjguN0Hyp5w==}
     hasBin: true
+
+  '@vitejs/plugin-react@6.1.2':
+    resolution: {integrity: sha512-fhJNGUdscQa4HkI0xFxwonWyhnVReCPDbXI7FH7jmzpnVCrFQI7PRrhWecO263610vOrs9tr2Y4xcf8uAdFxbw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    peerDependencies:
+      '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0
+      babel-plugin-react-compiler: ^1.0.0
+      oxc-transform-react: ^0.152.0
+      vite: ^8.0.0
+    peerDependenciesMeta:
+      '@rolldown/plugin-babel':
+        optional: true
+      babel-plugin-react-compiler:
+        optional: true
+      oxc-transform-react:
+        optional: true
 
   '@vitest/mocker@5.0.3':
     resolution: {integrity: sha512-T8sWAIbkSyAjkwTcaEc3Iu0o9A27X1/kdXrizhZkGuSKScRQtRzclfAMpOTcGdXCsqxeWlpGy3XjqaW8CpLORg==}
@@ -2340,6 +2408,11 @@ snapshots:
   '@typescript/typescript6@6.0.2':
     dependencies:
       '@typescript/old': typescript@6.0.3
+
+  '@vitejs/plugin-react@6.1.2(vite@8.3.2(@types/node@22.20.5)(yaml@2.9.1))':
+    dependencies:
+      '@rolldown/pluginutils': 1.0.1
+      vite: 8.3.2(@types/node@22.20.5)(yaml@2.9.1)
 
   '@vitest/mocker@5.0.3(vite@8.3.2(@types/node@22.20.5)(yaml@2.9.1))':
     dependencies:

@@ -1,0 +1,19 @@
+{
+  "kind": "table", "specVersion": 10, "id": "tasks", "title": "Tasks", "entity": "task", "revision": 1, "dataSource": "default",
+  "columns": [
+    { "field": "title", "editable": true },
+    { "field": "assignee" },
+    { "field": "status", "editable": true },
+    { "field": "due", "editable": true }
+  ],
+  "sort": [{ "field": "due", "dir": "asc" }],
+  "pageSize": 10,
+  "addForm": "task_form",
+  "filters": [
+    { "id": "open", "name": "Open", "condition": { "op": "neq", "field": "status", "value": "Done" } },
+    { "id": "overdue", "name": "Overdue", "condition": { "op": "and", "conditions": [
+      { "op": "neq", "field": "status", "value": "Done" },
+      { "op": "lt", "field": "due", "value": { "daysFromToday": 0 } }
+    ] } }
+  ]
+}

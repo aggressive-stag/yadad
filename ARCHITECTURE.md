@@ -46,7 +46,7 @@ yadad/
   fixtures/     canonical valid/invalid docs and expected-error lists
   rfcs/         contract and package changes (reserved)
   apps/showcase/
-  examples/     (reserved, empty)
+  examples/starter/  the one starter app: documents, a records server, tests (D21)
   ARCHITECTURE.md  AGENTS.md  (+ AGENTS.md per package)
 ```
 

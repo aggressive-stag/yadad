@@ -138,6 +138,8 @@ echo "@yadad:registry=https://<gitlab-host>/api/v4/packages/npm/" >> .npmrc
 npm install @yadad/core @yadad/runtime @yadad/renderer @yadad/theme @yadad/components react react-dom
 ```
 
+Or start from [`examples/starter`](examples/starter): a small app made of JSON documents, with a records server, that you copy and change.
+
 Describe an entity and two views, give the renderer a registry and a data adapter, and render:
 
 ```tsx
@@ -247,6 +249,7 @@ The showcase's review page is a worked example: changes, version history with co
 - [docs/DECISIONS.md](docs/DECISIONS.md): settled decisions and what they replaced.
 - [packages/core/AGENTS.consumer.md](packages/core/AGENTS.consumer.md): a guide for coding agents that build an app on yadad. It ships in the `@yadad/core` package, so an app's own `AGENTS.md` can point at `node_modules/@yadad/core/AGENTS.consumer.md`.
 - [docs/reference.md](docs/reference.md): what each document kind can contain, with a validated example of each.
+- [examples/starter](examples/starter): the starter app, to copy.
 - [docs/records-protocol.md](docs/records-protocol.md): the HTTP records protocol a backend implements.
 - [rfcs/](rfcs): proposals for changes to the contract.
 

@@ -1,0 +1,4 @@
+{
+  "kind": "form", "specVersion": 10, "id": "person_form", "entity": "person", "revision": 1, "dataSource": "default",
+  "sections": [{ "id": "main", "title": "New person", "items": [{ "field": "name" }] }]
+}

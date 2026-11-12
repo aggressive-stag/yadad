@@ -2,3 +2,4 @@ packages:
   - packages/*
   - testing
   - apps/*
+  - examples/*

@@ -1,0 +1,9 @@
+{
+  "kind": "entity", "specVersion": 10, "id": "subtask", "revision": 1,
+  "fields": [
+    { "id": "task", "type": "reference", "label": "Task", "entity": "task", "display": "title", "required": true },
+    { "id": "title", "type": "text", "label": "Step", "required": true },
+    { "id": "done", "type": "boolean", "label": "Done" },
+    { "id": "position", "type": "number", "label": "Position", "min": 0 }
+  ]
+}

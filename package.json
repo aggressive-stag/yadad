@@ -11,11 +11,11 @@
     "prepare": "git config core.hooksPath .githooks",
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "depcruise": "depcruise --config .dependency-cruiser.ts packages testing apps",
+    "depcruise": "depcruise --config .dependency-cruiser.ts packages testing apps examples",
     "depcruise:fixture": "node tools/forbidden-import-fixture/check.ts",
     "describe-registry": "node tools/describe-registry.ts",
     "record-schema": "node tools/record-schema.ts",
-    "test": "vitest run",
+    "test": "vitest run && node --test examples/starter/server/",
     "lint": "eslint --flag unstable_native_nodejs_ts_config .",
     "changeset": "changeset"
   },

@@ -1,0 +1,11 @@
+{
+  "kind": "entity", "specVersion": 10, "id": "task", "revision": 1,
+  "fields": [
+    { "id": "title", "type": "text", "label": "Title", "required": true },
+    { "id": "assignee", "type": "reference", "label": "Assignee", "entity": "person", "display": "name" },
+    { "id": "status", "type": "select", "label": "Status", "required": true,
+      "options": { "source": "static", "values": ["To do", "In progress", "Blocked", "Done"] } },
+    { "id": "due", "type": "date", "label": "Due" },
+    { "id": "notes", "type": "text", "label": "Notes", "multiline": true }
+  ]
+}

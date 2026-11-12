@@ -1,0 +1,8 @@
+body { margin: 0; background: var(--yadad-color-background); color: var(--yadad-color-text); font-family: var(--yadad-font-family); }
+.starter-shell { max-width: 72rem; margin: 0 auto; padding: 0 1rem 2rem; }
+.starter-shell nav { display: flex; flex-wrap: wrap; gap: .25rem 1rem; align-items: center; padding: .75rem 0; border-bottom: 1px solid var(--yadad-color-border); margin-bottom: 1rem; }
+.starter-shell nav a { color: var(--yadad-color-text-muted); text-decoration: none; padding: .5rem 0; }
+.starter-shell nav a[aria-current] { color: var(--yadad-color-accent); font-weight: 600; }
+.starter-shell nav button { margin-left: auto; font: inherit; min-height: 2.75rem; padding: 0 .75rem; color: inherit; background: var(--yadad-color-surface); border: 1px solid var(--yadad-color-border); border-radius: var(--yadad-radius-md); }
+.starter-shell main { min-width: 0; overflow-x: auto; }
+.starter-errors { padding: 1rem; font-family: system-ui, sans-serif; }

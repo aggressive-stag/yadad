@@ -1,0 +1,7 @@
+{
+  "kind": "table", "specVersion": 10, "id": "people", "title": "People", "entity": "person", "revision": 1, "dataSource": "default",
+  "columns": [{ "field": "name", "editable": true }],
+  "sort": [{ "field": "name", "dir": "asc" }],
+  "addForm": "person_form",
+  "rowAction": { "open": "person_tasks", "bind": [{ "field": "id", "to": "assignee" }] }
+}
