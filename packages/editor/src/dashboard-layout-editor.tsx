@@ -1,3 +1,4 @@
+import { useEditSession, FollowDocument } from "./follow-session.js";
 import { MEASURE_FIELD_TYPES, MEASURE_OPS, SERIES_BUCKETS, SERIES_LIMIT_DEFAULT, SERIES_LIMIT_MAX } from "@yadad/core";
 import type { DashboardView, EntityDocument, GridItem, Measure, MeasureOp, Registry, SeriesBucket, SeriesDisplay, SeriesSortBy, SeriesSortDir, ViewDocument, ViewerCondition, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
@@ -8,8 +9,7 @@ import type { NewWidget } from "./layout.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
-import type { EditSession } from "./session.js";
+import { edit, isDirty, redo, undo } from "./session.js";
 import { useReportChange } from "./report-change.js";
 import { groupableFieldIds, measureFor, setCountWidgetFilter, setItemVisibleWhen, setSeriesBucket, setSeriesDisplay, setSeriesGroupBy, setSeriesLimit, setSeriesMeasure, setSeriesSort, setSeriesView, setStatMeasure, setTabVisibleWhen, SERIES_DISPLAY_CHOICES, SERIES_SORT_BY_CHOICES, SERIES_SORT_DIR_CHOICES } from "./views.js";
 import { ViewerRule } from "./viewer-rule.js";
@@ -125,9 +125,17 @@ function describeMeasure(m: Measure, label: (fieldId: string) => string): string
  * with arrow keys resizes it. Overlapping or out-of-bounds layouts are
  * rejected by document validation, with the reason announced.
  */
-export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, onCancel, describeView = (id) => id, views = [], entities, viewer }: DashboardLayoutEditorProps): ReactNode {
+export function DashboardLayoutEditor(props: DashboardLayoutEditorProps): ReactNode {
+  return (
+    <FollowDocument doc={props.dashboard} onSave={props.onSave}>
+      {(dashboard, onSave) => <DashboardLayoutEditorBody {...props} dashboard={dashboard} onSave={onSave} />}
+    </FollowDocument>
+  );
+}
+
+function DashboardLayoutEditorBody({ dashboard, registry, onSave, onChange, onCancel, describeView = (id) => id, views = [], entities, viewer }: DashboardLayoutEditorProps): ReactNode {
   const base = useId();
-  const [session, setSession] = useState<EditSession<DashboardView>>(() => startSession(dashboard));
+  const { session, setSession, save } = useEditSession(dashboard, onSave);
   useReportChange(session.current, onChange);
   const [selected, setSelected] = useState(dashboard.tabs[0]?.id ?? "");
   const [drag, setDrag] = useState<Drag | undefined>(undefined);
@@ -515,7 +523,7 @@ export function DashboardLayoutEditor({ dashboard, registry, onSave, onChange, o
       <div data-yadad-editor-toolbar="" style={{ display: "flex", flexWrap: "wrap", gap: "var(--yadad-toolbar-gap, 0.5rem)", marginBlockEnd: "var(--yadad-toolbar-gap, 0.5rem)" }}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
-        <Button label="Save layout" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />
+        <Button label="Save layout" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => save()} />
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {session.rejected.length > 0 && <ErrorSummary errors={session.rejected} />}

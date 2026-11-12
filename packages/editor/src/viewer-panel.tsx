@@ -1,11 +1,11 @@
+import { useEditSession, FollowDocument } from "./follow-session.js";
 import { optionValue } from "@yadad/core"; // RFC 0008: card 47a
 import type { Document, DocumentError, Registry, ViewerDocument, ViewerFact } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { useReportChange } from "./report-change.js";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
-import type { EditSession } from "./session.js";
+import { edit, isDirty, redo, undo } from "./session.js";
 import { asText, choiceField, idFromTitle, propertyInput, toolbarStyle, warningList } from "./ui.js";
 import { addViewerFact, addViewerFactValue, moveViewerFact, newViewerFact, removeViewerFact, removeViewerFactValue, setViewerFactDefault, setViewerFactLabel, viewerEditConflicts } from "./viewer.js";
 
@@ -48,9 +48,17 @@ function conflictErrors(conflicts: readonly DocumentError[]): DocumentError[] {
  * one undoable patch. Given the other documents, an edit that a condition
  * still depends on is refused and the places that read it are listed.
  */
-export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onCancel }: ViewerPanelProps): ReactNode {
+export function ViewerPanel(props: ViewerPanelProps): ReactNode {
+  return (
+    <FollowDocument doc={props.viewer} onSave={props.onSave}>
+      {(viewer, onSave) => <ViewerPanelBody {...props} viewer={viewer} onSave={onSave} />}
+    </FollowDocument>
+  );
+}
+
+function ViewerPanelBody({ viewer, registry, documents, onSave, onChange, onCancel }: ViewerPanelProps): ReactNode {
   const base = useId();
-  const [session, setSession] = useState<EditSession<ViewerDocument>>(() => startSession(viewer));
+  const { session, setSession, save } = useEditSession(viewer, onSave);
   useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [status, setStatus] = useState("");
@@ -130,7 +138,7 @@ export function ViewerPanel({ viewer, registry, documents, onSave, onChange, onC
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
-        <Button label="Save viewer facts" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />
+        <Button label="Save viewer facts" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => save()} />
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}

@@ -1,3 +1,4 @@
+import { useEditSession, FollowDocument } from "./follow-session.js";
 import { ACTION_INPUT_FIELD_TYPES, FIELD_TYPES } from "@yadad/core";
 import type { ActionConfirm, ActionConfirmTone, ActionInputField, DocumentError, EntityDocument, Field, FieldType, FieldValue, RecordAction, RecordValues, Registry, SelectField, ViewerDocument, ViewDocument } from "@yadad/core";
 import { useId, useState } from "react";
@@ -10,9 +11,9 @@ import type { ConditionDraft } from "./condition-builder.js";
 import { addField, removeField, updateField } from "./fields.js";
 import { renderInput } from "./inputs.js";
 import { choiceField, describeCondition, propertyInput, warningList } from "./ui.js";
-import { edit, finish, isDirty, redo, startSession, undo } from "./session.js";
-import { useReportChange } from "./report-change.js";
 import type { EditSession } from "./session.js";
+import { edit, isDirty, redo, undo } from "./session.js";
+import { useReportChange } from "./report-change.js";
 
 export interface EntityFieldsEditorProps {
   readonly entity: EntityDocument;
@@ -135,9 +136,17 @@ const typeChooser: SelectField = {
  * options or required flag, or remove one no view uses. Ids and types of
  * existing fields are fixed, since saved records depend on them.
  */
-export function EntityFieldsEditor({ entity, views, registry, entities, viewer, onSave, onChange, onCancel }: EntityFieldsEditorProps): ReactNode {
+export function EntityFieldsEditor(props: EntityFieldsEditorProps): ReactNode {
+  return (
+    <FollowDocument doc={props.entity} onSave={props.onSave}>
+      {(entity, onSave) => <EntityFieldsEditorBody {...props} entity={entity} onSave={onSave} />}
+    </FollowDocument>
+  );
+}
+
+function EntityFieldsEditorBody({ entity, views, registry, entities, viewer, onSave, onChange, onCancel }: EntityFieldsEditorProps): ReactNode {
   const base = useId();
-  const [session, setSession] = useState<EditSession<EntityDocument>>(() => startSession(entity));
+  const { session, setSession, save } = useEditSession(entity, onSave);
   useReportChange(session.current, onChange);
   const [panel, setPanel] = useState<PanelState | undefined>(undefined);
   const [actionPanel, setActionPanel] = useState<ActionPanelState | undefined>(undefined);
@@ -257,7 +266,7 @@ export function EntityFieldsEditor({ entity, views, registry, entities, viewer, 
   const draftSession = draft !== undefined ? edit(session, addField(current, draft)) : undefined;
   const draftOk = draftSession !== undefined && draftSession.rejected.length === 0;
   const draftBad = draftSession !== undefined && draftSession.rejected.length > 0;
-  const saveFields = () => onSave(finish(draftOk && draft !== undefined ? edit(session, addField(current, draft)) : session));
+  const saveFields = () => save(draftOk && draft !== undefined ? edit(session, addField(current, draft)) : session);
 
   const setValue = (key: string, value: FieldValue | undefined) => setPanel((p) => (p ? { ...p, values: { ...p.values, [key]: value ?? null } } : p));
 

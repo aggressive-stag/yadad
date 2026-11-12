@@ -1,12 +1,12 @@
 import type { BoardView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
+import { useEditSession, FollowDocument } from "./follow-session.js";
 import { BOARD_CARD_FIELDS_MAX, BOARD_GROUP_BY_MAX } from "@yadad/core";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { flatIndex } from "./drag.js";
 import type { DropTarget, ReorderableRow } from "./drag.js";
 import { useReportChange } from "./report-change.js";
-import { finish, isDirty, redo, startSession, undo } from "./session.js";
-import type { EditSession } from "./session.js";
+import { isDirty, redo, undo } from "./session.js";
 import { applyEdit, editRunner } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
@@ -177,9 +177,17 @@ function ReorderList({ registry, base, marker, caption, columnLabel, empty, noun
  * moved one step with the arrow keys or with the Move buttons; each change
  * is one validated, undoable patch, and where a field lands is announced.
  */
-export function BoardViewEditor({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: BoardViewEditorProps): ReactNode {
+export function BoardViewEditor(props: BoardViewEditorProps): ReactNode {
+  return (
+    <FollowDocument doc={props.view} onSave={props.onSave}>
+      {(view, onSave) => <BoardViewEditorBody {...props} view={view} onSave={onSave} />}
+    </FollowDocument>
+  );
+}
+
+function BoardViewEditorBody({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: BoardViewEditorProps): ReactNode {
   const base = useId();
-  const [session, setSession] = useState<EditSession<BoardView>>(() => startSession(view));
+  const { session, setSession, save } = useEditSession(view, onSave);
   useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [settings, setSettings] = useState<Settings>(() => settingsOf(view));
@@ -298,7 +306,7 @@ export function BoardViewEditor({ view, entity, registry, context, viewer, onSav
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
-        <Button label="Save board" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />
+        <Button label="Save board" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => save()} />
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}

@@ -1,3 +1,4 @@
+import { useEditSession, FollowDocument } from "./follow-session.js";
 import { conditionViewerFacts, sectionItems } from "@yadad/core";
 import type { DocumentError, EntityDocument, FieldValue, FormItem, FormSection, FormView, Registry, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
@@ -6,8 +7,7 @@ import type { ReactNode } from "react";
 import type { DropTarget, RangeSpan, ReorderableRow } from "./drag.js";
 import { flatIndex, insertIndex } from "./drag.js";
 import { useReportChange } from "./report-change.js";
-import { finish, isDirty, redo, startSession, undo } from "./session.js";
-import type { EditSession } from "./session.js";
+import { isDirty, redo, undo } from "./session.js";
 import { applyEdit, editRunner } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
@@ -59,9 +59,17 @@ export interface FormViewEditorProps {
  * step with the arrow keys; each move is one undoable patch, and where it
  * lands is announced. Conditions on a field are kept and shown.
  */
-export function FormViewEditor({ view, entity, registry, viewer, entities, onSave, onChange, onCancel }: FormViewEditorProps): ReactNode {
+export function FormViewEditor(props: FormViewEditorProps): ReactNode {
+  return (
+    <FollowDocument doc={props.view} onSave={props.onSave}>
+      {(view, onSave) => <FormViewEditorBody {...props} view={view} onSave={onSave} />}
+    </FollowDocument>
+  );
+}
+
+function FormViewEditorBody({ view, entity, registry, viewer, entities, onSave, onChange, onCancel }: FormViewEditorProps): ReactNode {
   const base = useId();
-  const [session, setSession] = useState<EditSession<FormView>>(() => startSession(view));
+  const { session, setSession, save } = useEditSession(view, onSave);
   useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [newSection, setNewSection] = useState("");
@@ -511,7 +519,7 @@ export function FormViewEditor({ view, entity, registry, viewer, entities, onSav
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
-        <Button label="Save form" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />
+        <Button label="Save form" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => save()} />
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}

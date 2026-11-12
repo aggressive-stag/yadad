@@ -1,12 +1,12 @@
 import type { ColumnCompare, DocumentError, EntityDocument, Field, FieldValue, FormView, NamedFilter, Registry, RowAction, TableView, ViewerDocument } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
+import { useEditSession, FollowDocument } from "./follow-session.js";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import type { DropTarget, ReorderableRow } from "./drag.js";
 import { flatIndex } from "./drag.js";
 import { useReportChange } from "./report-change.js";
-import { finish, isDirty, redo, startSession, undo } from "./session.js";
-import type { EditSession } from "./session.js";
+import { isDirty, redo, undo } from "./session.js";
 import { applyEdit, editRunner } from "./save-result.js";
 import type { EditorResult } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
@@ -70,9 +70,17 @@ const settingsOf = (view: TableView): Settings => ({
  * one undoable patch, and where it lands is announced. A fixed filter, if
  * the table has one, is kept and shown.
  */
-export function TableViewEditor({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: TableViewEditorProps): ReactNode {
+export function TableViewEditor(props: TableViewEditorProps): ReactNode {
+  return (
+    <FollowDocument doc={props.view} onSave={props.onSave}>
+      {(view, onSave) => <TableViewEditorBody {...props} view={view} onSave={onSave} />}
+    </FollowDocument>
+  );
+}
+
+function TableViewEditorBody({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: TableViewEditorProps): ReactNode {
   const base = useId();
-  const [session, setSession] = useState<EditSession<TableView>>(() => startSession(view));
+  const { session, setSession, save } = useEditSession(view, onSave);
   useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [settings, setSettings] = useState<Settings>(() => settingsOf(view));
@@ -302,7 +310,7 @@ export function TableViewEditor({ view, entity, registry, context, viewer, onSav
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
-        <Button label="Save table" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />
+        <Button label="Save table" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => save()} />
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}

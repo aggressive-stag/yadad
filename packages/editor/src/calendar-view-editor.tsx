@@ -1,4 +1,5 @@
 import type { CalendarListStart, CalendarMode, CalendarView, DocumentError, EntityDocument, FieldValue, Registry, ViewerDocument } from "@yadad/core";
+import { useEditSession, FollowDocument } from "./follow-session.js";
 import { CALENDAR_COLOR_FIELD_TYPES, CALENDAR_DETAIL_FIELDS_MAX, CALENDAR_LIST_START_DEFAULT, CALENDAR_MAX_ENTRIES_PER_DAY_MAX, CALENDAR_MODES_DEFAULT, CALENDAR_TITLE_FIELD_TYPES } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { useId, useState } from "react";
@@ -6,8 +7,7 @@ import type { ReactNode } from "react";
 import type { DropTarget, ReorderableRow } from "./drag.js";
 import { flatIndex } from "./drag.js";
 import { useReportChange } from "./report-change.js";
-import { finish, isDirty, redo, startSession, undo } from "./session.js";
-import type { EditSession } from "./session.js";
+import { isDirty, redo, undo } from "./session.js";
 import { applyEdit, editRunner } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
@@ -110,9 +110,17 @@ const settingsOf = (view: CalendarView): Settings => ({
  * where it will land — or moved one step with the arrow keys; each move is
  * one undoable patch, and where it lands is announced.
  */
-export function CalendarViewEditor({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: CalendarViewEditorProps): ReactNode {
+export function CalendarViewEditor(props: CalendarViewEditorProps): ReactNode {
+  return (
+    <FollowDocument doc={props.view} onSave={props.onSave}>
+      {(view, onSave) => <CalendarViewEditorBody {...props} view={view} onSave={onSave} />}
+    </FollowDocument>
+  );
+}
+
+function CalendarViewEditorBody({ view, entity, registry, context, viewer, onSave, onChange, onCancel }: CalendarViewEditorProps): ReactNode {
   const base = useId();
-  const [session, setSession] = useState<EditSession<CalendarView>>(() => startSession(view));
+  const { session, setSession, save } = useEditSession(view, onSave);
   useReportChange(session.current, onChange);
   const [problems, setProblems] = useState<readonly DocumentError[]>([]);
   const [settings, setSettings] = useState<Settings>(() => settingsOf(view));
@@ -304,7 +312,7 @@ export function CalendarViewEditor({ view, entity, registry, context, viewer, on
       <div data-yadad-editor-toolbar="" style={toolbarStyle}>
         <Button label="Undo" type="button" variant="secondary" disabled={session.applied.length === 0} onPress={() => setSession(undo(session))} />
         <Button label="Redo" type="button" variant="secondary" disabled={session.undone.length === 0} onPress={() => setSession(redo(session))} />
-        <Button label="Save calendar" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => onSave(finish(session))} />
+        <Button label="Save calendar" type="button" variant="primary" disabled={!isDirty(session)} onPress={() => save()} />
         <Button label="Cancel" type="button" variant="secondary" disabled={false} onPress={onCancel} />
       </div>
       {problems.length > 0 && <ErrorSummary errors={problems} />}
