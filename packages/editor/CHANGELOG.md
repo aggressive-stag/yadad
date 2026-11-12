@@ -1,5 +1,11 @@
 # @yadad/editor
 
+## 0.18.6
+
+### Patch Changes
+
+- 252d1f6: The README now shows how to pass `checkStates` to `StatesPreview` (`checkViewStates` from `@yadad/testing/state-checks`, run one at a time) and notes the bundle cost.
+
 ## 0.18.5
 
 ### Patch Changes
