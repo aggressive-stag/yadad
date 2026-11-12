@@ -10,7 +10,7 @@ export function referenceDocuments(text: string): unknown[] {
     try {
       return JSON.parse(m[1] ?? "") as unknown;
     } catch (error) {
-      throw new Error(`docs/reference.md: json block ${i + 1} does not parse: ${String(error)}`);
+      throw new Error(`docs/reference.md: json block ${i + 1} does not parse`, { cause: error });
     }
   });
 }
