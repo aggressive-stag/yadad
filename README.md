@@ -207,15 +207,14 @@ A screen is more than the one state you looked at. `viewStates` in `@yadad/runti
 
 ## Review screens
 
-A review screen — changes, a version history, decisions to act on — is a table, a `datetime` field, a compare column and record actions, all from the documents.
+A review screen (changes, a version history, decisions to act on) is a table, a `datetime` field, a compare column and record actions, all from the documents. Other features, such as `time` and `tags` fields, the batch composer, checklists, saved filters and `fieldEqFact`, are in the [document reference](docs/reference.md).
 
 - **Record actions.** An entity declares what a record can do (`actions`: `apply`, `reject`, `restore`, ... each `id`, `label`, optional `confirm` message (with an optional `subjectField` naming the record in the dialog), optional typed `input` fields, optional `visibleWhen`), and a table, calendar or board offers them per row with `recordActions`. A press runs, or asks first in a dialog built by the renderer and drawn through the registry's `layout.Dialog`. The adapter runs it (`POST .../actions/{action}` with the required `baseVersion`) and the row updates with the record's new `can`. `availableActions` in `@yadad/runtime` answers "may this row offer this action" for the renderer and the editor alike; an action withheld by `visibleWhen` or `can.actions` is not rendered, not greyed out.
 - **Datetimes.** A `datetime` field stores one canonical string — UTC, milliseconds, `Z` — so sorting and filtering never parse; cells show the viewer's zone and locale via `formatDateTime`, and a from/to quick filter reads the viewer's clock (a range typed 10:00–10:30 includes 10:30:59.999).
-- **Time and tags.** A `time` field is a wall clock — `"HH:MM"`, whole minutes, optional `min`/`max`/`step` — and a `tags` field is the one field type whose value is an array: `string[]`, order preserved as entered (RFC 0008 items 14 and 15). Tags filter with `contains` and `in` over any element; neither sorts nor groups. A batch composer (`repeat: "batch"`) creates N records atomically from one form, and a form section with `subRecords` is an inline checklist over a child entity — each step its own record, the form only hosts the editing affordance (RFC 0009 items 3 and 4). A `fieldEqFact` condition compares a record field against the viewer's own value of a declared fact (RFC 0009 item 1), and a table's `filters` are document-level named saved filters — a condition each, selection stays the host's (item 5).
 - **What changed.** `compare` on a text column diffs the cell against the previous or next row, or against another text field of the same record — a version history shows the edit as words, marked up by the component (`diff` prop on the text `Display`). The diff is computed in `runtime` and checked by the state grid.
 - **Paging without a count.** `Page.total` is optional: a server that answers `next` gets cursor paging with Previous and Next (the table keeps the cursors it visited; "Load more" is rejected), and a count widget walks pages to the 5,000 cap and says "5000+".
 
-The showcase's review page is a worked example: changes, version history with compare, and decisions with apply, reject and restore, every action editable and previewable. See [ARCHITECTURE.md](ARCHITECTURE.md) §6 and [RFC 0007](rfcs/0007-review-screens.md).
+The showcase's review page is a worked example: changes, version history with compare, and decisions with apply, reject and restore, every action editable and previewable. See [ARCHITECTURE.md](ARCHITECTURE.md) §6 and Design: [RFC 0007](rfcs/0007-review-screens.md).
 
 ## Packages
 
@@ -246,6 +245,7 @@ The showcase's review page is a worked example: changes, version history with co
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): the authoritative design.
 - [docs/DECISIONS.md](docs/DECISIONS.md): settled decisions and what they replaced.
+- [docs/reference.md](docs/reference.md): what each document kind can contain, with a validated example of each.
 - [docs/records-protocol.md](docs/records-protocol.md): the HTTP records protocol a backend implements.
 - [rfcs/](rfcs): proposals for changes to the contract.
 
