@@ -1,5 +1,11 @@
 # @yadad/theme
 
+## 0.3.2
+
+### Patch Changes
+
+- 9ecce12: Add the MIT licence: a `LICENSE` file ships in every package and `package.json` now declares `"license": "MIT"`.
+
 ## 0.3.1
 
 ### Patch Changes

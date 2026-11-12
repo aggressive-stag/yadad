@@ -1,6 +1,6 @@
 {
   "name": "@yadad/testing",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "description": "yadad mock registry and component contract test kit.",
   "license": "MIT",
   "type": "module",

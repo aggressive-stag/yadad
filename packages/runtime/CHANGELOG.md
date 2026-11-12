@@ -1,5 +1,13 @@
 # @yadad/runtime
 
+## 0.19.2
+
+### Patch Changes
+
+- 9ecce12: Add the MIT licence: a `LICENSE` file ships in every package and `package.json` now declares `"license": "MIT"`.
+- Updated dependencies [9ecce12]
+  - @yadad/core@0.18.2
+
 ## 0.19.1
 
 ### Patch Changes
