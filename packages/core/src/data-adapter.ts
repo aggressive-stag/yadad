@@ -39,7 +39,7 @@ export interface DataRecord {
   /** Opaque, chosen by the adapter. Never reused for a different record, even after a delete. */
   readonly id: string;
   readonly entityId: string;
-  /** Entity revision the record was saved under; old records upcast on read. */
+  /** Entity revision the record was saved under. A stamp only: the engine does not convert old records on read. */
   readonly entityRevision: number;
   /**
    * Opaque; changes on every write that changes the record (an empty patch
