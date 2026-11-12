@@ -439,6 +439,8 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     : baseFilter === undefined ? savedCondition
       : { op: "and", conditions: [baseFilter, savedCondition] };
   const filter = useMemo(() => combineFilters(view, entity, quick, joinedBase, zone), [view, entity, quick, joinedBase, zone]);
+  // The view's own fixed filter is not the viewer's doing: only a quick filter with a value, a lit saved filter or a drill makes "match the filters" true.
+  const viewerFiltered = savedCondition !== undefined || lockedFields.length > 0 || combineFilters(view, entity, quick, undefined, zone) !== undefined;
   // The query signature: sort, filter and page size. A change is a new question — the cursor stack is cleared (RFC 0007).
   const sig = JSON.stringify([sort, filter, pageSize]);
 
@@ -811,7 +813,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
         columns={headers}
         rows={tableRows}
         onSort={onSort}
-        empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? "No records to show." : filter ? "No records match the filters." : "No records yet."}
+        empty={rows.status === "loading" ? "Loading…" : rows.status === "failed" ? "No records to show." : viewerFiltered ? "No records match the filters." : "No records yet."}
         {...(rowActions.some((a) => a.length > 0) ? { actionsLabel: "Actions" } : {})}
       />
       {recordActions.failures !== undefined && <ErrorSummary errors={recordActions.failures} />}
