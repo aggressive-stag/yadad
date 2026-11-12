@@ -15,7 +15,7 @@
     "depcruise:fixture": "node tools/forbidden-import-fixture/check.ts",
     "describe-registry": "node tools/describe-registry.ts",
     "record-schema": "node tools/record-schema.ts",
-    "test": "vitest run && node --test examples/starter/server/",
+    "test": "vitest run && node --test \"examples/starter/server/*.test.ts\"",
     "lint": "eslint --flag unstable_native_nodejs_ts_config .",
     "changeset": "changeset"
   },

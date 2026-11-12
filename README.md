@@ -258,7 +258,7 @@ The showcase's review page is a worked example: changes, version history with co
 
 ## Contributing
 
-Clone the repo (Node 22.18 or newer; its scripts are TypeScript run by Node directly), run `pnpm install`, and read [AGENTS.md](AGENTS.md) for the workflow, the rules each package follows and the checks every change must pass. Commits follow the Angular format.
+Clone the repo (Node 22.18 or newer; its scripts are TypeScript run by Node directly), run `pnpm install`, and read [AGENTS.md](AGENTS.md) for the workflow, the rules each package follows and the checks every change must pass. Commits follow the Angular format. The gate runs in GitLab CI (the packages live on a LAN-only registry, so the GitHub workflow cannot install); AGENTS.md says how to read a result.
 
 ## Licence
 

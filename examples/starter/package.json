@@ -7,7 +7,7 @@
     "dev": "node scripts/dev.ts",
     "build": "vite build",
     "check": "node scripts/check-documents.ts",
-    "test": "node --test server/ && vitest run",
+    "test": "node --test server/*.test.ts && vitest run",
     "dev:memory": "VITE_DATA=memory vite",
     "server": "node server/index.ts"
   },

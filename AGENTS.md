@@ -57,7 +57,11 @@ You land and release your own work. Nobody reviews or merges it for you, and fin
 
 ## CI gates (all must pass)
 
-typecheck → lint → dependency-cruiser → unit tests + fixture validation → changeset present. size-limit and the API report diff join once configured.
+typecheck → lint → dependency-cruiser → unit tests (the root `pnpm test` also runs the `examples/starter` server tests). size-limit and the API report diff join once configured.
+
+**Where the gate really runs:** the GitLab job `test` in `.gitlab-ci.yml`, on every push to every branch of the mirror (`https://gitlab.base-camp.dev/yadad/yadad`). The engine's packages and `@yadad/components` live on that GitLab's LAN-only npm registry, so GitHub Actions cannot install them and its workflow is not the gate. `release` runs only on `main` and only after `test` is green.
+
+**Reading a result without a token:** `git ls-remote https://gitlab.base-camp.dev/yadad/yadad.git 'refs/pipelines/*'` shows that a pipeline exists for a commit. The public API answers anonymously: `curl -s 'https://gitlab.base-camp.dev/api/v4/projects/yadad%2Fyadad/pipelines?per_page=3'` lists pipelines with `sha`, `ref` and `status`, and `.../pipelines/<id>/jobs` lists each job's `name`, `status` and `duration`. Read only: never retry, cancel or play a job, and never use or import a token.
 
 ## When in doubt
 
