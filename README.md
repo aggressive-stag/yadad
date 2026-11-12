@@ -99,7 +99,7 @@ Any table can open another view bound to the clicked row:
 
 ![The drill dashboard rendered: a row of one table opens the same view scoped to that row's value](docs/assets/screens/detail-drill-1280-light.png)
 
-*Click a task and its owner's tasks open beside it, with the drill kept in the URL so a reload restores it. RFC [0003](rfcs/0003-row-drill-down.md) and [0010](rfcs/0010-consumer-feedback.md) define the contract.*
+*Click a task and its owner's tasks open beside it, with the drill kept in the URL so a reload restores it. RFC [0003](rfcs/0003-row-drill-down.md) and [0010](rfcs/0010-consumer-feedback-round-3.md) define the contract.*
 
 ### A review screen
 
