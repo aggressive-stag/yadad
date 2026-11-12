@@ -15,7 +15,7 @@ The package has four entry points. Import only the one you need:
 | Entry point | Who needs it | What it needs |
 | --- | --- | --- |
 | `@yadad/testing` | An app or a renderer: the mock registry, source states, `createStateAdapter`, `waitForSettled` | Nothing beyond React; no DOM of its own |
-| `@yadad/testing/state-checks` | An app that wants every state of its views checked (`checkViewStates`) | A DOM (jsdom) and Vitest |
+| `@yadad/testing/state-checks` | An app that wants every state of its views checked (`checkViewStates`) | A DOM (jsdom); no test runner |
 | `@yadad/testing/contract-kit` | A component set: proves it satisfies the `Registry` contract, and runs the record-action scenarios | A DOM (jsdom) and Vitest |
 | `@yadad/testing/focus-kit` | A component set or renderer: proves focus lands in the right place after a record action | A DOM (jsdom) and Vitest |
 
@@ -88,7 +88,7 @@ The showcase's States page is the same machinery on screen — every state of `t
 
 ## Check every state of your views
 
-One browser check covers one state. `checkViewStates` from `@yadad/testing/state-checks` renders **every** state of a view (its data states, then the source states above) and reports the ones that break. It needs a DOM and Vitest: use it in a test file with `// @vitest-environment jsdom`.
+One browser check covers one state. `checkViewStates` from `@yadad/testing/state-checks` renders **every** state of a view (its data states, then the source states above) and reports the ones that break. It needs a DOM (it does not import Vitest): use it in a test file with `// @vitest-environment jsdom`, or in a page, see "In a page, next to the editor" below.
 
 You pass a `render` function that returns your renderer for the state, so the wiring is one line per view kind. `testing` never imports a renderer itself.
 
@@ -193,6 +193,26 @@ Checks per state, each a named problem:
 | `too-many-skipped` | more states were skipped by a declared limit than `maxSkipped` allows (added to the report, not per state) |
 
 `problems(results)` flattens the results into one line per problem, `"<state label> [<state id>]: <check>: <message>"`, so a failing `expect(problems(...)).toEqual([])` lists every failing state. Pass `timeZone` to have generated `datetime` values rendered in a zone other than UTC (it goes to `viewStates`; a datetime quick-filter state then compares against 09:30 in that zone). `skip: ["accessible-name"]` leaves a check out. `limit` caps the data states (24 by default); lower `manyRecords` to keep the "many records" states fast.
+
+## In a page, next to the editor
+
+`checkViewStates` does not need a test runner, so a host can run it in a page and feed the editor's `StatesPreview` its `checkStates` prop. Call it with the host's `render`, return `{ id, problems }` per state, and run one check at a time: a check replaces `console.error` and `console.warn` while it runs, so two overlapping runs would swap each other's replacements.
+
+```tsx
+import { checkViewStates } from "@yadad/testing/state-checks";
+import type { StatesPreviewProps } from "@yadad/editor";
+
+const CHECKED_AT = new Date("2026-01-01T12:00:00Z"); // required, so every run sees the same states
+let running: Promise<unknown> = Promise.resolve(); // one check at a time
+
+const checkStates: NonNullable<StatesPreviewProps["checkStates"]> = ({ view, documents }) => {
+  const run = running.then(() => checkViewStates({ view, documents, registry, now: CHECKED_AT, render: (state, context) => renderFromContext(state, context, documents) }));
+  running = run.catch(() => undefined);
+  return run.then((results) => results.map((r) => ({ id: r.id, problems: r.problems })));
+};
+```
+
+`render` receives the state and a context holding the adapter, `dataSources`, `drafts`, `viewer` and `registry` the checks use: render with those rather than building your own, as the showcase does (`renderState` in `apps/showcase/src/states.tsx`). The checks need a DOM, and importing them brings `@yadad/testing` and its test libraries into the app bundle, so load the editor page on demand if the bundle size matters.
 
 ## Contract kit
 

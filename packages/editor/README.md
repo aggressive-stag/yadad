@@ -126,6 +126,24 @@ function renderPreviewState(state: ViewState, documents: readonly Document[], re
 
 This exact function is compiled and run by `apps/showcase/src/readme-preview-sample.test.tsx` — if the renderers' props change, that test fails and this sample is fixed with it.
 
+`checkStates` is optional and adds the host's checks next to each tile: pass `checkViewStates` from `@yadad/testing/state-checks`, wrapped so it returns `{ id, problems }` per state. Its `render` is the same switch as `renderPreviewState`, except that it reads the adapter, data sources, drafts and viewer from the `context` the checks hand it (the checks inspect that adapter) instead of building its own; `renderFromContext` below stands for that function. Run one check at a time, because a check replaces `console.error` and `console.warn` while it runs. See "In a page, next to the editor" in the `@yadad/testing` README. It puts `@yadad/testing` and its test libraries into your app bundle, so you may want to load the editor page on demand.
+
+```tsx
+import { checkViewStates } from "@yadad/testing/state-checks";
+import type { StatesPreviewProps } from "@yadad/editor";
+
+const CHECKED_AT = new Date("2026-01-01T12:00:00Z"); // fixed, so every run sees the same states
+let running: Promise<unknown> = Promise.resolve(); // one check at a time
+
+const checkStates: NonNullable<StatesPreviewProps["checkStates"]> = ({ view, documents }) => {
+  const run = running.then(() => checkViewStates({ view, documents, registry, now: CHECKED_AT, render: (state, context) => renderFromContext(state, context, documents) }));
+  running = run.catch(() => undefined);
+  return run.then((results) => results.map((r) => ({ id: r.id, problems: r.problems })));
+};
+
+<StatesPreview view={edited} saved={board} documents={documents} now={CHECKED_AT} renderState={renderState} checkStates={checkStates} />
+```
+
 Two facts about the host side, learned the hard way by more than one consumer:
 
 - **Save bumps `revision`, so do not key the editor on the document.** `<BoardViewEditor key={view.id + view.revision} …>` remounts the editor after every save and the undo stack resets — Undo stops working right after the first Save. Key it on the id only, or not at all. The editors follow `view` by prop, not by remount: when you store what `onSave` gave you and pass it back, the editor is clean again (Save is disabled until the next edit) and the next Save is one revision above the stored one. Undo still steps back past the Save; that makes the editor dirty again, and saving then gives the earlier content at one revision above the stored document. A document with another id, or at a revision the editor did not produce, starts a new session with an empty undo log. If your save fails, keep passing the old document: the editor keeps its edits and Save stays enabled.

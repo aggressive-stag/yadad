@@ -10,7 +10,6 @@ import { availableActions, canEditField, canUpdate, columnEditable, compareCells
 import type { DraftStore, SkippedState, ViewStatesOptions } from "@yadad/runtime";
 import axe from "axe-core";
 import type { ReactNode } from "react";
-import { vi } from "vitest";
 import { mockRegistry } from "./mock-registry.js";
 import { sourceStates } from "./source-states.js";
 import type { SourceViewState } from "./source-states.js";
@@ -245,12 +244,13 @@ async function checkState(
   const drafts = draftsFor(state, entity);
   const logged: string[] = [];
   const warned: string[] = [];
-  const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+  // Manual swaps for error and warn, not vi.spyOn: the checks then need no test
+  // runner (a host can run them in a page), and a host that spies on either
+  // method itself gets its own spy back, untouched, once the check is done.
+  const previousError = console.error;
+  console.error = (...args: unknown[]): void => {
     logged.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 300));
-  });
-  // Manual swap for warn, not vi.spyOn: a host that spies console.warn itself
-  // leaves the same mock function on the object, and re-spying replaces its
-  // implementation — a captured "real" warn would then be this very function.
+  };
   const previousWarn = console.warn;
   console.warn = (...args: unknown[]): void => {
     const line = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 300);
@@ -295,7 +295,7 @@ async function checkState(
     if (!skip.has("error-message") && state.source === "error") found.push(...errorChecks(container, adapter));
   } finally {
     unmount?.();
-    spy.mockRestore();
+    console.error = previousError;
     console.warn = previousWarn;
   }
   return found;

@@ -165,6 +165,24 @@ describe("checkViewStates", () => {
     expect(checks(results)).toEqual(["console-error"]);
   });
 
+  test("a spy the host put on console.error before the call is back and working after it", async () => {
+    const heard: unknown[][] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void heard.push(args));
+    const mine = console.error;
+    try {
+      await run(table, () => {
+        console.error("logged during the check");
+        return <p>rows</p>;
+      }, ["error-message", "notice-missing"]);
+      expect(console.error).toBe(mine);
+      expect(heard).toEqual([]); // the check swallowed its own logs
+      console.error("after");
+      expect(heard).toEqual([["after"]]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("a yadad: console warning is a yadad-warning problem; other warnings pass through", async () => {
     const heard: unknown[][] = [];
     const spy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => void heard.push(args));

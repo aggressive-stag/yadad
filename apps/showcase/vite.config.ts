@@ -42,8 +42,6 @@ export default defineConfig({
   resolve: {
     conditions: ["@yadad/source", ...defaultClientConditions],
     dedupe: ["react", "react-dom"],
-    // The States page runs the state checks in the browser; they only need vitest's `vi.spyOn`.
-    alias: { vitest: resolve(import.meta.dirname, "src/vitest-shim.ts") },
   },
   server: {
     // AGENTS.md: a random dev-server port, so parallel worktrees never collide.

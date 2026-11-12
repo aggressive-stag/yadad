@@ -6,13 +6,18 @@
 import { validateDocuments } from "@yadad/core";
 import type { DataAdapter, Document, Registry, ViewDocument } from "@yadad/core";
 import { StatesPreview } from "@yadad/editor";
+import type { StatesPreviewProps } from "@yadad/editor";
 import { BoardRenderer, CalendarRenderer, DashboardRenderer, FormRenderer, TableRenderer, documentSet } from "@yadad/renderer";
 import { createDraftStore } from "@yadad/runtime";
 import type { DraftStore, ViewState } from "@yadad/runtime";
 import { createStateAdapter, mockRegistry } from "@yadad/testing";
+import type { SourceViewState } from "@yadad/testing";
+import { checkViewStates } from "@yadad/testing/state-checks";
+import type { StateRenderContext } from "@yadad/testing/state-checks";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 import { expect, test } from "vitest";
+import { renderState as renderStateFromContext } from "./states.js";
 import boardTask from "../../../fixtures/valid/board-task-viewer.json?raw";
 import calendarTask from "../../../fixtures/valid/calendar-task-viewer.json?raw";
 import dashboardTask from "../../../fixtures/valid/dashboard-task-viewer.json?raw";
@@ -68,6 +73,20 @@ const documents = checked.value;
 const board = documents.find((d): d is ViewDocument => d.kind === "board");
 
 const NOW = new Date(2026, 9, 15);
+// The checkStates wiring from the README (editor "Preview every state" and testing "In a page, next to the editor"),
+// with `registry` and `renderFromContext` standing in for the host's.
+const registry = mockRegistry;
+const renderFromContext = (state: SourceViewState, context: StateRenderContext, docs: readonly Document[]): ReactNode => renderStateFromContext(state, context, documentSet(docs));
+
+const CHECKED_AT = new Date("2026-01-01T12:00:00Z");
+let running: Promise<unknown> = Promise.resolve();
+
+const checkStates: NonNullable<StatesPreviewProps["checkStates"]> = ({ view, documents }) => {
+  const run = running.then(() => checkViewStates({ view, documents, registry, now: CHECKED_AT, render: (state, context) => renderFromContext(state, context, documents) }));
+  running = run.catch(() => undefined);
+  return run.then((results) => results.map((r) => ({ id: r.id, problems: r.problems })));
+};
+
 
 test("the README's host wiring previews the board in every state", () => {
   if (!board) throw new Error("board fixture missing");
@@ -76,4 +95,12 @@ test("the README's host wiring previews the board in every state", () => {
   );
   expect(html).toContain('aria-label="States"'); // the grid was built…
   expect(html).toContain("data-yadad-state-preview"); // …and each tile rendered its state through the host's function
+});
+
+test("the README's checkStates wiring type-checks and is a function the preview accepts", () => {
+  expect(typeof checkStates).toBe("function");
+  const html = renderToStaticMarkup(
+    <StatesPreview view={board!} saved={board!} documents={documents} now={NOW} renderState={(state, all) => renderPreviewState(state, all, mockRegistry, NOW)} checkStates={checkStates} />,
+  );
+  expect(html).toContain("data-yadad-state-preview");
 });
