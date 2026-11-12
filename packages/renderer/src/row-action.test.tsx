@@ -309,3 +309,49 @@ describe("the record id as a binding (RFC 0008 item 1)", () => {
     expect(seen).toEqual([[{ viewId: "logs", bindings: { session_id: one.id } }]]);
   });
 });
+
+describe("button column headers", () => {
+  const withActions: EntityDocument = { ...entity, actions: [{ id: "stamp", label: "Stamp" }] };
+  const docs: DocumentSet = { entities: new Map([[withActions.id, withActions]]), views: new Map<string, TableView>([[history.id, history]]) };
+  const headerNames = () => screen.getAllByRole("columnheader").map((h) => h.textContent);
+
+  async function show(view: TableView) {
+    const db = createMemoryAdapter({ actions: { "workout_set.stamp": () => ({ values: {} }) } });
+    await db.create("workout_set", { day: "2026-10-01", exercise: "Squat", weight: 100 }, { entityRevision: 1 });
+    const dataSources = new Map([["default", db]]);
+    render(<TableRenderer entity={withActions} view={view} registry={mockRegistry} dataSources={dataSources} documents={docs} entities={docs.entities} />);
+    await waitForRows(document.body);
+  }
+
+  test("a row action and record actions give two button columns with different headers", async () => {
+    await show({ ...sets, recordActions: ["stamp"] });
+    const names = headerNames();
+    expect(names).toContain("Open");
+    expect(names).toContain("Actions");
+    expect(new Set(names).size).toBe(names.length);
+    expect(document.querySelector('th[id$="-col-_actions"]')?.textContent).toBe("Open");
+  });
+
+  test("a row action, an editable column and record actions: Edit and open, then Actions", async () => {
+    await show({ ...sets, columns: [{ field: "day" }, { field: "exercise" }, { field: "weight", editable: true }], recordActions: ["stamp"] });
+    const names = headerNames();
+    expect(names).toContain("Edit and open");
+    expect(names.filter((n) => n === "Actions")).toHaveLength(1);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test("only record actions leave exactly one Actions header and no renderer column", async () => {
+    const { rowAction: _open, ...plain } = sets;
+    await show({ ...plain, recordActions: ["stamp"] });
+    const names = headerNames();
+    expect(names.filter((n) => n === "Actions")).toHaveLength(1);
+    expect(document.querySelector('th[id$="-col-_actions"]')).toBeNull();
+  });
+
+  test("only an editable column is headed Edit", async () => {
+    const { rowAction: _open, ...plain } = sets;
+    await show({ ...plain, columns: [{ field: "day" }, { field: "weight", editable: true }] });
+    expect(headerNames()).toContain("Edit");
+    expect(headerNames()).not.toContain("Actions");
+  });
+});

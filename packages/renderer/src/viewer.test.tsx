@@ -52,7 +52,7 @@ async function seed(adapterOverrides?: Partial<DataAdapter>) {
 const common = { entity, registry: mockRegistry, entities: set.entities };
 const editButtons = () => screen.queryAllByRole("button", { name: "Edit" }).length;
 const openButtons = () => screen.queryAllByRole("button", { name: /^Open / }).length;
-const headers = () => screen.queryAllByRole("columnheader").map((h) => h.textContent).filter((t) => t !== "Actions");
+const headers = () => screen.queryAllByRole("columnheader").map((h) => h.textContent).filter((t) => t !== "Actions" && t !== "Edit" && t !== "Open" && t !== "Edit and open");
 
 async function table_(viewer: ResolvedViewer | undefined, documents: DocumentSet | undefined = set) {
   const dataSources = await seed();
@@ -91,6 +91,14 @@ describe("table", () => {
     cleanup();
     await table_(as("viewer", true));
     expect(openButtons()).toBe(2);
+  });
+
+  test("with the row action hidden, the button column is headed for editing alone", async () => {
+    await table_(as("viewer"));
+    const names = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(names).toContain("Edit");
+    expect(names).not.toContain("Open");
+    expect(names).not.toContain("Edit and open");
   });
 
   test("a viewer who may see no column gets a notice", async () => {

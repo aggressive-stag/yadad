@@ -554,7 +554,10 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     return field ? [{ field, editable: field.readOnly !== true && columnEditable(c, viewer), sortable: view.sortable !== false && c.sortable !== false, ...(c.compare !== undefined ? { compare: c.compare } : {}) }] : [];
   });
   if (shownColumns.length === 0) return <p data-yadad-table-view={view.id} data-yadad-table-nothing="">There is nothing to show you here.</p>;
-  const hasActions = columns.some((c) => c.editable) || rowAction !== undefined;
+  const canEditRows = columns.some((c) => c.editable);
+  const hasActions = canEditRows || rowAction !== undefined;
+  // Headed after what the column holds, so it never repeats the record-actions column's "Actions".
+  const rowButtonsLabel = canEditRows && rowAction !== undefined ? "Edit and open" : rowAction !== undefined ? "Open" : "Edit";
   const headerId = (columnId: string) => `${tableId}-col-${columnId}`;
   const editErrorsId = `${tableId}-edit-errors`;
 
@@ -564,7 +567,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       // A reference holds a record id, which says nothing about order.
       return { id: field.id, headerId: headerId(field.id), label: field.label, sortable: sortable && field.type !== "reference", ...active };
     }),
-    ...(hasActions ? [{ id: ACTIONS_COLUMN, headerId: headerId(ACTIONS_COLUMN), label: "Actions", sortable: false }] : []),
+    ...(hasActions ? [{ id: ACTIONS_COLUMN, headerId: headerId(ACTIONS_COLUMN), label: rowButtonsLabel, sortable: false }] : []),
   ];
 
   /** First click sorts ascending; clicking the sorted column again flips it. */
