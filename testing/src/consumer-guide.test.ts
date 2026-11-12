@@ -27,7 +27,7 @@ describe("packages/core/AGENTS.consumer.md", () => {
   });
 
   it("quotes only error codes the validator has", () => {
-    const codes = new Set(core.describeContract().errorCodes.map((c) => (typeof c === "string" ? c : c.code)));
+    const codes = new Set<string>(core.describeContract().errorCodes);
     for (const m of guide.matchAll(/`(unknown-[a-z-]+|invalid-value|type)`/g)) expect(codes.has(m[1] as string), `${m[1]} is not an error code`).toBe(true);
   });
 });
