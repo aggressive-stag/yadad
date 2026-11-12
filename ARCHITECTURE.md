@@ -166,14 +166,14 @@ An **entity** owns fields, types and validation. A **view** owns layout and refe
 
 ```jsonc
 // Entity: data model
-{ "kind": "entity", "specVersion": 9, "id": "workout_set", "revision": 7,
+{ "kind": "entity", "specVersion": 10, "id": "workout_set", "revision": 7,
   "fields": [
     { "id": "exercise", "type": "select", "label": "Exercise", "required": true,
       "options": { "source": "static", "values": ["Squat", "Bench"] } },
     { "id": "weight", "type": "number", "label": "Weight", "min": 0, "unit": "kg" } ] }
 
 // Form view: layout only
-{ "kind": "form", "specVersion": 9, "id": "log_set", "entity": "workout_set", "revision": 3,
+{ "kind": "form", "specVersion": 10, "id": "log_set", "entity": "workout_set", "revision": 3,
   "dataSource": "default",
   "sections": [ { "id": "main", "title": "Set", "items": [
     { "field": "exercise" },
@@ -242,7 +242,7 @@ A field type holding an instant, stored in one string form so that comparing, so
 - **Engine** (`runtime/datetime.ts`): `formatDateTime` (Intl, locale and zone), `instantToLocal` / `localToInstant` (DST-safe — a local time that does not exist or occurs twice resolves to the earlier valid instant), and `instantRangeBounds` for the quick filter's from/to (from = start of its minute, to = last millisecond, so 10:00–10:30 includes 10:30:59.999). `core` validates the shape and gives `recordJsonSchema` its `format: "date-time"` plus pattern.
 - **Renderer** formats for the viewer and hands the component both: the stored string for `<time dateTime>` and the formatted text in the Display's `text` extra. Renderers take an optional `formatting?: { locale?, timeZone? }`; absent, the environment's. A cell shows the viewer's wall-clock time, never the raw `...T18:22:07.123Z`.
 - **Input** receives and returns the stored form; the component presents a native `datetime-local` or its own picker in the viewer's zone (the renderer converts at the boundary).
-- **Registry**: `fields.datetime` is optional, like `layout.Calendar` — existing registries keep type-checking, and a document that uses the type against a registry without the key renders an `ErrorSummary` naming it. The reference components and the mock registry gained it in the same release as the type.
+- **Registry**: `fields.datetime` is optional, like `layout.Calendar` — existing registries keep type-checking, and a document that uses the type against a registry without the key renders an `ErrorSummary` naming it. The reference components and the mock registry gained it in the same release as the type, but the key stays optional in `registry.ts` today (D41).
 - **Editor**: the author panel and the compare/bound controls edit the canonical string; the panel reads a bare local time as UTC rather than the machine's zone, so a document says the same instant on every machine.
 - Out of slice 1: relative values (`{ hoursFromNow }`), a calendar `dateField`, a board `groupBy`, and number/datetime `min`/`max` measures — all documented refusals, not omissions.
 
@@ -266,6 +266,8 @@ The two field types RFC 0008 added, each with a strict stored form, the way `dat
 ### The new state axes
 
 The grid grew axis families past the condition and kind axes (§13): one `action:<id>` axis per offered action (`available`, `withheld on 1 record` — withheld sets `can.actions[id] = false` on the first generated record), a `paging` axis on tables (`pages by total`, `cursor page, more to come`, `cursor page, last`), and the `viewer:<fact>` and `permission` axes from RFC 0006. RFC 0008 added two more: a `done` axis on a calendar or board that sets `doneField` (the checkbox on and off), and a `columns` axis on a reference board with `columnsFrom: "options"` (one option holds no cards — the column exists with no drop target). The `time` and `tags` field types brought their value probes along (thresholds plus 23:59; empty/one/many/duplicate tags), and a `fieldEqFact` leaf seeds the compared field from the fact so a true-comparison state can render. `checkViewStates` gained the matching checks: `action-offered` / `action-missing` (nothing withheld may be offered, nothing allowed may hide), the pager checks, and the two diff checks above. `StatesPreview` (`editor`) names the action and paging axes on their own line — "States this view varies" — because they answer what the *product* varies, while the viewer axes answer what the viewer is told.
+
+Checked against `packages/core/src/document.ts`, `registry.ts` and `describe-registry` output at c95e5ab (2026-11-12).
 
 ## 7. Validation: two kinds, one owner each
 
@@ -292,7 +294,9 @@ The contract itself is also machine-readable: `describeContract()` in `core` is 
 | Migration | Pure `migrate(doc, from, to)` in `core`, plus a before/after fixture pair | None for additive edits. Destructive edits (delete a field, change its type) go through an explicit editor transform. |
 | Records | n/a | Store `{ entityId, entityRevision }`. Old records are upcast lazily on read. If one fails validation, show "saved under revision N" instead of crashing. |
 
-Documents use `specVersion: 10`; the validator also accepts the older versions 0 to 8, which `migrate()` stamps step by step. Each step so far was additive, so every older document stays valid: 1 added relative dates in conditions (D22), 2 the `stat` widget, `reference` field and `rowAction`, 3 the `calendar` view, 4 the `board` view, 5 the `viewer` document, the `viewerIn` op and the viewer-only keys, 6 the `datetime` field type, entity `actions`, view `recordActions`, the column `compare` setting and optional page totals (RFC 0007, D45), and 7 the `series` widget (RFC 0001 slice 2, D48), 8 every accepted item of RFC 0008 and RFC 0009 plus the `time` and `tags` field types (D49), 9 the accepted items of RFC 0010 (D50), and 10 the accepted items of RFC 0011 (D51). From D52 on, a purely additive change no longer bumps the version, so 10 stays current until a change needs a migration. Any other value is rejected (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
+Documents use `specVersion: 10`; the validator also accepts the older versions 0 to 9, which `migrate()` stamps step by step. Each step so far was additive, so every older document stays valid: 1 added relative dates in conditions (D22), 2 the `stat` widget, `reference` field and `rowAction`, 3 the `calendar` view, 4 the `board` view, 5 the `viewer` document, the `viewerIn` op and the viewer-only keys, 6 the `datetime` field type, entity `actions`, view `recordActions`, the column `compare` setting and optional page totals (RFC 0007, D45), and 7 the `series` widget (RFC 0001 slice 2, D48), 8 every accepted item of RFC 0008 and RFC 0009 plus the `time` and `tags` field types (D49), 9 the accepted items of RFC 0010 (D50), and 10 the accepted items of RFC 0011 (D51). From D52 on, a purely additive change no longer bumps the version, so 10 stays current until a change needs a migration. Any other value is rejected (no freeze is planned — §11). Each document's `revision` counts its own edits: bump it whenever you change that document. A view's revision is independent of its entity's, even when the numbers happen to match.
+
+Checked against `packages/core/src/document.ts` (`SPEC_VERSION`, `SUPPORTED_SPEC_VERSIONS`) and `migrate.ts` at c95e5ab (2026-11-12).
 
 ## 9. Registry contract and ownership
 
@@ -306,10 +310,10 @@ interface FieldTypeEntry<K extends FieldType, N> {
 }
 
 interface Registry<N> {
-  fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> }; // mapped type, no index signature; `datetime` is optional until the reference set ships it (RFC 0007), like Calendar below; `time` and `tags` (RFC 0008) are required entries — registries written before them must add both
+  fields: { readonly [K in FieldType]: FieldTypeEntry<K, N> }; // mapped type, no index signature; `datetime` is an optional entry (D41), like Calendar below; a document that uses the type against a registry without it renders an error summary; `time` and `tags` (RFC 0008) are required entries — registries written before them must add both
   layout: { FieldFrame; Section; Button; Table; ErrorSummary; Tabs; Panel;
             Calendar?; Board?; Dialog?; Pager? };              // optional keys: without Calendar/Board (or, for Dialog, an action needing a dialog) that view renders an error summary; without Pager, a table keeps the renderer's own Previous/Next markup
-  widgets: { count: Component<CountWidgetProps, N> };         // "view" widgets render through the renderer itself; "stat" shows its number through "count"
+  widgets: { count: Component<CountWidgetProps, N>; series?: Component<SeriesWidgetProps, N> }; // "view" widgets render through the renderer itself; "stat" shows its number through "count"; without the optional "series" a series widget renders an error summary naming the key
 }
 ```
 
@@ -327,6 +331,8 @@ What we own vs depend on:
 | Field/section/column reordering | Own: hand-written buttons in the view editors | editor only |
 | Dashboard rendering in view mode | Own: plain CSS grid from `x, y, w, h` with a fixed row height (`--yadad-grid-row-height`, 4rem default; D18) | renderer |
 
+Checked against `packages/core/src/registry.ts` and `data-adapter.ts` at c95e5ab (2026-11-12).
+
 ## 10. Data adapter
 
 ```ts
@@ -342,7 +348,7 @@ interface DataAdapter {
 // WriteMeta = { entityRevision: number; baseVersion?: string }
 // Records carry an opaque `version`; writes send it back as `baseVersion`, and a stale one is a conflict.
 // Query = { filter?: Condition, sort?: {field, dir}[], page?: {offset, limit} | {cursor, limit} }
-// Page<T> = { items; total?: number; next?: string | null } — `next` is an opaque cursor (RFC 0007); the client passes it back untouched.
+// Page<T> = { items; total?: number; next?: string | null; notice?: { tone: "info" | "warning"; text: string } } — `next` is an opaque cursor (RFC 0007); the client passes it back untouched; `notice` is the server's plain-text statement about this answer, shown beside the list.
 ```
 
 Interface, `Query` and the typed adapter errors in `core`. The memory, key-value and HTTP adapters in `runtime` all implement record versions and optimistic concurrency; the HTTP adapter (`createHttpAdapter`) speaks the records protocol in `docs/records-protocol.md` to a same-origin backend. A Supabase adapter can live here (depending on `core` only) or in the host app; none exists yet.
@@ -396,8 +402,10 @@ Writes are never retried. Checked against `docs/records-protocol.md` and `packag
 4. **Renderer tests against a mock registry** (stub components with `data-testid`). Engine CI never needs real components.
 5. **Migration tests:** once a `specVersion` bump ships a migration, every historical fixture migrates to the current `specVersion` and validates.
 6. **Runtime unit tests** for the condition evaluator and form state.
-7. **Cross-language check:** a small pytest job validates the record fixtures against the generated JSON Schemas — planned, once the schemas exist.
+7. **Cross-language check:** the record JSON Schemas exist (`recordJsonSchema`, `tools/record-schema.ts`) and a parity test in `testing` (`fixture-parity.test.ts`) checks the record fixtures against them in TypeScript. No job in another language (such as pytest) exists in `.github/workflows/ci.yml` or `.gitlab-ci.yml`.
 8. **Visual checks:** the components repo has a vite gallery for manual browser checks, plus rerunnable Playwright checks (keyboard, phone touch) that drive it; screenshot comparison tests are not set up.
+
+Checked against `testing/src/fixture-parity.test.ts`, `tools/record-schema.ts`, `.github/workflows/ci.yml` and `.gitlab-ci.yml` at c95e5ab (2026-11-12).
 
 ## 13. The state grid
 
@@ -415,11 +423,13 @@ flowchart LR
 ```
 
 1. **`viewStates(view, documents, { now, limit? })`** (`runtime`) is a pure function of the documents and `now`. It reads the view's conditions and kind and builds **axes**: each condition's field with boundary values by type, the view kind's own axes (a form's `fill`, the record count of a table, calendar or board, a calendar's `mode`, a board's `group`, a dashboard's `tab` and embedded views, a table's `paging` — RFC 0007), one `viewer:<fact>` axis per viewer fact the view reads, one `action:<id>` axis per action the view offers (RFC 0007), and a `permission` axis on views with an edit surface (`unrestricted` or `record-locked`, where the first record carries `can: { update: false }`). A **state** picks one value per axis and carries what to render: form values, or validated records and the ids matching the filter, a viewer, and `now`. When the full product fits in `limit` (24 by default) all combinations are listed; otherwise a deterministic pairwise cover keeps every pair of values from two axes in at least one state, and `complete` says whether even that fit. States that cannot exist are pruned (a locked record with no records, a dashboard tab the viewer cannot see). One extra state, `viewer-not-provided`, renders with no `viewer` prop to prove it looks like the all-defaults viewer.
-2. **`sourceStates`** and **`createStateAdapter`** (`testing`) add the data source's states to those: loading, failed to load, a save refused (400 or 403) and a conflict (409), each only where it makes sense for the view. Each state gets a seeded adapter in that condition.
+2. **`sourceStates`** and **`createStateAdapter`** (`testing`) add the data source's states to those: loading, failed to load, a save refused (400 or 403), a conflict (409), and a list answer carrying an info or a warning `notice` (`notice-info`, `notice-warning`), each only where it makes sense for the view. Each state gets a seeded adapter in that condition.
 3. **`checkViewStates`** (`testing/state-checks`) renders every state through a `render` function the host passes in (`testing` never imports a renderer), and checks it: it must not throw or log a console error, forms must show and require exactly the fields the conditions say, every control needs an accessible name, a failed load must say so, and for the viewer axes nothing hidden may be shown and nothing the viewer may not use may be offered (`viewer-visibility`, `editable-offered`, `editable-missing`), and a board or calendar must use the grouping, mode and range the state names (`group-by-ignored`, `mode-ignored`, `anchor-ignored`), and RFC 0007's action and compare axes are checked the same way (`action-offered`, `action-missing`, `diff-missing`, `diff-offered`, §6).
 4. **Consumers.** The showcase's States page renders the whole grid for any view with the checks beside it, and `StatesPreview` (`editor`) sits next to a view editor and marks states that are new or differ from the saved revision. The editor cannot import `testing`, so the host passes `renderState` and, optionally, `checkStates` as props.
 
 The states are documents-in, pictures-out: adding a condition to a document changes its grid without anyone writing a test.
+
+Checked against `testing/src/state-adapter.ts`, `state-checks.tsx` and `packages/runtime/src/view-states.ts` at c95e5ab (2026-11-12).
 
 ## 14. State ownership
 
