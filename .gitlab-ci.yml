@@ -1,17 +1,45 @@
-# GitLab CI for yadad: publish only.
+# GitLab CI for yadad: the gate, then publish.
 #
-# GitHub (the source repo) runs the full gate on every push; GitLab is a push
-# mirror that hosts the npm registry. This job publishes any @yadad/* version
-# that the registry does not have yet. It never versions or commits: versions
-# come from `pnpm changeset version`, run locally, committed and pushed, so the
-# mirror never diverges from GitHub. See tools/release/publish.sh.
+# The engine's packages and @yadad/components live on this GitLab's npm
+# registry, which only the LAN reaches, so this is where the gate runs (GitHub
+# Actions cannot install, see .github/workflows/ci.yml). `test` runs the gate
+# from AGENTS.md on every push to every branch. `release` publishes any
+# @yadad/* version the registry does not have yet, on the default branch only,
+# and only after `test` passed. It never versions or commits: versions come
+# from `pnpm changeset version`, run locally, committed and pushed. See
+# tools/release/publish.sh.
+
+stages: [test, deploy]
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push"
+
+test:
+  stage: test
+  tags: [k8s]
+  # Not -slim: the root `prepare` script runs git during `pnpm install`.
+  image: docker.io/library/node:24.21.0-bookworm
+  timeout: 20m
+  variables:
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  script:
+    # Reads of @yadad/* go to the instance endpoint with the job token (the
+    # same endpoint publish.sh reads from); everything else comes from npmjs.
+    - |
+      cat > "${HOME}/.npmrc" <<EOF
+      @yadad:registry=${CI_API_V4_URL}/packages/npm/
+      ${CI_API_V4_URL#https:}/packages/npm/:_authToken=${CI_JOB_TOKEN}
+      EOF
+    - corepack enable
+    - pnpm install --frozen-lockfile
+    - pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test
 
 release:
   stage: deploy
+  needs: [test]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   tags: [k8s]
   # Not -slim: the root `prepare` script runs git during `pnpm install`.
   image: docker.io/library/node:24.21.0-bookworm
