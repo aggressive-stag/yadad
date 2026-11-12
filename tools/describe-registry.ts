@@ -78,6 +78,9 @@ lines.push(`  value types: ${contract.conditions.maxValueType}`);
 const rel = contract.conditions.relativeDate;
 lines.push(`  relative dates (${rel.ops.join(", ")} on ${rel.fieldTypes.join(", ")} fields; up to ${rel.maxDays} days): ${rel.description}`);
 lines.push(`    example: ${rel.example}`);
+const inst = contract.conditions.relativeInstant;
+lines.push(`  relative instants (${inst.ops.join(", ")} on ${inst.fieldTypes.join(", ")} fields; up to ${inst.maxHours} hours): ${inst.description}`);
+lines.push(`    example: ${inst.example}`);
 lines.push("");
 lines.push("widgets (dashboard grid items):");
 for (const widget of contract.widgets) {
