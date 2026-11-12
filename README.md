@@ -187,6 +187,20 @@ Documents that come from a database or a user are untrusted JSON: run them throu
 
 A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
 
+## Tested with
+
+| Tool | Tested in CI | Declared range | Note |
+| --- | --- | --- | --- |
+| Node | 24 (GitHub: `24`; GitLab: `24.21.0`) | `>=22.18` (root `engines`; the published packages declare none) | The oldest Node is only declared, not run in CI |
+| React and `react-dom` | 19.3.0 | `^19.3.0` (peer of renderer, editor, testing) | `core`, `runtime` and `theme` do not use React |
+| TypeScript | 6.0.2 (`@typescript/typescript6`) | none | The published packages ship `.d.ts` files built by it; no range is checked for consumers |
+| Vite | 8.3.2 | none | Only the showcase and the tests use it; the packages do not depend on a bundler |
+| Vitest | 5.0.3 | `^5.0.3` (peer of `@yadad/testing`) | |
+| jsdom | 30.1.1 | `~30.1.1` (peer of `@yadad/testing`) | The peer range is narrower than "any jsdom": a newer minor is untested |
+| pnpm | 12.9.1 | `packageManager` in the root `package.json` | Consumers can use any package manager |
+
+For tests, a consumer needs `mockRegistry` from `@yadad/testing` and a DOM: jsdom (the peer) or a real browser. Nothing in the packages needs a network. The component set (`@yadad/components`) declares `@yadad/core >=0.10.0 <1.0.0` and `react ^19.3.0` as peers.
+
 ## Check every state of your views
 
 A screen is more than the one state you looked at. `viewStates` in `@yadad/runtime` lists the states a view can be in, read from its conditions (a field hidden by `visibleWhen`, no records, many records, a locked record, each role), and `checkViewStates` in `@yadad/testing/state-checks` renders every one with your renderers and reports the ones that throw, log errors, show a field that should be hidden, lack an accessible name or offer an edit the viewer may not make. The editor package has a `StatesPreview` that shows the same states next to a view as you edit it. See [`@yadad/testing`](testing) for a test you can paste.
