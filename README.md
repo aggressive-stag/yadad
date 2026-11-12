@@ -164,6 +164,7 @@ const form: FormView = {
 
 const table: TableView = {
   kind: "table", specVersion: 10, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
+  title: "Recent sets",
   columns: [{ field: "day" }, { field: "exercise" }, { field: "reps" }],
   filter: { op: "gte", field: "day", value: { daysFromToday: -7 } },
   quickFilters: [{ field: "exercise" }],

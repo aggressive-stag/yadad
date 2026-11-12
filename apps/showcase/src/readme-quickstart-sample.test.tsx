@@ -14,7 +14,7 @@ import { expect, test } from "vitest";
 
 // The sample, verbatim.
 const entity: EntityDocument = {
-  kind: "entity", specVersion: 9, id: "workout_set", revision: 1,
+  kind: "entity", specVersion: 10, id: "workout_set", revision: 1,
   fields: [
     { id: "day", type: "date", label: "Day", required: true },
     { id: "exercise", type: "select", label: "Exercise", options: { source: "static", values: ["Squat", "Bench press"] } },
@@ -23,12 +23,13 @@ const entity: EntityDocument = {
 };
 
 const form: FormView = {
-  kind: "form", specVersion: 9, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "form", specVersion: 10, id: "log_set", entity: "workout_set", revision: 1, dataSource: "default",
   sections: [{ id: "set", title: "Log a set", items: [{ field: "day" }, { field: "exercise" }, { field: "reps" }] }],
 };
 
 const table: TableView = {
-  kind: "table", specVersion: 9, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
+  kind: "table", specVersion: 10, id: "recent_sets", entity: "workout_set", revision: 1, dataSource: "default",
+  title: "Recent sets",
   columns: [{ field: "day" }, { field: "exercise" }, { field: "reps" }],
   filter: { op: "gte", field: "day", value: { daysFromToday: -7 } },
   quickFilters: [{ field: "exercise" }],
@@ -51,4 +52,7 @@ test("the README quickstart sample renders", () => {
   // The form's section title renders, and no missing-key error summary appears.
   expect(markup).toContain("Log a set");
   expect(markup).not.toContain("Missing");
+  // The table is captioned with its title, not the entity id.
+  expect(markup).toMatch(/<caption[^>]*>Recent sets</);
+  expect(markup).not.toMatch(/<caption[^>]*>workout_set</);
 });
