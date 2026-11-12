@@ -16,6 +16,7 @@
     "dist",
     "src",
     "CHANGELOG.md",
+    "AGENTS.consumer.md",
     "!**/*.test.*",
     "!**/*.tsbuildinfo"
   ],

@@ -245,6 +245,7 @@ The showcase's review page is a worked example: changes, version history with co
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): the authoritative design.
 - [docs/DECISIONS.md](docs/DECISIONS.md): settled decisions and what they replaced.
+- [packages/core/AGENTS.consumer.md](packages/core/AGENTS.consumer.md): a guide for coding agents that build an app on yadad. It ships in the `@yadad/core` package, so an app's own `AGENTS.md` can point at `node_modules/@yadad/core/AGENTS.consumer.md`.
 - [docs/reference.md](docs/reference.md): what each document kind can contain, with a validated example of each.
 - [docs/records-protocol.md](docs/records-protocol.md): the HTTP records protocol a backend implements.
 - [rfcs/](rfcs): proposals for changes to the contract.

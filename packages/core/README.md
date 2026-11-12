@@ -117,6 +117,14 @@ flowchart LR
 - `recordJsonSchema(entity)`: a standard JSON Schema (draft 2020-12) for a record's `values` under an entity, so a backend can validate records with any JSON Schema library. In the repo, `pnpm record-schema <entity.json>` prints it; see `docs/records-protocol.md` for what it cannot express.
 - `describeContract()`: a plain JSON description of everything a document can contain (kinds, field types, condition ops, where each kind of condition may appear, relative dates, widgets, grid limits, the id pattern, error codes), generated from the constants the validator uses. In the repo, `pnpm describe-registry` prints it.
 
+## For coding agents
+
+`AGENTS.consumer.md` in this package is a short guide for an agent building an app on yadad: the order of work, how to learn the contract, how to validate, what the contract refuses and the common mistakes. Add this to your own `AGENTS.md`:
+
+```md
+Building on yadad: read node_modules/@yadad/core/AGENTS.consumer.md before you write documents.
+```
+
 ## Upgrading
 
 Documents stamped older still validate; run `migrate()` to restamp them to the current `specVersion`. Each step so far only stamps the new version, so a document keeps its content.
