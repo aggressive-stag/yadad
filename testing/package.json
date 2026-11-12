@@ -1,6 +1,6 @@
 {
   "name": "@yadad/testing",
-  "version": "0.16.4",
+  "version": "0.16.5",
   "description": "yadad mock registry, source states, state checks, component contract test kit and focus contract kit.",
   "license": "MIT",
   "type": "module",
