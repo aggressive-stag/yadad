@@ -189,6 +189,8 @@ Documents that come from a database or a user are untrusted JSON: run them throu
 
 A built yadad app makes no requests to yadad infrastructure: all data comes from the `DataAdapter` the host supplies.
 
+Next: [the guide](docs/guide.md) builds a small app with a form, tables, a board, a calendar and a dashboard, one document at a time.
+
 ## Tested with
 
 | Tool | Tested in CI | Declared range | Note |
@@ -248,6 +250,7 @@ The showcase's review page is a worked example: changes, version history with co
 - [ARCHITECTURE.md](ARCHITECTURE.md): the authoritative design.
 - [docs/DECISIONS.md](docs/DECISIONS.md): settled decisions and what they replaced.
 - [packages/core/AGENTS.consumer.md](packages/core/AGENTS.consumer.md): a guide for coding agents that build an app on yadad. It ships in the `@yadad/core` package, so an app's own `AGENTS.md` can point at `node_modules/@yadad/core/AGENTS.consumer.md`.
+- [docs/guide.md](docs/guide.md): a walk-through from documents to a dashboard, built on `examples/starter`.
 - [docs/reference.md](docs/reference.md): what each document kind can contain, with a validated example of each.
 - [examples/starter](examples/starter): the starter app, to copy.
 - [docs/records-protocol.md](docs/records-protocol.md): the HTTP records protocol a backend implements.
