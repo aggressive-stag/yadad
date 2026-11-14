@@ -1,6 +1,6 @@
 # RFC 0012: A command consumers can run to validate and describe
 
-- Status: Draft (2026-11-12). Owner decided questions 1 to 4 on 2026-11-14 (see `## Owner decisions`); the command name (question 5) is still open.
+- Status: Accepted (2026-11-14). See `## Owner decisions`.
 - Touches: the package list or `core`'s `package.json` (a `bin`), depending on the option chosen. Nothing in the document contract, `specVersion` or the records protocol.
 - Needs an RFC because AGENTS.md rule 7 says no new package without one, and a `bin` changes what a package ships.
 
@@ -138,7 +138,7 @@ None for documents, records or `specVersion`. Option A adds a `bin` file and a `
 2. **`--import`: not now.** Only JSON files are read. Loading TypeScript or JavaScript modules is listed under `## Possible improvements`.
 3. **An empty directory is exit 2**, as proposed.
 4. **Warnings do not fail the run** unless `--strict` is given, as proposed.
-5. **Name: open.** The package is `@yadad/cli` whatever the command is called; the `bin` name is still to be chosen.
+5. **Name: `ydcli`.** The package is `@yadad/cli` and its `bin` is `ydcli` (`ydcli validate documents`, `ydcli describe --json`). Wherever this RFC says `yadad validate` or `yadad describe`, read `ydcli`. Names considered and kept as possible later renames (only the `bin` field changes, so a rename is cheap, and the old name can stay as an alias for a release): `yada`, `ydctl`, `yadad-doctor`.
 
 ## Possible improvements
 
