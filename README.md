@@ -138,6 +138,8 @@ echo "@yadad:registry=https://<gitlab-host>/api/v4/packages/npm/" >> .npmrc
 npm install @yadad/core @yadad/runtime @yadad/renderer @yadad/theme @yadad/components react react-dom
 ```
 
+Check your documents before you build with `npm install --save-dev @yadad/cli`, then `npx ydcli validate documents` (see [`packages/cli`](packages/cli)); `npx ydcli describe` prints everything a document may contain.
+
 Or start from [`examples/starter`](examples/starter): a small app made of JSON documents, with a records server, that you copy and change.
 
 Describe an entity and two views, give the renderer a registry and a data adapter, and render:
@@ -229,6 +231,7 @@ The showcase's review page is a worked example: changes, version history with co
 | [`@yadad/renderer`](packages/renderer) | React `FormRenderer`, `TableRenderer`, `CalendarRenderer`, `BoardRenderer` and `DashboardRenderer`. |
 | [`@yadad/editor`](packages/editor) | Visual editors that emit JSON Patch against documents, and the states preview. |
 | [`@yadad/theme`](packages/theme) | Design tokens, light and dark themes, and the CSS-variable emitter. |
+| [`@yadad/cli`](packages/cli) | The `ydcli` command: `ydcli validate documents` checks JSON documents against the installed `@yadad/core`, and `ydcli describe` prints what that version accepts. |
 | [`@yadad/testing`](testing) | A mock registry, the contract test kit for component sets, and `checkViewStates`. |
 
 `apps/showcase` renders the fixtures in `fixtures/` and lets you edit them in place, shows every state of each view on a States page, and has a team task list you can view as different roles; run it with `pnpm --filter @yadad/showcase dev`.

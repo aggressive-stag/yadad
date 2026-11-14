@@ -3,9 +3,11 @@
 // every quoted file equals the file, every excerpt is in the file, each step builds a valid set,
 // and the two files the guide adds (a viewer and a changed tasks table) work.
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { run } from "@yadad/cli";
 import { validateDocuments } from "@yadad/core";
 import type { Document } from "@yadad/core";
 import { TableRenderer } from "@yadad/renderer";
@@ -76,15 +78,22 @@ describe("docs/guide.md", () => {
     expect(result.ok ? [] : result.errors.map((e) => `${e.document}${e.path} ${e.message}`)).toEqual([]);
   });
 
-  it("shows the error the check prints for a misspelled column, from the same validator", () => {
-    const tasks = JSON.parse(read("documents/tasks.json")) as { columns: { field: string }[] };
-    tasks.columns[0]!.field = "titel";
-    const docs = ["person", "task", "subtask", "person_form", "task_form", "people", "person_tasks"].map((f) => JSON.parse(read(`documents/${f}.json`)) as unknown);
-    const result = validateDocuments([...docs, tasks]);
-    expect(result.ok).toBe(false);
-    const lines = result.ok ? [] : result.errors.map((e) => `documents/tasks.json ${e.path} [${e.code}] ${e.message}`);
-    const shown = all.find((b) => b.kind === "output")!.text;
-    expect(lines).toEqual([shown]);
+  it("shows the error `ydcli validate` prints for a misspelled column, from a real run", () => {
+    const work = mkdtempSync(join(tmpdir(), "guide-"));
+    try {
+      cpSync(resolve(import.meta.dirname, "../documents"), join(work, "documents"), { recursive: true });
+      const tasksPath = join(work, "documents/tasks.json");
+      const tasks = JSON.parse(readFileSync(tasksPath, "utf8")) as { columns: { field: string }[] };
+      tasks.columns[0]!.field = "titel";
+      writeFileSync(tasksPath, JSON.stringify(tasks));
+      let err = "";
+      const code = run(["validate", "documents"], { out: () => {}, err: (t) => (err += t), cwd: work });
+      expect(code).toBe(1);
+      const shown = all.find((b) => b.kind === "output")!.text;
+      expect(err.split("\n")[0]).toBe(shown);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
   });
 });
 

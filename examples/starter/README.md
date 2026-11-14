@@ -11,7 +11,7 @@ pnpm install
 pnpm --filter @yadad/example-starter dev
 ```
 
-That starts the records server (`server/`, port 8787, SQLite file `data/starter.db`, seeded once) and Vite, which proxies `/api` to it. Records survive restarts. `pnpm --filter @yadad/example-starter dev:memory` runs the app alone on the in-memory adapter (nothing persists). `check` validates every document (file, JSON pointer, message) and exits non-zero on an error; `build` makes a production bundle.
+That starts the records server (`server/`, port 8787, SQLite file `data/starter.db`, seeded once) and Vite, which proxies `/api` to it. Records survive restarts. `pnpm --filter @yadad/example-starter dev:memory` runs the app alone on the in-memory adapter (nothing persists). `check` runs `ydcli validate documents` (from `@yadad/cli`): every error with its file, JSON pointer, code and hint, and a non-zero exit on an error; `build` makes a production bundle.
 
 The server uses `node:sqlite`, which needs Node 22.13 or newer without a flag (it prints an experimental warning), and `node server/index.ts` needs 22.18, the engine's floor.
 

@@ -324,11 +324,7 @@ The rule only changes what the screen offers. The server is the only authority o
 
 The starter shows validation errors instead of the app, so a mistake in a document is hard to miss. The same check runs from the command line, which is what a build or CI should run:
 
-<!-- excerpt: scripts/check-documents.ts -->
-```ts
-const result = validateDocuments(docs);
-if (result.ok) console.log(`OK: ${files.length} documents valid.`);
-```
+It is `ydcli validate` from the `@yadad/cli` package: it reads every JSON file in `documents/`, upgrades each to the current `specVersion`, validates the set together and exits non-zero on an error. The starter's `package.json` runs it as `ydcli validate documents`.
 
 Run it:
 
@@ -340,7 +336,7 @@ Break a document on purpose. In `documents/tasks.json`, misspell the first colum
 
 <!-- output: check -->
 ```text
-documents/tasks.json /columns/0/field [unknown-reference] Field "titel" is not on entity "task".
+documents/tasks.json: /columns/0/field [unknown-reference] Field "titel" is not on entity "task".
 ```
 
 The first part is the file, the second is a JSON Pointer to the exact place (the first column's `field`), then the error code and a message that says what is wrong. In the browser, the same error replaces the app until you fix it. Every error also carries a `hint` that says what to do. Fix the spelling and the check prints `OK`.

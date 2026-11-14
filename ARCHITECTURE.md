@@ -41,6 +41,8 @@ yadad/
                 from an exhaustive per-field-type map; hand-written drag/resize;
                 viewer panel and rules; the states preview
     theme/      token names + token values + CSS-variable emitter
+    cli/        the `ydcli` command (Node only, no React): `validate` checks JSON
+                documents against the installed core, `describe` prints its contract
   testing/      contract test kit, mock registry, state adapter and
                 checkViewStates (published)
   fixtures/     canonical valid/invalid docs and expected-error lists
@@ -98,6 +100,7 @@ Arrows mean "imports from"; dotted `tests only` edges are test files, which may 
 - `runtime` imports `core` only. No `react`.
 - `renderer` and `editor` import `core` and `runtime` only. They never import a component; they look up registry keys.
 - `theme` imports nothing.
+- `cli` imports `core` only, and `core` is its peer dependency, so it always checks against the contract that is installed. It reads files and prints; no `react`, no `runtime`.
 - `testing` imports `core` and `runtime` only. It never imports `renderer` or `editor`, whose tests import it: `checkViewStates` takes the host's `render` function instead (D23).
 - Nothing in `packages/` or `testing/` imports the components repo.
 - No deep imports (`@yadad/core/src/...`); public entry points only. `testing` has three: the package index, `@yadad/testing/contract-kit` and `@yadad/testing/state-checks` (the last two need Vitest and a DOM, so the index stays free of them).
