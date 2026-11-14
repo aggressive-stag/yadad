@@ -471,6 +471,10 @@ export interface CalendarView {
   /** Activating an entry opens a table view scoped to it, as on tables. A calendar can start a chain, never be a target. */
   readonly rowAction?: RowAction;
   /** Ids of the entity's actions this view offers on each record, in this order (RFC 0007). 1 to `RECORD_ACTIONS_MAX`, each once. */
+  /** Id of a form view over the SAME entity that is not a batch composer (card 107): each entry offers an Edit control that opens that record in the form, as on tables. */
+  readonly editForm?: string;
+  /** Card 106/107: the Edit control is offered on an entry only while this holds for its values and the viewer (record and viewerIn leaves). Needs `editForm`. */
+  readonly editVisibleWhen?: Condition;
   readonly recordActions?: readonly string[];
 }
 
@@ -526,6 +530,10 @@ export interface BoardView {
   /** Activating a card opens a table view scoped to it, as on tables. A board can start a chain, never be a target. */
   readonly rowAction?: RowAction;
   /** Ids of the entity's actions this view offers on each record, in this order (RFC 0007). 1 to `RECORD_ACTIONS_MAX`, each once. */
+  /** Id of a form view over the SAME entity that is not a batch composer (card 107): each card offers an Edit control that opens that record in the form, as on tables. */
+  readonly editForm?: string;
+  /** Card 106/107: the Edit control is offered on a card only while this holds for its values and the viewer (record and viewerIn leaves). Needs `editForm`. */
+  readonly editVisibleWhen?: Condition;
   readonly recordActions?: readonly string[];
 }
 

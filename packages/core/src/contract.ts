@@ -286,6 +286,8 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from an entry, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A calendar can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
       { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each entry, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on an entry only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
+      { key: "editForm", required: false, description: "As on tables: the id of a form document over the same entity that is not a batch composer. Each entry gets an Edit control (an entry in its record actions, which the component draws) that opens that record in the form in place of the view, with a Back button; a save updates the record with the loaded version as baseVersion (a change made elsewhere shows a conflict message in the form) and returns to the reloaded view, with focus back on the entry. A entry whose can.update is false gets no control. The target must exist, be a form, share this view's entity and not repeat." },
+      { key: "editVisibleWhen", required: false, description: "As on tables: a condition (record and viewerIn leaves) that decides which entries get the Edit control; needs editForm." },
     ],
   },
   {
@@ -310,6 +312,8 @@ const DOCUMENT_KIND_SPECS: readonly DocumentKindSpec[] = [
       { key: "editableWhen", required: false, description: "A viewer condition (viewerIn, and, or, not): moving is offered only while it holds for the viewer. Needs editable: true; can only narrow it." },
       { key: "rowAction", required: false, description: `Opens a table view from a card, as on tables: { open: <table view id>, bind: [{ field, to }], mode? }. A board can start a chain (at most ${MAX_ROW_ACTION_DEPTH} hops in all), never be the target.` },
       { key: "recordActions", required: false, description: `The ids of the entity's actions this view offers on each card, in this order: 1 to ${RECORD_ACTIONS_MAX}, each once, each declared on the view's entity. An action shows on a card only while its visibleWhen holds and the record's can.actions does not say false; a view whose adapter cannot run actions shows an error. A dashboard embedding the view inherits them.` },
+      { key: "editForm", required: false, description: "As on tables: the id of a form document over the same entity that is not a batch composer. Each card gets an Edit control (an entry in its record actions, which the component draws) that opens that record in the form in place of the view, with a Back button; a save updates the record with the loaded version as baseVersion (a change made elsewhere shows a conflict message in the form) and returns to the reloaded view, with focus back on the card. A card whose can.update is false gets no control. The target must exist, be a form, share this view's entity and not repeat." },
+      { key: "editVisibleWhen", required: false, description: "As on tables: a condition (record and viewerIn leaves) that decides which cards get the Edit control; needs editForm." },
     ],
   },
   {
@@ -518,7 +522,7 @@ const CONDITION_PLACE_SPECS: readonly ConditionPlaceSpec[] = [
   { path: "/sections/*/items/*/requiredWhen", kinds: ["form"], accepts: "record+viewer", description: "Requires the field while the condition holds." },
   { path: "/columns/*/visibleWhen", kinds: ["table"], accepts: "viewer", description: "The column is not shown while this is false." },
   { path: "/columns/*/editableWhen", kinds: ["table"], accepts: "viewer", description: "The column is editable in place only while this holds; needs the column's editable: true." },
-  { path: "/editVisibleWhen", kinds: ["table"], accepts: "record+viewer", description: "The row's Edit button (editForm) is offered only while this holds for the row's values and the viewer; needs editForm." },
+  { path: "/editVisibleWhen", kinds: ["table", "calendar", "board"], accepts: "record+viewer", description: "The Edit button or control (editForm) is offered only while this holds for the record's values and the viewer; needs editForm." },
   { path: "/editableWhen", kinds: ["calendar", "board"], accepts: "viewer", description: "Moving is offered only while this holds; needs editable: true." },
   { path: "/rowAction/visibleWhen", kinds: ["table", "calendar", "board"], accepts: "viewer", description: "While false, rows, entries and cards do not open the target view." },
   { path: "/tabs/*/visibleWhen", kinds: ["dashboard"], accepts: "viewer", description: "The tab is not listed while this is false." },

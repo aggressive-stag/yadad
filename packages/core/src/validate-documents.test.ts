@@ -435,6 +435,19 @@ describe("card 99 — table editForm", () => {
     expect(validateDocument(table("t", "thing", { editForm: "t_form", editVisibleWhen: "closed" })).ok).toBe(false);
   });
 
+  test("card 107: calendars and boards take editForm and editVisibleWhen, checked like a table's", () => {
+    const e = entity("thing", [{ id: "name", type: "text" }, { id: "day", type: "date" }, { id: "kind", type: "select", options: { source: "static", values: ["a", "b"] } }]);
+    const f = form("t_form", "thing", [{ field: "name" }]);
+    const cal = (extra: Record<string, unknown> = {}): unknown => ({ kind: "calendar", specVersion: 10, id: "c", entity: "thing", revision: 1, dataSource: "default", dateField: "day", ...extra });
+    const brd = (extra: Record<string, unknown> = {}): unknown => ({ kind: "board", specVersion: 10, id: "b", entity: "thing", revision: 1, dataSource: "default", groupBy: [{ field: "kind" }], ...extra });
+    const when = { op: "notEmpty", field: "name" };
+    expect(validateDocuments([e, f, cal({ editForm: "t_form", editVisibleWhen: when }), brd({ editForm: "t_form", editVisibleWhen: when })]).ok).toBe(true);
+    expect(problems([e, f, cal({ editForm: "nope" })])).toEqual([{ path: "/editForm", code: "unknown-reference", document: "c", allowed: ["t_form"] }]);
+    expect(problems([e, f, brd({ editForm: "c" }), cal()])).toEqual([{ path: "/editForm", code: "invalid-value", document: "b", allowed: ["t_form"] }]);
+    expect(problems([e, f, brd({ editVisibleWhen: when })])).toEqual([{ path: "/editVisibleWhen", code: "invalid-value", document: "b" }]);
+    expect(problems([e, f, cal({ editForm: "t_form", editVisibleWhen: { op: "notEmpty", field: "zzz" } })])).toEqual([{ path: "/editVisibleWhen/field", code: "unknown-reference", document: "c", allowed: ["name", "day", "kind"] }]);
+  });
+
   test("a batch composer is still fine as an addForm", () => {
     const docs = [ent, table("t", "thing", { addForm: "b" }), Object.assign(form("b", "thing", [{ field: "name" }]) as object, { repeat: "batch" })];
     expect(validateDocuments(docs).ok).toBe(true);

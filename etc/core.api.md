@@ -149,6 +149,8 @@ export interface BoardView {
     readonly doneField?: string;
     readonly editable?: boolean;
     readonly editableWhen?: ViewerCondition;
+    readonly editForm?: string;
+    readonly editVisibleWhen?: Condition;
     // (undocumented)
     readonly entity: string;
     readonly filter?: Condition;
@@ -157,6 +159,7 @@ export interface BoardView {
     readonly id: string;
     // (undocumented)
     readonly kind: "board";
+    // (undocumented)
     readonly recordActions?: readonly string[];
     // (undocumented)
     readonly revision: number;
@@ -317,6 +320,8 @@ export interface CalendarView {
     readonly doneField?: string;
     readonly editable?: boolean;
     readonly editableWhen?: ViewerCondition;
+    readonly editForm?: string;
+    readonly editVisibleWhen?: Condition;
     // (undocumented)
     readonly entity: string;
     readonly filter?: Condition;
@@ -327,6 +332,7 @@ export interface CalendarView {
     readonly listStart?: CalendarListStart;
     readonly maxEntriesPerDay?: number;
     readonly modes?: readonly CalendarMode[];
+    // (undocumented)
     readonly recordActions?: readonly string[];
     // (undocumented)
     readonly revision: number;

@@ -1,0 +1,102 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 10,
+    "id": "task",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "title",
+        "type": "text",
+        "label": "Title",
+        "required": true
+      },
+      {
+        "id": "status",
+        "type": "select",
+        "label": "Status",
+        "options": {
+          "source": "static",
+          "values": [
+            "todo",
+            "doing",
+            "done"
+          ]
+        }
+      },
+      {
+        "id": "due",
+        "type": "date",
+        "label": "Due"
+      }
+    ]
+  },
+  {
+    "kind": "form",
+    "specVersion": 10,
+    "id": "task_edit",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "title"
+          },
+          {
+            "field": "status"
+          },
+          {
+            "field": "due"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "calendar",
+    "specVersion": 10,
+    "id": "task_calendar",
+    "title": "Due dates",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "dateField": "due",
+    "titleField": "title",
+    "editable": true,
+    "editForm": "task_edit",
+    "editVisibleWhen": {
+      "op": "not",
+      "condition": {
+        "op": "in",
+        "field": "status",
+        "values": [
+          "done"
+        ]
+      }
+    }
+  },
+  {
+    "kind": "board",
+    "specVersion": 10,
+    "id": "task_board",
+    "title": "Board",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "groupBy": [
+      {
+        "field": "status"
+      }
+    ],
+    "titleField": "title",
+    "editable": true,
+    "editForm": "task_edit",
+    "editVisibleWhen": {
+      "op": "notEmpty",
+      "field": "due"
+    }
+  }
+]

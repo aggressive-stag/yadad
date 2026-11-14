@@ -358,11 +358,16 @@ function validateForm(errors: Errors, doc: JsonObject): void {
     });
 }
 
-function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "sortable", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm", "editForm", "editVisibleWhen"]);
+/** The keys that open a record in a form (cards 99, 106, 107), the same on a table, a calendar and a board. */
+function checkEditFormKeys(errors: Errors, doc: JsonObject): void {
   checkId(errors, doc, [], "editForm");
   checkCondition(errors, doc["editVisibleWhen"], ["editVisibleWhen"]);
   if (doc["editVisibleWhen"] !== undefined && doc["editForm"] === undefined) errors.add(["editVisibleWhen"], "invalid-value", "editVisibleWhen has no editForm to apply to.", 'Set "editForm" to a form view, or remove editVisibleWhen.');
+}
+
+function validateTable(errors: Errors, doc: JsonObject): void {
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "sortable", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm", "editForm", "editVisibleWhen"]);
+  checkEditFormKeys(errors, doc);
   checkSortableFlag(errors, doc, []);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
@@ -459,7 +464,7 @@ function checkSort(errors: Errors, doc: JsonObject, scope: string): void {
 const CALENDAR_ID_KEYS = ["dateField", "titleField", "colorField", "doneField"] as const;
 
 function validateCalendar(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "maxEntriesPerDay", "doneField", "filter", "sort", "modes", "weekStartsOn", "listStart", "editable", "editableWhen", "rowAction", "recordActions"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "dateField"], ["title", "titleField", "detailFields", "colorField", "maxEntriesPerDay", "doneField", "filter", "sort", "modes", "weekStartsOn", "listStart", "editable", "editableWhen", "rowAction", "recordActions", "editForm", "editVisibleWhen"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -470,6 +475,7 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkRecordActions(errors, doc["recordActions"]);
+  checkEditFormKeys(errors, doc);
   checkSort(errors, doc, "a calendar's sort");
   checkBoolean(errors, doc, [], "editable");
   checkCondition(errors, doc["editableWhen"], ["editableWhen"], "viewer");
@@ -534,7 +540,7 @@ function validateCalendar(errors: Errors, doc: JsonObject): void {
 }
 
 function validateBoard(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction", "recordActions", "columnsFrom", "doneField"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "groupBy"], ["title", "titleField", "cardFields", "filter", "sort", "editable", "editableWhen", "rowAction", "recordActions", "columnsFrom", "doneField", "editForm", "editVisibleWhen"]);
   checkSpecVersion(errors, doc);
   checkId(errors, doc, [], "id");
   checkId(errors, doc, [], "entity");
@@ -546,6 +552,7 @@ function validateBoard(errors: Errors, doc: JsonObject): void {
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
   checkRecordActions(errors, doc["recordActions"]);
+  checkEditFormKeys(errors, doc);
   checkSort(errors, doc, "a board's sort");
   checkBoolean(errors, doc, [], "editable");
   checkCondition(errors, doc["editableWhen"], ["editableWhen"], "viewer");
@@ -1603,11 +1610,25 @@ function checkCompareFields(errors: DocumentError[], view: TableView, entity: En
   });
 }
 
+/** A calendar's or board's `editForm` and `editVisibleWhen` (cards 106, 107), checked as a table's are. */
+function checkEditFormView(errors: DocumentError[], view: CalendarView | BoardView, entity: EntityDocument, idx: SetIndex, unknown: (id: string, path: Path) => void): void {
+  if (view.editForm !== undefined) checkFormTarget(errors, view, entity, idx, "editForm");
+  const base: Path = ["editVisibleWhen"];
+  const ids = entityFieldIds(entity);
+  checkConditionFields(view.editVisibleWhen, base, (id, path) => {
+    if (!ids.includes(id)) unknown(id, path);
+  });
+  checkRelativeDateFields(errors, view.id, entity, view.editVisibleWhen, base);
+  checkReferenceOps(errors, view.id, entity, view.editVisibleWhen, base);
+  checkDatetimeConditions(errors, view.id, entity, view.editVisibleWhen, base);
+  checkTimeTagsConditions(errors, view.id, entity, view.editVisibleWhen, base);
+}
+
 /**
  * Checks the form a table opens, `addForm` (RFC 0008 item 4) or `editForm` (card 99): it exists, is a
  * form, shares the table's entity and, for `editForm`, is not a batch composer (which only creates).
  */
-function checkFormTarget(errors: DocumentError[], view: TableView, entity: EntityDocument, idx: SetIndex, key: "addForm" | "editForm"): void {
+function checkFormTarget(errors: DocumentError[], view: { readonly id: string; readonly addForm?: string | undefined; readonly editForm?: string | undefined }, entity: EntityDocument, idx: SetIndex, key: "addForm" | "editForm"): void {
   const id = view[key]!;
   const noun = key === "addForm" ? "add form" : "edit form";
   const target = idx.forms.get(id);
@@ -1959,6 +1980,7 @@ function checkCalendarFields(errors: DocumentError[], view: CalendarView, idx: S
   // is either date or boolean, so `typed` already refuses naming the dateField;
   // the reachable overlap is the board's, where a boolean CAN group.
   if (view.doneField !== undefined) typed(view.doneField, ["doneField"], "doneField", ["boolean"]);
+  checkEditFormView(errors, view, entity, idx, checker.unknown);
   checkViewFilterSortTail(errors, checker, entity, view, idx);
 }
 
@@ -2040,6 +2062,7 @@ function checkBoardFields(errors: DocumentError[], view: BoardView, idx: SetInde
     }
   });
 
+  checkEditFormView(errors, view, entity, idx, unknown);
   checkViewFilterSortTail(errors, checker, entity, view, idx);
 }
 
@@ -2667,6 +2690,7 @@ function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[
       case "board":
         check(doc.editableWhen, ["editableWhen"]);
         check(doc.rowAction?.visibleWhen, ["rowAction", "visibleWhen"]);
+        check(doc.editVisibleWhen, ["editVisibleWhen"]);
         break;
       case "dashboard":
         doc.tabs.forEach((tab, t) => {

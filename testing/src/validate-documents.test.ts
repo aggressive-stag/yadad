@@ -169,6 +169,10 @@ const expected: Record<string, Picked[]> = {
   "table-edit-visible-when-without-form.json": [{ path: "/editVisibleWhen", code: "invalid-value", document: "tasks" }],
   "table-edit-visible-when-unknown-field.json": [{ path: "/editVisibleWhen/field", code: "unknown-reference", document: "tasks", allowed: ["title", "status", "notes"] }],
   "table-edit-visible-when-bad-type.json": [{ path: "/editVisibleWhen", code: "type", document: "tasks" }],
+  "calendar-edit-form-unknown-view.json": [{ path: "/editForm", code: "unknown-reference", document: "task_calendar", allowed: ["task_edit"] }],
+  "board-edit-form-batch.json": [{ path: "/editForm", code: "invalid-value", document: "task_board", allowed: ["task_edit"] }],
+  "board-edit-visible-when-without-form.json": [{ path: "/editVisibleWhen", code: "invalid-value", document: "task_board" }],
+  "calendar-edit-visible-when-unknown-field.json": [{ path: "/editVisibleWhen/field", code: "unknown-reference", document: "task_calendar", allowed: ["title", "status", "due"] }],
   "row-action-edit-key.json": [{ path: "/rowAction/edit", code: "unknown-property", document: "tasks" }],
   "calendar-unknown-property.json": [{ path: "/color", code: "unknown-property", document: "cal" }],
   "calendar-empty-modes.json": [{ path: "/modes", code: "invalid-value", document: "cal", allowed: ["month", "week", "1day", "2day", "3day", "4day", "5day", "6day"] }],
@@ -467,6 +471,7 @@ const expectedSetWarnings: Record<string, { path: string; code: string; document
   "rfc-0010-v9.json": [],
   "rfc-0011-v10.json": [],
   "table-edit-form.json": [],
+  "calendar-board-edit-form.json": [],
   "viewer-minimal.json": [],
   "viewer-unread-fact.json": [{ path: "/facts/1", code: "empty", document: "viewer" }],
 };
