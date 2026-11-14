@@ -44,7 +44,7 @@ test("--kind with an unknown kind exits non-zero and lists the valid kinds", () 
   } catch (error) {
     failure = error as { status?: number; stderr?: Buffer | string };
   }
-  expect(failure?.status).toBe(1);
+  expect(failure?.status).toBe(2);
   expect(String(failure?.stderr)).toContain("entity, form, table, calendar, board, dashboard, viewer, conditions");
 });
 

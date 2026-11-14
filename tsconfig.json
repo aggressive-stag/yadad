@@ -6,6 +6,7 @@
     { "path": "packages/renderer" },
     { "path": "packages/editor" },
     { "path": "packages/theme" },
+    { "path": "packages/cli" },
     { "path": "testing" },
     { "path": "apps/showcase" },
     { "path": "examples/starter" },

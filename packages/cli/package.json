@@ -1,0 +1,39 @@
+{
+  "name": "@yadad/cli",
+  "version": "0.0.1",
+  "description": "ydcli: validate yadad documents and describe the contract of the installed @yadad/core.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "ydcli": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "@yadad/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "CHANGELOG.md",
+    "!**/*.test.*",
+    "!**/*.tsbuildinfo"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aggressive-stag/yadad.git",
+    "directory": "packages/cli"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "peerDependencies": {
+    "@yadad/core": ">=0.19.0 <1.0.0"
+  },
+  "devDependencies": {
+    "@yadad/core": "workspace:*"
+  }
+}

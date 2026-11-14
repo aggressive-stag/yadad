@@ -14,5 +14,5 @@
   },
   "include": ["**/*.ts", "../.dependency-cruiser.ts", "../eslint.config.ts"],
   "exclude": ["forbidden-import-fixture/apps", "forbidden-import-fixture/packages", "forbidden-import-fixture/testing", "forbidden-import-fixture/yadad-components"],
-  "references": [{ "path": "../packages/core" }]
+  "references": [{ "path": "../packages/core" }, { "path": "../packages/cli" }]
 }

@@ -1,5 +1,5 @@
 // One complete, valid document set per kind, printed by
-// `describe-registry --example <kind>`. They live here, in one place, and
+// `ydcli describe --example <kind>`. They live here, in one place, and
 // testing/src/describe-registry-output.test.ts validates every one with
 // validateDocuments, so they cannot rot. Each set holds the documents the
 // kind needs (its entity, and for a dashboard the view it embeds).
