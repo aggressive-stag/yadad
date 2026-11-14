@@ -1,5 +1,11 @@
 # @yadad/core
 
+## 0.21.0
+
+### Minor Changes
+
+- a1a2093: Calendars and boards accept `editForm` (a form view over the same entity that is not a batch composer) and `editVisibleWhen`, with the same meaning and checks as on tables. Optional and additive, so `specVersion` stays 10.
+
 ## 0.20.0
 
 ### Minor Changes

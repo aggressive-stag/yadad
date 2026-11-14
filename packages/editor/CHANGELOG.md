@@ -1,5 +1,18 @@
 # @yadad/editor
 
+## 0.21.0
+
+### Minor Changes
+
+- a515f79: The calendar and board editors have an edit form picker and an "Edit control shows when" rule.
+
+### Patch Changes
+
+- Updated dependencies [a1a2093]
+- Updated dependencies [893b760]
+  - @yadad/core@0.21.0
+  - @yadad/runtime@0.22.0
+
 ## 0.20.0
 
 ### Minor Changes

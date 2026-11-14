@@ -1,6 +1,6 @@
 {
   "name": "@yadad/renderer",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "yadad React renderer: forms, tables and dashboards from JSON documents.",
   "license": "MIT",
   "type": "module",

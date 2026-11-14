@@ -1,5 +1,16 @@
 # @yadad/runtime
 
+## 0.22.0
+
+### Minor Changes
+
+- 893b760: `viewerLeavesRead` also reads a calendar's or board's `editVisibleWhen` and the edit form it opens. `editFormOffered` accepts any of the three views.
+
+### Patch Changes
+
+- Updated dependencies [a1a2093]
+  - @yadad/core@0.21.0
+
 ## 0.21.0
 
 ### Minor Changes
