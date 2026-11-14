@@ -1,5 +1,18 @@
 # @yadad/editor
 
+## 0.19.0
+
+### Minor Changes
+
+- 084e7a1: `TableViewEditor` gets a "Row Edit button opens" picker for the table's `editForm` (core 0.19.0), listing the non-batch form views over the same entity; `setTableEditForm` and `tableEditFormTargets` are the headless parts.
+
+### Patch Changes
+
+- Updated dependencies [3875e8a]
+- Updated dependencies [4c12c40]
+  - @yadad/runtime@0.20.0
+  - @yadad/core@0.19.0
+
 ## 0.18.6
 
 ### Patch Changes

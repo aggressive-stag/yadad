@@ -1,5 +1,16 @@
 # @yadad/runtime
 
+## 0.20.0
+
+### Minor Changes
+
+- 3875e8a: Adds `formEditPatch(entity, view, record, touched, viewer?)`, which turns what a form's viewer touched into the patch `submitEdit` saves: only touched fields, with the form's `visibleWhen`, `requiredWhen` and `clearWhenHidden` rules applied to the record as it would look after the edit. A field the form does not show is never in the patch.
+
+### Patch Changes
+
+- Updated dependencies [4c12c40]
+  - @yadad/core@0.19.0
+
 ## 0.19.3
 
 ### Patch Changes

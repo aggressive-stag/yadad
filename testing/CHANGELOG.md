@@ -2,6 +2,15 @@
 
 > **Upgrade notes (0.12 and 0.13.1).** Hand-written `checkViewStates` drivers must pass `state.render.savedFilter` to `TableRenderer`'s `savedFilter` (and the other `state.render` keys the README lists), or the `saved-filter` check fails. Since runtime 0.14.1, states skipped silently before (labelled select values, entities with a `readOnly` value) are generated and checked, so expect new failures that are real. A `readOnly` field keeps its `field:<id>` axis only when a view condition references it. The calendar `done-missing` check respects `maxEntriesPerDay`. See "Upgrading hand-written drivers" in the README.
 
+## 0.16.8
+
+### Patch Changes
+
+- Updated dependencies [3875e8a]
+- Updated dependencies [4c12c40]
+  - @yadad/runtime@0.20.0
+  - @yadad/core@0.19.0
+
 ## 0.16.7
 
 ### Patch Changes
