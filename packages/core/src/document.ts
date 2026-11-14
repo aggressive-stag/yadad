@@ -346,6 +346,13 @@ export interface TableView {
    * opens that form; a save reloads the table. It is `rowAction.open` in the create direction.
    */
   readonly addForm?: string;
+  /**
+   * Id of a form view over the SAME entity that is not a batch composer (card 99): each row offers an
+   * Edit button that opens that record in the form, and a save updates it (sending the loaded
+   * record's version as `baseVersion`, so a change made elsewhere is a conflict) and reloads the
+   * table. It is `addForm` in the edit direction; `rowAction` still opens another table.
+   */
+  readonly editForm?: string;
   /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring, number, date and datetime fields as a from/to range (gte/lte, either end optional). */
   readonly quickFilters?: readonly QuickFilter[];
   /** Clicking a row opens another table view scoped to that row (RFC 0003). */

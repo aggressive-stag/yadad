@@ -359,7 +359,8 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "sortable", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "sortable", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm", "editForm"]);
+  checkId(errors, doc, [], "editForm");
   checkSortableFlag(errors, doc, []);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
@@ -593,7 +594,9 @@ function checkRowAction(errors: Errors, value: unknown): void {
     errors.add(path, "type", "A rowAction must be a JSON object.", ROW_ACTION_HINT);
     return;
   }
-  checkKeys(errors, value, path, ["open", "bind"], ["mode", "visibleWhen"]);
+  // `edit: true` was proposed in RFC 0003; editing a record in a form is the table's `editForm` instead.
+  if ("edit" in value) errors.add([...path, "edit"], "unknown-property", 'A rowAction has no "edit" key.', 'To open a record in a form for editing, set "editForm": "<form view id>" on the table (a form over the same entity). rowAction opens another table, scoped by "bind".');
+  checkKeys(errors, Object.fromEntries(Object.entries(value).filter(([k]) => k !== "edit")), path, ["open", "bind"], ["mode", "visibleWhen"]);
   checkId(errors, value, path, "open");
   checkCondition(errors, value["visibleWhen"], [...path, "visibleWhen"], "viewer");
   if (value["mode"] !== undefined && !ROW_ACTION_MODES.some((m) => m === value["mode"])) {
@@ -1546,7 +1549,8 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
     checkNotReference(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
     checkNotTags(errors, view.id, entity, key.field, ["sort", i, "field"], "sort key");
   });
-  if (view.kind === "table" && view.addForm !== undefined) checkAddFormTarget(errors, view, entity, idx);
+  if (view.kind === "table" && view.addForm !== undefined) checkFormTarget(errors, view, entity, idx, "addForm");
+  if (view.kind === "table" && view.editForm !== undefined) checkFormTarget(errors, view, entity, idx, "editForm");
   view.quickFilters?.forEach((filter, i) => {
     checkField(filter.field, ["quickFilters", i, "field"]);
     checkQuickFilterExtras(errors, view.id, entity, filter, ["quickFilters", i]);
@@ -1593,31 +1597,51 @@ function checkCompareFields(errors: DocumentError[], view: TableView, entity: En
   });
 }
 
-/** Checks a table's add form (RFC 0008 item 4): it exists, is a form, and shares the entity. */
-function checkAddFormTarget(errors: DocumentError[], view: TableView, entity: EntityDocument, idx: SetIndex): void {
-  const target = idx.forms.get(view.addForm!);
+/**
+ * Checks the form a table opens, `addForm` (RFC 0008 item 4) or `editForm` (card 99): it exists, is a
+ * form, shares the table's entity and, for `editForm`, is not a batch composer (which only creates).
+ */
+function checkFormTarget(errors: DocumentError[], view: TableView, entity: EntityDocument, idx: SetIndex, key: "addForm" | "editForm"): void {
+  const id = view[key]!;
+  const noun = key === "addForm" ? "add form" : "edit form";
+  const target = idx.forms.get(id);
+  const sameEntity = [...idx.forms.values()].filter((f) => f.entity === entity.id && (key === "addForm" || f.repeat !== "batch")).map((f) => f.id);
   if (!target) {
-    if (idx.tables.has(view.addForm!) || idx.calendars.has(view.addForm!) || idx.boards.has(view.addForm!) || idx.dashboards.has(view.addForm!)) {
+    if (idx.tables.has(id) || idx.calendars.has(id) || idx.boards.has(id) || idx.dashboards.has(id)) {
       errors.push({
-        path: jsonPointer(["addForm"]),
+        path: jsonPointer([key]),
         code: "invalid-value",
-        message: `addForm "${view.addForm}" is not a form view.`,
-        hint: "An add form must be a form view over the same entity; point at a form in the set.",
+        message: `${key} "${id}" is not a form view.`,
+        hint: `An ${noun} must be a form view over "${entity.id}"; point at a form in the set${sameEntity.length > 0 ? ` (${sameEntity.join(", ")})` : ""}. To open another table from a row, use rowAction.`,
         document: view.id,
-        allowed: [...idx.forms.keys()],
+        allowed: sameEntity,
       });
     } else {
-      errors.push(refError(view.id, ["addForm"], `addForm references unknown view "${view.addForm}".`, "Point at a form view in the set.", [...idx.forms.keys()]));
+      errors.push(refError(view.id, [key], `${key} references unknown view "${id}".`, `Point at a form view over "${entity.id}" in the set${sameEntity.length > 0 ? ` (${sameEntity.join(", ")})` : ""}.`, sameEntity));
     }
     return;
   }
   if (target.entity !== entity.id) {
     errors.push({
-      path: jsonPointer(["addForm"]),
+      path: jsonPointer([key]),
       code: "invalid-value",
-      message: `addForm "${view.addForm}" is a form over "${target.entity}", not over "${entity.id}".`,
-      hint: "The add form must create records of the table's own entity.",
+      message: `${key} "${id}" is a form over "${target.entity}", not over "${entity.id}".`,
+      hint: key === "addForm"
+        ? "The add form must create records of the table's own entity."
+        : `The edit form must edit records of the table's own entity; ${sameEntity.length > 0 ? `use a form over "${entity.id}" (${sameEntity.join(", ")})` : `add a form view over "${entity.id}"`}.`,
       document: view.id,
+      ...(sameEntity.length > 0 ? { allowed: sameEntity } : {}),
+    });
+    return;
+  }
+  if (key === "editForm" && target.repeat === "batch") {
+    errors.push({
+      path: jsonPointer([key]),
+      code: "invalid-value",
+      message: `editForm "${id}" is a batch composer ("repeat": "batch"), which only creates records.`,
+      hint: `Point editForm at a form over "${entity.id}" without "repeat"${sameEntity.length > 0 ? ` (${sameEntity.join(", ")})` : ""}.`,
+      document: view.id,
+      allowed: sameEntity,
     });
   }
 }

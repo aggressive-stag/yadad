@@ -1,0 +1,69 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 10,
+    "id": "task",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "title",
+        "type": "text",
+        "label": "Title",
+        "required": true
+      },
+      {
+        "id": "status",
+        "type": "select",
+        "label": "Status",
+        "options": {
+          "source": "static",
+          "values": [
+            "todo",
+            "done"
+          ]
+        }
+      },
+      {
+        "id": "notes",
+        "type": "text",
+        "label": "Notes",
+        "maxLength": 200
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 10,
+    "id": "tasks",
+    "title": "Tasks",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "title"
+      },
+      {
+        "field": "status"
+      }
+    ],
+    "editForm": "other_table"
+  },
+  {
+    "kind": "table",
+    "specVersion": 10,
+    "id": "other_table",
+    "title": "Tasks",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "title"
+      },
+      {
+        "field": "status"
+      }
+    ]
+  }
+]

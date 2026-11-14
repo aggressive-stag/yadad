@@ -397,6 +397,49 @@ describe("RFC 0008 item 4 — table addForm", () => {
   });
 });
 
+describe("card 99 — table editForm", () => {
+  const ent = entity("thing", [{ id: "name", type: "text" }]);
+  const otherEnt = entity("other_thing", [{ id: "name", type: "text" }]);
+  const messages = (docs: Parameters<typeof validateDocuments>[0]): string[] => {
+    const result = validateDocuments(docs);
+    return result.ok ? [] : result.errors.map((e) => `${e.message} ${e.hint}`);
+  };
+
+  test("a form over the same entity is accepted, beside addForm and a rowAction", () => {
+    const docs = [ent, table("t", "thing", { editForm: "t_form", addForm: "t_form", rowAction: { open: "t2", bind: [{ field: "name", to: "name" }] } }), table("t2", "thing"), form("t_form", "thing", [{ field: "name" }])];
+    expect(validateDocuments(docs).ok).toBe(true);
+  });
+
+  test("unknown, non-form, wrong-entity and batch targets are reported on the table with the forms that would do", () => {
+    expect(problems([ent, table("t", "thing", { editForm: "nope" }), form("f", "thing", [{ field: "name" }])])).toEqual([
+      { path: "/editForm", code: "unknown-reference", document: "t", allowed: ["f"] },
+    ]);
+    expect(problems([ent, table("t", "thing", { editForm: "other" }), table("other", "thing"), form("f", "thing", [{ field: "name" }])])).toEqual([
+      { path: "/editForm", code: "invalid-value", document: "t", allowed: ["f"] },
+    ]);
+    const wrongEnt = [ent, otherEnt, table("t", "thing", { editForm: "o_form" }), form("o_form", "other_thing", [{ field: "name" }]), form("f", "thing", [{ field: "name" }])];
+    expect(problems(wrongEnt)).toEqual([{ path: "/editForm", code: "invalid-value", document: "t", allowed: ["f"] }]);
+    expect(messages(wrongEnt)[0]).toContain('"o_form" is a form over "other_thing", not over "thing"');
+    expect(messages(wrongEnt)[0]).toContain('use a form over "thing" (f)');
+    const batch = [ent, table("t", "thing", { editForm: "b" }), { ...form("b", "thing", [{ field: "name" }]), repeat: "batch" as const }, form("f", "thing", [{ field: "name" }])];
+    expect(problems(batch)).toEqual([{ path: "/editForm", code: "invalid-value", document: "t", allowed: ["f"] }]);
+    expect(messages(batch)[0]).toContain("batch composer");
+  });
+
+  test("a batch composer is still fine as an addForm", () => {
+    const docs = [ent, table("t", "thing", { addForm: "b" }), { ...form("b", "thing", [{ field: "name" }]), repeat: "batch" as const }];
+    expect(validateDocuments(docs).ok).toBe(true);
+  });
+
+  test("editForm must be an id, and a rowAction names editForm as the way to edit", () => {
+    expect(validateDocument(table("t", "thing", { editForm: 7 })).ok).toBe(false);
+    const result = validateDocument(table("t", "thing", { rowAction: { open: "t", bind: [{ field: "name", to: "name" }], edit: true } }));
+    const edit = result.ok ? undefined : result.errors.find((e) => e.path === "/rowAction/edit");
+    expect(edit?.code).toBe("unknown-property");
+    expect(edit?.hint).toContain("editForm");
+  });
+});
+
 describe("RFC 0008 item 10 — board columnsFrom", () => {
   const board = (extra: Record<string, unknown>): unknown => ({
     kind: "board", specVersion: 0, id: "b", entity: "task", revision: 1, dataSource: "default",
