@@ -1,6 +1,6 @@
 import { AdapterError, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
-import type { BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { BOARD_OTHER_LABEL, bindFilter, bindingValues, boardColumns, boardGroupField, boardRecordColumns, canEditField, canMoveColumn, groupByColumn, shownBoardColumns, loadBoardCards, loadBoardTargets, moveCard, rowActionVisible, viewEditable } from "@yadad/runtime";
+import type { FormView, RecordActionItem, BoardCard, BoardColumn, BoardView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, ReferenceField, ReferenceOption, Registry, ResolvedViewer, TableView } from "@yadad/core";
+import { BOARD_OTHER_LABEL, bindFilter, bindingValues, boardColumns, boardGroupField, boardRecordColumns, canEditField, canMoveColumn, groupByColumn, shownBoardColumns, loadBoardCards, loadBoardTargets, moveCard, editFormOffered, rowActionVisible, viewEditable } from "@yadad/runtime";
 import type { BoardColumnDef, BoardLoad } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -14,6 +14,7 @@ import { checkViewSetup } from "./setup.js";
 import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { replaceSavedRecord } from "./saved-record.js";
 import { TableRenderer } from "./table-renderer.js";
+import { EDIT_ACTION_ID, EditFormPanel, resolveEditForm } from "./edit-form-panel.js";
 import { useViewerSetup } from "./viewer.js";
 import { useContentStable } from "./use-stable.js";
 
@@ -129,6 +130,9 @@ export function BoardRenderer({ entity: entityProp, view: viewProp, registry, da
     else if (!targetEntity) fail(`View "${target.id}" is for entity "${target.entity}", which is not loaded.`, "Load that entity document.");
   }
 
+  const edit = resolveEditForm(view, entity, documents, dataSources);
+  actionErrors.push(...edit.errors);
+
   const open = (record: DataRecord): void => {
     if (!action || !target || target.kind !== "table" || !targetEntity) return;
     const text = (field: string): string => {
@@ -166,6 +170,8 @@ export function BoardRenderer({ entity: entityProp, view: viewProp, registry, da
           reloadKey={reloadKey}
           {...(now ? { now } : {})}
           extraErrors={actionErrors}
+          {...(edit.editForm ? { editForm: edit.editForm } : {})}
+          {...(documents ? { documents } : {})}
           viewer={viewer}
           {...(groupBy !== undefined ? { groupBy } : {})}
           {...(initialGroupBy !== undefined ? { initialGroupBy } : {})}
@@ -199,6 +205,9 @@ interface BoardBodyProps {
   readonly reloadKey?: unknown;
   readonly now?: Date;
   readonly extraErrors: readonly DocumentError[];
+  /** Card 107: the resolved `editForm`; entries get an Edit control that opens their record in it. */
+  readonly editForm?: FormView;
+  readonly documents?: DocumentSet;
   readonly viewer: ResolvedViewer;
   readonly groupBy?: string;
   readonly initialGroupBy?: string;
@@ -219,7 +228,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The card is back in its column. Reload if the problem stays." }];
 }
 
-function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, groupBy, initialGroupBy, onGroupByChange, onOpen, formatting, onChanged }: BoardBodyProps): ReactNode {
+function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, editForm, documents, viewer, groupBy, initialGroupBy, onGroupByChange, onOpen, formatting, onChanged }: BoardBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
 
   // The grouping choice: uncontrolled state by default, host-controlled when `groupBy` is set.
@@ -234,6 +243,8 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   const [cards, setCards] = useState<CardState | undefined>(undefined);
   const [targets, setTargets] = useState<ReadonlyMap<string, TargetState>>(new Map());
   const [reloads, setReloads] = useState(0);
+  /** Card 107: the record open in the edit form, and the focus hold that returns the viewer to its place. */
+  const [editing, setEditing] = useState<{ readonly record: DataRecord; readonly endHold: (saved?: DataRecord) => void } | undefined>(undefined);
   const [targetReloads, setTargetReloads] = useState(0);
   /** Records whose move is in flight, with the value the move writes. */
   const [pending, setPending] = useState<ReadonlyMap<string, FieldValue>>(new Map());
@@ -388,6 +399,19 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
     return typeof value === "string" && value.trim() !== "" ? value : UNTITLED;
   };
 
+  /** Back or a save: give the viewer's place back (the hold made when Edit was pressed), reload, and tell neighbours about a save. */
+  const closeEdit = (saved?: DataRecord): void => {
+    editing?.endHold(saved);
+    setEditing(undefined);
+    setReloads((n) => n + 1);
+    if (saved) onChanged?.();
+  };
+  /** The Edit control of a card: an item in its record actions, which the component draws like any other. */
+  const editItems = (record: DataRecord): readonly RecordActionItem[] =>
+    editForm !== undefined && editFormOffered(view, record, viewer)
+      ? [{ id: EDIT_ACTION_ID, label: `Edit ${recordTitle(record)}`, tone: "neutral", pending: false, onPress: () => setEditing({ record, endHold: recordActions.holdFocus(record) }) }]
+      : [];
+
   const plain = (field: Field, record: DataRecord): string => plainText(field, record.values[field.id], references);
 
   const doneDef = view.doneField === undefined ? undefined : entity.fields.find((f) => f.id === view.doneField && f.type === "boolean");
@@ -452,7 +476,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
         ...(doneDef === undefined
           ? {}
           : { done: { checked: record.values[doneDef.id] === true, disabled: !editable || !canEditField(record, doneDef.id) || toggling.has(record.id), toggle: () => toggleDone(record) } }),
-        actions: recordActions.items(record, columnId),
+        actions: [...editItems(record), ...recordActions.items(record, columnId)],
       };
     });
   const columns: BoardColumn<ReactNode>[] = [
@@ -554,7 +578,23 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
   const referenceFailed = isReference && targetState?.status === "failed";
 
   return (
-    <div data-yadad-board-view={view.id} tabIndex={-1}>
+    <>
+      {editing && editForm && (
+        <EditFormPanel
+          entity={entity}
+          form={editForm}
+          record={editing.record}
+          name={recordTitle(editing.record)}
+          registry={registry}
+          dataSources={dataSources}
+          entities={entities}
+          documents={documents}
+          viewer={viewer}
+          formatting={formatting}
+          onClose={closeEdit}
+        />
+      )}
+    <div data-yadad-board-view={view.id} tabIndex={-1} {...(editing ? { hidden: true } : {})}>
       {referenceFailed && (
         <div data-yadad-board-targets-error="">
           <ErrorSummary errors={[{ path: "", code: "invalid-value", message: `Could not load the ${groupField.label} columns: ${targetState.message}`, hint: "Retry, or switch to another grouping." }]} />
@@ -581,6 +621,7 @@ function BoardBody({ entity, view, registry, dataSources, entities, reloadKey, n
       {recordActions.failures !== undefined && <ErrorSummary errors={recordActions.failures} />}
       {recordActions.dialog}
     </div>
+    </>
   );
 }
 

@@ -1,6 +1,6 @@
 import { AdapterError, CALENDAR_MAX_ENTRIES_PER_DAY_DEFAULT, RecordValidationError, conditionFields, optionLabel, optionValue } from "@yadad/core";
-import type { CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
-import { bindFilter, bindingValues, calendarToday, canEditField, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodLength, periodTitle, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
+import type { FormView, RecordActionItem, CalendarEntry, CalendarMode, CalendarView, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, ReferenceField, Registry, ResolvedViewer, TableView } from "@yadad/core";
+import { bindFilter, bindingValues, calendarToday, canEditField, canMoveColumn, colorSlot, dayLabel, groupByDay, loadCalendarRange, moveDay, periodLength, periodTitle, editFormOffered, rowActionVisible, shiftAnchor, visibleDays, visibleRange, viewEditable, weekdayLabels } from "@yadad/runtime";
 import type { CalendarLoad, DateRange } from "@yadad/runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -14,6 +14,7 @@ import { checkViewSetup } from "./setup.js";
 import { recordActionSetupErrors, useRecordActions } from "./record-actions.js";
 import { replaceSavedRecord } from "./saved-record.js";
 import { TableRenderer } from "./table-renderer.js";
+import { EDIT_ACTION_ID, EditFormPanel, resolveEditForm } from "./edit-form-panel.js";
 import { useViewerSetup } from "./viewer.js";
 import { useContentStable } from "./use-stable.js";
 
@@ -118,6 +119,9 @@ export function CalendarRenderer({ entity: entityProp, view: viewProp, registry,
     else if (!targetEntity) fail(`View "${target.id}" is for entity "${target.entity}", which is not loaded.`, "Load that entity document.");
   }
 
+  const edit = resolveEditForm(view, entity, documents, dataSources);
+  actionErrors.push(...edit.errors);
+
   const open = (record: DataRecord): void => {
     if (!action || !target || target.kind !== "table" || !targetEntity) return;
     const text = (field: string): string => {
@@ -156,6 +160,8 @@ export function CalendarRenderer({ entity: entityProp, view: viewProp, registry,
           reloadKey={reloadKey}
           {...(now ? { now } : {})}
           extraErrors={actionErrors}
+          {...(edit.editForm ? { editForm: edit.editForm } : {})}
+          {...(documents ? { documents } : {})}
           viewer={viewer}
           {...(initialMode ? { initialMode } : {})}
           {...(initialAnchor !== undefined ? { initialAnchor } : {})}
@@ -188,6 +194,9 @@ interface CalendarBodyProps {
   readonly reloadKey?: unknown;
   readonly now?: Date;
   readonly extraErrors: readonly DocumentError[];
+  /** Card 107: the resolved `editForm`; entries get an Edit control that opens their record in it. */
+  readonly editForm?: FormView;
+  readonly documents?: DocumentSet;
   readonly viewer: ResolvedViewer;
   readonly onOpen?: (record: DataRecord) => void;
   readonly initialMode?: CalendarMode;
@@ -209,7 +218,7 @@ function moveErrors(error: unknown): DocumentError[] {
   return [{ path: "", code, message: failureMessage(error), hint: "The entry is back on its day. Reload if the problem stays." }];
 }
 
-function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, viewer, onOpen, initialMode, initialAnchor, formatting, onChanged }: CalendarBodyProps): ReactNode {
+function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey, now, extraErrors, editForm, documents, viewer, onOpen, initialMode, initialAnchor, formatting, onChanged }: CalendarBodyProps): ReactNode {
   const clock = (): Date => now ?? new Date();
   const modes = view.modes ?? DEFAULT_MODES;
   const weekStartsOn = view.weekStartsOn ?? 1;
@@ -226,6 +235,8 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
   });
   const [state, setState] = useState<RangeState | undefined>(undefined);
   const [reloads, setReloads] = useState(0);
+  /** Card 107: the record open in the edit form, and the focus hold that returns the viewer to its place. */
+  const [editing, setEditing] = useState<{ readonly record: DataRecord; readonly endHold: (saved?: DataRecord) => void } | undefined>(undefined);
   /** Records whose move is in flight, with the day they were moved to. */
   const [pending, setPending] = useState<ReadonlyMap<string, string>>(new Map());
   /** Records whose completion toggle is in flight, with the value being written (RFC 0008 item 3). */
@@ -320,6 +331,19 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
     return typeof value === "string" && value.trim() !== "" ? value : UNTITLED;
   };
 
+  /** Back or a save: give the viewer's place back (the hold made when Edit was pressed), reload, and tell neighbours about a save. */
+  const closeEdit = (saved?: DataRecord): void => {
+    editing?.endHold(saved);
+    setEditing(undefined);
+    setReloads((n) => n + 1);
+    if (saved) onChanged?.();
+  };
+  /** The Edit control of a entry: an item in its record actions, which the component draws like any other. */
+  const editItems = (record: DataRecord): readonly RecordActionItem[] =>
+    editForm !== undefined && editFormOffered(view, record, viewer)
+      ? [{ id: EDIT_ACTION_ID, label: `Edit ${recordTitle(record)}`, tone: "neutral", pending: false, onPress: () => setEditing({ record, endHold: recordActions.holdFocus(record) }) }]
+      : [];
+
   const plain = (field: Field, record: DataRecord): string => plainText(field, record.values[field.id], references);
 
   const byDay = groupByDay(records, view.dateField);
@@ -405,7 +429,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       ...(doneDef === undefined
         ? {}
         : { done: { checked: record.values[doneDef.id] === true, disabled: !editable || !canEditField(record, doneDef.id) || toggling.has(record.id), toggle: () => toggleDone(record) } }),
-      actions: recordActions.items(record, String(record.values[view.dateField] ?? "")),
+      actions: [...editItems(record), ...recordActions.items(record, String(record.values[view.dateField] ?? ""))],
     };
   };
 
@@ -514,7 +538,23 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
   }, [firstLoaded]);
 
   return (
-    <div ref={viewRef} data-yadad-calendar-view={view.id} tabIndex={-1}>
+    <>
+      {editing && editForm && (
+        <EditFormPanel
+          entity={entity}
+          form={editForm}
+          record={editing.record}
+          name={recordTitle(editing.record)}
+          registry={registry}
+          dataSources={dataSources}
+          entities={entities}
+          documents={documents}
+          viewer={viewer}
+          formatting={formatting}
+          onClose={closeEdit}
+        />
+      )}
+    <div ref={viewRef} data-yadad-calendar-view={view.id} tabIndex={-1} {...(editing ? { hidden: true } : {})}>
       {here?.status === "failed" && (
         <div data-yadad-calendar-load-error="">
           <ErrorSummary errors={[loadFailure(here.message)]} />
@@ -552,6 +592,7 @@ function CalendarBody({ entity, view, registry, dataSources, entities, reloadKey
       {recordActions.failures !== undefined && <ErrorSummary errors={recordActions.failures} />}
       {recordActions.dialog}
     </div>
+    </>
   );
 }
 
