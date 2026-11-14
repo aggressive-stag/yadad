@@ -1,6 +1,6 @@
 # RFC 0012: A command consumers can run to validate and describe
 
-- Status: Draft (2026-11-12). Waiting for the owner's decision on where the command lives (see `## Open questions`).
+- Status: Draft (2026-11-12). Owner decided questions 1 to 4 on 2026-11-14 (see `## Owner decisions`); the command name (question 5) is still open.
 - Touches: the package list or `core`'s `package.json` (a `bin`), depending on the option chosen. Nothing in the document contract, `specVersion` or the records protocol.
 - Needs an RFC because AGENTS.md rule 7 says no new package without one, and a `bin` changes what a package ships.
 
@@ -131,6 +131,21 @@ None for documents, records or `specVersion`. Option A adds a `bin` file and a `
 3. **Should an empty directory be exit 2 (proposed) or exit 0?** The memory app's script today says "fine for now".
 4. **Should warnings fail the run by default?** Proposed: no, only with `--strict`.
 5. **Name:** `yadad` (proposed), or `yadad-docs`, to avoid a bare name that another package may want.
+
+## Owner decisions (2026-11-14)
+
+1. **Where it lives: C, a new `@yadad/cli` package.** The owner wants the checker separate from the library, so documents can be validated without touching the code that renders them and `core` keeps no Node-only file. `@yadad/cli` has `@yadad/core` as a peer dependency (it always checks against the installed contract), gets a row in the dependency rules (it imports `core` only), a README, a changeset entry and a place in the release.
+2. **`--import`: not now.** Only JSON files are read. Loading TypeScript or JavaScript modules is listed under `## Possible improvements`.
+3. **An empty directory is exit 2**, as proposed.
+4. **Warnings do not fail the run** unless `--strict` is given, as proposed.
+5. **Name: open.** The package is `@yadad/cli` whatever the command is called; the `bin` name is still to be chosen.
+
+## Possible improvements
+
+Not part of the first version; each waits for a consumer that needs it.
+
+- `--import`: validate documents kept as `.ts`, `.mjs` or `.js` modules by importing them (Node 22.18+ strips types, so no new dependency). It runs the consumer's code, so it must stay opt-in and out of CI jobs that check untrusted contributions.
+- `describe --kind <kind>` and `describe --example <kind>`, so an agent can ask for one section (a feedback item asked for `--example dashboard`).
 
 ## Not proposed
 
