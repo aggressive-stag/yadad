@@ -19,7 +19,7 @@ import type {
   ViewerFact,
   ViewerFactValue,
 } from "@yadad/core";
-import { evaluateViewerCondition } from "./condition.js";
+import { evaluateCondition, evaluateViewerCondition } from "./condition.js";
 
 /** The viewer document of a set (a valid set has at most one; the first wins). */
 export function findViewerDocument(documents: Iterable<Document>): ViewerDocument | undefined {
@@ -139,6 +139,16 @@ export function canUpdate(record: DataRecord): boolean {
 }
 
 /**
+ * Whether a record gets the Edit button of the view's `editForm` (card 106): the server allows the
+ * update (`can.update` is not `false`) and the view's `editVisibleWhen`, when it has one, holds for the
+ * record's values and the viewer. The condition only narrows what `can.update` allows.
+ */
+export function editFormOffered(view: { readonly editVisibleWhen?: Condition }, record: DataRecord, viewer?: ResolvedViewer): boolean {
+  if (!canUpdate(record)) return false;
+  return view.editVisibleWhen === undefined || evaluateCondition(view.editVisibleWhen, record.values, undefined, viewer);
+}
+
+/**
  * Whether the server allows this viewer to write one field of the record
  * (RFC 0008 item 9): `can.update` still rules, then `can.fields[fieldId]`
  * narrows it. A record without `can.fields` behaves exactly as before —
@@ -213,6 +223,8 @@ export function viewerLeavesRead(view: ViewDocument, documents: Iterable<Documen
           leavesOf(column.visibleWhen, leaves);
           leavesOf(column.editableWhen, leaves);
         }
+        leavesOf(v.editVisibleWhen, leaves);
+        if (v.editForm !== undefined) follow(v.editForm); // the form the Edit button opens reads viewer facts too
         break;
       case "calendar":
       case "board":

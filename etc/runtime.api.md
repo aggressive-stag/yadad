@@ -415,6 +415,11 @@ export interface DraftStore {
     save(formId: string, recordId: string | undefined, draft: Draft): void;
 }
 
+// @public
+export function editFormOffered(view: {
+    readonly editVisibleWhen?: Condition;
+}, record: DataRecord, viewer?: ResolvedViewer): boolean;
+
 // @public (undocumented)
 export const emptyFormState: FormState;
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { DashboardView, Document, FormView, ResolvedViewer, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
+import type { Condition, DashboardView, DataRecord, Document, FormView, ResolvedViewer, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
 import {
   canEditField,
   canMoveColumn,
@@ -11,6 +11,7 @@ import {
   viewEditable,
   viewerFactsRead,
   viewerLeavesRead,
+  editFormOffered,
   visibleColumns,
   visibleItems,
   visibleTabs,
@@ -184,6 +185,23 @@ describe("view predicates", () => {
   });
 });
 
+describe("editFormOffered (card 106)", () => {
+  const rec = (values: Record<string, string>, can?: { update: boolean }): DataRecord => ({ id: "r", entityId: "task", entityRevision: 1, version: "v", values, ...(can ? { can } : {}) });
+  const closed: Condition = { op: "not", condition: { op: "in", field: "status", values: ["closed"] } };
+  test("no condition: offered unless can.update says no", () => {
+    expect(editFormOffered({}, rec({ status: "closed" }))).toBe(true);
+    expect(editFormOffered({}, rec({}, { update: false }))).toBe(false);
+  });
+  test("the condition narrows by the row's values and the viewer; can.update false wins", () => {
+    expect(editFormOffered({ editVisibleWhen: closed }, rec({ status: "open" }))).toBe(true);
+    expect(editFormOffered({ editVisibleWhen: closed }, rec({ status: "closed" }))).toBe(false);
+    expect(editFormOffered({ editVisibleWhen: closed }, rec({ status: "open" }, { update: false }))).toBe(false);
+    const beta: Condition = { op: "viewerIn", fact: "beta", values: [true] };
+    expect(editFormOffered({ editVisibleWhen: beta }, rec({}), asRole("x", true))).toBe(true);
+    expect(editFormOffered({ editVisibleWhen: beta }, rec({}), asRole("x", false))).toBe(false);
+  });
+});
+
 describe("viewerFactsRead", () => {
   const form: FormView = {
     kind: "form",
@@ -205,6 +223,11 @@ describe("viewerFactsRead", () => {
 
   test("a table reads its columns and the view its row action opens, declared facts in declaration order", () => {
     expect(viewerFactsRead(table, docs)).toEqual(["role", "beta"]);
+  });
+
+  test("card 106: a table reads its editVisibleWhen and the edit form it opens", () => {
+    const tbl: TableView = { ...tableNoAction, id: "t", editForm: "f", editVisibleWhen: { op: "and", conditions: [{ op: "empty", field: "b" }, { op: "viewerIn", fact: "beta", values: [true] }] } };
+    expect(viewerFactsRead(tbl, [viewerDoc, form, tbl])).toEqual(["role", "beta", "region"]); // role from the columns, beta from editVisibleWhen, region from the form
   });
 
   test("a dashboard reads tabs, items and embedded views; cycles are safe", () => {
