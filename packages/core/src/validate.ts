@@ -359,8 +359,10 @@ function validateForm(errors: Errors, doc: JsonObject): void {
 }
 
 function validateTable(errors: Errors, doc: JsonObject): void {
-  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "sortable", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm", "editForm"]);
+  checkKeys(errors, doc, [], ["kind", "specVersion", "id", "entity", "revision", "dataSource", "columns"], ["title", "sort", "sortable", "pageSize", "filter", "filters", "quickFilters", "rowAction", "recordActions", "addForm", "editForm", "editVisibleWhen"]);
   checkId(errors, doc, [], "editForm");
+  checkCondition(errors, doc["editVisibleWhen"], ["editVisibleWhen"]);
+  if (doc["editVisibleWhen"] !== undefined && doc["editForm"] === undefined) errors.add(["editVisibleWhen"], "invalid-value", "editVisibleWhen has no editForm to apply to.", 'Set "editForm" to a form view, or remove editVisibleWhen.');
   checkSortableFlag(errors, doc, []);
   checkCondition(errors, doc["filter"], ["filter"], "filter");
   checkRowAction(errors, doc["rowAction"]);
@@ -1551,6 +1553,10 @@ function checkViewFields(errors: DocumentError[], view: FormView | TableView, id
   });
   if (view.kind === "table" && view.addForm !== undefined) checkFormTarget(errors, view, entity, idx, "addForm");
   if (view.kind === "table" && view.editForm !== undefined) checkFormTarget(errors, view, entity, idx, "editForm");
+  if (view.kind === "table") {
+    checkConditionFields(view.editVisibleWhen, ["editVisibleWhen"], checkField);
+    checkDates(view.editVisibleWhen, ["editVisibleWhen"]);
+  }
   view.quickFilters?.forEach((filter, i) => {
     checkField(filter.field, ["quickFilters", i, "field"]);
     checkQuickFilterExtras(errors, view.id, entity, filter, ["quickFilters", i]);
@@ -2655,6 +2661,7 @@ function checkViewerReferences(errors: DocumentError[], warnings: DocumentError[
           check(column.editableWhen, ["columns", i, "editableWhen"]);
         });
         check(doc.rowAction?.visibleWhen, ["rowAction", "visibleWhen"]);
+        check(doc.editVisibleWhen, ["editVisibleWhen"]);
         break;
       case "calendar":
       case "board":

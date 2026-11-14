@@ -91,7 +91,17 @@
       {
         "field": "status"
       }
-    ]
+    ],
+    "editVisibleWhen": {
+      "op": "not",
+      "condition": {
+        "op": "in",
+        "field": "status",
+        "values": [
+          "done"
+        ]
+      }
+    }
   },
   {
     "kind": "table",

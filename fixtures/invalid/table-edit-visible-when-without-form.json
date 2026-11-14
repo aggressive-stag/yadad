@@ -1,0 +1,124 @@
+[
+  {
+    "kind": "entity",
+    "specVersion": 10,
+    "id": "task",
+    "revision": 1,
+    "fields": [
+      {
+        "id": "title",
+        "type": "text",
+        "label": "Title",
+        "required": true
+      },
+      {
+        "id": "status",
+        "type": "select",
+        "label": "Status",
+        "options": {
+          "source": "static",
+          "values": [
+            "todo",
+            "done"
+          ]
+        }
+      },
+      {
+        "id": "notes",
+        "type": "text",
+        "label": "Notes"
+      }
+    ]
+  },
+  {
+    "kind": "form",
+    "specVersion": 10,
+    "id": "task_edit",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "title"
+          },
+          {
+            "field": "status"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "form",
+    "specVersion": 10,
+    "id": "task_add",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "sections": [
+      {
+        "id": "main",
+        "items": [
+          {
+            "field": "title"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "kind": "table",
+    "specVersion": 10,
+    "id": "tasks",
+    "title": "Tasks",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "title"
+      },
+      {
+        "field": "status"
+      }
+    ],
+    "addForm": "task_add",
+    "quickFilters": [
+      {
+        "field": "status"
+      }
+    ],
+    "editVisibleWhen": {
+      "op": "not",
+      "condition": {
+        "op": "in",
+        "field": "status",
+        "values": [
+          "done"
+        ]
+      }
+    }
+  },
+  {
+    "kind": "table",
+    "specVersion": 10,
+    "id": "tasks_inline",
+    "title": "Tasks",
+    "entity": "task",
+    "revision": 1,
+    "dataSource": "default",
+    "columns": [
+      {
+        "field": "title",
+        "editable": true
+      },
+      {
+        "field": "status"
+      }
+    ],
+    "editForm": "task_edit"
+  }
+]

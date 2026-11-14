@@ -144,6 +144,7 @@ Table keys:
 - `quickFilters` give the viewer controls over fields; each may carry a `default`, a `label` and a `placeholder`.
 - `addForm` names a form over the same entity; the table then offers an add button that opens it.
 - `editForm` names a form over the same entity that is not a batch composer; each row then gets an Edit button that opens that record in the form, in place of the table. A save sends only the fields the viewer changed, with the loaded version as `baseVersion`, and a record changed elsewhere shows a conflict message in the form. Fields the form does not show are left as they are. It can be the same form as `addForm`, and sits beside `rowAction` and editable columns.
+- `editVisibleWhen` (optional, needs `editForm`) is a condition over the row's values and the viewer, written like a form item's `visibleWhen`: only rows it holds for get the Edit button, for example `{ "op": "not", "condition": { "op": "in", "field": "status", "values": ["closed"] } }`. It only narrows: a row with `can.update: false` has no button either way.
 - `rowAction` opens another table view from a row and fills its filter from the row (`bind`). It opens table views only.
 - `recordActions` lists the entity's actions this view offers on each row. A press runs, or asks first. An action the record or viewer withholds is not rendered.
 - A column's `compare` shows what changed in a text cell, against the previous or next row, or against another text field of the same record.

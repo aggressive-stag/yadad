@@ -353,6 +353,12 @@ export interface TableView {
    * table. It is `addForm` in the edit direction; `rowAction` still opens another table.
    */
   readonly editForm?: string;
+  /**
+   * Card 106: the Edit button of `editForm` is offered on a row only while this holds for the row's values
+   * and the viewer (record and viewerIn leaves, like a form item's `visibleWhen`). Absent, every row the
+   * viewer may update gets it. Needs `editForm`.
+   */
+  readonly editVisibleWhen?: Condition;
   /** Quick filters the viewer can set: select and boolean fields match exactly, text fields by substring, number, date and datetime fields as a from/to range (gte/lte, either end optional). */
   readonly quickFilters?: readonly QuickFilter[];
   /** Clicking a row opens another table view scoped to that row (RFC 0003). */

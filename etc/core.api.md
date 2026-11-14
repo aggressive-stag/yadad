@@ -1609,6 +1609,7 @@ export interface TableView {
     readonly columns: readonly TableColumn[];
     readonly dataSource: string;
     readonly editForm?: string;
+    readonly editVisibleWhen?: Condition;
     // (undocumented)
     readonly entity: string;
     readonly filter?: Condition;

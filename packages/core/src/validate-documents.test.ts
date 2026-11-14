@@ -426,6 +426,15 @@ describe("card 99 — table editForm", () => {
     expect(messages(batch)[0]).toContain("batch composer");
   });
 
+  test("card 106: editVisibleWhen takes record and viewer leaves, needs editForm and reads fields of the entity", () => {
+    const f = form("t_form", "thing", [{ field: "name" }]);
+    const ok = table("t", "thing", { editForm: "t_form", editVisibleWhen: { op: "notEmpty", field: "name" } });
+    expect(validateDocuments([ent, ok, f]).ok).toBe(true);
+    expect(problems([ent, table("t", "thing", { editVisibleWhen: { op: "notEmpty", field: "name" } }), f])).toEqual([{ path: "/editVisibleWhen", code: "invalid-value", document: "t" }]);
+    expect(problems([ent, table("t", "thing", { editForm: "t_form", editVisibleWhen: { op: "notEmpty", field: "nope" } }), f])).toEqual([{ path: "/editVisibleWhen/field", code: "unknown-reference", document: "t", allowed: ["name"] }]);
+    expect(validateDocument(table("t", "thing", { editForm: "t_form", editVisibleWhen: "closed" })).ok).toBe(false);
+  });
+
   test("a batch composer is still fine as an addForm", () => {
     const docs = [ent, table("t", "thing", { addForm: "b" }), Object.assign(form("b", "thing", [{ field: "name" }]) as object, { repeat: "batch" })];
     expect(validateDocuments(docs).ok).toBe(true);

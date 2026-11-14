@@ -67,6 +67,7 @@ describe("viewer document", () => {
       "/sections/*/items/*/requiredWhen:record+viewer",
       "/columns/*/visibleWhen:viewer",
       "/columns/*/editableWhen:viewer",
+      "/editVisibleWhen:record+viewer",
       "/editableWhen:viewer",
       "/rowAction/visibleWhen:viewer",
       "/tabs/*/visibleWhen:viewer",
