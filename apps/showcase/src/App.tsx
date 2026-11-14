@@ -153,6 +153,7 @@ const tasksTable: TableView = {
     { id: "high", name: "High priority", condition: { op: "eq", field: "priority", value: "High" } },
   ],
   addForm: "tasks_batch_form",
+  editForm: "tasks_edit_form", // card 99: a row's Edit button opens the task, checklist included
   sort: [{ field: "title", dir: "asc" }],
 };
 
@@ -168,6 +169,20 @@ const tasksBatchForm: FormView = {
   sections: [
     { id: "details", title: "Task", items: [{ field: "title" }, { field: "priority" }, { field: "owner" }, { field: "tags" }, { field: "due_time" }] },
     { id: "checklist", title: "First steps", subRecords: { entity: "checklist_item", via: "task", titleField: "title", doneField: "done", orderField: "order", addLabel: "Add step" } },
+  ],
+};
+
+/** The table's editForm (card 99): the same fields as the add form, for one existing task; its checklist is that task's. */
+const tasksEditForm: FormView = {
+  kind: "form",
+  specVersion: 9,
+  id: "tasks_edit_form",
+  entity: "task",
+  revision: 1,
+  dataSource: "tasks",
+  sections: [
+    { id: "details", title: "Task", items: [{ field: "title" }, { field: "status" }, { field: "priority" }, { field: "owner" }, { field: "tags" }, { field: "due_time" }] },
+    { id: "checklist", title: "Steps", subRecords: { entity: "checklist_item", via: "task", titleField: "title", doneField: "done", orderField: "order", addLabel: "Add step" } },
   ],
 };
 
@@ -255,6 +270,7 @@ export function withBookings(base: DocumentSet): DocumentSet {
   views.set(tasksView.id, tasksView);
   views.set(tasksTable.id, tasksTable);
   views.set(tasksBatchForm.id, tasksBatchForm);
+  views.set(tasksEditForm.id, tasksEditForm);
   views.set(tasksHome.id, tasksHome);
   for (const view of [tasksByOwner, tasksForOwner, bookingsByClient, drillHome]) views.set(view.id, view);
   entities.set(checklistItemEntity.id, checklistItemEntity);
