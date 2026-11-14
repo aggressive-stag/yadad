@@ -1,6 +1,7 @@
 import { jsonPointer } from "@yadad/core";
-import type { DataAdapter, DataRecord, DocumentError, EntityDocument, FieldValue, RecordValues } from "@yadad/core";
+import type { DataAdapter, DataRecord, DocumentError, EntityDocument, FieldValue, FormView, RecordValues, ResolvedViewer } from "@yadad/core";
 import { ForbiddenError, RecordConflictError, RecordNotFoundError, RecordValidationError, UnauthorizedError } from "@yadad/core";
+import { applyFormRules } from "./condition.js";
 import { validateRecord } from "./record.js";
 
 /** Headless form state. The renderer holds it; these functions update it. */
@@ -52,6 +53,25 @@ export async function submitEdit(entity: EntityDocument, record: DataRecord, pat
   } catch (error) {
     return { ok: false, errors: adapterFailure(error) };
   }
+}
+
+/**
+ * What a form that edits `record` hands to `submitEdit`: the values the viewer touched, with the form's
+ * rules applied to the record as it would look after the edit. A field the rules clear (hidden with
+ * `clearWhenHidden`) goes in as null when the record holds a value for it, and is left out when it does
+ * not; a field the form never shows is not in `touched`, so it is never in the patch and stays as it is.
+ * `entity` has the fields the rules make required marked as such, for `submitEdit` to validate against.
+ */
+export function formEditPatch(entity: EntityDocument, view: FormView, record: DataRecord, touched: RecordValues, viewer?: ResolvedViewer): { readonly entity: EntityDocument; readonly patch: RecordValues } {
+  const after = { ...record.values, ...touched };
+  const effective = applyFormRules(entity, view, after, viewer);
+  const patch: Record<string, FieldValue> = { ...touched };
+  for (const key of Object.keys(after)) {
+    if (key in effective.values) continue;
+    if ((record.values[key] ?? null) !== null) patch[key] = null;
+    else delete patch[key];
+  }
+  return { entity: effective.entity, patch };
 }
 
 /** Validates against the entity, then creates the record under the entity's current revision. */

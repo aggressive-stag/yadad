@@ -421,13 +421,13 @@ describe("card 99 — table editForm", () => {
     expect(problems(wrongEnt)).toEqual([{ path: "/editForm", code: "invalid-value", document: "t", allowed: ["f"] }]);
     expect(messages(wrongEnt)[0]).toContain('"o_form" is a form over "other_thing", not over "thing"');
     expect(messages(wrongEnt)[0]).toContain('use a form over "thing" (f)');
-    const batch = [ent, table("t", "thing", { editForm: "b" }), { ...form("b", "thing", [{ field: "name" }]), repeat: "batch" as const }, form("f", "thing", [{ field: "name" }])];
+    const batch = [ent, table("t", "thing", { editForm: "b" }), Object.assign(form("b", "thing", [{ field: "name" }]) as object, { repeat: "batch" }), form("f", "thing", [{ field: "name" }])];
     expect(problems(batch)).toEqual([{ path: "/editForm", code: "invalid-value", document: "t", allowed: ["f"] }]);
     expect(messages(batch)[0]).toContain("batch composer");
   });
 
   test("a batch composer is still fine as an addForm", () => {
-    const docs = [ent, table("t", "thing", { addForm: "b" }), { ...form("b", "thing", [{ field: "name" }]), repeat: "batch" as const }];
+    const docs = [ent, table("t", "thing", { addForm: "b" }), Object.assign(form("b", "thing", [{ field: "name" }]) as object, { repeat: "batch" })];
     expect(validateDocuments(docs).ok).toBe(true);
   });
 

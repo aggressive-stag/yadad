@@ -1,7 +1,7 @@
-import type { EntityDocument } from "@yadad/core";
+import type { DataRecord, EntityDocument, FormItem, FormView } from "@yadad/core";
 import { ForbiddenError, RecordConflictError, RecordNotFoundError, RecordValidationError, UnauthorizedError } from "@yadad/core";
 import { describe, expect, test } from "vitest";
-import { emptyFormState, setFieldValue, submitEdit, submitForm } from "./form.js";
+import { emptyFormState, formEditPatch, setFieldValue, submitEdit, submitForm } from "./form.js";
 import { createMemoryAdapter } from "./memory-adapter.js";
 import { validateRecord } from "./record.js";
 
@@ -256,5 +256,42 @@ describe("validateRecord: select options", () => {
     const [error] = validateRecord(e, { status: "Open" });
     expect(error?.code).toBe("invalid-value");
     expect(error?.hint).toBe("Use one of: open, done.");
+  });
+});
+
+describe("formEditPatch", () => {
+  const thing: EntityDocument = {
+    kind: "entity",
+    specVersion: 10,
+    id: "thing",
+    revision: 1,
+    fields: [
+      { id: "name", type: "text", label: "Name", required: true },
+      { id: "status", type: "select", label: "Status", options: { source: "static", values: ["open", "blocked"] } },
+      { id: "reason", type: "text", label: "Reason" },
+      { id: "secret", type: "text", label: "Secret" },
+    ],
+  };
+  const view = (items: readonly FormItem[]): FormView => ({ kind: "form", specVersion: 10, id: "f", entity: "thing", revision: 1, dataSource: "default", sections: [{ id: "main", items }] });
+  const record: DataRecord = { id: "r1", entityId: "thing", entityRevision: 1, version: "v1", values: { name: "Ada", status: "blocked", reason: "waiting", secret: "keep" } };
+
+  test("sends only what was touched, so a field the form does not show stays as it is", () => {
+    const form = view([{ field: "name" }, { field: "status" }, { field: "reason" }]);
+    expect(formEditPatch(thing, form, record, { name: "Grace" }).patch).toEqual({ name: "Grace" });
+    expect(formEditPatch(thing, form, record, {}).patch).toEqual({});
+  });
+
+  test("a field the rules clear becomes null when the record held a value, and is left out when it did not", () => {
+    const form = view([{ field: "name" }, { field: "status" }, { field: "reason", visibleWhen: { op: "eq", field: "status", value: "blocked" }, clearWhenHidden: true }]);
+    expect(formEditPatch(thing, form, record, { status: "open" }).patch).toEqual({ status: "open", reason: null });
+    const bare = { ...record, values: { name: "Ada", status: "blocked" } };
+    expect(formEditPatch(thing, form, bare, { status: "open", reason: "typed first" }).patch).toEqual({ status: "open" });
+  });
+
+  test("a field the edit makes conditionally required is required in the returned entity", () => {
+    const form = view([{ field: "name" }, { field: "status" }, { field: "reason", requiredWhen: { op: "eq", field: "status", value: "blocked" } }]);
+    const open = { ...record, values: { name: "Ada", status: "open" } };
+    expect(formEditPatch(thing, form, open, { status: "blocked" }).entity.fields.find((f) => f.id === "reason")?.required).toBe(true);
+    expect(formEditPatch(thing, form, open, {}).entity.fields.find((f) => f.id === "reason")?.required).not.toBe(true);
   });
 });
