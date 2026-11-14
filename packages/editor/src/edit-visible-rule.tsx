@@ -1,9 +1,11 @@
-import type { Condition, EntityDocument, Registry, ViewerDocument } from "@yadad/core";
+import type { BoardView, CalendarView, Condition, EntityDocument, Registry, ViewerDocument } from "@yadad/core";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
-import { describeCondition } from "./ui.js";
+import { choiceField, describeCondition, propertyInput } from "./ui.js";
+import { setEditVisibleWhen, setTableEditForm, tableEditFormTargets } from "./views.js";
+import type { Result, RowActionContext } from "./views.js";
 
 export interface EditVisibleRuleProps {
   readonly registry: Registry<ReactNode>;
@@ -29,7 +31,7 @@ export function EditVisibleRule({ registry, entity, viewer, noun, base, current,
   const [draft, setDraft] = useState<ConditionDraft | undefined>(undefined);
   const label = (fieldId: string) => entity.fields.find((f) => f.id === fieldId)?.label ?? fieldId;
   const factLabel = (factId: string) => viewer?.facts.find((f) => f.id === factId)?.label ?? factId;
-  const rule = `Edit button shows when`;
+  const rule = noun === "row" ? "Edit button shows when" : "Edit control shows when";
   const built = builtOf(draft);
   const same = JSON.stringify(built) === JSON.stringify(current);
   const close = () => {
@@ -39,7 +41,7 @@ export function EditVisibleRule({ registry, entity, viewer, noun, base, current,
   return (
     <div data-yadad-edit-visible-rule="">
       <p>
-        {current ? `${rule}: ${describeCondition(current, label, factLabel)}.` : `Edit button shows on every ${noun} the viewer may update.`}
+        {current ? `${rule}: ${describeCondition(current, label, factLabel)}.` : `${noun === "row" ? "Edit button" : "Edit control"} shows on every ${noun} the viewer may update.`}
         <Button
           label={current ? `Edit ${rule}` : `Set ${rule}`}
           type="button"
@@ -82,5 +84,41 @@ export function EditVisibleRule({ registry, entity, viewer, noun, base, current,
         </div>
       )}
     </div>
+  );
+}
+
+export interface EditFormSettingsProps {
+  readonly registry: Registry<ReactNode>;
+  readonly entity: EntityDocument;
+  readonly view: CalendarView | BoardView;
+  readonly context: RowActionContext | undefined;
+  readonly viewer: ViewerDocument | undefined;
+  /** "entry" or "card". */
+  readonly noun: string;
+  readonly base: string;
+  readonly run: (result: Result, then: () => void) => void;
+  readonly announce: (message: string) => void;
+}
+
+const NO_EDIT_FORM = "(no edit form)";
+
+/**
+ * Card 107: the edit form of a calendar or a board and who gets the Edit control: a picker of the form
+ * views over the same entity (batch composers excluded) and, once one is chosen, the Edit rule.
+ */
+export function EditFormSettings({ registry, entity, view, context, viewer, noun, base, run, announce }: EditFormSettingsProps): ReactNode {
+  const targets = context ? tableEditFormTargets(view, context) : [];
+  if (targets.length === 0 && view.editForm === undefined) return null;
+  return (
+    <>
+      {targets.length > 0 &&
+        propertyInput(registry, `${base}-editform`, choiceField("edit_form", `${noun[0]!.toUpperCase()}${noun.slice(1)} Edit control opens`, [NO_EDIT_FORM, ...targets.map((f) => f.id)]), view.editForm ?? NO_EDIT_FORM, (v) => {
+          const picked = targets.find((f) => f.id === v)?.id;
+          run(setTableEditForm(view, targets, picked), () => announce(picked ? `${noun === "card" ? "Cards are" : "Entries are"} edited in ${picked}.` : `${noun === "card" ? "Cards have" : "Entries have"} no edit form.`));
+        })}
+      {view.editForm !== undefined && (
+        <EditVisibleRule registry={registry} entity={entity} viewer={viewer} noun={noun} base={base} current={view.editVisibleWhen} onSet={(c) => run(setEditVisibleWhen(view, c), () => announce(c === undefined ? `Edit control shows on every ${noun}.` : "Edit control: limited by a condition."))} />
+      )}
+    </>
   );
 }

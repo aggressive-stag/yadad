@@ -452,7 +452,7 @@ export function setTableAddForm(view: TableView, forms: readonly FormView[], for
 }
 
 /** The form views a table's row "Edit" button may open (card 99): form views over the same entity that are not batch composers. */
-export function tableEditFormTargets(view: TableView, context: RowActionContext): readonly FormView[] {
+export function tableEditFormTargets(view: TableView | CalendarView | BoardView, context: RowActionContext): readonly FormView[] {
   return (context.forms ?? []).filter((f) => f.entity === view.entity && f.repeat !== "batch");
 }
 
@@ -460,19 +460,19 @@ export function tableEditFormTargets(view: TableView, context: RowActionContext)
  * Sets or clears the condition that decides which rows get the Edit button (card 106). The view must
  * have an editForm first: the validator rejects `editVisibleWhen` without one.
  */
-export function setEditVisibleWhen(view: TableView, condition: Condition | undefined): Result {
+export function setEditVisibleWhen(view: TableView | CalendarView | BoardView, condition: Condition | undefined): Result {
   if (condition !== undefined && view.editForm === undefined) return fail(["editVisibleWhen"], "This view has no edit form.", "Pick the form the Edit button opens first: editVisibleWhen only narrows it.");
   const ops = setOptional(view.editVisibleWhen !== undefined, "/editVisibleWhen", condition as unknown as Json | undefined);
   return ok(ops.length === 0 ? [] : [{ op: "test", path: "/id", value: view.id }, ...ops]);
 }
 
 /** Sets or clears the table's editForm: the form view a row's Edit button opens (card 99). */
-export function setTableEditForm(view: TableView, forms: readonly FormView[], formId: string | undefined): Result {
+export function setTableEditForm(view: TableView | CalendarView | BoardView, forms: readonly FormView[], formId: string | undefined): Result {
   // Without the form the Edit button's condition has nothing to narrow (the validator rejects it), so it goes too.
   if (formId === undefined) return ok([...setOptional(view.editForm !== undefined, "/editForm", undefined), ...setOptional(view.editVisibleWhen !== undefined, "/editVisibleWhen", undefined)]);
   const target = forms.find((f) => f.id === formId);
   if (!target) return fail(["editForm"], `No form view "${formId}" in the set.`, "Pick a form view, or clear the choice.");
-  if (target.entity !== view.entity) return fail(["editForm"], `Form "${formId}" is over "${target.entity}", not "${view.entity}".`, "editForm must point at a form over the table's own entity.");
+  if (target.entity !== view.entity) return fail(["editForm"], `Form "${formId}" is over "${target.entity}", not "${view.entity}".`, "editForm must point at a form over the view's own entity.");
   if (target.repeat === "batch") return fail(["editForm"], `Form "${formId}" is a batch composer, which only creates records.`, "Pick a form without repeat.");
   if (view.editForm === formId) return ok([]);
   return ok(setOptional(view.editForm !== undefined, "/editForm", formId));

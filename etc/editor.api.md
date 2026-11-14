@@ -669,7 +669,7 @@ export function setColumnVisibleWhen(view: TableView, fieldId: string, condition
 export function setCountWidgetFilter(view: DashboardView, tabId: string, itemId: string, condition: Condition | undefined): Result;
 
 // @public
-export function setEditVisibleWhen(view: TableView, condition: Condition | undefined): Result;
+export function setEditVisibleWhen(view: TableView | CalendarView | BoardView, condition: Condition | undefined): Result;
 
 // @public
 export function setFormItemCondition(view: FormView, fieldId: string, key: "visibleWhen" | "requiredWhen", condition: Condition | undefined): Result;
@@ -738,7 +738,7 @@ export function setStatMeasure(view: DashboardView, tabId: string, itemId: strin
 export function setTableAddForm(view: TableView, forms: readonly FormView[], formId: string | undefined): Result;
 
 // @public
-export function setTableEditForm(view: TableView, forms: readonly FormView[], formId: string | undefined): Result;
+export function setTableEditForm(view: TableView | CalendarView | BoardView, forms: readonly FormView[], formId: string | undefined): Result;
 
 // @public
 export function setTableFilter(view: TableView, condition: Condition | undefined): Result;
@@ -845,7 +845,7 @@ export function subRecordViaFieldsOf(child: EntityDocument, entity: EntityDocume
 export function tableAddFormTargets(view: TableView, context: RowActionContext): readonly FormView[];
 
 // @public
-export function tableEditFormTargets(view: TableView, context: RowActionContext): readonly FormView[];
+export function tableEditFormTargets(view: TableView | CalendarView | BoardView, context: RowActionContext): readonly FormView[];
 
 // @public
 export function TableViewEditor(props: TableViewEditorProps): ReactNode;

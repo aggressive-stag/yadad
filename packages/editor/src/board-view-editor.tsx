@@ -10,6 +10,7 @@ import { isDirty, redo, undo } from "./session.js";
 import { applyEdit, editRunner } from "./save-result.js";
 import { arrowStep, DropIndicator, ReorderGrip, useReorder } from "./reorder.js";
 import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
+import { EditFormSettings } from "./edit-visible-rule.js";
 import { ViewerRule } from "./viewer-rule.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
@@ -338,6 +339,7 @@ function BoardViewEditorBody({ view, entity, registry, context, viewer, onSave, 
         {viewer && current.editable === true && (
           <ViewerRule registry={registry} viewer={viewer} rule="Allow moving" target={current.title ?? current.id} condition={current.editableWhen} otherwise="Moving is offered to everyone" onSet={(c) => run(setBoardEditableWhen(current, c), () => announce(c === undefined ? "Moving is offered to everyone." : "Moving is limited by a viewer condition."))} />
         )}
+        <EditFormSettings registry={registry} entity={entity} view={current} context={context} viewer={viewer} noun="card" base={base} run={run} announce={announce} />
         {current.filter ? (
           <p>
             Cards always match: {describeCondition(current.filter, label)}.

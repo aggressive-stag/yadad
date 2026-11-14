@@ -390,3 +390,37 @@ describe("field options: label + colour rows, multiline/maxLength, colorFrom (RF
     expect(validateDocument(saved[0]!).ok).toBe(true);
   });
 });
+
+describe("calendar and board editForm (card 107)", () => {
+  const form: FormView = { kind: "form", specVersion: SPEC_VERSION, id: "task_form", entity: "task", revision: 1, dataSource: "default", sections: [{ id: "main", items: [{ field: "title" }] }] };
+  const batch: FormView = { ...form, id: "task_batch", repeat: "batch" };
+  const other: FormView = { ...form, id: "list_form", entity: "list" };
+  const context = { tables: [], entities: [taskEntity, listEntity], forms: [form, batch, other] };
+  const calendar: CalendarView = { kind: "calendar", specVersion: SPEC_VERSION, id: "tasks_cal", entity: "task", revision: 1, dataSource: "default", dateField: "due" };
+  const board: BoardView = { kind: "board", specVersion: SPEC_VERSION, id: "tasks_board", entity: "task", revision: 1, dataSource: "default", groupBy: [{ field: "list" }] };
+
+  test.each([
+    ["calendar", "Entry Edit control opens", "Save calendar"],
+    ["board", "Card Edit control opens", "Save board"],
+  ] as const)("the %s picker lists non-batch forms over the same entity and writes editForm and the rule", (kind, pickerLabel, save) => {
+    const saved: (CalendarView | BoardView)[] = [];
+    const onSave = (v: CalendarView | BoardView) => saved.push(v);
+    if (kind === "calendar") render(<CalendarViewEditor view={calendar} entity={taskEntity} registry={mockRegistry} context={context} onSave={onSave} onCancel={() => {}} />);
+    else render(<BoardViewEditor view={board} entity={taskEntity} registry={mockRegistry} context={context} onSave={onSave} onCancel={() => {}} />);
+    expect(screen.queryByLabelText(/Edit control shows when/)).toBeNull();
+    const offered = Array.from(selectByTestid("edit_form").options).map((o) => o.text);
+    expect(offered.filter((o) => o !== "Choose…")).toEqual(["(no edit form)", "task_form"]);
+    expect(screen.getByText(pickerLabel)).toBeTruthy();
+    pick("edit_form", "task_form");
+    press("Set Edit control shows when");
+    const builder = document.querySelector("[data-yadad-edit-visible-rule]") as HTMLElement;
+    fireEvent.change(builder.querySelector('[data-testid="input-field"]') as HTMLSelectElement, { target: { value: "Done" } });
+    fireEvent.change(builder.querySelector('[data-testid="input-op"]') as HTMLSelectElement, { target: { value: "is not" } });
+    fireEvent.click(builder.querySelector('[data-testid="input-done"]') as HTMLInputElement);
+    press("Apply Edit control shows when");
+    press(save);
+    expect(saved[0]?.editForm).toBe("task_form");
+    expect(saved[0]?.editVisibleWhen).toBeDefined();
+    expect(validateDocument(saved[0]!).ok).toBe(true);
+  });
+});
