@@ -1,5 +1,19 @@
 # @yadad/renderer
 
+## 0.21.0
+
+### Minor Changes
+
+- d294699: A table shows the `editForm` Edit button only on rows where `editVisibleWhen` holds (and `can.update` is not false). A hidden button leaves no gap in the row and the other buttons keep their order.
+
+### Patch Changes
+
+- 81e6949: Fix a race in the sub-record checklist: clicking a row's title (or adding a row) could leave focus on the page body instead of the row's input when a render had just committed. The input now always takes focus.
+- Updated dependencies [366218b]
+- Updated dependencies [74e1a9c]
+  - @yadad/core@0.20.0
+  - @yadad/runtime@0.21.0
+
 ## 0.20.1
 
 ### Patch Changes

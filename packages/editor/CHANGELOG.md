@@ -1,5 +1,18 @@
 # @yadad/editor
 
+## 0.20.0
+
+### Minor Changes
+
+- d171804: The table editor has an "Edit button shows when" rule (a condition builder, record and viewer facts) once an edit form is picked, and `setEditVisibleWhen` in the view edit helpers. Clearing the edit form also clears the rule.
+
+### Patch Changes
+
+- Updated dependencies [366218b]
+- Updated dependencies [74e1a9c]
+  - @yadad/core@0.20.0
+  - @yadad/runtime@0.21.0
+
 ## 0.19.0
 
 ### Minor Changes

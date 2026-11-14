@@ -1,5 +1,16 @@
 # @yadad/runtime
 
+## 0.21.0
+
+### Minor Changes
+
+- 74e1a9c: Add `editFormOffered(view, record, viewer)`: whether a record gets the Edit button of the view's `editForm` (`can.update` is not false and `editVisibleWhen` holds). `viewerLeavesRead` now also reads a table's `editVisibleWhen` and the edit form it opens.
+
+### Patch Changes
+
+- Updated dependencies [366218b]
+  - @yadad/core@0.20.0
+
 ## 0.20.0
 
 ### Minor Changes

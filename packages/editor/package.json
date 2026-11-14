@@ -1,6 +1,6 @@
 {
   "name": "@yadad/editor",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "yadad editor: patch-based editing of documents, dashboard layout and entity fields.",
   "license": "MIT",
   "type": "module",
