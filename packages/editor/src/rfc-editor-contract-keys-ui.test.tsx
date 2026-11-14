@@ -156,6 +156,22 @@ describe("table addForm and saved filters (RFC 0008 item 4, RFC 0009 item 5)", (
     expect(validateDocument(saved[0]!).ok).toBe(true);
   });
 
+  test("card 106: the Edit button condition is offered once there is an edit form, and writes editVisibleWhen", () => {
+    const saved = setup();
+    expect(screen.queryByText("Set Edit button shows when")).toBeNull();
+    pick("edit_form", "task_form");
+    press("Set Edit button shows when");
+    const builder = document.querySelector("[data-yadad-edit-visible-rule]") as HTMLElement;
+    fireEvent.change(builder.querySelector('[data-testid="input-field"]') as HTMLSelectElement, { target: { value: "Done" } });
+    fireEvent.change(builder.querySelector('[data-testid="input-op"]') as HTMLSelectElement, { target: { value: "is not" } });
+    fireEvent.click(builder.querySelector('[data-testid="input-done"]') as HTMLInputElement);
+    press("Apply Edit button shows when");
+    press("Save table");
+    expect(saved[0]?.editVisibleWhen).toBeDefined();
+    expect(saved[0]?.editForm).toBe("task_form");
+    expect(validateDocument(saved[0]!).ok).toBe(true);
+  });
+
   test("a saved filter row writes name + condition under filters[] and validates", () => {
     const saved = setup();
     press("Add saved filter");

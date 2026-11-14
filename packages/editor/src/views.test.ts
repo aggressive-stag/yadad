@@ -1,5 +1,5 @@
 import { sectionItems, validateDocument, validateDocuments } from "@yadad/core";
-import type { BoardView, CalendarView, ColumnCompare, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
+import type { BoardView, CalendarView, ColumnCompare, Condition, DashboardView, EntityDocument, FormView, TableView } from "@yadad/core";
 import type { PatchOperation } from "@yadad/runtime";
 import { describe, expect, test } from "vitest";
 import { blankDashboard, blankEntity, blankForm, blankTable } from "./blank.js";
@@ -25,7 +25,7 @@ import {
   removeSection,
   setColumnEditable,
   setClearWhenHidden,
-  setTableEditForm,
+  setTableEditForm, setEditVisibleWhen,
   tableEditFormTargets,
   setColumnCompare,
   setCountWidgetFilter,
@@ -468,6 +468,29 @@ describe("record actions offered by views (RFC 0007)", () => {
     const s = edit(startSession(renamed), patch.patch);
     expect(s.applied.length).toBe(0);
     expect(s.rejected.length).toBe(1);
+  });
+});
+
+describe("table editVisibleWhen (card 106)", () => {
+  const table: TableView = { kind: "table", specVersion: 10, id: "tasks", entity: "task", revision: 1, dataSource: "default", columns: [{ field: "title" }], editForm: "edit" };
+  const cond: Condition = { op: "notEmpty", field: "title" };
+
+  test("sets, replaces and clears the condition with an id guard", () => {
+    const set = setEditVisibleWhen(table, cond);
+    expect(set.ok && set.patch).toEqual([{ op: "test", path: "/id", value: "tasks" }, { op: "add", path: "/editVisibleWhen", value: cond }]);
+    const replaced = setEditVisibleWhen({ ...table, editVisibleWhen: cond }, { op: "empty", field: "title" });
+    expect(replaced.ok && replaced.patch?.[1]).toMatchObject({ op: "replace", path: "/editVisibleWhen" });
+    const cleared = setEditVisibleWhen({ ...table, editVisibleWhen: cond }, undefined);
+    expect(cleared.ok && cleared.patch).toEqual([{ op: "test", path: "/id", value: "tasks" }, { op: "remove", path: "/editVisibleWhen" }]);
+    expect(setEditVisibleWhen(table, undefined)).toEqual({ ok: true, patch: [] });
+  });
+
+  test("refuses a condition without an edit form, and dropping the form drops the condition", () => {
+    const { editForm: _omit, ...noForm } = table;
+    const refused = setEditVisibleWhen(noForm, cond);
+    expect(refused.ok ? "" : refused.error.message).toContain("no edit form");
+    const cleared = setTableEditForm({ ...table, editVisibleWhen: cond }, [], undefined);
+    expect(cleared.ok && cleared.patch).toEqual([{ op: "remove", path: "/editForm" }, { op: "remove", path: "/editVisibleWhen" }]);
   });
 });
 

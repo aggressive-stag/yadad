@@ -14,7 +14,8 @@ import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import { ViewerRule } from "./viewer-rule.js";
-import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setColumnSortable, setTableSortable, setPageSize, setQuickFilter, setTableAddForm, setTableEditForm, tableEditFormTargets, setTableFilter, setTableFilters, setTableSort, setTableTitle, tableAddFormTargets, QUICK_FILTER_REASON } from "./views.js";
+import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setColumnSortable, setTableSortable, setPageSize, setQuickFilter, setTableAddForm, setTableEditForm, setEditVisibleWhen, tableEditFormTargets, setTableFilter, setTableFilters, setTableSort, setTableTitle, tableAddFormTargets, QUICK_FILTER_REASON } from "./views.js";
+import { EditVisibleRule } from "./edit-visible-rule.js";
 import { QuickFiltersPanel } from "./quick-filters-panel.js";
 import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
@@ -343,6 +344,9 @@ function TableViewEditorBody({ view, entity, registry, context, viewer, onSave, 
               run(setTableEditForm(current, editFormTargets, picked), () => announce(picked ? `Rows are edited in ${picked}.` : "Rows have no edit form."));
             })}
         </div>
+        {current.editForm !== undefined && (
+          <EditVisibleRule registry={registry} entity={entity} viewer={viewer} noun="row" base={base} current={current.editVisibleWhen} onSet={(c) => run(setEditVisibleWhen(current, c), () => announce(c === undefined ? "Edit button shows on every row." : "Edit button: limited by a condition."))} />
+        )}
         {current.filter ? (
           <p>
             Rows always match: {describeCondition(current.filter, label)}.

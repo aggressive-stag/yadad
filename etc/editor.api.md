@@ -669,6 +669,9 @@ export function setColumnVisibleWhen(view: TableView, fieldId: string, condition
 export function setCountWidgetFilter(view: DashboardView, tabId: string, itemId: string, condition: Condition | undefined): Result;
 
 // @public
+export function setEditVisibleWhen(view: TableView, condition: Condition | undefined): Result;
+
+// @public
 export function setFormItemCondition(view: FormView, fieldId: string, key: "visibleWhen" | "requiredWhen", condition: Condition | undefined): Result;
 
 // @public
