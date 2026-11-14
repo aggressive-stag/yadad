@@ -1,6 +1,6 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
 import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, FormView, PageNotice, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
-import { bindFilter, bindingValues, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, initialQuickFilters, neighbourQuery, quickRangeKey, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
+import { bindFilter, bindingValues, canEditField, canUpdate, columnEditable, editFormOffered, compareCells, emptyFormState, initialQuickFilters, neighbourQuery, quickRangeKey, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -722,7 +722,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     ) : (
       <>
         {columns.some((c) => c.editable && canEditField(record, c.field.id)) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => openEdit(record)} />}
-        {editForm !== undefined && canUpdate(record) && (
+        {editForm !== undefined && editFormOffered(view, record, viewer) && (
           <span data-yadad-row-edit={record.id}>
             <Button label={recordName(record) ? `Edit ${recordName(record)}` : `Edit ${entity.id}`} type="button" variant="secondary" disabled={saving} onPress={() => openForm(record)} />
           </span>

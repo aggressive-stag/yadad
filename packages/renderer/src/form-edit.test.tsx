@@ -283,6 +283,35 @@ describe("TableRenderer with editForm", () => {
     expect(screen.getByRole("button", { name: "Edit Alpha" })).toBeTruthy();
   });
 
+  test("card 106: editVisibleWhen shows the Edit button only on rows it holds for, and the other buttons stay in place", async () => {
+    const { db } = await seed();
+    const gated: TableView = { ...table, id: "tasks_gated", editVisibleWhen: { op: "eq", field: "status", value: "blocked" }, rowAction: { open: "tasks", bind: [{ field: "status", to: "status" }] } };
+    const docs: DocumentSet = { entities: documents.entities, views: new Map<string, ViewDocument>([...documents.views, [gated.id, gated]]) };
+    const { container } = mount(db, { view: gated, documents: docs });
+    await waitForRows(container);
+    expect(screen.getByRole("button", { name: "Edit Alpha" })).toBeTruthy(); // blocked
+    expect(screen.queryByRole("button", { name: "Edit Beta" })).toBeNull(); // open
+    // The row action is still there on both rows, in the same cell, and nothing empty is left focusable.
+    const rows = [...container.querySelectorAll("tbody tr")];
+    expect(rows).toHaveLength(2);
+    const buttonsOf = (row: Element): string[] => [...row.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(buttonsOf(rows[0]!)).toEqual(["Edit Alpha", expect.stringMatching(/^Open Tasks/)]);
+    expect(buttonsOf(rows[1]!)).toEqual([expect.stringMatching(/^Open Tasks/)]);
+    expect(rows[1]!.querySelectorAll("[data-yadad-row-edit]")).toHaveLength(0);
+    expect(rows[1]!.querySelectorAll("td").length).toBe(rows[0]!.querySelectorAll("td").length);
+  });
+
+  test("card 106: editVisibleWhen cannot widen what the server allows", async () => {
+    const db = createMemoryAdapter({ recordPermissions: (r) => (r.values["title"] === "Alpha" ? { update: false } : undefined) });
+    await seed(db);
+    const gated: TableView = { ...table, id: "tasks_gated", editVisibleWhen: { op: "notEmpty", field: "title" } };
+    const docs: DocumentSet = { entities: documents.entities, views: new Map<string, ViewDocument>([...documents.views, [gated.id, gated]]) };
+    const { container } = mount(db, { view: gated, documents: docs });
+    await waitForRows(container);
+    expect(screen.queryByRole("button", { name: "Edit Alpha" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit Beta" })).toBeTruthy();
+  });
+
   test("beside a rowAction the column is headed Edit and open, and both buttons show", async () => {
     const { db } = await seed();
     const drilled: TableView = { ...table, id: "tasks_drill", rowAction: { open: "tasks", bind: [{ field: "status", to: "status" }] } };
