@@ -1,6 +1,6 @@
 {
   "name": "@yadad/cli",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "ydcli: validate yadad documents and describe the contract of the installed @yadad/core.",
   "license": "MIT",
   "type": "module",
