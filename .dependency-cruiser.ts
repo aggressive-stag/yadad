@@ -64,6 +64,7 @@ const config: IConfiguration = {
       from: { path: "^testing/" },
       to: { path: "^(packages/(?!(core|runtime)/)|apps/|@yadad/(?!(core|runtime|testing)(/|$)))" },
     },
+    ...direction("cli-imports-core-only", "cli", ["core", "cli"], "cli imports core only (@yadad/core is its peer dependency); it reads files and prints, so it never touches React or the runtime."),
     ...direction("theme-imports-nothing", "theme", ["theme"], "theme imports nothing from the workspace."),
     {
       name: "no-react-in-core-or-runtime",

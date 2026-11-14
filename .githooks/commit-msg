@@ -14,7 +14,7 @@ set -euo pipefail
 
 TYPES="build|ci|docs|feat|fix|perf|refactor|test"
 # Package names, plus repo-wide infra. Keep in sync with ARCHITECTURE.md §3.
-SCOPES="core|runtime|renderer|editor|theme|testing|fixtures|showcase|examples|rfcs|dev-infra|deps"
+SCOPES="core|runtime|renderer|editor|theme|cli|testing|fixtures|showcase|examples|rfcs|dev-infra|deps"
 MAX_HEADER=100
 MIN_BODY=20
 

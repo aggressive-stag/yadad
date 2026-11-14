@@ -25,6 +25,8 @@ const EXPECTED = [
   ["theme-imports-nothing-in-tests", "packages/theme/src/index.test.ts", "packages/core/src/index.ts"],
   ["testing-imports-core-runtime-only", "testing/src/uses-renderer.ts", "packages/renderer/src/index.ts"],
   ["runtime-imports-core-only", "packages/runtime/src/uses-testing.ts", "testing/src/index.ts"],
+  ["cli-imports-core-only", "packages/cli/src/index.ts", "packages/runtime/src/index.ts"],
+  ["cli-imports-core-only-in-tests", "packages/cli/src/index.test.ts", "packages/runtime/src/index.ts"],
 ].map((v) => v.join(" | "));
 
 const { enhancedResolveOptions, ...options } = config.options ?? {};

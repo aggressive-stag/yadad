@@ -9,7 +9,7 @@ Use the pnpm version pinned in `packageManager` (plain `pnpm` works when it is o
 ```sh
 pnpm install
 pnpm --filter @yadad/showcase dev   # the showcase, on a random dev-server port
-pnpm describe-registry              # the document contract, as readable text (--json for machines; --kind <kind> for one part; --example <kind> for a complete valid example)
+pnpm describe-registry              # `ydcli describe` from source: the document contract, as readable text (--json for machines; --kind <kind> for one part; --example <kind> for a complete valid example)
 ```
 
 ## Before you start a task
@@ -22,7 +22,7 @@ Read order: `ARCHITECTURE.md`, then this file, then your task card. (A maintaine
 
 ## Hard rules
 
-1. **Dependency direction.** `core` imports nothing. `runtime` imports `core`. `renderer` and `editor` import `core` and `runtime`. `theme` imports nothing. Nothing imports the components repo. No `react` in `core` or `runtime`. No deep imports. If your task seems to need an import against these rules, stop that part and say so in your report.
+1. **Dependency direction.** `core` imports nothing. `runtime` imports `core`. `renderer` and `editor` import `core` and `runtime`. `theme` imports nothing. `cli` imports `core` only (its peer dependency), reads files and prints; no React. Nothing imports the components repo. No `react` in `core` or `runtime`. No deep imports. If your task seems to need an import against these rules, stop that part and say so in your report.
 2. **The contract is human-owned.** Do not modify `packages/core`, `fixtures/` or `rfcs/` unless your task card explicitly says so. If you need a contract change, open an issue or a draft RFC describing it, and stop. Do not work around the contract with local types, casts or `any`.
 3. **Documents are the contract.** Change behavior through entity/view document types and their JSON Schema, then the runtime/renderer. Never special-case behavior inside a component.
 4. **No component names or file paths** in `core`, `runtime`, `renderer` or `editor`. Only registry keys.
@@ -51,7 +51,7 @@ You land and release your own work. Nobody reviews or merges it for you, and fin
 
 - Header: `<type>(<scope>): <summary>`, max 100 chars. Summary is imperative, lowercase, no trailing period.
 - Types: `build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `test`. Reverts: `revert: <reverted header>` with `This reverts commit <SHA>` in the body.
-- Scopes (optional): the package name (`core`, `runtime`, `renderer`, `editor`, `theme`, `testing`), or `fixtures`, `showcase`, `examples`, `rfcs`, `dev-infra`, `deps`. Omit the scope for repo-wide changes.
+- Scopes (optional): the package name (`core`, `runtime`, `renderer`, `editor`, `theme`, `cli`, `testing`), or `fixtures`, `showcase`, `examples`, `rfcs`, `dev-infra`, `deps`. Omit the scope for repo-wide changes.
 - Body: required except for `docs`, at least 20 characters, explains *why*. Trailers such as `Co-Authored-By:` do not count as body.
 - Commit early and often: one logical step per commit.
 
