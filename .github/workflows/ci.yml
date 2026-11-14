@@ -45,6 +45,12 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: API report
+        run: pnpm api:check
+
+      - name: Bundle size
+        run: pnpm size
+
       - name: Changeset present
         if: github.event_name == 'pull_request'
         run: pnpm changeset status --since=origin/${{ github.base_ref }}

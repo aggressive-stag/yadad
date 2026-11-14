@@ -33,7 +33,7 @@ test:
       EOF
     - corepack enable
     - pnpm install --frozen-lockfile
-    - pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test
+    - pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test && pnpm api:check && pnpm size
 
 release:
   stage: deploy

@@ -1,0 +1,4 @@
+[
+  { "name": "starter JS (gzip)", "path": "examples/starter/dist/assets/*.js", "gzip": true, "running": false, "limit": "154417 B" },
+  { "name": "starter CSS (gzip)", "path": "examples/starter/dist/assets/*.css", "gzip": true, "running": false, "limit": "11125 B" }
+]
