@@ -25,6 +25,8 @@ import {
   removeSection,
   setColumnEditable,
   setClearWhenHidden,
+  setTableEditForm,
+  tableEditFormTargets,
   setColumnCompare,
   setCountWidgetFilter,
   setFormItemCondition,
@@ -466,5 +468,26 @@ describe("record actions offered by views (RFC 0007)", () => {
     const s = edit(startSession(renamed), patch.patch);
     expect(s.applied.length).toBe(0);
     expect(s.rejected.length).toBe(1);
+  });
+});
+
+describe("table editForm (card 99)", () => {
+  const table: TableView = { kind: "table", specVersion: 10, id: "tasks", entity: "task", revision: 1, dataSource: "default", columns: [{ field: "title" }] };
+  const form = (id: string, entity: string, repeat?: "batch"): FormView => ({ kind: "form", specVersion: 10, id, entity, revision: 1, dataSource: "default", sections: [{ id: "main", items: [{ field: "title" }] }], ...(repeat ? { repeat } : {}) });
+  const forms = [form("edit", "task"), form("batch", "task", "batch"), form("other", "person")];
+
+  test("offers only non-batch forms over the table's entity", () => {
+    expect(tableEditFormTargets(table, { tables: [], entities: [], forms }).map((f) => f.id)).toEqual(["edit"]);
+  });
+
+  test("sets, clears and refuses with a reason", () => {
+    const set = setTableEditForm(table, forms, "edit");
+    expect(set.ok && set.patch).toEqual([{ op: "add", path: "/editForm", value: "edit" }]);
+    const cleared = setTableEditForm({ ...table, editForm: "edit" }, forms, undefined);
+    expect(cleared.ok && cleared.patch).toEqual([{ op: "remove", path: "/editForm" }]);
+    for (const [id, word] of [["batch", "batch composer"], ["other", "over \"person\""], ["ghost", "No form view"]] as const) {
+      const result = setTableEditForm(table, forms, id);
+      expect(result.ok ? "" : result.error.message).toContain(word);
+    }
   });
 });

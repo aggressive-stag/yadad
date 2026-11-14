@@ -148,6 +148,14 @@ describe("table addForm and saved filters (RFC 0008 item 4, RFC 0009 item 5)", (
     expect(validateDocument(saved[0]!).ok).toBe(true);
   });
 
+  test("the Row Edit button picker lists non-batch form views over the same entity and writes editForm (card 99)", () => {
+    const saved = setup();
+    pick("edit_form", "task_form");
+    press("Save table");
+    expect(saved[0]?.editForm).toBe("task_form");
+    expect(validateDocument(saved[0]!).ok).toBe(true);
+  });
+
   test("a saved filter row writes name + condition under filters[] and validates", () => {
     const saved = setup();
     press("Add saved filter");

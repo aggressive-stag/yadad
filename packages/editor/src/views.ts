@@ -451,6 +451,22 @@ export function setTableAddForm(view: TableView, forms: readonly FormView[], for
   return ok(setOptional(view.addForm !== undefined, "/addForm", formId));
 }
 
+/** The form views a table's row "Edit" button may open (card 99): form views over the same entity that are not batch composers. */
+export function tableEditFormTargets(view: TableView, context: RowActionContext): readonly FormView[] {
+  return (context.forms ?? []).filter((f) => f.entity === view.entity && f.repeat !== "batch");
+}
+
+/** Sets or clears the table's editForm: the form view a row's Edit button opens (card 99). */
+export function setTableEditForm(view: TableView, forms: readonly FormView[], formId: string | undefined): Result {
+  if (formId === undefined) return ok(setOptional(view.editForm !== undefined, "/editForm", undefined));
+  const target = forms.find((f) => f.id === formId);
+  if (!target) return fail(["editForm"], `No form view "${formId}" in the set.`, "Pick a form view, or clear the choice.");
+  if (target.entity !== view.entity) return fail(["editForm"], `Form "${formId}" is over "${target.entity}", not "${view.entity}".`, "editForm must point at a form over the table's own entity.");
+  if (target.repeat === "batch") return fail(["editForm"], `Form "${formId}" is a batch composer, which only creates records.`, "Pick a form without repeat.");
+  if (view.editForm === formId) return ok([]);
+  return ok(setOptional(view.editForm !== undefined, "/editForm", formId));
+}
+
 /** Replaces the table's named saved filters (RFC 0009 item 5); the whole array is one undoable edit. */
 export function setTableFilters(view: TableView, filters: readonly NamedFilter[]): Result {
   const next = filters.map((f) => ({ id: f.id, name: f.name, condition: f.condition }));

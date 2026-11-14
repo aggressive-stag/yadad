@@ -14,7 +14,7 @@ import { builtOf, ConditionBuilder, draftFor } from "./condition-builder.js";
 import type { ConditionDraft } from "./condition-builder.js";
 import { asText, choiceField, describeCondition, propertyInput, toolbarStyle } from "./ui.js";
 import { ViewerRule } from "./viewer-rule.js";
-import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setColumnSortable, setTableSortable, setPageSize, setQuickFilter, setTableAddForm, setTableFilter, setTableFilters, setTableSort, setTableTitle, tableAddFormTargets, QUICK_FILTER_REASON } from "./views.js";
+import { rowActionTargets, setColumnCompare, setColumnEditableWhen, setColumnVisibleWhen, setRowAction, setRowActionVisibleWhen, addColumn, canQuickFilter, fieldsNotInTable, moveColumn, moveColumnTo, removeColumn, setColumnEditable, setColumnSortable, setTableSortable, setPageSize, setQuickFilter, setTableAddForm, setTableEditForm, tableEditFormTargets, setTableFilter, setTableFilters, setTableSort, setTableTitle, tableAddFormTargets, QUICK_FILTER_REASON } from "./views.js";
 import { QuickFiltersPanel } from "./quick-filters-panel.js";
 import { RecordActionsPanel } from "./record-actions.js";
 import type { RowActionContext } from "./views.js";
@@ -42,6 +42,7 @@ export interface TableViewEditorProps {
 
 const NO_SORT = "(none)";
 const NO_ADD_FORM = "(plain add)";
+const NO_EDIT_FORM = "(no edit form)";
 
 /** A table editor's apply-and-report helper, shared by its panels. */
 type RunFn = (result: EditorResult, onOk?: () => void) => boolean;
@@ -157,6 +158,7 @@ function TableViewEditorBody({ view, entity, registry, context, viewer, onSave, 
   const filtered = new Set(current.quickFilters?.map((f) => f.field));
   const fieldType = (id: string) => entity.fields.find((f) => f.id === id)?.type;
   const addFormTargets: readonly FormView[] = context ? tableAddFormTargets(current, context) : []; // RFC 0008 item 4
+  const editFormTargets: readonly FormView[] = context ? tableEditFormTargets(current, context) : []; // card 99
 
   // The compare chooser (RFC 0007): the cell shows this column's value as the
   // after and the comparator's as the before. Text columns only; an editable
@@ -334,6 +336,11 @@ function TableViewEditorBody({ view, entity, registry, context, viewer, onSave, 
             propertyInput(registry, `${base}-addform`, choiceField("add_form", "Add button opens", [NO_ADD_FORM, ...addFormTargets.map((f) => f.id)]), current.addForm ?? NO_ADD_FORM, (v) => {
               const picked = addFormTargets.find((f) => f.id === v)?.id; // RFC 0008 item 4
               run(setTableAddForm(current, addFormTargets, picked), () => announce(picked ? `Add opens ${picked}.` : "Add opens the plain new-record form."));
+            })}
+          {editFormTargets.length > 0 &&
+            propertyInput(registry, `${base}-editform`, choiceField("edit_form", "Row Edit button opens", [NO_EDIT_FORM, ...editFormTargets.map((f) => f.id)]), current.editForm ?? NO_EDIT_FORM, (v) => {
+              const picked = editFormTargets.find((f) => f.id === v)?.id; // card 99
+              run(setTableEditForm(current, editFormTargets, picked), () => announce(picked ? `Rows are edited in ${picked}.` : "Rows have no edit form."));
             })}
         </div>
         {current.filter ? (
