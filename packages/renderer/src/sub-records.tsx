@@ -94,9 +94,12 @@ export function SubRecordChecklist({ entity, sub, registry, adapter, entities, d
 
   // An added row or a row that entered editing gets its input focused once,
   // the same rule the table follows for the field it starts editing.
+  // Only the commit that shows the row in edit mode may consume the request: React
+  // flushes the previous commit's pending effect just before it renders the
+  // click's update, and that stale run must leave the request for the next one.
   useEffect(() => {
     const rowId = focusRow.current;
-    if (rowId === undefined) return;
+    if (rowId === undefined || editing?.id !== rowId) return;
     focusRow.current = undefined;
     document.getElementById(`${uid}-${rowId}-${sub.titleField}`)?.focus();
   });
