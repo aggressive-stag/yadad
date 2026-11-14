@@ -155,7 +155,7 @@ The task form uses two rules. `requiredWhen` makes Notes required only while the
 }
 ```
 
-A **table** lists the records of one entity. Its columns can be editable in place, and `addForm` adds an "add" button that opens a form over the same entity. The saved filters are chips the viewer can switch; which chip is lit is the host's state, and the starter keeps it in `App.tsx`.
+A **table** lists the records of one entity. Its columns can be editable in place, `addForm` adds an "add" button that opens a form over the same entity, and `editForm` gives each row an edit button that opens that record in a form. The saved filters are chips the viewer can switch; which chip is lit is the host's state, and the starter keeps it in `App.tsx`.
 
 
 <!-- step 2: documents/tasks.json -->
@@ -171,6 +171,7 @@ A **table** lists the records of one entity. Its columns can be editable in plac
   "sort": [{ "field": "due", "dir": "asc" }],
   "pageSize": 10,
   "addForm": "task_form",
+  "editForm": "task_form",
   "filters": [
     { "id": "open", "name": "Open", "condition": { "op": "neq", "field": "status", "value": "Done" } },
     { "id": "overdue", "name": "Overdue", "condition": { "op": "and", "conditions": [
@@ -181,7 +182,7 @@ A **table** lists the records of one entity. Its columns can be editable in plac
 }
 ```
 
-Open the Tasks screen. The seed records are there. Press Edit on a row, change a status or a date and press Save: the table checks the edit against the entity and saves the changed fields. Use Add to open the task form. (A form creates records. Existing records are edited in the table.) Try the Open and Overdue chips.
+Open the Tasks screen. The seed records are there. Press Edit on a row, change a status or a date and press Save: the table checks the edit against the entity and saves the changed fields. That is the quick edit, for the columns marked `editable`. Press "Edit" followed by a task's title to open the whole record in the task form (its notes and checklist too); the table gives way to the form, and Save or Back returns to it. Use Add to open the same form for a new task. Try the Open and Overdue chips.
 
 ![The tasks table](../examples/starter/docs/screens/tasks-1280.png)
 

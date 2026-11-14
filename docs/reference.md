@@ -102,7 +102,7 @@ Date values can be relative: `{ "daysFromToday": -7 }`. The runtime resolves the
 
 ## Form
 
-A **form** creates a record of one entity. Sections hold items; each item names a field and can carry `visibleWhen`, `requiredWhen` and `clearWhenHidden` (drop the typed value when the field hides). A form only creates new records.
+A **form** creates a record of one entity, or edits one: a table's `addForm` opens it empty, its `editForm` opens a row's record in it (a host can also give `FormRenderer` a `record`). Sections hold items; each item names a field and can carry `visibleWhen`, `requiredWhen` and `clearWhenHidden` (drop the typed value when the field hides; editing a record, it sets the field to empty). Fields a form does not list are left as they are when it edits a record.
 
 ```json
 {
@@ -119,8 +119,8 @@ A **form** creates a record of one entity. Sections hold items; each item names 
 }
 ```
 
-- **Batch composer.** `"repeat": "batch"` shows the field set several times and creates all the records in one write that either saves them all or none.
-- **Checklist.** A section with `subRecords` is an inline checklist over a child entity: each step is its own record that points back at the parent through the `via` reference field. The form only hosts the editing; a create form has no parent record yet, so the section says so until the record exists (the host passes the parent record to the form).
+- **Batch composer.** `"repeat": "batch"` shows the field set several times and creates all the records in one write that either saves them all or none. It only creates, so it cannot be an `editForm`.
+- **Checklist.** A section with `subRecords` is an inline checklist over a child entity: each step is its own record that points back at the parent through the `via` reference field. The form only hosts the editing; a create form has no parent record yet, so the section says so until the record exists (the host passes the parent record to the form; a form editing a record uses that record).
 
 ```json
 {
@@ -143,6 +143,7 @@ Table keys:
 - `filters` are named saved filters: each is `{ id, name, condition }`, shown as chips. Which one is selected is the host's business.
 - `quickFilters` give the viewer controls over fields; each may carry a `default`, a `label` and a `placeholder`.
 - `addForm` names a form over the same entity; the table then offers an add button that opens it.
+- `editForm` names a form over the same entity that is not a batch composer; each row then gets an Edit button that opens that record in the form, in place of the table. A save sends only the fields the viewer changed, with the loaded version as `baseVersion`, and a record changed elsewhere shows a conflict message in the form. Fields the form does not show are left as they are. It can be the same form as `addForm`, and sits beside `rowAction` and editable columns.
 - `rowAction` opens another table view from a row and fills its filter from the row (`bind`). It opens table views only.
 - `recordActions` lists the entity's actions this view offers on each row. A press runs, or asks first. An action the record or viewer withholds is not rendered.
 - A column's `compare` shows what changed in a text cell, against the previous or next row, or against another text field of the same record.
@@ -159,7 +160,7 @@ Table keys:
   "filter": { "op": "gte", "field": "due", "value": { "daysFromToday": -7 } },
   "filters": [{ "id": "open", "name": "Open", "condition": { "op": "neq", "field": "status", "value": "closed" } }],
   "quickFilters": [{ "field": "status", "default": "open" }, { "field": "title", "placeholder": "Search" }],
-  "addForm": "new_task", "rowAction": { "open": "task_steps", "bind": [{ "field": "id", "to": "task" }] },
+  "addForm": "new_task", "editForm": "new_task", "rowAction": { "open": "task_steps", "bind": [{ "field": "id", "to": "task" }] },
   "recordActions": ["archive"]
 }
 ```

@@ -59,7 +59,7 @@ if (!result.ok) for (const e of result.errors) console.log(e.document, e.path, e
 
 1. **A server-generated id marked `required`.** Every create then fails with "<Label> is required." because the form cannot supply it. Mark it `"readOnly": true`: it is shown, never sent back, and a create does not need it.
 2. **Fields the server does not serve or accept.** A document that declares a field the records API refuses answers `400 unknown-property` only at runtime. Keep entity fields and the server's fields identical, and check them with `recordJsonSchema`.
-3. **An inline edit of a table row does nothing.** The client validates the whole record before it sends anything. A stored record that no longer fits the entity (a field that became required, a select value that left the options) cannot be saved until that field is fixed. The error shows in the row.
+3. **An inline edit of a table row does nothing.** The client validates the whole record before it sends anything. A stored record that no longer fits the entity (a field that became required, a select value that left the options) cannot be saved until that field is fixed. The error shows in the row (or, editing through an `editForm`, in the form's error summary, which names the field even when the form does not show it).
 4. **A relative date against a `datetime`.** See above: use `date`, or compare with an instant.
 5. **Counts and totals over a server that sends no `total`.** A count widget reads pages up to 5,000 records and then says "5000+". A server that refuses `limit=0` makes the count fail to load. Make `limit=0` legal on the server.
 6. **No theme CSS.** Components read `--yadad-*` variables. Without the theme's CSS (`themeToCss` from `@yadad/theme`, or the component set's own stylesheet) the page renders unstyled and nothing reports it.
@@ -71,7 +71,7 @@ if (!result.ok) for (const e of result.errors) console.log(e.document, e.path, e
 ## Host code
 
 - A `dataSource` in a document is a key. The host maps it to a `DataAdapter` in the `dataSources` map: `createMemoryAdapter()` for tests and demos, `createHttpAdapter(...)` for a server that follows the records protocol. Never put a URL in a document.
-- A form only creates records. A table edits records in place (an editable column), and a record can run actions (`recordActions`).
+- A form creates records, or edits one: a table's `editForm` opens a row's record in a form (and `FormRenderer` takes a `record`). A table also edits records in place (an editable column), and a record can run actions (`recordActions`).
 - Anything the documents cannot say (navigation, layout around the views, auth) is host code around the renderers. Do not wrap a renderer to change what a document means; if the contract is missing something, write it down as a proposal for yadad.
 
 ## Where things are
