@@ -1,6 +1,6 @@
 import { conditionFields, jsonPointer, sectionItems } from "@yadad/core";
 import type { DataAdapter, DataRecord, DocumentError, EntityDocument, FieldValue, FormItem, FormSection, FormView, ReferenceField, Registry, ResolvedViewer } from "@yadad/core";
-import { applyFormRules, emptyFormState, evaluateFormRules, restoreDraft, setFieldValue, submitBatchCreate, submitForm } from "@yadad/runtime";
+import { applyFormRules, emptyFormState, evaluateFormRules, formEditPatch, restoreDraft, setFieldValue, submitBatchCreate, submitEdit, submitForm } from "@yadad/runtime";
 import type { DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -62,6 +62,17 @@ export interface FormRendererProps {
   readonly parent?: DataRecord;
   /** Change this to reload the sub-record rows, alongside the renderer's own reloads. */
   readonly reloadKey?: unknown;
+  /**
+   * An existing record to edit (card 99). The form shows its values, and a save
+   * updates it through `submitEdit`: only the fields the viewer changed are sent,
+   * with the record's `version` as `baseVersion`, so a change made elsewhere shows
+   * a conflict message in the form instead of overwriting it. Fields the form does
+   * not show are never sent. After a save the form carries on from the saved
+   * record; give it a different `record` (another id or version) to load that one
+   * instead. A batch composer (`repeat: "batch"`) cannot edit and reports an error.
+   * Drafts, when enabled, are kept per record.
+   */
+  readonly record?: DataRecord;
 }
 
 /**
@@ -74,22 +85,34 @@ function clampRows(n: number | undefined): number {
   return Math.min(BATCH_ROW_CAP, Math.max(1, Math.floor(n)));
 }
 
-export function FormRenderer({ entity: entityProp, view: viewProp, registry, dataSources: dataSourcesProp, entities: entitiesProp, onSaved, drafts, viewer: viewerProp, documents: documentsProp, formatting, parent, reloadKey, initialRows }: FormRendererProps): ReactNode {
+export function FormRenderer({ entity: entityProp, view: viewProp, registry, dataSources: dataSourcesProp, entities: entitiesProp, onSaved, drafts, viewer: viewerProp, documents: documentsProp, formatting, parent, reloadKey, initialRows, record: recordProp }: FormRendererProps): ReactNode {
   const entity = useContentStable(entityProp);
   const view = useContentStable(viewProp);
   const dataSources = useContentStable(dataSourcesProp);
   const entities = useContentStable(entitiesProp);
   const documents = useContentStable(documentsProp);
+  const record = useContentStable(recordProp);
   const formId = useId();
   const { viewer, error: viewerError } = useViewerSetup(viewerProp, view, documents);
   const store = drafts?.store;
   const [initial] = useState(() => {
-    const draft = store?.load(view.id);
-    return draft ? restoreDraft(entity, draft) : null;
+    const draft = store?.load(view.id, record?.id);
+    return draft ? restoreDraft(entity, draft, record?.version) : null;
   });
+  // The record being edited, as of the last load or save: its version is the next save's baseVersion.
+  const [base, setBase] = useState(record);
+  const [seenRecord, setSeenRecord] = useState(record);
   const [restored, setRestored] = useState<RestoredDraft | null>(initial);
   const [state, setState] = useState<FormState>(initial ? { values: initial.values, errors: initial.invalidFields } : emptyFormState);
   const [saving, setSaving] = useState(false);
+  if (record !== seenRecord) {
+    // The host handed over another record (or a newer version of this one): start from it.
+    setSeenRecord(record);
+    setBase(record);
+    setState(emptyFormState);
+  }
+  // What the form shows: the record's values under what the viewer changed (a create form has no record).
+  const current = base ? { ...base.values, ...state.values } : state.values;
   // Only input typed in this session is written back, so restoring alone never touches the stored draft.
   const typed = useRef(false);
 
@@ -109,17 +132,17 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
     if (!store || !typed.current || isBatch) return;
     const timer = setTimeout(() => {
       // Store what the form would save, so hidden clearWhenHidden values are not kept.
-      const values = applyFormRules(entity, view, state.values, viewer).values;
-      if (Object.keys(values).length === 0) store.clear(view.id);
-      else store.save(view.id, undefined, { values, entityRevision: entity.revision, savedAt: Date.now() });
+      const values = base ? state.values : applyFormRules(entity, view, state.values, viewer).values;
+      if (Object.keys(values).length === 0) store.clear(view.id, base?.id);
+      else store.save(view.id, base?.id, { values, entityRevision: entity.revision, savedAt: Date.now(), ...(base ? { recordVersion: base.version } : {}) });
     }, debounceMs);
     return () => clearTimeout(timer);
-  }, [store, debounceMs, entity, view, state.values, viewer, isBatch]);
+  }, [store, debounceMs, entity, view, state.values, viewer, isBatch, base]);
 
   const adapter = dataSources.get(view.dataSource);
   const refEntities = entities ?? documents?.entities;
   const shownRefs = view.sections.flatMap((s) => sectionItems(s).flatMap((i) => entity.fields.filter((f): f is ReferenceField => f.type === "reference" && f.id === i.field)));
-  const wants = (isBatch ? rows.map((r) => r.values) : [state.values]).flatMap((values) =>
+  const wants = (isBatch ? rows.map((r) => r.values) : [current]).flatMap((values) =>
     shownRefs.flatMap((field) => {
       const value = values[field.id];
       return typeof value === "string" && value !== "" ? [{ field, id: value }] : [];
@@ -136,11 +159,12 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
       ];
     }),
   );
-  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...(viewerError ? [viewerError] : [])];
+  const batchEdit: DocumentError[] = isBatch && base ? [{ path: "/repeat", code: "invalid-value", message: `Form "${view.id}" is a batch composer, which only creates records, but it was given a record to edit.`, hint: "Edit a record in a form without \"repeat\"." }] : [];
+  const setupErrors = [...checkViewSetup(entity, view, adapter, refs), ...batchEdit, ...(viewerError ? [viewerError] : [])];
   const { FieldFrame, Section, Button, ErrorSummary } = registry.layout;
   if (setupErrors.length > 0) return <ErrorSummary errors={setupErrors} />;
 
-  const rules = evaluateFormRules(view, state.values, viewer);
+  const rules = evaluateFormRules(view, current, viewer);
   // Errors for fields not on screen (hidden or not in this view) go in the summary.
   const shown = new Set(view.sections.flatMap((s) => sectionItems(s).map((i) => i.field)).filter((id) => !rules.hidden.has(id)));
   const formErrors = state.errors.filter((e) => !entity.fields.some((f) => shown.has(f.id) && e.path === jsonPointer([f.id])));
@@ -148,14 +172,21 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
   async function save(): Promise<void> {
     if (!adapter || saving) return;
     setSaving(true);
-    const effective = applyFormRules(entity, view, state.values, viewer);
-    const result = await submitForm(effective.entity, effective.values, adapter);
+    let result;
+    if (base) {
+      const edit = formEditPatch(entity, view, base, state.values, viewer);
+      result = await submitEdit(edit.entity, base, edit.patch, adapter);
+    } else {
+      const effective = applyFormRules(entity, view, state.values, viewer);
+      result = await submitForm(effective.entity, effective.values, adapter);
+    }
     setSaving(false);
     if (result.ok) {
       typed.current = false;
-      store?.clear(view.id);
+      store?.clear(view.id, base?.id);
       setRestored(null);
       setState(emptyFormState);
+      if (base) setBase(result.record);
       onSaved?.(result.record);
     } else {
       setState((s) => ({ ...s, errors: result.errors }));
@@ -182,7 +213,7 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
 
   const discard = (): void => {
     typed.current = false;
-    store?.clear(view.id);
+    store?.clear(view.id, base?.id);
     setRestored(null);
     setState(emptyFormState);
   };
@@ -197,7 +228,7 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
 
   /** One field of one row: the row supplies values, errors and the write-back. */
   const renderItem = (item: FormItem, rowIndex: number): ReactNode => {
-    const rowValues = isBatch ? rows[rowIndex]?.values ?? {} : state.values;
+    const rowValues = isBatch ? rows[rowIndex]?.values ?? {} : current;
     const rowRules = isBatch ? evaluateFormRules(view, rowValues, viewer) : rules;
     const field = entity.fields.find((f) => f.id === item.field);
     if (!field || rowRules.hidden.has(field.id)) return null; // unknown fields are reported by checkViewSetup
@@ -219,7 +250,8 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
         setRows((rs) => rs.map((r, i) => (i === rowIndex ? setFieldValue(r, field.id, value) : r)));
         setBatchErrors((es) => es.filter((e) => !e.path.startsWith(`${rowErrorPrefix}${jsonPointer([field.id])}`)));
       } else {
-        setState((s) => setFieldValue(s, field.id, value));
+        // Editing a record, an empty input is a change to empty (null), not "untouched".
+        setState((s) => setFieldValue(s, field.id, base && value === undefined ? null : value));
       }
     };
     return (
@@ -241,7 +273,7 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
         {...(refEntities !== undefined ? { entities: refEntities } : {})}
         {...(documents !== undefined ? { documents } : {})}
         {...(reloadKey !== undefined ? { reloadKey } : {})}
-        {...(parent !== undefined ? { parent } : {})}
+        {...(parent ?? base ? { parent: (parent ?? base) as DataRecord } : {})}
       />
     ) : (
       <Section key={`${rowKey}:${section.id}`} id={isBatch ? `${rowKey}:${section.id}` : section.id} {...(section.title !== undefined ? { title: section.title } : {})}>
@@ -258,6 +290,7 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
           <Section id={`${view.id}-draft`} title={`Restored unsaved changes from ${new Date(restored.savedAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`}>
             <>
               {restored.revisionChanged && <p>This form has changed since then. Check the restored values before saving.</p>}
+              {restored.recordChanged && <p>The record changed elsewhere since then. Saving may report a conflict.</p>}
               {restored.droppedFields.length > 0 && <p>Some values belong to fields this form no longer has and were left out.</p>}
               <Button label="Discard" type="button" variant="secondary" disabled={saving} onPress={discard} />
             </>

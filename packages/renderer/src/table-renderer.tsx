@@ -1,5 +1,5 @@
 import { MAX_ROW_ACTION_DEPTH, conditionFields, jsonPointer } from "@yadad/core";
-import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, PageNotice, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
+import type { Condition, DataAdapter, DataRecord, DocumentError, EntityDocument, Field, FieldValue, FormView, PageNotice, RecordValues, ReferenceField, Registry, ResolvedViewer, SortSpec, TableColumnHeader, TableRow, TableView } from "@yadad/core";
 import { bindFilter, bindingValues, canEditField, canUpdate, columnEditable, compareCells, emptyFormState, initialQuickFilters, neighbourQuery, quickRangeKey, resolveRelativeDates, restoreDraft, rowActionVisible, setFieldValue, submitEdit, visibleColumns } from "@yadad/runtime";
 import type { CompareCell, CompareEdge, DraftStore, FormState, RestoredDraft } from "@yadad/runtime";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -113,6 +113,10 @@ interface TableBodyProps extends Omit<TableRendererProps, "documents" | "viewer"
   readonly rowAction?: RowActionHandle | undefined;
   /** Problems with the row action itself (unknown or non-table target). */
   readonly extraErrors?: readonly DocumentError[];
+  /** Card 99: the view's resolved `editForm`; rows get an Edit button that opens their record in it. */
+  readonly editForm?: FormView | undefined;
+  /** The document set the edit form's viewer defaults come from. */
+  readonly formDocuments?: DocumentSet | undefined;
 }
 
 /** One level of the in-container back stack: the table shown, and how the viewer got here. */
@@ -257,6 +261,20 @@ export function TableRenderer({ entity: entityProp, view: viewProp, registry, da
     };
   };
 
+  /** Card 99: the form a level's `editForm` names, or the problem with it. */
+  const resolveEditForm = (level: Level): Pick<TableBodyProps, "editForm" | "extraErrors" | "formDocuments"> => {
+    const id = level.view.editForm;
+    if (id === undefined) return {};
+    const fail = (message: string, hint: string): Pick<TableBodyProps, "extraErrors"> => ({ extraErrors: [{ path: "/editForm", code: "invalid-value", message, hint }] });
+    if (!documents) return fail(`View "${level.view.id}" edits records in a form, but no documents were passed to look up "${id}".`, "Pass the document set as the documents prop.");
+    const formView = documents.views.get(id);
+    if (!formView || formView.kind !== "form") return fail(`editForm "${id}" is not a form view in the document set.`, "Point editForm at a form view, or drop it.");
+    if (formView.entity !== level.entity.id) return fail(`Edit form "${formView.id}" is for entity "${formView.entity}", not "${level.entity.id}".`, "The edit form must be over the table's own entity.");
+    if (formView.repeat === "batch") return fail(`Edit form "${formView.id}" is a batch composer, which only creates records.`, "Point editForm at a form without repeat.");
+    if (!dataSources.has(formView.dataSource)) return fail(`Edit form "${formView.id}" uses data source "${formView.dataSource}", which was not provided.`, "Provide that data source in dataSources.");
+    return { editForm: formView, formDocuments: documents };
+  };
+
   const back = (): void => {
     const closing = levels[top];
     const index = top - 1;
@@ -373,7 +391,7 @@ export function TableRenderer({ entity: entityProp, view: viewProp, registry, da
             {...(drafts !== undefined ? { drafts } : {})}
             {...(savedFilter !== undefined ? { savedFilter } : {})}
             {...(onSavedFilterChange !== undefined ? { onSavedFilterChange } : {})}
-            {...resolveAction(i)}
+            {...mergeResolved(resolveAction(i), resolveEditForm(level))}
           />
         </div>
       ))}
@@ -381,7 +399,13 @@ export function TableRenderer({ entity: entityProp, view: viewProp, registry, da
   );
 }
 
-function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, reloadSignal, baseFilter, lockedFields = [], rowAction, extraErrors = [], formatting, onChanged, drafts, add, addPanel, savedFilter, onSavedFilterChange }: TableBodyProps): ReactNode {
+/** Both resolutions can report a problem; keep every one. */
+function mergeResolved(a: Pick<TableBodyProps, "rowAction" | "extraErrors">, b: Pick<TableBodyProps, "editForm" | "extraErrors" | "formDocuments">): Pick<TableBodyProps, "rowAction" | "extraErrors" | "editForm" | "formDocuments"> {
+  const errors = [...(a.extraErrors ?? []), ...(b.extraErrors ?? [])];
+  return { ...a, ...b, ...(errors.length > 0 ? { extraErrors: errors } : {}) };
+}
+
+function TableBody({ entity, view, viewer, registry, dataSources, entities, reloadKey, reloadSignal, baseFilter, lockedFields = [], rowAction, extraErrors = [], editForm, formDocuments, formatting, onChanged, drafts, add, addPanel, savedFilter, onSavedFilterChange }: TableBodyProps): ReactNode {
   const tableId = useId();
   const [sort, setSort] = useState<readonly SortSpec[]>(view.sort ?? []);
   const [page, setPage] = useState(0);
@@ -402,6 +426,23 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const typed = useRef(false);
   const [saving, setSaving] = useState(false);
   const [reloads, setReloads] = useState(0);
+  // Card 99: the record open in the edit form, which takes the table's place (the table stays mounted, hidden).
+  const [formRecord, setFormRecord] = useState<DataRecord | undefined>(undefined);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const formHeadingRef = useRef<HTMLHeadingElement>(null);
+  const returnFocusTo = useRef<string | undefined>(undefined);
+  const formOpen = formRecord !== undefined;
+  useEffect(() => {
+    if (formOpen) {
+      formHeadingRef.current?.focus();
+      return;
+    }
+    const id = returnFocusTo.current;
+    returnFocusTo.current = undefined;
+    if (id === undefined) return;
+    const rows = rootRef.current?.querySelectorAll<HTMLElement>("[data-yadad-row-edit]") ?? [];
+    for (const row of rows) if (row.getAttribute("data-yadad-row-edit") === id) row.querySelector<HTMLElement>("button")?.focus();
+  }, [formOpen]);
   const [quick, setQuick] = useState<RecordValues>(() => initialQuickFilters(view, entity, viewerZone(formatting)));
   // RFC 0010 item 10: a text quick filter shows what the viewer types at once but commits (and reloads) only after a pause.
   const [typedQuick, setTypedQuick] = useState<Readonly<RecordValues>>({});
@@ -555,9 +596,10 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   });
   if (shownColumns.length === 0) return <p data-yadad-table-view={view.id} data-yadad-table-nothing="">There is nothing to show you here.</p>;
   const canEditRows = columns.some((c) => c.editable);
-  const hasActions = canEditRows || rowAction !== undefined;
+  const editsInForm = editForm !== undefined;
+  const hasActions = canEditRows || rowAction !== undefined || editsInForm;
   // Headed after what the column holds, so it never repeats the record-actions column's "Actions".
-  const rowButtonsLabel = canEditRows && rowAction !== undefined ? "Edit and open" : rowAction !== undefined ? "Open" : "Edit";
+  const rowButtonsLabel = (canEditRows || editsInForm) && rowAction !== undefined ? "Edit and open" : rowAction !== undefined ? "Open" : "Edit";
   const headerId = (columnId: string) => `${tableId}-col-${columnId}`;
   const editErrorsId = `${tableId}-edit-errors`;
 
@@ -655,6 +697,22 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     );
   };
 
+  /** What a record is called in the edit form's button and heading: its first column when that is text, else the entity. */
+  const recordName = (record: DataRecord): string => {
+    const first = columns[0]?.field;
+    const value = first !== undefined && first.type === "text" ? record.values[first.id] : undefined;
+    return typeof value === "string" && value.trim() !== "" ? value.trim() : "";
+  };
+  const openForm = (record: DataRecord): void => {
+    returnFocusTo.current = record.id;
+    setFormRecord(record);
+  };
+  const closeForm = (): void => {
+    setFormRecord(undefined);
+    // Whatever happened in the form (a conflict says "reload"), the next Edit opens what the server has now.
+    setReloads((n) => n + 1);
+  };
+
   const renderActions = (record: DataRecord): ReactNode =>
     isEditing(record) ? (
       <>
@@ -664,6 +722,11 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
     ) : (
       <>
         {columns.some((c) => c.editable && canEditField(record, c.field.id)) && <Button label="Edit" type="button" variant="secondary" disabled={saving} onPress={() => openEdit(record)} />}
+        {editForm !== undefined && canUpdate(record) && (
+          <span data-yadad-row-edit={record.id}>
+            <Button label={recordName(record) ? `Edit ${recordName(record)}` : `Edit ${entity.id}`} type="button" variant="secondary" disabled={saving} onPress={() => openForm(record)} />
+          </span>
+        )}
         {rowAction && (
           <span data-yadad-row-open={record.id} data-yadad-row-bindings={JSON.stringify(rowAction.bindings(record))}>
             <Button label={rowAction.label(record)} type="button" variant="secondary" disabled={saving} onPress={() => rowAction.open(record)} />
@@ -735,7 +798,35 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
   const savedChips = view.filters ?? [];
 
   return (
-    <div data-yadad-table-view={view.id}>
+    <>
+    {formRecord !== undefined && editForm !== undefined && (
+      <div data-yadad-edit-form={editForm.id} data-yadad-edit-record={formRecord.id}>
+        <div data-yadad-edit-header="">
+          <Button label="Back" type="button" variant="secondary" disabled={false} onPress={closeForm} />
+          <h2 ref={formHeadingRef} tabIndex={-1} data-yadad-edit-heading="">
+            {`Edit ${recordName(formRecord) || entity.id}`}
+          </h2>
+        </div>
+        <FormRenderer
+          key={formRecord.id}
+          entity={entity}
+          view={editForm}
+          registry={registry}
+          dataSources={dataSources}
+          {...(entities ? { entities } : {})}
+          {...(formDocuments ? { documents: formDocuments } : {})}
+          viewer={viewer}
+          {...(formatting ? { formatting } : {})}
+          {...(drafts !== undefined ? { drafts } : {})}
+          record={formRecord}
+          onSaved={() => {
+            closeForm();
+            onChanged?.(); // neighbours (a dashboard's counts and stats) refresh too
+          }}
+        />
+      </div>
+    )}
+    <div ref={rootRef} data-yadad-table-view={view.id} {...(formOpen ? { hidden: true } : {})}>
       {savedChips.length > 0 && (
         <nav aria-label="Saved filters" data-yadad-saved-filters="">
           {savedChips.map((x) => (
@@ -831,6 +922,7 @@ function TableBody({ entity, view, viewer, registry, dataSources, entities, relo
       {add}
       {addPanel}
     </div>
+    </>
   );
 }
 
