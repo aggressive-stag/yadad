@@ -1,4 +1,4 @@
 {
   "kind": "calendar", "specVersion": 10, "id": "calendar", "title": "Calendar", "entity": "task", "revision": 1, "dataSource": "default",
-  "dateField": "due", "titleField": "title", "colorField": "status", "editable": true
+  "dateField": "due", "titleField": "title", "colorField": "status", "editable": true, "editForm": "task_form"
 }

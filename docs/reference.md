@@ -182,6 +182,7 @@ A **calendar** places records on the days of a month or week by one `date` field
 - `modes` lists the periods the viewer can switch between: `month`, `week` and the rolling `1day` to `6day`; the first is the default.
 - `titleField`, `detailFields` (up to 3), `colorField` (a select or reference), `maxEntriesPerDay`, `weekStartsOn` (0 Sunday to 6 Saturday) and `listStart` (`period` or `today`, for the phone list).
 - `doneField` shows a completion checkbox on each entry; `sort`, `filter`, `editable`, `editableWhen`, `rowAction` and `recordActions` work as on a table.
+- `editForm` (and `editVisibleWhen`) work as on a table: each entry gets an Edit control, drawn with its record actions, that opens the record in that form in place of the calendar. A save returns to the calendar with focus on the entry; a stale save shows the conflict message in the form.
 
 ```json
 {
@@ -194,6 +195,8 @@ A **calendar** places records on the days of a month or week by one `date` field
 ## Board
 
 A **board** shows records as cards in columns, one column per value of a field. `groupBy` lists the fields the viewer may group by (select, boolean or reference; 1 to 5, the first is the default). With `editable`, dragging a card to another column changes that field. With a reference group, `columnsFrom: "options"` builds the columns from the target's records so an empty column is still a drop target.
+
+`editForm` (and `editVisibleWhen`) work as on a table: each card gets an Edit control, drawn with its record actions, that opens the record in that form in place of the board; a save returns to the board with focus on the card.
 
 ```json
 {

@@ -226,7 +226,8 @@ A **board** shows records as cards in columns, one column per value of a field. 
   "kind": "board", "specVersion": 10, "id": "board", "title": "Board", "entity": "task", "revision": 1, "dataSource": "default",
   "groupBy": [{ "field": "status" }, { "field": "assignee" }],
   "titleField": "title", "cardFields": ["assignee", "due"],
-  "editable": true
+  "editable": true,
+  "editForm": "task_form"
 }
 ```
 
@@ -234,11 +235,11 @@ A **board** shows records as cards in columns, one column per value of a field. 
 ```json
 {
   "kind": "calendar", "specVersion": 10, "id": "calendar", "title": "Calendar", "entity": "task", "revision": 1, "dataSource": "default",
-  "dateField": "due", "titleField": "title", "colorField": "status", "editable": true
+  "dateField": "due", "titleField": "title", "colorField": "status", "editable": true, "editForm": "task_form"
 }
 ```
 
-Neither view needed a new entity or any code. The board groups by status or by assignee; the calendar uses the due date and colours entries by status.
+`editForm` gives each card and entry an Edit control that opens the task in the same form the table uses. Neither view needed a new entity or any code. The board groups by status or by assignee; the calendar uses the due date and colours entries by status.
 
 ![The board](../examples/starter/docs/screens/board-1280.png)
 

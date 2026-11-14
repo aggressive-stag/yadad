@@ -69,6 +69,22 @@ describe("editForm", () => {
   });
 });
 
+// card 107: a board card and a calendar entry open in the same form, with the real components.
+describe("editForm on the board and the calendar", () => {
+  it.each(["board", "calendar"])("the %s opens a task in the task form and saves it", async (id) => {
+    const adapter = await createSeededAdapter();
+    const view = views.find((v) => v.id === id)!;
+    const task = (await adapter.find("task", {})).items.find((t) => t.values["title"] !== undefined && (id === "board" || t.values["due"] !== undefined))!;
+    const { container } = render(<View view={view} dataSources={new Map([["default", adapter]])} registry={baseRegistry} />);
+    const edit = (await screen.findAllByRole("button", { name: `Edit ${task.values["title"]}` }))[0]!;
+    fireEvent.click(edit);
+    fireEvent.change(await screen.findByLabelText(/Title/), { target: { value: "Renamed from a " + id } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(async () => expect((await adapter.findOne("task", task.id))?.values["title"]).toBe("Renamed from a " + id));
+    await waitFor(() => expect(container.querySelector("[data-yadad-edit-form]")).toBeNull());
+  });
+});
+
 // The state grid: every view in every data and source state, with the real registry.
 const now = new Date(2026, 9, 17);
 const draw: CheckViewStatesOptions["render"] = (state, { view, entity, registry, dataSources, drafts }) => {

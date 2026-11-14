@@ -2,5 +2,6 @@
   "kind": "board", "specVersion": 10, "id": "board", "title": "Board", "entity": "task", "revision": 1, "dataSource": "default",
   "groupBy": [{ "field": "status" }, { "field": "assignee" }],
   "titleField": "title", "cardFields": ["assignee", "due"],
-  "editable": true
+  "editable": true,
+  "editForm": "task_form"
 }
