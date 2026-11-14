@@ -24,7 +24,7 @@ The server uses `node:sqlite`, which needs Node 22.13 or newer without a flag (i
 
 ## Change something
 
-1. **Add a status.** In `documents/task.json`, add `"Review"` to the `status` field's `options.values`. The form's select, the table's inline edit, the board's columns, the calendar legend and the dashboard chart all gain it.
+1. **Add a status.** In `documents/task.json`, add `"Review"` to the `status` field's `options.values`. The form's select (for adding and for editing a task), the table's inline edit, the board's columns, the calendar legend and the dashboard chart all gain it.
 2. **Make a column read-only.** In `documents/tasks.json`, delete `"editable": true` from the `due` column. The Edit button on a row no longer offers the date.
 3. **Add a screen.** Copy `documents/board.json` to `documents/board_by_person.json`, change `id`, `title` and make `groupBy` `[{ "field": "assignee" }]`. A new nav entry appears; no code changed.
 

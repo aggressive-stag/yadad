@@ -9,6 +9,7 @@
   "sort": [{ "field": "due", "dir": "asc" }],
   "pageSize": 10,
   "addForm": "task_form",
+  "editForm": "task_form",
   "filters": [
     { "id": "open", "name": "Open", "condition": { "op": "neq", "field": "status", "value": "Done" } },
     { "id": "overdue", "name": "Overdue", "condition": { "op": "and", "conditions": [

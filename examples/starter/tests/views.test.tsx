@@ -51,6 +51,24 @@ describe("requiredWhen", () => {
   });
 });
 
+// card 99: the table's editForm opens a task in the task form, with its checklist, and saves it.
+describe("editForm", () => {
+  it("opens the task in the form, saves only what changed and keeps the notes the form does not touch", async () => {
+    const adapter = await createSeededAdapter();
+    const tasks = views.find((v) => v.id === "tasks")!;
+    const { container } = render(<View view={tasks} dataSources={new Map([["default", adapter]])} registry={baseRegistry} />);
+    const first = (await adapter.find("task", {})).items.find((t) => t.values["title"] === "Write the release notes")!; // the seed gives this task its checklist
+    fireEvent.click(await screen.findByRole("button", { name: `Edit ${first.values["title"]}` }));
+    expect(await screen.findByText("Draft")).toBeTruthy(); // the checklist hangs off the record being edited
+    fireEvent.change(screen.getByLabelText(/Title/), { target: { value: "Renamed in the form" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Renamed in the form");
+    const saved = await adapter.findOne("task", first.id);
+    expect(saved?.values).toEqual({ ...first.values, title: "Renamed in the form" });
+    expect(container.querySelector("[data-yadad-edit-form]")).toBeNull();
+  });
+});
+
 // The state grid: every view in every data and source state, with the real registry.
 const now = new Date(2026, 9, 17);
 const draw: CheckViewStatesOptions["render"] = (state, { view, entity, registry, dataSources, drafts }) => {
