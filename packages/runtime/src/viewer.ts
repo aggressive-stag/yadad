@@ -223,8 +223,6 @@ export function viewerLeavesRead(view: ViewDocument, documents: Iterable<Documen
           leavesOf(column.visibleWhen, leaves);
           leavesOf(column.editableWhen, leaves);
         }
-        leavesOf(v.editVisibleWhen, leaves);
-        if (v.editForm !== undefined) follow(v.editForm); // the form the Edit button opens reads viewer facts too
         break;
       case "calendar":
       case "board":
@@ -240,6 +238,9 @@ export function viewerLeavesRead(view: ViewDocument, documents: Iterable<Documen
         }
         return;
     }
+    // Tables, calendars and boards: the Edit control's condition, and the form it opens, read viewer facts too.
+    leavesOf(v.editVisibleWhen, leaves);
+    if (v.editForm !== undefined) follow(v.editForm);
     if (v.rowAction) {
       leavesOf(v.rowAction.visibleWhen, leaves);
       follow(v.rowAction.open);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { Condition, DashboardView, DataRecord, Document, FormView, ResolvedViewer, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
+import type { BoardView, CalendarView, Condition, DashboardView, DataRecord, Document, FormView, ResolvedViewer, TableView, ViewerCondition, ViewerDocument } from "@yadad/core";
 import {
   canEditField,
   canMoveColumn,
@@ -228,6 +228,14 @@ describe("viewerFactsRead", () => {
   test("card 106: a table reads its editVisibleWhen and the edit form it opens", () => {
     const tbl: TableView = { ...tableNoAction, id: "t", editForm: "f", editVisibleWhen: { op: "and", conditions: [{ op: "empty", field: "b" }, { op: "viewerIn", fact: "beta", values: [true] }] } };
     expect(viewerFactsRead(tbl, [viewerDoc, form, tbl])).toEqual(["role", "beta", "region"]); // role from the columns, beta from editVisibleWhen, region from the form
+  });
+
+  test("card 107: a calendar and a board read editVisibleWhen too", () => {
+    const when: Condition = { op: "viewerIn", fact: "beta", values: [true] };
+    const cal: CalendarView = { kind: "calendar", specVersion: 10, id: "cal", entity: "task", revision: 1, dataSource: "tasks", dateField: "d", editForm: "f", editVisibleWhen: when };
+    const brd: BoardView = { kind: "board", specVersion: 10, id: "brd", entity: "task", revision: 1, dataSource: "tasks", groupBy: [{ field: "s" }], editForm: "f", editVisibleWhen: when };
+    expect(viewerFactsRead(cal, [viewerDoc, form, cal])).toEqual(["beta", "region"]);
+    expect(viewerFactsRead(brd, [viewerDoc, form, brd])).toEqual(["beta", "region"]);
   });
 
   test("a dashboard reads tabs, items and embedded views; cycles are safe", () => {
