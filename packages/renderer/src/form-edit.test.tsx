@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { RecordValidationError } from "@yadad/core";
 import type { DataAdapter, DataRecord, EntityDocument, FormView, TableView, ViewDocument } from "@yadad/core";
 import { createDraftStore, createMemoryAdapter } from "@yadad/runtime";
 import type { DraftStorage } from "@yadad/runtime";
@@ -174,8 +175,20 @@ describe("FormRenderer with a record", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const alert = await screen.findByRole("alert");
     const item = alert.querySelector("[data-path='/score']");
-    expect(item?.textContent).toContain('"Score" must be at most 100'); // names the field the viewer cannot see
-    expect(update).not.toHaveBeenCalled();
+    expect(item?.textContent).toContain('"Score" is not on this form. Its stored value breaks a rule: must be at most 100.');
+    expect(item?.textContent).toContain("Fix it where Score can be edited.");
+    expect(update).not.toHaveBeenCalled(); // blocked on the client: nothing invalid is sent
+  });
+
+  test("a server error on a field the form does not show says it is not on this form", async () => {
+    const db = createMemoryAdapter();
+    const a = await db.create("task", { title: "Alpha" }, { entityRevision: 2 });
+    const failing: DataAdapter = { ...db, update: async () => { throw new RecordValidationError("Invalid.", [{ path: "/score", code: "invalid-value", message: '"Score" must be at most 100.', hint: 'Change "Score" to be at most 100.' }]); } };
+    mountForm(failing, a);
+    fireEvent.change(screen.getByTestId("input-title"), { target: { value: "Alpha 2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.querySelector("[data-path='/score']")?.textContent).toContain('"Score" is not on this form. Its stored value breaks a rule: must be at most 100.');
   });
 
   test("a batch composer cannot edit and says so", () => {

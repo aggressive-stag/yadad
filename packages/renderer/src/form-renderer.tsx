@@ -80,6 +80,20 @@ export interface FormRendererProps {
  * the Save button) comes from the injected registry; saving goes through
  * runtime and the data adapter.
  */
+/**
+ * An error on a field of the record being edited that this form does not render
+ * (card 105): the viewer cannot change it here, so the summary says so and where
+ * to fix it. The save stays blocked (the client or the server refused it); nothing
+ * invalid is written.
+ */
+function offFormError(entity: EntityDocument, error: DocumentError): DocumentError {
+  const field = entity.fields.find((f) => error.path === jsonPointer([f.id]));
+  if (!field) return error;
+  const quoted = `"${field.label}" `;
+  const rule = error.message.startsWith(quoted) ? error.message.slice(quoted.length) : error.message;
+  return { ...error, message: `${quoted}is not on this form. Its stored value breaks a rule: ${rule.replace(/\.$/, "")}.`, hint: `Fix it where ${field.label} can be edited.` };
+}
+
 function clampRows(n: number | undefined): number {
   if (n === undefined || !Number.isFinite(n)) return 1;
   return Math.min(BATCH_ROW_CAP, Math.max(1, Math.floor(n)));
@@ -167,7 +181,9 @@ export function FormRenderer({ entity: entityProp, view: viewProp, registry, dat
   const rules = evaluateFormRules(view, current, viewer);
   // Errors for fields not on screen (hidden or not in this view) go in the summary.
   const shown = new Set(view.sections.flatMap((s) => sectionItems(s).map((i) => i.field)).filter((id) => !rules.hidden.has(id)));
-  const formErrors = state.errors.filter((e) => !entity.fields.some((f) => shown.has(f.id) && e.path === jsonPointer([f.id])));
+  const formErrors = state.errors
+    .filter((e) => !entity.fields.some((f) => shown.has(f.id) && e.path === jsonPointer([f.id])))
+    .map((e) => (base ? offFormError(entity, e) : e));
 
   async function save(): Promise<void> {
     if (!adapter || saving) return;
